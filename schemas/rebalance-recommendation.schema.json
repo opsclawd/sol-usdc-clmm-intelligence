@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RebalanceRecommendation",
+  "type": "object",
+  "required": [
+    "pair",
+    "timestamp",
+    "recommendedAction",
+    "shouldRebalance",
+    "confidence",
+    "riskLevel",
+    "dataQuality",
+    "executionPermittedByAgent"
+  ],
+  "properties": {
+    "pair": {
+      "const": "SOL/USDC"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "recommendedAction": {
+      "enum": [
+        "hold",
+        "watch",
+        "tighten_range",
+        "widen_range",
+        "exit_range",
+        "pause_rebalances"
+      ]
+    },
+    "shouldRebalance": {
+      "type": "boolean"
+    },
+    "confidence": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "riskLevel": {
+      "enum": [
+        "normal",
+        "elevated",
+        "critical"
+      ]
+    },
+    "dataQuality": {
+      "enum": [
+        "complete",
+        "partial",
+        "stale"
+      ]
+    },
+    "currentRangeAssessment": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "healthy",
+            "near_lower_edge",
+            "near_upper_edge",
+            "out_of_range",
+            "unknown"
+          ]
+        },
+        "distanceToLowerPercent": {
+          "type": "number"
+        },
+        "distanceToUpperPercent": {
+          "type": "number"
+        },
+        "breachRisk": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "unknown"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "recommendedRange": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "reasoning": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "requiresHumanApproval": {
+      "type": "boolean"
+    },
+    "executionPermittedByAgent": {
+      "const": false
+    }
+  },
+  "additionalProperties": true
+}

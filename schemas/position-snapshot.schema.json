@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PositionSnapshot",
+  "type": "object",
+  "required": [
+    "pair",
+    "timestamp",
+    "source",
+    "inRange"
+  ],
+  "properties": {
+    "pair": {
+      "const": "SOL/USDC"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "string"
+    },
+    "positionId": {
+      "type": "string"
+    },
+    "lowerPrice": {
+      "type": "number"
+    },
+    "upperPrice": {
+      "type": "number"
+    },
+    "spotPrice": {
+      "type": "number"
+    },
+    "inRange": {
+      "type": "boolean"
+    },
+    "distanceToLowerPercent": {
+      "type": "number"
+    },
+    "distanceToUpperPercent": {
+      "type": "number"
+    },
+    "unclaimedFeesUsd": {
+      "type": "number"
+    },
+    "inventorySolPercent": {
+      "type": "number"
+    },
+    "inventoryUsdcPercent": {
+      "type": "number"
+    }
+  },
+  "additionalProperties": true
+}

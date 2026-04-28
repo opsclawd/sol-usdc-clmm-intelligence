@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PriceSnapshot",
+  "type": "object",
+  "required": [
+    "pair",
+    "timestamp",
+    "source",
+    "priceUsd"
+  ],
+  "properties": {
+    "pair": {
+      "const": "SOL/USDC"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "string"
+    },
+    "priceUsd": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "confidence": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    }
+  },
+  "additionalProperties": true
+}

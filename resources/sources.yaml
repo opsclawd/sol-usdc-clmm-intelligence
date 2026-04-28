@@ -1,0 +1,66 @@
+sources:
+  - name: backend-clmm-api
+    priority: critical
+    type: internal-api
+    env: CLMM_DATA_API_BASE
+    purpose:
+      - current_position
+      - pool_snapshot
+      - volatility
+      - fee_apr
+      - range_health
+
+  - name: raydium-sol-usdc
+    priority: critical
+    type: sdk-or-api
+    env: RAYDIUM_POOL_ID
+    purpose:
+      - pool_liquidity
+      - current_tick
+      - tick_liquidity_distribution
+      - fee_apr
+      - volume
+
+  - name: jupiter-price
+    priority: high
+    type: public-api
+    url: https://lite-api.jup.ag/price/v3
+    purpose:
+      - realtime_sol_price
+      - price_sanity_check
+
+  - name: defillama-solana
+    priority: high
+    type: public-api
+    url: https://api.llama.fi
+    purpose:
+      - tvl
+      - chain_fees
+      - dex_volume
+      - stablecoin_supply
+      - app_revenue
+
+  - name: coingecko-solana
+    priority: medium
+    type: public-api
+    url: https://api.coingecko.com/api/v3
+    purpose:
+      - market_cap
+      - historical_returns
+      - broader_market_context
+
+  - name: official-solana-updates
+    priority: medium
+    type: research-feed
+    purpose:
+      - network_upgrades
+      - outage_or_degradation_risk
+      - ecosystem_catalysts
+
+  - name: helius-research
+    priority: medium
+    type: research-feed
+    purpose:
+      - ecosystem_context
+      - infra_context
+      - network_activity

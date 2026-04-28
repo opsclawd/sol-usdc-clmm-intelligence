@@ -1,0 +1,31 @@
+timezone: America/Edmonton
+session: isolated
+modelEnv: OPENCLAW_MODEL
+thinkingEnv: OPENCLAW_THINKING
+agentEnv: OPENCLAW_AGENT
+exactEnv: OPENCLAW_EXACT
+delivery:
+  channelEnv: OPENCLAW_DELIVERY_CHANNEL
+  toEnv: OPENCLAW_DELIVERY_TO
+jobs:
+  - name: clmm-daily-sol-usdc-insight
+    cron: "0 7 * * *"
+    messageFile: routines/daily-sol-usdc-insight.md
+    description: Daily regime and CLMM policy insight for SOL/USDC.
+
+  - name: clmm-range-review
+    cron: "0 */4 * * *"
+    messageFile: routines/range-review.md
+    description: Four-hour range health and rebalance recommendation review.
+
+  - name: clmm-emergency-volatility-check
+    cron: "15 * * * *"
+    messageFile: routines/emergency-volatility-check.md
+    description: Hourly lightweight volatility and range breach check.
+    thinking: low
+
+  - name: clmm-weekly-performance-review
+    cron: "0 18 * * 0"
+    messageFile: routines/weekly-performance-review.md
+    description: Weekly CLMM strategy review versus HODL and passive LP.
+    thinking: high

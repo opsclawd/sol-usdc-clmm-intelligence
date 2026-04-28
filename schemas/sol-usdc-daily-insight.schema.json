@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SolUsdcDailyInsight",
+  "type": "object",
+  "required": [
+    "pair",
+    "timestamp",
+    "recommendedAction",
+    "confidence",
+    "riskLevel",
+    "dataQuality",
+    "clmmPolicy"
+  ],
+  "properties": {
+    "pair": {
+      "const": "SOL/USDC"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "marketRegime": {
+      "type": "string"
+    },
+    "fundamentalRegime": {
+      "enum": [
+        "constructive",
+        "neutral",
+        "deteriorating",
+        "unknown"
+      ]
+    },
+    "recommendedAction": {
+      "enum": [
+        "hold",
+        "watch",
+        "tighten_range",
+        "widen_range",
+        "exit_range",
+        "pause_rebalances"
+      ]
+    },
+    "confidence": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "riskLevel": {
+      "enum": [
+        "normal",
+        "elevated",
+        "critical"
+      ]
+    },
+    "dataQuality": {
+      "enum": [
+        "complete",
+        "partial",
+        "stale"
+      ]
+    },
+    "missingInputs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "clmmPolicy": {
+      "type": "object",
+      "required": [
+        "posture",
+        "rangeBias",
+        "rebalanceSensitivity",
+        "maxCapitalDeploymentPercent"
+      ],
+      "properties": {
+        "posture": {
+          "enum": [
+            "aggressive",
+            "moderately_aggressive",
+            "neutral",
+            "defensive",
+            "paused"
+          ]
+        },
+        "rangeBias": {
+          "enum": [
+            "tight",
+            "medium",
+            "wide",
+            "passive"
+          ]
+        },
+        "rebalanceSensitivity": {
+          "enum": [
+            "low",
+            "normal",
+            "high",
+            "paused"
+          ]
+        },
+        "maxCapitalDeploymentPercent": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        }
+      },
+      "additionalProperties": false
+    },
+    "reasoning": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "requiresHumanApproval": {
+      "type": "boolean"
+    },
+    "executionPermittedByAgent": {
+      "const": false
+    }
+  },
+  "additionalProperties": true
+}

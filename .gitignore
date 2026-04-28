@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
+coverage/
+.cache/
+.tmp/
+
+# local runtime snapshots; keep .gitkeep files
+/data/*.json
+/outputs/*.json
+
+# never commit secrets
+*.pem
+*.key
+secrets.*
