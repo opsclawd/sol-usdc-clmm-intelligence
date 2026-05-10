@@ -27,7 +27,7 @@ describe('collectCoingecko', () => {
     const clock = new FakeClock('2026-05-10T12:00:00.000Z');
 
     await collectCoingecko({ http, jsonStore, env, clock });
-    expect(http.calls[0]?.headers).toBeUndefined();
+    expect(http.calls[0]?.headers).toEqual({});
   });
 });
 
