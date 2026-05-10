@@ -1,6 +1,7 @@
 import type { HttpClient } from "../ports/http.js";
 import type { JsonStore } from "../ports/json-store.js";
 import type { EnvReader } from "../ports/env.js";
+import type { ClmmBundle } from "../contracts/clmm-bundle.js";
 
 export interface CollectClmmBundleDeps {
   http: HttpClient;
@@ -10,7 +11,7 @@ export interface CollectClmmBundleDeps {
 
 export const CLMM_BUNDLE_PATH = "data/latest-clmm-bundle.json";
 
-function validateEnvelope(response: Record<string, unknown>): Record<string, unknown> {
+function validateEnvelope(response: Record<string, unknown>): ClmmBundle {
   const bundle = response.bundle;
 
   if (!bundle || typeof bundle !== "object") {
@@ -20,7 +21,7 @@ function validateEnvelope(response: Record<string, unknown>): Record<string, unk
   const b = bundle as Record<string, unknown>;
 
   if (b.pair !== "SOL/USDC") {
-    throw new Error(`Unexpected pair: ${b.pair}`);
+    throw new Error(`Expected pair SOL/USDC, got ${String(b.pair)}`);
   }
 
   if (!b.pool || typeof b.pool !== "object") {
@@ -31,7 +32,7 @@ function validateEnvelope(response: Record<string, unknown>): Record<string, unk
     throw new Error("Bundle missing positions array");
   }
 
-  return b;
+  return b as unknown as ClmmBundle;
 }
 
 export async function collectClmmBundle(deps: CollectClmmBundleDeps): Promise<void> {
