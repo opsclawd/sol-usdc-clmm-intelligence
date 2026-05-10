@@ -1,5 +1,5 @@
-import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
-import { dailyInsightJob } from '../../src/jobs/daily-insight-job.js';
+import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
+import { dailyInsightJob } from "../../src/jobs/daily-insight-job.js";
 
 async function main(): Promise<void> {
   const runtime = createNodeRuntime();

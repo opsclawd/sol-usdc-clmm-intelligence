@@ -1,5 +1,5 @@
-import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
-import { cronRenderJob } from '../../src/jobs/cron-render-job.js';
+import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
+import { cronRenderJob } from "../../src/jobs/cron-render-job.js";
 
 async function main(): Promise<void> {
   const runtime = createNodeRuntime();
@@ -9,7 +9,7 @@ async function main(): Promise<void> {
   })();
   for (const line of lines) {
     console.log(line);
-    console.log('');
+    console.log("");
   }
 }
 

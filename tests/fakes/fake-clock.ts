@@ -1,4 +1,4 @@
-import type { Clock } from '../../src/ports/clock.js';
+import type { Clock } from "../../src/ports/clock.js";
 
 export class FakeClock implements Clock {
   constructor(private value: string) {}

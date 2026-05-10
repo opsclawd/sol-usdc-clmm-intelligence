@@ -2,6 +2,7 @@
   "name": "clmm-autopilot-pipeline",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.33.0",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -14,8 +15,11 @@
     "cron:sync": "tsx scripts/openclaw/sync-cron.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "lint": "eslint . --ext .ts --max-warnings 0",
+    "format": "prettier --check .",
     "boundaries": "depcruise --config .dependency-cruiser.cjs src",
-    "verify": "pnpm typecheck && pnpm test && pnpm boundaries"
+    "verify": "pnpm typecheck && pnpm lint && pnpm format && pnpm test && pnpm boundaries",
+    "prepare": "husky || true"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
@@ -25,8 +29,21 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "dependency-cruiser": "^16.10.4",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "prettier": "^3.5.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "vitest": "^2.1.9"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "prettier --write",
+      "eslint --fix"
+    ],
+    "*.{json,md,yml,yaml}": "prettier --write"
   }
 }

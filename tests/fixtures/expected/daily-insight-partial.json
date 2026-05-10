@@ -6,9 +6,7 @@
   "confidence": "low",
   "riskLevel": "elevated",
   "dataQuality": "partial",
-  "missingInputs": [
-    "position"
-  ],
+  "missingInputs": ["position"],
   "clmmPolicy": {
     "posture": "defensive",
     "rangeBias": "wide",
@@ -35,10 +33,7 @@
     "Fee environment is normal.",
     "Recommendation remains advisory only; backend and wallet control execution."
   ],
-  "sources": [
-    "jupiter-price-v3",
-    "fastify-clmm-backend"
-  ],
+  "sources": ["jupiter-price-v3", "fastify-clmm-backend"],
   "requiresHumanApproval": true,
   "executionPermittedByAgent": false,
   "timestamp": "2026-05-09T13:00:00.000Z"

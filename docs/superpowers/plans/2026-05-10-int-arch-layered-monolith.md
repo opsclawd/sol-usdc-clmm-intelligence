@@ -177,6 +177,7 @@ tests/
 ### Task 0: Install Vitest, dependency-cruiser, and update tsconfig
 
 **Files:**
+
 - Modify: `package.json`
 - Modify: `tsconfig.json`
 - Create: `vitest.config.ts`
@@ -185,9 +186,11 @@ tests/
 - [ ] **Step 1: Add dev dependencies**
 
 Run:
+
 ```bash
 pnpm add -D vitest@^2 dependency-cruiser@^16
 ```
+
 Expected: `pnpm-lock.yaml` updates; `node_modules/.bin/vitest` exists.
 
 - [ ] **Step 2: Update `tsconfig.json` to include src and tests**
@@ -217,12 +220,12 @@ Replace the `include` array so the file reads:
 - [ ] **Step 3: Create `vitest.config.ts`**
 
 ```ts
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ['tests/**/*.test.ts'],
-    environment: 'node',
+    include: ["tests/**/*.test.ts"],
+    environment: "node",
     globals: false,
     clearMocks: true
   }
@@ -270,6 +273,7 @@ git commit -m "chore: add vitest and dependency-cruiser tooling"
 ### Task 1: Define contract types
 
 **Files:**
+
 - Create: `src/contracts/snapshots.ts`
 - Create: `src/contracts/outputs.ts`
 - Create: `src/contracts/cron-config.ts`
@@ -281,29 +285,29 @@ These are types only — no runtime tests. The tests come in Phase 2 when domain
 
 ```ts
 export interface PriceSnapshot {
-  pair: 'SOL/USDC';
+  pair: "SOL/USDC";
   timestamp: string;
   source: string;
   priceUsd: number;
-  confidence?: 'low' | 'medium' | 'high';
+  confidence?: "low" | "medium" | "high";
   raw?: unknown;
 }
 
 export interface PoolSnapshot {
-  pair: 'SOL/USDC';
+  pair: "SOL/USDC";
   timestamp: string;
   source: string;
   spotPrice?: number;
   feeApr?: number;
   volume24hUsd?: number;
   tvlUsd?: number;
-  liquidityTrend?: 'rising' | 'flat' | 'falling' | 'unknown';
-  volumeTrend?: 'rising' | 'flat' | 'falling' | 'unknown';
-  feeAprTrend?: 'rising' | 'flat' | 'falling' | 'unknown';
+  liquidityTrend?: "rising" | "flat" | "falling" | "unknown";
+  volumeTrend?: "rising" | "flat" | "falling" | "unknown";
+  feeAprTrend?: "rising" | "flat" | "falling" | "unknown";
 }
 
 export interface PositionSnapshot {
-  pair: 'SOL/USDC';
+  pair: "SOL/USDC";
   timestamp: string;
   source: string;
   lowerPrice?: number;
@@ -324,37 +328,33 @@ export type PerformanceSnapshot = Record<string, unknown>;
 
 ```ts
 export type RecommendedAction =
-  | 'hold'
-  | 'watch'
-  | 'tighten_range'
-  | 'widen_range'
-  | 'exit_range'
-  | 'pause_rebalances';
+  | "hold"
+  | "watch"
+  | "tighten_range"
+  | "widen_range"
+  | "exit_range"
+  | "pause_rebalances";
 
-export type Confidence = 'low' | 'medium' | 'high';
-export type RiskLevel = 'normal' | 'elevated' | 'critical';
-export type DataQuality = 'complete' | 'partial' | 'stale';
-export type Posture =
-  | 'paused'
-  | 'defensive'
-  | 'neutral'
-  | 'moderately_aggressive';
-export type RangeBias = 'wide' | 'medium' | 'narrow' | 'passive';
-export type RebalanceSensitivity = 'paused' | 'high' | 'normal';
+export type Confidence = "low" | "medium" | "high";
+export type RiskLevel = "normal" | "elevated" | "critical";
+export type DataQuality = "complete" | "partial" | "stale";
+export type Posture = "paused" | "defensive" | "neutral" | "moderately_aggressive";
+export type RangeBias = "wide" | "medium" | "narrow" | "passive";
+export type RebalanceSensitivity = "paused" | "high" | "normal";
 export type RangeStatus =
-  | 'healthy'
-  | 'near_lower_edge'
-  | 'near_upper_edge'
-  | 'out_of_range'
-  | 'unknown';
-export type BreachRisk = 'low' | 'medium' | 'high' | 'unknown';
-export type FeeEnvironment = 'strong' | 'normal' | 'weak' | 'unknown';
+  | "healthy"
+  | "near_lower_edge"
+  | "near_upper_edge"
+  | "out_of_range"
+  | "unknown";
+export type BreachRisk = "low" | "medium" | "high" | "unknown";
+export type FeeEnvironment = "strong" | "normal" | "weak" | "unknown";
 
 export interface DailyInsight {
-  pair: 'SOL/USDC';
+  pair: "SOL/USDC";
   timestamp: string;
   marketRegime: string;
-  fundamentalRegime: 'unknown';
+  fundamentalRegime: "unknown";
   recommendedAction: RecommendedAction;
   confidence: Confidence;
   riskLevel: RiskLevel;
@@ -375,9 +375,9 @@ export interface DailyInsight {
   feeEnvironment: {
     classification: FeeEnvironment;
     feeApr?: number;
-    feeAprTrend: 'rising' | 'flat' | 'falling' | 'unknown';
+    feeAprTrend: "rising" | "flat" | "falling" | "unknown";
     volume24hUsd?: number;
-    volumeTrend: 'rising' | 'flat' | 'falling' | 'unknown';
+    volumeTrend: "rising" | "flat" | "falling" | "unknown";
   };
   price: {
     spotPrice?: number;
@@ -390,7 +390,7 @@ export interface DailyInsight {
 }
 
 export interface RangeReview {
-  pair: 'SOL/USDC';
+  pair: "SOL/USDC";
   timestamp: string;
   recommendedAction: RecommendedAction;
   shouldRebalance: boolean;
@@ -409,8 +409,8 @@ export interface RangeReview {
     inRange?: boolean;
   };
   recommendedRange: {
-    type: 'backend_must_calculate_exact_ticks' | 'unchanged';
-    widthBias: 'wider' | 'unchanged';
+    type: "backend_must_calculate_exact_ticks" | "unchanged";
+    widthBias: "wider" | "unchanged";
   };
   reasoning: string[];
   requiresHumanApproval: boolean;
@@ -418,9 +418,9 @@ export interface RangeReview {
 }
 
 export interface WeeklyReview {
-  pair: 'SOL/USDC';
+  pair: "SOL/USDC";
   timestamp: string;
-  dataQuality: 'partial' | 'stale';
+  dataQuality: "partial" | "stale";
   summary: string;
   inputs: {
     hasPerformanceSnapshot: boolean;
@@ -428,7 +428,7 @@ export interface WeeklyReview {
     hasRebalanceRecommendation: boolean;
   };
   decisionQualityReview: {
-    grade: 'ungraded';
+    grade: "ungraded";
     reason: string;
   };
   proposedPolicyChanges: unknown[];
@@ -486,9 +486,9 @@ export interface PreparedCronJob {
 - [ ] **Step 4: Create `src/contracts/index.ts` barrel**
 
 ```ts
-export * from './snapshots.js';
-export * from './outputs.js';
-export * from './cron-config.js';
+export * from "./snapshots.js";
+export * from "./outputs.js";
+export * from "./cron-config.js";
 ```
 
 - [ ] **Step 5: Verify typecheck**
@@ -510,6 +510,7 @@ git commit -m "feat(contracts): add snapshot, output, and cron config types"
 ### Task 2: Domain — `data-quality`
 
 **Files:**
+
 - Create: `tests/domain/data-quality.test.ts`
 - Create: `src/domain/data-quality.ts`
 
@@ -518,43 +519,41 @@ git commit -m "feat(contracts): add snapshot, output, and cron config types"
 `tests/domain/data-quality.test.ts`:
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { assessDataQuality } from '../../src/domain/data-quality.js';
+import { describe, expect, it } from "vitest";
+import { assessDataQuality } from "../../src/domain/data-quality.js";
 
-describe('assessDataQuality', () => {
-  it('returns complete with no missing when every input is defined', () => {
-    expect(assessDataQuality({ a: 1, b: 'x', c: {} })).toEqual({
-      quality: 'complete',
+describe("assessDataQuality", () => {
+  it("returns complete with no missing when every input is defined", () => {
+    expect(assessDataQuality({ a: 1, b: "x", c: {} })).toEqual({
+      quality: "complete",
       missing: []
     });
   });
 
-  it('returns partial with missing keys when 1 input is null', () => {
+  it("returns partial with missing keys when 1 input is null", () => {
     expect(assessDataQuality({ a: 1, b: null })).toEqual({
-      quality: 'partial',
-      missing: ['b']
+      quality: "partial",
+      missing: ["b"]
     });
   });
 
-  it('returns partial when 2 inputs are missing', () => {
+  it("returns partial when 2 inputs are missing", () => {
     expect(assessDataQuality({ a: undefined, b: null, c: 3 })).toEqual({
-      quality: 'partial',
-      missing: ['a', 'b']
+      quality: "partial",
+      missing: ["a", "b"]
     });
   });
 
-  it('returns stale when 3 or more inputs are missing', () => {
-    expect(
-      assessDataQuality({ a: undefined, b: null, c: undefined })
-    ).toEqual({
-      quality: 'stale',
-      missing: ['a', 'b', 'c']
+  it("returns stale when 3 or more inputs are missing", () => {
+    expect(assessDataQuality({ a: undefined, b: null, c: undefined })).toEqual({
+      quality: "stale",
+      missing: ["a", "b", "c"]
     });
   });
 
-  it('preserves key order from the input object in the missing array', () => {
+  it("preserves key order from the input object in the missing array", () => {
     const result = assessDataQuality({ price: undefined, pool: null, position: 1 });
-    expect(result.missing).toEqual(['price', 'pool']);
+    expect(result.missing).toEqual(["price", "pool"]);
   });
 });
 ```
@@ -569,23 +568,21 @@ Expected: FAIL — module `src/domain/data-quality.js` not resolvable.
 `src/domain/data-quality.ts`:
 
 ```ts
-import type { DataQuality } from '../contracts/outputs.js';
+import type { DataQuality } from "../contracts/outputs.js";
 
 export interface DataQualityAssessment {
   quality: DataQuality;
   missing: string[];
 }
 
-export function assessDataQuality(
-  inputs: Record<string, unknown>
-): DataQualityAssessment {
+export function assessDataQuality(inputs: Record<string, unknown>): DataQualityAssessment {
   const missing = Object.entries(inputs)
     .filter(([, value]) => value == null)
     .map(([key]) => key);
 
-  if (missing.length === 0) return { quality: 'complete', missing };
-  if (missing.length <= 2) return { quality: 'partial', missing };
-  return { quality: 'stale', missing };
+  if (missing.length === 0) return { quality: "complete", missing };
+  if (missing.length <= 2) return { quality: "partial", missing };
+  return { quality: "stale", missing };
 }
 ```
 
@@ -606,6 +603,7 @@ git commit -m "feat(domain): extract assessDataQuality with tests"
 ### Task 3: Domain — `range-status`
 
 **Files:**
+
 - Create: `tests/domain/range-status.test.ts`
 - Create: `src/domain/range-status.ts`
 
@@ -614,88 +612,88 @@ git commit -m "feat(domain): extract assessDataQuality with tests"
 `tests/domain/range-status.test.ts`:
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { assessRangeStatus } from '../../src/domain/range-status.js';
-import type { PositionSnapshot } from '../../src/contracts/snapshots.js';
+import { describe, expect, it } from "vitest";
+import { assessRangeStatus } from "../../src/domain/range-status.js";
+import type { PositionSnapshot } from "../../src/contracts/snapshots.js";
 
 const base: PositionSnapshot = {
-  pair: 'SOL/USDC',
-  timestamp: '2026-05-10T12:00:00.000Z',
-  source: 'test',
+  pair: "SOL/USDC",
+  timestamp: "2026-05-10T12:00:00.000Z",
+  source: "test",
   inRange: true
 };
 
-describe('assessRangeStatus', () => {
-  it('returns unknown / elevated / watch when position is undefined', () => {
+describe("assessRangeStatus", () => {
+  it("returns unknown / elevated / watch when position is undefined", () => {
     expect(assessRangeStatus(undefined)).toEqual({
-      status: 'unknown',
-      breachRisk: 'unknown',
-      recommendedAction: 'watch',
-      riskLevel: 'elevated'
+      status: "unknown",
+      breachRisk: "unknown",
+      recommendedAction: "watch",
+      riskLevel: "elevated"
     });
   });
 
-  it('returns out_of_range / critical / exit_range when inRange is false', () => {
+  it("returns out_of_range / critical / exit_range when inRange is false", () => {
     expect(assessRangeStatus({ ...base, inRange: false })).toEqual({
-      status: 'out_of_range',
-      breachRisk: 'high',
-      recommendedAction: 'exit_range',
-      riskLevel: 'critical'
+      status: "out_of_range",
+      breachRisk: "high",
+      recommendedAction: "exit_range",
+      riskLevel: "critical"
     });
   });
 
-  it('returns near_lower_edge / widen_range / elevated when distanceToLowerPercent <= 3', () => {
+  it("returns near_lower_edge / widen_range / elevated when distanceToLowerPercent <= 3", () => {
     expect(
       assessRangeStatus({ ...base, distanceToLowerPercent: 3, distanceToUpperPercent: 50 })
     ).toEqual({
-      status: 'near_lower_edge',
-      breachRisk: 'high',
-      recommendedAction: 'widen_range',
-      riskLevel: 'elevated'
+      status: "near_lower_edge",
+      breachRisk: "high",
+      recommendedAction: "widen_range",
+      riskLevel: "elevated"
     });
   });
 
-  it('returns near_upper_edge / widen_range / elevated when distanceToUpperPercent <= 3', () => {
+  it("returns near_upper_edge / widen_range / elevated when distanceToUpperPercent <= 3", () => {
     expect(
       assessRangeStatus({ ...base, distanceToLowerPercent: 50, distanceToUpperPercent: 2.5 })
     ).toEqual({
-      status: 'near_upper_edge',
-      breachRisk: 'high',
-      recommendedAction: 'widen_range',
-      riskLevel: 'elevated'
+      status: "near_upper_edge",
+      breachRisk: "high",
+      recommendedAction: "widen_range",
+      riskLevel: "elevated"
     });
   });
 
-  it('returns near_lower_edge / watch / normal when 3 < lower <= 6', () => {
+  it("returns near_lower_edge / watch / normal when 3 < lower <= 6", () => {
     expect(
       assessRangeStatus({ ...base, distanceToLowerPercent: 5, distanceToUpperPercent: 50 })
     ).toEqual({
-      status: 'near_lower_edge',
-      breachRisk: 'medium',
-      recommendedAction: 'watch',
-      riskLevel: 'normal'
+      status: "near_lower_edge",
+      breachRisk: "medium",
+      recommendedAction: "watch",
+      riskLevel: "normal"
     });
   });
 
-  it('returns near_upper_edge / watch / normal when lower > 6 and upper <= 6', () => {
+  it("returns near_upper_edge / watch / normal when lower > 6 and upper <= 6", () => {
     expect(
       assessRangeStatus({ ...base, distanceToLowerPercent: 20, distanceToUpperPercent: 5 })
     ).toEqual({
-      status: 'near_upper_edge',
-      breachRisk: 'medium',
-      recommendedAction: 'watch',
-      riskLevel: 'normal'
+      status: "near_upper_edge",
+      breachRisk: "medium",
+      recommendedAction: "watch",
+      riskLevel: "normal"
     });
   });
 
-  it('returns healthy / hold / normal when distances are comfortably wide', () => {
+  it("returns healthy / hold / normal when distances are comfortably wide", () => {
     expect(
       assessRangeStatus({ ...base, distanceToLowerPercent: 25, distanceToUpperPercent: 25 })
     ).toEqual({
-      status: 'healthy',
-      breachRisk: 'low',
-      recommendedAction: 'hold',
-      riskLevel: 'normal'
+      status: "healthy",
+      breachRisk: "low",
+      recommendedAction: "hold",
+      riskLevel: "normal"
     });
   });
 });
@@ -711,13 +709,13 @@ Expected: FAIL — module not found.
 `src/domain/range-status.ts`:
 
 ```ts
-import type { PositionSnapshot } from '../contracts/snapshots.js';
+import type { PositionSnapshot } from "../contracts/snapshots.js";
 import type {
   BreachRisk,
   RangeStatus,
   RecommendedAction,
   RiskLevel
-} from '../contracts/outputs.js';
+} from "../contracts/outputs.js";
 
 export interface RangeAssessment {
   status: RangeStatus;
@@ -729,19 +727,19 @@ export interface RangeAssessment {
 export function assessRangeStatus(position?: PositionSnapshot): RangeAssessment {
   if (!position) {
     return {
-      status: 'unknown',
-      breachRisk: 'unknown',
-      recommendedAction: 'watch',
-      riskLevel: 'elevated'
+      status: "unknown",
+      breachRisk: "unknown",
+      recommendedAction: "watch",
+      riskLevel: "elevated"
     };
   }
 
   if (!position.inRange) {
     return {
-      status: 'out_of_range',
-      breachRisk: 'high',
-      recommendedAction: 'exit_range',
-      riskLevel: 'critical'
+      status: "out_of_range",
+      breachRisk: "high",
+      recommendedAction: "exit_range",
+      riskLevel: "critical"
     };
   }
 
@@ -750,36 +748,36 @@ export function assessRangeStatus(position?: PositionSnapshot): RangeAssessment 
 
   if (lower != null && lower <= 3) {
     return {
-      status: 'near_lower_edge',
-      breachRisk: 'high',
-      recommendedAction: 'widen_range',
-      riskLevel: 'elevated'
+      status: "near_lower_edge",
+      breachRisk: "high",
+      recommendedAction: "widen_range",
+      riskLevel: "elevated"
     };
   }
 
   if (upper != null && upper <= 3) {
     return {
-      status: 'near_upper_edge',
-      breachRisk: 'high',
-      recommendedAction: 'widen_range',
-      riskLevel: 'elevated'
+      status: "near_upper_edge",
+      breachRisk: "high",
+      recommendedAction: "widen_range",
+      riskLevel: "elevated"
     };
   }
 
   if ((lower != null && lower <= 6) || (upper != null && upper <= 6)) {
     return {
-      status: lower != null && lower <= 6 ? 'near_lower_edge' : 'near_upper_edge',
-      breachRisk: 'medium',
-      recommendedAction: 'watch',
-      riskLevel: 'normal'
+      status: lower != null && lower <= 6 ? "near_lower_edge" : "near_upper_edge",
+      breachRisk: "medium",
+      recommendedAction: "watch",
+      riskLevel: "normal"
     };
   }
 
   return {
-    status: 'healthy',
-    breachRisk: 'low',
-    recommendedAction: 'hold',
-    riskLevel: 'normal'
+    status: "healthy",
+    breachRisk: "low",
+    recommendedAction: "hold",
+    riskLevel: "normal"
   };
 }
 ```
@@ -801,49 +799,50 @@ git commit -m "feat(domain): extract assessRangeStatus with tests"
 ### Task 4: Domain — `fee-classification`
 
 **Files:**
+
 - Create: `tests/domain/fee-classification.test.ts`
 - Create: `src/domain/fee-classification.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { classifyFeeEnvironment } from '../../src/domain/fee-classification.js';
-import type { PoolSnapshot } from '../../src/contracts/snapshots.js';
+import { describe, expect, it } from "vitest";
+import { classifyFeeEnvironment } from "../../src/domain/fee-classification.js";
+import type { PoolSnapshot } from "../../src/contracts/snapshots.js";
 
 const base: PoolSnapshot = {
-  pair: 'SOL/USDC',
-  timestamp: '2026-05-10T12:00:00.000Z',
-  source: 'test'
+  pair: "SOL/USDC",
+  timestamp: "2026-05-10T12:00:00.000Z",
+  source: "test"
 };
 
-describe('classifyFeeEnvironment', () => {
-  it('returns unknown when pool is undefined', () => {
-    expect(classifyFeeEnvironment(undefined)).toBe('unknown');
+describe("classifyFeeEnvironment", () => {
+  it("returns unknown when pool is undefined", () => {
+    expect(classifyFeeEnvironment(undefined)).toBe("unknown");
   });
 
-  it('returns unknown when feeApr is missing', () => {
-    expect(classifyFeeEnvironment({ ...base })).toBe('unknown');
+  it("returns unknown when feeApr is missing", () => {
+    expect(classifyFeeEnvironment({ ...base })).toBe("unknown");
   });
 
-  it('returns strong when feeApr is 80', () => {
-    expect(classifyFeeEnvironment({ ...base, feeApr: 80 })).toBe('strong');
+  it("returns strong when feeApr is 80", () => {
+    expect(classifyFeeEnvironment({ ...base, feeApr: 80 })).toBe("strong");
   });
 
-  it('returns strong when feeApr is well above 80', () => {
-    expect(classifyFeeEnvironment({ ...base, feeApr: 250 })).toBe('strong');
+  it("returns strong when feeApr is well above 80", () => {
+    expect(classifyFeeEnvironment({ ...base, feeApr: 250 })).toBe("strong");
   });
 
-  it('returns normal when feeApr is 25', () => {
-    expect(classifyFeeEnvironment({ ...base, feeApr: 25 })).toBe('normal');
+  it("returns normal when feeApr is 25", () => {
+    expect(classifyFeeEnvironment({ ...base, feeApr: 25 })).toBe("normal");
   });
 
-  it('returns normal when feeApr is in [25, 80)', () => {
-    expect(classifyFeeEnvironment({ ...base, feeApr: 60 })).toBe('normal');
+  it("returns normal when feeApr is in [25, 80)", () => {
+    expect(classifyFeeEnvironment({ ...base, feeApr: 60 })).toBe("normal");
   });
 
-  it('returns weak when feeApr is below 25', () => {
-    expect(classifyFeeEnvironment({ ...base, feeApr: 10 })).toBe('weak');
+  it("returns weak when feeApr is below 25", () => {
+    expect(classifyFeeEnvironment({ ...base, feeApr: 10 })).toBe("weak");
   });
 });
 ```
@@ -858,14 +857,14 @@ Expected: FAIL — module not found.
 `src/domain/fee-classification.ts`:
 
 ```ts
-import type { PoolSnapshot } from '../contracts/snapshots.js';
-import type { FeeEnvironment } from '../contracts/outputs.js';
+import type { PoolSnapshot } from "../contracts/snapshots.js";
+import type { FeeEnvironment } from "../contracts/outputs.js";
 
 export function classifyFeeEnvironment(pool?: PoolSnapshot): FeeEnvironment {
-  if (!pool || pool.feeApr == null) return 'unknown';
-  if (pool.feeApr >= 80) return 'strong';
-  if (pool.feeApr >= 25) return 'normal';
-  return 'weak';
+  if (!pool || pool.feeApr == null) return "unknown";
+  if (pool.feeApr >= 80) return "strong";
+  if (pool.feeApr >= 25) return "normal";
+  return "weak";
 }
 ```
 
@@ -885,197 +884,198 @@ git commit -m "feat(domain): extract classifyFeeEnvironment with tests"
 
 ### Task 5: Domain — `advisory-policy`
 
-This module captures the posture / range-bias / rebalance-sensitivity / max-capital decisions that the daily-insight currently inlines. Inputs are the *resolved* recommendedAction and riskLevel (already merged with data-quality concerns) plus the fee environment and breach risk.
+This module captures the posture / range-bias / rebalance-sensitivity / max-capital decisions that the daily-insight currently inlines. Inputs are the _resolved_ recommendedAction and riskLevel (already merged with data-quality concerns) plus the fee environment and breach risk.
 
 **Files:**
+
 - Create: `tests/domain/advisory-policy.test.ts`
 - Create: `src/domain/advisory-policy.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 import {
   derivePosture,
   deriveRangeBias,
   deriveRebalanceSensitivity,
   deriveMaxCapitalDeploymentPercent
-} from '../../src/domain/advisory-policy.js';
+} from "../../src/domain/advisory-policy.js";
 
-describe('deriveRangeBias', () => {
-  it('returns passive when action is pause_rebalances', () => {
+describe("deriveRangeBias", () => {
+  it("returns passive when action is pause_rebalances", () => {
     expect(
       deriveRangeBias({
-        recommendedAction: 'pause_rebalances',
-        riskLevel: 'elevated',
-        feeEnvironment: 'strong',
-        breachRisk: 'low'
+        recommendedAction: "pause_rebalances",
+        riskLevel: "elevated",
+        feeEnvironment: "strong",
+        breachRisk: "low"
       })
-    ).toBe('passive');
+    ).toBe("passive");
   });
 
-  it('returns wide when action is widen_range', () => {
+  it("returns wide when action is widen_range", () => {
     expect(
       deriveRangeBias({
-        recommendedAction: 'widen_range',
-        riskLevel: 'normal',
-        feeEnvironment: 'normal',
-        breachRisk: 'high'
+        recommendedAction: "widen_range",
+        riskLevel: "normal",
+        feeEnvironment: "normal",
+        breachRisk: "high"
       })
-    ).toBe('wide');
+    ).toBe("wide");
   });
 
-  it('returns wide when riskLevel is elevated even if action is hold', () => {
+  it("returns wide when riskLevel is elevated even if action is hold", () => {
     expect(
       deriveRangeBias({
-        recommendedAction: 'hold',
-        riskLevel: 'elevated',
-        feeEnvironment: 'strong',
-        breachRisk: 'low'
+        recommendedAction: "hold",
+        riskLevel: "elevated",
+        feeEnvironment: "strong",
+        breachRisk: "low"
       })
-    ).toBe('wide');
+    ).toBe("wide");
   });
 
-  it('returns medium on strong fees and low breach risk when action is hold', () => {
+  it("returns medium on strong fees and low breach risk when action is hold", () => {
     expect(
       deriveRangeBias({
-        recommendedAction: 'hold',
-        riskLevel: 'normal',
-        feeEnvironment: 'strong',
-        breachRisk: 'low'
+        recommendedAction: "hold",
+        riskLevel: "normal",
+        feeEnvironment: "strong",
+        breachRisk: "low"
       })
-    ).toBe('medium');
+    ).toBe("medium");
   });
 
-  it('returns wide on weak fees', () => {
+  it("returns wide on weak fees", () => {
     expect(
       deriveRangeBias({
-        recommendedAction: 'hold',
-        riskLevel: 'normal',
-        feeEnvironment: 'weak',
-        breachRisk: 'low'
+        recommendedAction: "hold",
+        riskLevel: "normal",
+        feeEnvironment: "weak",
+        breachRisk: "low"
       })
-    ).toBe('wide');
+    ).toBe("wide");
   });
 
-  it('returns medium otherwise', () => {
+  it("returns medium otherwise", () => {
     expect(
       deriveRangeBias({
-        recommendedAction: 'watch',
-        riskLevel: 'normal',
-        feeEnvironment: 'normal',
-        breachRisk: 'medium'
+        recommendedAction: "watch",
+        riskLevel: "normal",
+        feeEnvironment: "normal",
+        breachRisk: "medium"
       })
-    ).toBe('medium');
+    ).toBe("medium");
   });
 });
 
-describe('derivePosture', () => {
-  it('returns paused on pause_rebalances', () => {
+describe("derivePosture", () => {
+  it("returns paused on pause_rebalances", () => {
     expect(
       derivePosture({
-        recommendedAction: 'pause_rebalances',
-        riskLevel: 'normal',
-        feeEnvironment: 'strong'
+        recommendedAction: "pause_rebalances",
+        riskLevel: "normal",
+        feeEnvironment: "strong"
       })
-    ).toBe('paused');
+    ).toBe("paused");
   });
 
-  it('returns defensive on critical risk', () => {
+  it("returns defensive on critical risk", () => {
     expect(
       derivePosture({
-        recommendedAction: 'exit_range',
-        riskLevel: 'critical',
-        feeEnvironment: 'strong'
+        recommendedAction: "exit_range",
+        riskLevel: "critical",
+        feeEnvironment: "strong"
       })
-    ).toBe('defensive');
+    ).toBe("defensive");
   });
 
-  it('returns defensive on elevated risk', () => {
+  it("returns defensive on elevated risk", () => {
     expect(
       derivePosture({
-        recommendedAction: 'watch',
-        riskLevel: 'elevated',
-        feeEnvironment: 'normal'
+        recommendedAction: "watch",
+        riskLevel: "elevated",
+        feeEnvironment: "normal"
       })
-    ).toBe('defensive');
+    ).toBe("defensive");
   });
 
-  it('returns moderately_aggressive on strong fees and normal risk', () => {
+  it("returns moderately_aggressive on strong fees and normal risk", () => {
     expect(
       derivePosture({
-        recommendedAction: 'hold',
-        riskLevel: 'normal',
-        feeEnvironment: 'strong'
+        recommendedAction: "hold",
+        riskLevel: "normal",
+        feeEnvironment: "strong"
       })
-    ).toBe('moderately_aggressive');
+    ).toBe("moderately_aggressive");
   });
 
-  it('returns defensive on weak fees and normal risk', () => {
+  it("returns defensive on weak fees and normal risk", () => {
     expect(
       derivePosture({
-        recommendedAction: 'hold',
-        riskLevel: 'normal',
-        feeEnvironment: 'weak'
+        recommendedAction: "hold",
+        riskLevel: "normal",
+        feeEnvironment: "weak"
       })
-    ).toBe('defensive');
+    ).toBe("defensive");
   });
 
-  it('returns neutral otherwise', () => {
+  it("returns neutral otherwise", () => {
     expect(
       derivePosture({
-        recommendedAction: 'hold',
-        riskLevel: 'normal',
-        feeEnvironment: 'normal'
+        recommendedAction: "hold",
+        riskLevel: "normal",
+        feeEnvironment: "normal"
       })
-    ).toBe('neutral');
+    ).toBe("neutral");
   });
 });
 
-describe('deriveRebalanceSensitivity', () => {
-  it('returns paused on pause_rebalances', () => {
+describe("deriveRebalanceSensitivity", () => {
+  it("returns paused on pause_rebalances", () => {
     expect(
       deriveRebalanceSensitivity({
-        recommendedAction: 'pause_rebalances',
-        riskLevel: 'normal'
+        recommendedAction: "pause_rebalances",
+        riskLevel: "normal"
       })
-    ).toBe('paused');
+    ).toBe("paused");
   });
 
-  it('returns high on elevated risk', () => {
+  it("returns high on elevated risk", () => {
     expect(
       deriveRebalanceSensitivity({
-        recommendedAction: 'watch',
-        riskLevel: 'elevated'
+        recommendedAction: "watch",
+        riskLevel: "elevated"
       })
-    ).toBe('high');
+    ).toBe("high");
   });
 
-  it('returns normal otherwise', () => {
+  it("returns normal otherwise", () => {
     expect(
       deriveRebalanceSensitivity({
-        recommendedAction: 'hold',
-        riskLevel: 'normal'
+        recommendedAction: "hold",
+        riskLevel: "normal"
       })
-    ).toBe('normal');
+    ).toBe("normal");
   });
 });
 
-describe('deriveMaxCapitalDeploymentPercent', () => {
-  it('returns 50 when posture is defensive', () => {
-    expect(deriveMaxCapitalDeploymentPercent('defensive')).toBe(50);
+describe("deriveMaxCapitalDeploymentPercent", () => {
+  it("returns 50 when posture is defensive", () => {
+    expect(deriveMaxCapitalDeploymentPercent("defensive")).toBe(50);
   });
 
-  it('returns 50 when posture is paused', () => {
-    expect(deriveMaxCapitalDeploymentPercent('paused')).toBe(50);
+  it("returns 50 when posture is paused", () => {
+    expect(deriveMaxCapitalDeploymentPercent("paused")).toBe(50);
   });
 
-  it('returns 70 when posture is neutral', () => {
-    expect(deriveMaxCapitalDeploymentPercent('neutral')).toBe(70);
+  it("returns 70 when posture is neutral", () => {
+    expect(deriveMaxCapitalDeploymentPercent("neutral")).toBe(70);
   });
 
-  it('returns 70 when posture is moderately_aggressive', () => {
-    expect(deriveMaxCapitalDeploymentPercent('moderately_aggressive')).toBe(70);
+  it("returns 70 when posture is moderately_aggressive", () => {
+    expect(deriveMaxCapitalDeploymentPercent("moderately_aggressive")).toBe(70);
   });
 });
 ```
@@ -1098,7 +1098,7 @@ import type {
   RebalanceSensitivity,
   RecommendedAction,
   RiskLevel
-} from '../contracts/outputs.js';
+} from "../contracts/outputs.js";
 
 export interface PolicyInputs {
   recommendedAction: RecommendedAction;
@@ -1109,35 +1109,35 @@ export interface PolicyInputs {
 
 export function deriveRangeBias(inputs: PolicyInputs): RangeBias {
   const { recommendedAction, riskLevel, feeEnvironment, breachRisk } = inputs;
-  if (recommendedAction === 'pause_rebalances') return 'passive';
-  if (recommendedAction === 'widen_range' || riskLevel === 'elevated') return 'wide';
-  if (feeEnvironment === 'strong' && breachRisk === 'low') return 'medium';
-  if (feeEnvironment === 'weak') return 'wide';
-  return 'medium';
+  if (recommendedAction === "pause_rebalances") return "passive";
+  if (recommendedAction === "widen_range" || riskLevel === "elevated") return "wide";
+  if (feeEnvironment === "strong" && breachRisk === "low") return "medium";
+  if (feeEnvironment === "weak") return "wide";
+  return "medium";
 }
 
 export function derivePosture(
-  inputs: Pick<PolicyInputs, 'recommendedAction' | 'riskLevel' | 'feeEnvironment'>
+  inputs: Pick<PolicyInputs, "recommendedAction" | "riskLevel" | "feeEnvironment">
 ): Posture {
   const { recommendedAction, riskLevel, feeEnvironment } = inputs;
-  if (recommendedAction === 'pause_rebalances') return 'paused';
-  if (riskLevel === 'critical') return 'defensive';
-  if (riskLevel === 'elevated') return 'defensive';
-  if (feeEnvironment === 'strong') return 'moderately_aggressive';
-  if (feeEnvironment === 'weak') return 'defensive';
-  return 'neutral';
+  if (recommendedAction === "pause_rebalances") return "paused";
+  if (riskLevel === "critical") return "defensive";
+  if (riskLevel === "elevated") return "defensive";
+  if (feeEnvironment === "strong") return "moderately_aggressive";
+  if (feeEnvironment === "weak") return "defensive";
+  return "neutral";
 }
 
 export function deriveRebalanceSensitivity(
-  inputs: Pick<PolicyInputs, 'recommendedAction' | 'riskLevel'>
+  inputs: Pick<PolicyInputs, "recommendedAction" | "riskLevel">
 ): RebalanceSensitivity {
-  if (inputs.recommendedAction === 'pause_rebalances') return 'paused';
-  if (inputs.riskLevel === 'elevated') return 'high';
-  return 'normal';
+  if (inputs.recommendedAction === "pause_rebalances") return "paused";
+  if (inputs.riskLevel === "elevated") return "high";
+  return "normal";
 }
 
 export function deriveMaxCapitalDeploymentPercent(posture: Posture): number {
-  return posture === 'defensive' || posture === 'paused' ? 50 : 70;
+  return posture === "defensive" || posture === "paused" ? 50 : 70;
 }
 ```
 
@@ -1160,43 +1160,44 @@ git commit -m "feat(domain): extract advisory policy decisions with tests"
 This composes the smaller domain functions into the full daily-insight body. It does NOT include `timestamp` — that comes from the use case via the `Clock` port.
 
 **Files:**
+
 - Create: `tests/domain/daily-insight-decision.test.ts`
 - Create: `src/domain/daily-insight-decision.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { makeDailyInsightDecision } from '../../src/domain/daily-insight-decision.js';
+import { describe, expect, it } from "vitest";
+import { makeDailyInsightDecision } from "../../src/domain/daily-insight-decision.js";
 import type {
   PoolSnapshot,
   PositionSnapshot,
   PriceSnapshot
-} from '../../src/contracts/snapshots.js';
+} from "../../src/contracts/snapshots.js";
 
 const price: PriceSnapshot = {
-  pair: 'SOL/USDC',
-  timestamp: '2026-05-10T12:00:00.000Z',
-  source: 'jupiter-price-v3',
+  pair: "SOL/USDC",
+  timestamp: "2026-05-10T12:00:00.000Z",
+  source: "jupiter-price-v3",
   priceUsd: 175.4,
-  confidence: 'high'
+  confidence: "high"
 };
 
 const pool: PoolSnapshot = {
-  pair: 'SOL/USDC',
-  timestamp: '2026-05-10T12:00:00.000Z',
-  source: 'fastify-clmm-backend',
+  pair: "SOL/USDC",
+  timestamp: "2026-05-10T12:00:00.000Z",
+  source: "fastify-clmm-backend",
   spotPrice: 175.5,
   feeApr: 95,
   volume24hUsd: 12_000_000,
-  feeAprTrend: 'rising',
-  volumeTrend: 'rising'
+  feeAprTrend: "rising",
+  volumeTrend: "rising"
 };
 
 const position: PositionSnapshot = {
-  pair: 'SOL/USDC',
-  timestamp: '2026-05-10T12:00:00.000Z',
-  source: 'fastify-clmm-backend',
+  pair: "SOL/USDC",
+  timestamp: "2026-05-10T12:00:00.000Z",
+  source: "fastify-clmm-backend",
   inRange: true,
   lowerPrice: 150,
   upperPrice: 200,
@@ -1205,28 +1206,28 @@ const position: PositionSnapshot = {
   distanceToUpperPercent: 14.0
 };
 
-describe('makeDailyInsightDecision', () => {
-  it('produces complete-quality hold decision when all snapshots are healthy and fees strong', () => {
+describe("makeDailyInsightDecision", () => {
+  it("produces complete-quality hold decision when all snapshots are healthy and fees strong", () => {
     const out = makeDailyInsightDecision({ price, pool, position });
 
-    expect(out.dataQuality).toBe('complete');
-    expect(out.recommendedAction).toBe('hold');
-    expect(out.riskLevel).toBe('normal');
-    expect(out.confidence).toBe('medium');
-    expect(out.marketRegime).toBe('range_healthy_fee_strong');
-    expect(out.fundamentalRegime).toBe('unknown');
+    expect(out.dataQuality).toBe("complete");
+    expect(out.recommendedAction).toBe("hold");
+    expect(out.riskLevel).toBe("normal");
+    expect(out.confidence).toBe("medium");
+    expect(out.marketRegime).toBe("range_healthy_fee_strong");
+    expect(out.fundamentalRegime).toBe("unknown");
     expect(out.clmmPolicy).toEqual({
-      posture: 'moderately_aggressive',
-      rangeBias: 'medium',
-      rebalanceSensitivity: 'normal',
+      posture: "moderately_aggressive",
+      rangeBias: "medium",
+      rebalanceSensitivity: "normal",
       maxCapitalDeploymentPercent: 70
     });
     expect(out.feeEnvironment).toEqual({
-      classification: 'strong',
+      classification: "strong",
       feeApr: 95,
-      feeAprTrend: 'rising',
+      feeAprTrend: "rising",
       volume24hUsd: 12_000_000,
-      volumeTrend: 'rising'
+      volumeTrend: "rising"
     });
     expect(out.price).toEqual({
       spotPrice: 175.5,
@@ -1234,37 +1235,41 @@ describe('makeDailyInsightDecision', () => {
     });
     expect(out.requiresHumanApproval).toBe(false);
     expect(out.executionPermittedByAgent).toBe(false);
-    expect(out.sources).toEqual(['jupiter-price-v3', 'fastify-clmm-backend', 'fastify-clmm-backend']);
+    expect(out.sources).toEqual([
+      "jupiter-price-v3",
+      "fastify-clmm-backend",
+      "fastify-clmm-backend"
+    ]);
     expect(out.missingInputs).toEqual([]);
   });
 
-  it('overrides recommendedAction to pause_rebalances when data quality is stale', () => {
+  it("overrides recommendedAction to pause_rebalances when data quality is stale", () => {
     const out = makeDailyInsightDecision({});
-    expect(out.dataQuality).toBe('stale');
-    expect(out.recommendedAction).toBe('pause_rebalances');
-    expect(out.riskLevel).toBe('elevated');
-    expect(out.confidence).toBe('low');
-    expect(out.clmmPolicy.posture).toBe('paused');
-    expect(out.clmmPolicy.rangeBias).toBe('passive');
-    expect(out.clmmPolicy.rebalanceSensitivity).toBe('paused');
+    expect(out.dataQuality).toBe("stale");
+    expect(out.recommendedAction).toBe("pause_rebalances");
+    expect(out.riskLevel).toBe("elevated");
+    expect(out.confidence).toBe("low");
+    expect(out.clmmPolicy.posture).toBe("paused");
+    expect(out.clmmPolicy.rangeBias).toBe("passive");
+    expect(out.clmmPolicy.rebalanceSensitivity).toBe("paused");
     expect(out.clmmPolicy.maxCapitalDeploymentPercent).toBe(50);
     expect(out.requiresHumanApproval).toBe(true);
-    expect(out.missingInputs).toEqual(['price', 'pool', 'position']);
+    expect(out.missingInputs).toEqual(["price", "pool", "position"]);
     expect(out.sources).toEqual([]);
   });
 
-  it('keeps domain decision under partial quality when only price is missing', () => {
+  it("keeps domain decision under partial quality when only price is missing", () => {
     const out = makeDailyInsightDecision({ pool, position });
-    expect(out.dataQuality).toBe('partial');
-    expect(out.recommendedAction).toBe('hold');
-    expect(out.confidence).toBe('low');
-    expect(out.missingInputs).toEqual(['price']);
+    expect(out.dataQuality).toBe("partial");
+    expect(out.recommendedAction).toBe("hold");
+    expect(out.confidence).toBe("low");
+    expect(out.missingInputs).toEqual(["price"]);
   });
 
-  it('flags requiresHumanApproval when recommendedAction is anything other than hold', () => {
+  it("flags requiresHumanApproval when recommendedAction is anything other than hold", () => {
     const outOfRange: PositionSnapshot = { ...position, inRange: false };
     const out = makeDailyInsightDecision({ price, pool, position: outOfRange });
-    expect(out.recommendedAction).toBe('exit_range');
+    expect(out.recommendedAction).toBe("exit_range");
     expect(out.requiresHumanApproval).toBe(true);
   });
 });
@@ -1280,21 +1285,17 @@ Expected: FAIL — module not found.
 `src/domain/daily-insight-decision.ts`:
 
 ```ts
-import type {
-  PoolSnapshot,
-  PositionSnapshot,
-  PriceSnapshot
-} from '../contracts/snapshots.js';
-import type { DailyInsight } from '../contracts/outputs.js';
-import { assessDataQuality } from './data-quality.js';
-import { assessRangeStatus } from './range-status.js';
-import { classifyFeeEnvironment } from './fee-classification.js';
+import type { PoolSnapshot, PositionSnapshot, PriceSnapshot } from "../contracts/snapshots.js";
+import type { DailyInsight } from "../contracts/outputs.js";
+import { assessDataQuality } from "./data-quality.js";
+import { assessRangeStatus } from "./range-status.js";
+import { classifyFeeEnvironment } from "./fee-classification.js";
 import {
   derivePosture,
   deriveRangeBias,
   deriveRebalanceSensitivity,
   deriveMaxCapitalDeploymentPercent
-} from './advisory-policy.js';
+} from "./advisory-policy.js";
 
 export interface DailyInsightInputs {
   price?: PriceSnapshot;
@@ -1302,19 +1303,16 @@ export interface DailyInsightInputs {
   position?: PositionSnapshot;
 }
 
-export type DailyInsightDecision = Omit<DailyInsight, 'timestamp'>;
+export type DailyInsightDecision = Omit<DailyInsight, "timestamp">;
 
-export function makeDailyInsightDecision(
-  inputs: DailyInsightInputs
-): DailyInsightDecision {
+export function makeDailyInsightDecision(inputs: DailyInsightInputs): DailyInsightDecision {
   const { price, pool, position } = inputs;
   const { quality, missing } = assessDataQuality({ price, pool, position });
   const range = assessRangeStatus(position);
   const feeEnvironment = classifyFeeEnvironment(pool);
 
-  const recommendedAction =
-    quality === 'stale' ? 'pause_rebalances' : range.recommendedAction;
-  const riskLevel = quality === 'stale' ? 'elevated' : range.riskLevel;
+  const recommendedAction = quality === "stale" ? "pause_rebalances" : range.recommendedAction;
+  const riskLevel = quality === "stale" ? "elevated" : range.riskLevel;
 
   const posture = derivePosture({ recommendedAction, riskLevel, feeEnvironment });
   const rangeBias = deriveRangeBias({
@@ -1330,11 +1328,11 @@ export function makeDailyInsightDecision(
   const maxCapitalDeploymentPercent = deriveMaxCapitalDeploymentPercent(posture);
 
   return {
-    pair: 'SOL/USDC',
+    pair: "SOL/USDC",
     marketRegime: `range_${range.status}_fee_${feeEnvironment}`,
-    fundamentalRegime: 'unknown',
+    fundamentalRegime: "unknown",
     recommendedAction,
-    confidence: quality === 'complete' ? 'medium' : 'low',
+    confidence: quality === "complete" ? "medium" : "low",
     riskLevel,
     dataQuality: quality,
     missingInputs: missing,
@@ -1357,32 +1355,32 @@ export function makeDailyInsightDecision(
     feeEnvironment: {
       classification: feeEnvironment,
       ...(pool?.feeApr != null ? { feeApr: pool.feeApr } : {}),
-      feeAprTrend: pool?.feeAprTrend ?? 'unknown',
+      feeAprTrend: pool?.feeAprTrend ?? "unknown",
       ...(pool?.volume24hUsd != null ? { volume24hUsd: pool.volume24hUsd } : {}),
-      volumeTrend: pool?.volumeTrend ?? 'unknown'
+      volumeTrend: pool?.volumeTrend ?? "unknown"
     },
     price: {
       ...(pool?.spotPrice != null
         ? { spotPrice: pool.spotPrice }
         : position?.spotPrice != null
-        ? { spotPrice: position.spotPrice }
-        : price?.priceUsd != null
-        ? { spotPrice: price.priceUsd }
-        : {}),
+          ? { spotPrice: position.spotPrice }
+          : price?.priceUsd != null
+            ? { spotPrice: price.priceUsd }
+            : {}),
       ...(price?.priceUsd != null ? { jupiterPriceUsd: price.priceUsd } : {})
     },
     reasoning: [
-      quality === 'complete'
-        ? 'Core price, pool, and position inputs are available.'
-        : `Missing inputs: ${missing.join(', ') || 'unknown'}.`,
+      quality === "complete"
+        ? "Core price, pool, and position inputs are available."
+        : `Missing inputs: ${missing.join(", ") || "unknown"}.`,
       `Range status is ${range.status} with ${range.breachRisk} breach risk.`,
       `Fee environment is ${feeEnvironment}.`,
-      'Recommendation remains advisory only; backend and wallet control execution.'
+      "Recommendation remains advisory only; backend and wallet control execution."
     ],
-    sources: [price?.source, pool?.source, position?.source].filter(
-      (value): value is string => Boolean(value)
+    sources: [price?.source, pool?.source, position?.source].filter((value): value is string =>
+      Boolean(value)
     ),
-    requiresHumanApproval: recommendedAction !== 'hold',
+    requiresHumanApproval: recommendedAction !== "hold",
     executionPermittedByAgent: false
   };
 }
@@ -1407,37 +1405,38 @@ git commit -m "feat(domain): assemble daily insight decision body"
 ### Task 7: Domain — `range-review-decision`
 
 **Files:**
+
 - Create: `tests/domain/range-review-decision.test.ts`
 - Create: `src/domain/range-review-decision.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { makeRangeReviewDecision } from '../../src/domain/range-review-decision.js';
+import { describe, expect, it } from "vitest";
+import { makeRangeReviewDecision } from "../../src/domain/range-review-decision.js";
 import type {
   PoolSnapshot,
   PositionSnapshot,
   PriceSnapshot
-} from '../../src/contracts/snapshots.js';
+} from "../../src/contracts/snapshots.js";
 
 const price: PriceSnapshot = {
-  pair: 'SOL/USDC',
-  timestamp: '2026-05-10T12:00:00.000Z',
-  source: 'jupiter-price-v3',
+  pair: "SOL/USDC",
+  timestamp: "2026-05-10T12:00:00.000Z",
+  source: "jupiter-price-v3",
   priceUsd: 175.4
 };
 const pool: PoolSnapshot = {
-  pair: 'SOL/USDC',
-  timestamp: '2026-05-10T12:00:00.000Z',
-  source: 'fastify',
+  pair: "SOL/USDC",
+  timestamp: "2026-05-10T12:00:00.000Z",
+  source: "fastify",
   spotPrice: 175.5,
   feeApr: 60
 };
 const position: PositionSnapshot = {
-  pair: 'SOL/USDC',
-  timestamp: '2026-05-10T12:00:00.000Z',
-  source: 'fastify',
+  pair: "SOL/USDC",
+  timestamp: "2026-05-10T12:00:00.000Z",
+  source: "fastify",
   inRange: true,
   lowerPrice: 150,
   upperPrice: 200,
@@ -1446,53 +1445,53 @@ const position: PositionSnapshot = {
   distanceToUpperPercent: 14
 };
 
-describe('makeRangeReviewDecision', () => {
-  it('returns hold / no rebalance / unchanged range when complete and healthy', () => {
+describe("makeRangeReviewDecision", () => {
+  it("returns hold / no rebalance / unchanged range when complete and healthy", () => {
     const out = makeRangeReviewDecision({ price, pool, position });
-    expect(out.recommendedAction).toBe('hold');
+    expect(out.recommendedAction).toBe("hold");
     expect(out.shouldRebalance).toBe(false);
-    expect(out.dataQuality).toBe('complete');
-    expect(out.confidence).toBe('medium');
-    expect(out.recommendedRange).toEqual({ type: 'unchanged', widthBias: 'unchanged' });
+    expect(out.dataQuality).toBe("complete");
+    expect(out.confidence).toBe("medium");
+    expect(out.recommendedRange).toEqual({ type: "unchanged", widthBias: "unchanged" });
     expect(out.requiresHumanApproval).toBe(false);
     expect(out.executionPermittedByAgent).toBe(false);
   });
 
-  it('returns exit_range with shouldRebalance true when out of range', () => {
+  it("returns exit_range with shouldRebalance true when out of range", () => {
     const out = makeRangeReviewDecision({
       price,
       pool,
       position: { ...position, inRange: false }
     });
-    expect(out.recommendedAction).toBe('exit_range');
+    expect(out.recommendedAction).toBe("exit_range");
     expect(out.shouldRebalance).toBe(true);
     expect(out.recommendedRange).toEqual({
-      type: 'backend_must_calculate_exact_ticks',
-      widthBias: 'unchanged'
+      type: "backend_must_calculate_exact_ticks",
+      widthBias: "unchanged"
     });
-    expect(out.confidence).toBe('high');
+    expect(out.confidence).toBe("high");
     expect(out.requiresHumanApproval).toBe(true);
   });
 
-  it('returns widen_range with widthBias wider when near edge', () => {
+  it("returns widen_range with widthBias wider when near edge", () => {
     const out = makeRangeReviewDecision({
       price,
       pool,
       position: { ...position, distanceToLowerPercent: 2.5 }
     });
-    expect(out.recommendedAction).toBe('widen_range');
+    expect(out.recommendedAction).toBe("widen_range");
     expect(out.shouldRebalance).toBe(true);
-    expect(out.recommendedRange.widthBias).toBe('wider');
+    expect(out.recommendedRange.widthBias).toBe("wider");
   });
 
-  it('returns pause_rebalances and shouldRebalance false when stale', () => {
+  it("returns pause_rebalances and shouldRebalance false when stale", () => {
     const out = makeRangeReviewDecision({});
-    expect(out.recommendedAction).toBe('pause_rebalances');
+    expect(out.recommendedAction).toBe("pause_rebalances");
     expect(out.shouldRebalance).toBe(false);
-    expect(out.riskLevel).toBe('critical');
-    expect(out.dataQuality).toBe('stale');
-    expect(out.recommendedRange.widthBias).toBe('wider');
-    expect(out.recommendedRange.type).toBe('unchanged');
+    expect(out.riskLevel).toBe("critical");
+    expect(out.dataQuality).toBe("stale");
+    expect(out.recommendedRange.widthBias).toBe("wider");
+    expect(out.recommendedRange.type).toBe("unchanged");
   });
 });
 ```
@@ -1507,14 +1506,10 @@ Expected: FAIL — module not found.
 `src/domain/range-review-decision.ts`:
 
 ```ts
-import type {
-  PoolSnapshot,
-  PositionSnapshot,
-  PriceSnapshot
-} from '../contracts/snapshots.js';
-import type { RangeReview } from '../contracts/outputs.js';
-import { assessDataQuality } from './data-quality.js';
-import { assessRangeStatus } from './range-status.js';
+import type { PoolSnapshot, PositionSnapshot, PriceSnapshot } from "../contracts/snapshots.js";
+import type { RangeReview } from "../contracts/outputs.js";
+import { assessDataQuality } from "./data-quality.js";
+import { assessRangeStatus } from "./range-status.js";
 
 export interface RangeReviewInputs {
   price?: PriceSnapshot;
@@ -1522,41 +1517,31 @@ export interface RangeReviewInputs {
   position?: PositionSnapshot;
 }
 
-export type RangeReviewDecision = Omit<RangeReview, 'timestamp'>;
+export type RangeReviewDecision = Omit<RangeReview, "timestamp">;
 
-const REBALANCE_ACTIONS = new Set(['tighten_range', 'widen_range', 'exit_range']);
+const REBALANCE_ACTIONS = new Set(["tighten_range", "widen_range", "exit_range"]);
 
-export function makeRangeReviewDecision(
-  inputs: RangeReviewInputs
-): RangeReviewDecision {
+export function makeRangeReviewDecision(inputs: RangeReviewInputs): RangeReviewDecision {
   const { price, pool, position } = inputs;
   const { quality, missing } = assessDataQuality({ price, pool, position });
   const range = assessRangeStatus(position);
-  const recommendedAction =
-    quality === 'stale' ? 'pause_rebalances' : range.recommendedAction;
+  const recommendedAction = quality === "stale" ? "pause_rebalances" : range.recommendedAction;
 
-  const shouldRebalance =
-    REBALANCE_ACTIONS.has(recommendedAction) && quality !== 'stale';
+  const shouldRebalance = REBALANCE_ACTIONS.has(recommendedAction) && quality !== "stale";
 
   const widthBias =
-    recommendedAction === 'widen_range' || recommendedAction === 'pause_rebalances'
-      ? 'wider'
-      : 'unchanged';
+    recommendedAction === "widen_range" || recommendedAction === "pause_rebalances"
+      ? "wider"
+      : "unchanged";
 
-  const spotPrice =
-    position?.spotPrice ?? pool?.spotPrice ?? price?.priceUsd;
+  const spotPrice = position?.spotPrice ?? pool?.spotPrice ?? price?.priceUsd;
 
   return {
-    pair: 'SOL/USDC',
+    pair: "SOL/USDC",
     recommendedAction,
     shouldRebalance,
-    confidence:
-      quality === 'complete'
-        ? range.breachRisk === 'high'
-          ? 'high'
-          : 'medium'
-        : 'low',
-    riskLevel: quality === 'stale' ? 'critical' : range.riskLevel,
+    confidence: quality === "complete" ? (range.breachRisk === "high" ? "high" : "medium") : "low",
+    riskLevel: quality === "stale" ? "critical" : range.riskLevel,
     dataQuality: quality,
     missingInputs: missing,
     currentRangeAssessment: {
@@ -1574,18 +1559,18 @@ export function makeRangeReviewDecision(
       ...(position?.inRange != null ? { inRange: position.inRange } : {})
     },
     recommendedRange: {
-      type: shouldRebalance ? 'backend_must_calculate_exact_ticks' : 'unchanged',
+      type: shouldRebalance ? "backend_must_calculate_exact_ticks" : "unchanged",
       widthBias
     },
     reasoning: [
-      quality === 'complete'
-        ? 'Core inputs available.'
-        : `Missing inputs: ${missing.join(', ') || 'unknown'}.`,
+      quality === "complete"
+        ? "Core inputs available."
+        : `Missing inputs: ${missing.join(", ") || "unknown"}.`,
       `Range status is ${range.status}.`,
       `Breach risk is ${range.breachRisk}.`,
       shouldRebalance
-        ? 'Backend validation is required before any transaction preparation.'
-        : 'No deterministic rebalance trigger confirmed.'
+        ? "Backend validation is required before any transaction preparation."
+        : "No deterministic rebalance trigger confirmed."
     ],
     requiresHumanApproval: shouldRebalance,
     executionPermittedByAgent: false
@@ -1610,38 +1595,39 @@ git commit -m "feat(domain): assemble range review decision body"
 ### Task 8: Domain — `weekly-review-decision`
 
 **Files:**
+
 - Create: `tests/domain/weekly-review-decision.test.ts`
 - Create: `src/domain/weekly-review-decision.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { makeWeeklyReviewDecision } from '../../src/domain/weekly-review-decision.js';
+import { describe, expect, it } from "vitest";
+import { makeWeeklyReviewDecision } from "../../src/domain/weekly-review-decision.js";
 
-describe('makeWeeklyReviewDecision', () => {
-  it('returns partial-quality summary when performance snapshot exists', () => {
+describe("makeWeeklyReviewDecision", () => {
+  it("returns partial-quality summary when performance snapshot exists", () => {
     const out = makeWeeklyReviewDecision({
       performance: { totalFeesUsd: 12 },
-      dailyInsight: { recommendedAction: 'hold' },
+      dailyInsight: { recommendedAction: "hold" },
       rebalance: undefined
     });
-    expect(out.dataQuality).toBe('partial');
-    expect(out.summary).toContain('Performance snapshot available');
+    expect(out.dataQuality).toBe("partial");
+    expect(out.summary).toContain("Performance snapshot available");
     expect(out.inputs).toEqual({
       hasPerformanceSnapshot: true,
       hasDailyInsight: true,
       hasRebalanceRecommendation: false
     });
-    expect(out.decisionQualityReview.grade).toBe('ungraded');
+    expect(out.decisionQualityReview.grade).toBe("ungraded");
     expect(out.proposedPolicyChanges).toEqual([]);
     expect(out.executionPermittedByAgent).toBe(false);
   });
 
-  it('returns stale-quality summary when performance snapshot is missing', () => {
+  it("returns stale-quality summary when performance snapshot is missing", () => {
     const out = makeWeeklyReviewDecision({});
-    expect(out.dataQuality).toBe('stale');
-    expect(out.summary).toContain('No backend performance snapshot');
+    expect(out.dataQuality).toBe("stale");
+    expect(out.summary).toContain("No backend performance snapshot");
     expect(out.inputs).toEqual({
       hasPerformanceSnapshot: false,
       hasDailyInsight: false,
@@ -1661,8 +1647,8 @@ Expected: FAIL — module not found.
 `src/domain/weekly-review-decision.ts`:
 
 ```ts
-import type { WeeklyReview } from '../contracts/outputs.js';
-import type { PerformanceSnapshot } from '../contracts/snapshots.js';
+import type { WeeklyReview } from "../contracts/outputs.js";
+import type { PerformanceSnapshot } from "../contracts/snapshots.js";
 
 export interface WeeklyReviewInputs {
   performance?: PerformanceSnapshot;
@@ -1670,26 +1656,24 @@ export interface WeeklyReviewInputs {
   rebalance?: Record<string, unknown>;
 }
 
-export type WeeklyReviewDecision = Omit<WeeklyReview, 'timestamp'>;
+export type WeeklyReviewDecision = Omit<WeeklyReview, "timestamp">;
 
-export function makeWeeklyReviewDecision(
-  inputs: WeeklyReviewInputs
-): WeeklyReviewDecision {
+export function makeWeeklyReviewDecision(inputs: WeeklyReviewInputs): WeeklyReviewDecision {
   const { performance, dailyInsight, rebalance } = inputs;
   return {
-    pair: 'SOL/USDC',
-    dataQuality: performance ? 'partial' : 'stale',
+    pair: "SOL/USDC",
+    dataQuality: performance ? "partial" : "stale",
     summary: performance
-      ? 'Performance snapshot available. Agent should compare CLMM fees, range outcomes, and HODL benchmark.'
-      : 'No backend performance snapshot available. Weekly review should be conservative and avoid policy changes.',
+      ? "Performance snapshot available. Agent should compare CLMM fees, range outcomes, and HODL benchmark."
+      : "No backend performance snapshot available. Weekly review should be conservative and avoid policy changes.",
     inputs: {
       hasPerformanceSnapshot: Boolean(performance),
       hasDailyInsight: Boolean(dailyInsight),
       hasRebalanceRecommendation: Boolean(rebalance)
     },
     decisionQualityReview: {
-      grade: 'ungraded',
-      reason: 'Requires backend performance metrics and human review.'
+      grade: "ungraded",
+      reason: "Requires backend performance metrics and human review."
     },
     proposedPolicyChanges: [],
     executionPermittedByAgent: false
@@ -1716,115 +1700,116 @@ git commit -m "feat(domain): assemble weekly review decision body"
 This is the pure command builder used by both render and sync. It produces a structured argv `{ command, args }`. Render formats with shell quoting; sync passes argv directly to the runner port.
 
 **Files:**
+
 - Create: `tests/domain/cron-command.test.ts`
 - Create: `src/domain/cron-command.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { buildCronAddArgs } from '../../src/domain/cron-command.js';
+import { describe, expect, it } from "vitest";
+import { buildCronAddArgs } from "../../src/domain/cron-command.js";
 
-describe('buildCronAddArgs', () => {
-  it('builds the minimal argv set when no defaults or delivery are present', () => {
+describe("buildCronAddArgs", () => {
+  it("builds the minimal argv set when no defaults or delivery are present", () => {
     const result = buildCronAddArgs({
-      job: { name: 'clmm-daily', cron: '0 7 * * *', messageFile: 'r.md' },
-      message: 'hello',
-      timezone: 'America/Edmonton',
-      session: 'isolated',
+      job: { name: "clmm-daily", cron: "0 7 * * *", messageFile: "r.md" },
+      message: "hello",
+      timezone: "America/Edmonton",
+      session: "isolated",
       exact: false
     });
-    expect(result.command).toBe('openclaw');
+    expect(result.command).toBe("openclaw");
     expect(result.args).toEqual([
-      'cron',
-      'add',
-      '--name',
-      'clmm-daily',
-      '--cron',
-      '0 7 * * *',
-      '--tz',
-      'America/Edmonton',
-      '--session',
-      'isolated',
-      '--message',
-      'hello'
+      "cron",
+      "add",
+      "--name",
+      "clmm-daily",
+      "--cron",
+      "0 7 * * *",
+      "--tz",
+      "America/Edmonton",
+      "--session",
+      "isolated",
+      "--message",
+      "hello"
     ]);
   });
 
-  it('appends model and thinking when set on job', () => {
+  it("appends model and thinking when set on job", () => {
     const result = buildCronAddArgs({
       job: {
-        name: 'a',
-        cron: '* * * * *',
-        messageFile: 'r.md',
-        model: 'opus',
-        thinking: 'high'
+        name: "a",
+        cron: "* * * * *",
+        messageFile: "r.md",
+        model: "opus",
+        thinking: "high"
       },
-      message: 'm',
-      timezone: 'UTC',
-      session: 'isolated',
+      message: "m",
+      timezone: "UTC",
+      session: "isolated",
       exact: false
     });
-    expect(result.args).toContain('--model');
-    expect(result.args).toContain('opus');
-    expect(result.args).toContain('--thinking');
-    expect(result.args).toContain('high');
+    expect(result.args).toContain("--model");
+    expect(result.args).toContain("opus");
+    expect(result.args).toContain("--thinking");
+    expect(result.args).toContain("high");
   });
 
-  it('falls back to default model and thinking when job lacks them', () => {
+  it("falls back to default model and thinking when job lacks them", () => {
     const result = buildCronAddArgs({
-      job: { name: 'a', cron: '* * * * *', messageFile: 'r.md' },
-      message: 'm',
-      timezone: 'UTC',
-      session: 'isolated',
+      job: { name: "a", cron: "* * * * *", messageFile: "r.md" },
+      message: "m",
+      timezone: "UTC",
+      session: "isolated",
       exact: false,
-      defaultModel: 'sonnet',
-      defaultThinking: 'medium'
+      defaultModel: "sonnet",
+      defaultThinking: "medium"
     });
-    expect(result.args).toContain('--model');
-    expect(result.args).toContain('sonnet');
-    expect(result.args).toContain('--thinking');
-    expect(result.args).toContain('medium');
+    expect(result.args).toContain("--model");
+    expect(result.args).toContain("sonnet");
+    expect(result.args).toContain("--thinking");
+    expect(result.args).toContain("medium");
   });
 
-  it('appends agent and exact flags when present', () => {
+  it("appends agent and exact flags when present", () => {
     const result = buildCronAddArgs({
-      job: { name: 'a', cron: '* * * * *', messageFile: 'r.md' },
-      message: 'm',
-      timezone: 'UTC',
-      session: 'isolated',
+      job: { name: "a", cron: "* * * * *", messageFile: "r.md" },
+      message: "m",
+      timezone: "UTC",
+      session: "isolated",
       exact: true,
-      agent: 'claude'
+      agent: "claude"
     });
-    expect(result.args).toContain('--agent');
-    expect(result.args).toContain('claude');
-    expect(result.args).toContain('--exact');
+    expect(result.args).toContain("--agent");
+    expect(result.args).toContain("claude");
+    expect(result.args).toContain("--exact");
   });
 
-  it('appends announce/channel/to when both delivery values are present', () => {
+  it("appends announce/channel/to when both delivery values are present", () => {
     const result = buildCronAddArgs({
-      job: { name: 'a', cron: '* * * * *', messageFile: 'r.md' },
-      message: 'm',
-      timezone: 'UTC',
-      session: 'isolated',
+      job: { name: "a", cron: "* * * * *", messageFile: "r.md" },
+      message: "m",
+      timezone: "UTC",
+      session: "isolated",
       exact: false,
-      delivery: { channel: 'telegram', to: '12345' }
+      delivery: { channel: "telegram", to: "12345" }
     });
     expect(result.args).toEqual(
-      expect.arrayContaining(['--announce', '--channel', 'telegram', '--to', '12345'])
+      expect.arrayContaining(["--announce", "--channel", "telegram", "--to", "12345"])
     );
   });
 
-  it('does not append delivery flags when partial delivery is provided', () => {
+  it("does not append delivery flags when partial delivery is provided", () => {
     const result = buildCronAddArgs({
-      job: { name: 'a', cron: '* * * * *', messageFile: 'r.md' },
-      message: 'm',
-      timezone: 'UTC',
-      session: 'isolated',
+      job: { name: "a", cron: "* * * * *", messageFile: "r.md" },
+      message: "m",
+      timezone: "UTC",
+      session: "isolated",
       exact: false,
-      delivery: { channel: 'telegram', to: '' }
+      delivery: { channel: "telegram", to: "" }
     });
-    expect(result.args).not.toContain('--announce');
+    expect(result.args).not.toContain("--announce");
   });
 });
 ```
@@ -1839,7 +1824,7 @@ Expected: FAIL — module not found.
 `src/domain/cron-command.ts`:
 
 ```ts
-import type { CronJob } from '../contracts/cron-config.js';
+import type { CronJob } from "../contracts/cron-config.js";
 
 export interface BuildCronAddArgsInputs {
   job: CronJob;
@@ -1854,33 +1839,39 @@ export interface BuildCronAddArgsInputs {
 }
 
 export interface CronCommand {
-  command: 'openclaw';
+  command: "openclaw";
   args: string[];
 }
 
 export function buildCronAddArgs(inputs: BuildCronAddArgsInputs): CronCommand {
-  const { job, message, timezone, session, exact, defaultModel, defaultThinking, agent, delivery } = inputs;
+  const { job, message, timezone, session, exact, defaultModel, defaultThinking, agent, delivery } =
+    inputs;
   const args: string[] = [
-    'cron',
-    'add',
-    '--name', job.name,
-    '--cron', job.cron,
-    '--tz', timezone,
-    '--session', session,
-    '--message', message
+    "cron",
+    "add",
+    "--name",
+    job.name,
+    "--cron",
+    job.cron,
+    "--tz",
+    timezone,
+    "--session",
+    session,
+    "--message",
+    message
   ];
 
   const model = job.model ?? defaultModel;
   const thinking = job.thinking ?? defaultThinking;
-  if (model) args.push('--model', model);
-  if (thinking) args.push('--thinking', thinking);
-  if (agent) args.push('--agent', agent);
-  if (exact) args.push('--exact');
+  if (model) args.push("--model", model);
+  if (thinking) args.push("--thinking", thinking);
+  if (agent) args.push("--agent", agent);
+  if (exact) args.push("--exact");
   if (delivery && delivery.channel && delivery.to) {
-    args.push('--announce', '--channel', delivery.channel, '--to', delivery.to);
+    args.push("--announce", "--channel", delivery.channel, "--to", delivery.to);
   }
 
-  return { command: 'openclaw', args };
+  return { command: "openclaw", args };
 }
 ```
 
@@ -1903,6 +1894,7 @@ git commit -m "feat(domain): pure cron add argv builder"
 ### Task 10: Define port interfaces
 
 **Files:**
+
 - Create: `src/ports/http.ts`
 - Create: `src/ports/json-store.ts`
 - Create: `src/ports/text-reader.ts`
@@ -1966,12 +1958,12 @@ export interface CommandRunner {
 - [ ] **Step 7: Create `src/ports/index.ts`**
 
 ```ts
-export type { HttpClient } from './http.js';
-export type { JsonStore } from './json-store.js';
-export type { TextReader } from './text-reader.js';
-export type { EnvReader } from './env.js';
-export type { Clock } from './clock.js';
-export type { CommandRunner } from './command-runner.js';
+export type { HttpClient } from "./http.js";
+export type { JsonStore } from "./json-store.js";
+export type { TextReader } from "./text-reader.js";
+export type { EnvReader } from "./env.js";
+export type { Clock } from "./clock.js";
+export type { CommandRunner } from "./command-runner.js";
 ```
 
 - [ ] **Step 8: Verify typecheck**
@@ -1993,6 +1985,7 @@ git commit -m "feat(ports): define port interfaces for adapters"
 ### Task 11: In-memory fakes for ports
 
 **Files:**
+
 - Create: `tests/fakes/fake-http.ts`
 - Create: `tests/fakes/fake-json-store.ts`
 - Create: `tests/fakes/fake-text-reader.ts`
@@ -2006,7 +1999,7 @@ These are simple in-memory implementations used across the application tests. Th
 - [ ] **Step 1: Create `tests/fakes/fake-http.ts`**
 
 ```ts
-import type { HttpClient } from '../../src/ports/http.js';
+import type { HttpClient } from "../../src/ports/http.js";
 
 export interface FakeHttpResponse {
   body?: unknown;
@@ -2034,7 +2027,7 @@ export class FakeHttp implements HttpClient {
 - [ ] **Step 2: Create `tests/fakes/fake-json-store.ts`**
 
 ```ts
-import type { JsonStore } from '../../src/ports/json-store.js';
+import type { JsonStore } from "../../src/ports/json-store.js";
 
 export class FakeJsonStore implements JsonStore {
   readonly writes: Array<{ path: string; value: unknown }> = [];
@@ -2058,7 +2051,7 @@ export class FakeJsonStore implements JsonStore {
 - [ ] **Step 3: Create `tests/fakes/fake-text-reader.ts`**
 
 ```ts
-import type { TextReader } from '../../src/ports/text-reader.js';
+import type { TextReader } from "../../src/ports/text-reader.js";
 
 export class FakeTextReader implements TextReader {
   private readonly entries = new Map<string, string>();
@@ -2071,7 +2064,7 @@ export class FakeTextReader implements TextReader {
     const entry = this.entries.get(path);
     if (entry === undefined) {
       const error = new Error(`FakeTextReader: missing ${path}`) as NodeJS.ErrnoException;
-      error.code = 'ENOENT';
+      error.code = "ENOENT";
       throw error;
     }
     return entry;
@@ -2082,7 +2075,7 @@ export class FakeTextReader implements TextReader {
 - [ ] **Step 4: Create `tests/fakes/fake-env.ts`**
 
 ```ts
-import type { EnvReader } from '../../src/ports/env.js';
+import type { EnvReader } from "../../src/ports/env.js";
 
 export class FakeEnv implements EnvReader {
   constructor(private readonly values: Record<string, string | undefined> = {}) {}
@@ -2109,7 +2102,7 @@ export class FakeEnv implements EnvReader {
 - [ ] **Step 5: Create `tests/fakes/fake-clock.ts`**
 
 ```ts
-import type { Clock } from '../../src/ports/clock.js';
+import type { Clock } from "../../src/ports/clock.js";
 
 export class FakeClock implements Clock {
   constructor(private value: string) {}
@@ -2125,7 +2118,7 @@ export class FakeClock implements Clock {
 - [ ] **Step 6: Create `tests/fakes/fake-command-runner.ts`**
 
 ```ts
-import type { CommandRunner } from '../../src/ports/command-runner.js';
+import type { CommandRunner } from "../../src/ports/command-runner.js";
 
 export class FakeCommandRunner implements CommandRunner {
   readonly calls: Array<{ command: string; args: string[] }> = [];
@@ -2141,12 +2134,12 @@ export class FakeCommandRunner implements CommandRunner {
 - [ ] **Step 7: Create `tests/fakes/index.ts`**
 
 ```ts
-export { FakeHttp } from './fake-http.js';
-export { FakeJsonStore } from './fake-json-store.js';
-export { FakeTextReader } from './fake-text-reader.js';
-export { FakeEnv } from './fake-env.js';
-export { FakeClock } from './fake-clock.js';
-export { FakeCommandRunner } from './fake-command-runner.js';
+export { FakeHttp } from "./fake-http.js";
+export { FakeJsonStore } from "./fake-json-store.js";
+export { FakeTextReader } from "./fake-text-reader.js";
+export { FakeEnv } from "./fake-env.js";
+export { FakeClock } from "./fake-clock.js";
+export { FakeCommandRunner } from "./fake-command-runner.js";
 ```
 
 - [ ] **Step 8: Verify typecheck**
@@ -2168,37 +2161,38 @@ git commit -m "test: add in-memory port fakes for application tests"
 ### Task 12: Application — `generate-daily-insight`
 
 **Files:**
+
 - Create: `tests/application/generate-daily-insight.test.ts`
 - Create: `src/application/generate-daily-insight.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { generateDailyInsight } from '../../src/application/generate-daily-insight.js';
-import { FakeJsonStore, FakeClock } from '../fakes/index.js';
+import { describe, expect, it } from "vitest";
+import { generateDailyInsight } from "../../src/application/generate-daily-insight.js";
+import { FakeJsonStore, FakeClock } from "../fakes/index.js";
 
-describe('generateDailyInsight', () => {
-  it('reads snapshots, writes outputs/sol-usdc-daily-insight.json, returns the output', async () => {
+describe("generateDailyInsight", () => {
+  it("reads snapshots, writes outputs/sol-usdc-daily-insight.json, returns the output", async () => {
     const jsonStore = new FakeJsonStore();
-    jsonStore.seed('data/latest-price-snapshot.json', {
-      pair: 'SOL/USDC',
-      timestamp: '2026-05-10T12:00:00.000Z',
-      source: 'jupiter-price-v3',
+    jsonStore.seed("data/latest-price-snapshot.json", {
+      pair: "SOL/USDC",
+      timestamp: "2026-05-10T12:00:00.000Z",
+      source: "jupiter-price-v3",
       priceUsd: 175.4,
-      confidence: 'high'
+      confidence: "high"
     });
-    jsonStore.seed('data/latest-pool-snapshot.json', {
-      pair: 'SOL/USDC',
-      timestamp: '2026-05-10T12:00:00.000Z',
-      source: 'fastify',
+    jsonStore.seed("data/latest-pool-snapshot.json", {
+      pair: "SOL/USDC",
+      timestamp: "2026-05-10T12:00:00.000Z",
+      source: "fastify",
       spotPrice: 175.5,
       feeApr: 60
     });
-    jsonStore.seed('data/latest-position-snapshot.json', {
-      pair: 'SOL/USDC',
-      timestamp: '2026-05-10T12:00:00.000Z',
-      source: 'fastify',
+    jsonStore.seed("data/latest-position-snapshot.json", {
+      pair: "SOL/USDC",
+      timestamp: "2026-05-10T12:00:00.000Z",
+      source: "fastify",
       inRange: true,
       lowerPrice: 150,
       upperPrice: 200,
@@ -2206,31 +2200,31 @@ describe('generateDailyInsight', () => {
       distanceToLowerPercent: 15,
       distanceToUpperPercent: 14
     });
-    const clock = new FakeClock('2026-05-10T13:00:00.000Z');
+    const clock = new FakeClock("2026-05-10T13:00:00.000Z");
 
     const result = await generateDailyInsight({ jsonStore, clock });
 
     expect(jsonStore.writes).toHaveLength(1);
     expect(jsonStore.writes[0]).toEqual({
-      path: 'outputs/sol-usdc-daily-insight.json',
+      path: "outputs/sol-usdc-daily-insight.json",
       value: expect.objectContaining({
-        timestamp: '2026-05-10T13:00:00.000Z',
-        recommendedAction: 'hold',
-        dataQuality: 'complete'
+        timestamp: "2026-05-10T13:00:00.000Z",
+        recommendedAction: "hold",
+        dataQuality: "complete"
       })
     });
-    expect(result.timestamp).toBe('2026-05-10T13:00:00.000Z');
-    expect(result.recommendedAction).toBe('hold');
+    expect(result.timestamp).toBe("2026-05-10T13:00:00.000Z");
+    expect(result.recommendedAction).toBe("hold");
   });
 
-  it('emits stale-quality output when no snapshots are present', async () => {
+  it("emits stale-quality output when no snapshots are present", async () => {
     const jsonStore = new FakeJsonStore();
-    const clock = new FakeClock('2026-05-10T14:00:00.000Z');
+    const clock = new FakeClock("2026-05-10T14:00:00.000Z");
 
     const result = await generateDailyInsight({ jsonStore, clock });
 
-    expect(result.dataQuality).toBe('stale');
-    expect(result.recommendedAction).toBe('pause_rebalances');
+    expect(result.dataQuality).toBe("stale");
+    expect(result.recommendedAction).toBe("pause_rebalances");
     expect(jsonStore.writes).toHaveLength(1);
   });
 });
@@ -2246,31 +2240,25 @@ Expected: FAIL — module not found.
 `src/application/generate-daily-insight.ts`:
 
 ```ts
-import type { JsonStore } from '../ports/json-store.js';
-import type { Clock } from '../ports/clock.js';
-import type {
-  PoolSnapshot,
-  PositionSnapshot,
-  PriceSnapshot
-} from '../contracts/snapshots.js';
-import type { DailyInsight } from '../contracts/outputs.js';
-import { makeDailyInsightDecision } from '../domain/daily-insight-decision.js';
+import type { JsonStore } from "../ports/json-store.js";
+import type { Clock } from "../ports/clock.js";
+import type { PoolSnapshot, PositionSnapshot, PriceSnapshot } from "../contracts/snapshots.js";
+import type { DailyInsight } from "../contracts/outputs.js";
+import { makeDailyInsightDecision } from "../domain/daily-insight-decision.js";
 
 export interface GenerateDailyInsightDeps {
   jsonStore: JsonStore;
   clock: Clock;
 }
 
-export const DAILY_INSIGHT_OUTPUT_PATH = 'outputs/sol-usdc-daily-insight.json';
+export const DAILY_INSIGHT_OUTPUT_PATH = "outputs/sol-usdc-daily-insight.json";
 
-export async function generateDailyInsight(
-  deps: GenerateDailyInsightDeps
-): Promise<DailyInsight> {
+export async function generateDailyInsight(deps: GenerateDailyInsightDeps): Promise<DailyInsight> {
   const { jsonStore, clock } = deps;
   const [price, pool, position] = await Promise.all([
-    jsonStore.readJson<PriceSnapshot>('data/latest-price-snapshot.json'),
-    jsonStore.readJson<PoolSnapshot>('data/latest-pool-snapshot.json'),
-    jsonStore.readJson<PositionSnapshot>('data/latest-position-snapshot.json')
+    jsonStore.readJson<PriceSnapshot>("data/latest-price-snapshot.json"),
+    jsonStore.readJson<PoolSnapshot>("data/latest-pool-snapshot.json"),
+    jsonStore.readJson<PositionSnapshot>("data/latest-position-snapshot.json")
   ]);
 
   const decision = makeDailyInsightDecision({ price, pool, position });
@@ -2297,42 +2285,43 @@ git commit -m "feat(application): generateDailyInsight use case"
 ### Task 13: Application — `generate-range-review`
 
 **Files:**
+
 - Create: `tests/application/generate-range-review.test.ts`
 - Create: `src/application/generate-range-review.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { generateRangeReview } from '../../src/application/generate-range-review.js';
-import { FakeJsonStore, FakeClock } from '../fakes/index.js';
+import { describe, expect, it } from "vitest";
+import { generateRangeReview } from "../../src/application/generate-range-review.js";
+import { FakeJsonStore, FakeClock } from "../fakes/index.js";
 
-describe('generateRangeReview', () => {
-  it('writes outputs/sol-usdc-rebalance-recommendation.json with timestamp and decision', async () => {
+describe("generateRangeReview", () => {
+  it("writes outputs/sol-usdc-rebalance-recommendation.json with timestamp and decision", async () => {
     const jsonStore = new FakeJsonStore();
-    jsonStore.seed('data/latest-position-snapshot.json', {
-      pair: 'SOL/USDC',
-      timestamp: '2026-05-10T12:00:00.000Z',
-      source: 'fastify',
+    jsonStore.seed("data/latest-position-snapshot.json", {
+      pair: "SOL/USDC",
+      timestamp: "2026-05-10T12:00:00.000Z",
+      source: "fastify",
       inRange: false,
       lowerPrice: 150,
       upperPrice: 200,
       spotPrice: 145
     });
-    const clock = new FakeClock('2026-05-10T13:00:00.000Z');
+    const clock = new FakeClock("2026-05-10T13:00:00.000Z");
     const result = await generateRangeReview({ jsonStore, clock });
 
-    expect(jsonStore.writes[0]?.path).toBe('outputs/sol-usdc-rebalance-recommendation.json');
-    expect(result.timestamp).toBe('2026-05-10T13:00:00.000Z');
-    expect(result.recommendedAction).toBe('exit_range');
+    expect(jsonStore.writes[0]?.path).toBe("outputs/sol-usdc-rebalance-recommendation.json");
+    expect(result.timestamp).toBe("2026-05-10T13:00:00.000Z");
+    expect(result.recommendedAction).toBe("exit_range");
     expect(result.shouldRebalance).toBe(true);
   });
 
-  it('emits pause_rebalances under stale data', async () => {
+  it("emits pause_rebalances under stale data", async () => {
     const jsonStore = new FakeJsonStore();
-    const clock = new FakeClock('2026-05-10T13:00:00.000Z');
+    const clock = new FakeClock("2026-05-10T13:00:00.000Z");
     const result = await generateRangeReview({ jsonStore, clock });
-    expect(result.recommendedAction).toBe('pause_rebalances');
+    expect(result.recommendedAction).toBe("pause_rebalances");
     expect(result.shouldRebalance).toBe(false);
   });
 });
@@ -2348,31 +2337,25 @@ Expected: FAIL — module not found.
 `src/application/generate-range-review.ts`:
 
 ```ts
-import type { JsonStore } from '../ports/json-store.js';
-import type { Clock } from '../ports/clock.js';
-import type {
-  PoolSnapshot,
-  PositionSnapshot,
-  PriceSnapshot
-} from '../contracts/snapshots.js';
-import type { RangeReview } from '../contracts/outputs.js';
-import { makeRangeReviewDecision } from '../domain/range-review-decision.js';
+import type { JsonStore } from "../ports/json-store.js";
+import type { Clock } from "../ports/clock.js";
+import type { PoolSnapshot, PositionSnapshot, PriceSnapshot } from "../contracts/snapshots.js";
+import type { RangeReview } from "../contracts/outputs.js";
+import { makeRangeReviewDecision } from "../domain/range-review-decision.js";
 
 export interface GenerateRangeReviewDeps {
   jsonStore: JsonStore;
   clock: Clock;
 }
 
-export const RANGE_REVIEW_OUTPUT_PATH = 'outputs/sol-usdc-rebalance-recommendation.json';
+export const RANGE_REVIEW_OUTPUT_PATH = "outputs/sol-usdc-rebalance-recommendation.json";
 
-export async function generateRangeReview(
-  deps: GenerateRangeReviewDeps
-): Promise<RangeReview> {
+export async function generateRangeReview(deps: GenerateRangeReviewDeps): Promise<RangeReview> {
   const { jsonStore, clock } = deps;
   const [price, pool, position] = await Promise.all([
-    jsonStore.readJson<PriceSnapshot>('data/latest-price-snapshot.json'),
-    jsonStore.readJson<PoolSnapshot>('data/latest-pool-snapshot.json'),
-    jsonStore.readJson<PositionSnapshot>('data/latest-position-snapshot.json')
+    jsonStore.readJson<PriceSnapshot>("data/latest-price-snapshot.json"),
+    jsonStore.readJson<PoolSnapshot>("data/latest-pool-snapshot.json"),
+    jsonStore.readJson<PositionSnapshot>("data/latest-position-snapshot.json")
   ]);
 
   const decision = makeRangeReviewDecision({ price, pool, position });
@@ -2399,27 +2382,28 @@ git commit -m "feat(application): generateRangeReview use case"
 ### Task 14: Application — `generate-weekly-review`
 
 **Files:**
+
 - Create: `tests/application/generate-weekly-review.test.ts`
 - Create: `src/application/generate-weekly-review.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { generateWeeklyReview } from '../../src/application/generate-weekly-review.js';
-import { FakeJsonStore, FakeClock } from '../fakes/index.js';
+import { describe, expect, it } from "vitest";
+import { generateWeeklyReview } from "../../src/application/generate-weekly-review.js";
+import { FakeJsonStore, FakeClock } from "../fakes/index.js";
 
-describe('generateWeeklyReview', () => {
-  it('reads performance, daily insight, rebalance and writes outputs/weekly-clmm-review.json', async () => {
+describe("generateWeeklyReview", () => {
+  it("reads performance, daily insight, rebalance and writes outputs/weekly-clmm-review.json", async () => {
     const jsonStore = new FakeJsonStore();
-    jsonStore.seed('data/latest-performance-snapshot.json', { totalFeesUsd: 12 });
-    jsonStore.seed('outputs/sol-usdc-daily-insight.json', { recommendedAction: 'hold' });
-    const clock = new FakeClock('2026-05-10T15:00:00.000Z');
+    jsonStore.seed("data/latest-performance-snapshot.json", { totalFeesUsd: 12 });
+    jsonStore.seed("outputs/sol-usdc-daily-insight.json", { recommendedAction: "hold" });
+    const clock = new FakeClock("2026-05-10T15:00:00.000Z");
     const result = await generateWeeklyReview({ jsonStore, clock });
 
-    expect(jsonStore.writes[0]?.path).toBe('outputs/weekly-clmm-review.json');
-    expect(result.timestamp).toBe('2026-05-10T15:00:00.000Z');
-    expect(result.dataQuality).toBe('partial');
+    expect(jsonStore.writes[0]?.path).toBe("outputs/weekly-clmm-review.json");
+    expect(result.timestamp).toBe("2026-05-10T15:00:00.000Z");
+    expect(result.dataQuality).toBe("partial");
     expect(result.inputs).toEqual({
       hasPerformanceSnapshot: true,
       hasDailyInsight: true,
@@ -2427,11 +2411,11 @@ describe('generateWeeklyReview', () => {
     });
   });
 
-  it('falls back to stale quality when performance snapshot missing', async () => {
+  it("falls back to stale quality when performance snapshot missing", async () => {
     const jsonStore = new FakeJsonStore();
-    const clock = new FakeClock('2026-05-10T15:00:00.000Z');
+    const clock = new FakeClock("2026-05-10T15:00:00.000Z");
     const result = await generateWeeklyReview({ jsonStore, clock });
-    expect(result.dataQuality).toBe('stale');
+    expect(result.dataQuality).toBe("stale");
   });
 });
 ```
@@ -2446,29 +2430,25 @@ Expected: FAIL — module not found.
 `src/application/generate-weekly-review.ts`:
 
 ```ts
-import type { JsonStore } from '../ports/json-store.js';
-import type { Clock } from '../ports/clock.js';
-import type {
-  PerformanceSnapshot
-} from '../contracts/snapshots.js';
-import type { WeeklyReview } from '../contracts/outputs.js';
-import { makeWeeklyReviewDecision } from '../domain/weekly-review-decision.js';
+import type { JsonStore } from "../ports/json-store.js";
+import type { Clock } from "../ports/clock.js";
+import type { PerformanceSnapshot } from "../contracts/snapshots.js";
+import type { WeeklyReview } from "../contracts/outputs.js";
+import { makeWeeklyReviewDecision } from "../domain/weekly-review-decision.js";
 
 export interface GenerateWeeklyReviewDeps {
   jsonStore: JsonStore;
   clock: Clock;
 }
 
-export const WEEKLY_REVIEW_OUTPUT_PATH = 'outputs/weekly-clmm-review.json';
+export const WEEKLY_REVIEW_OUTPUT_PATH = "outputs/weekly-clmm-review.json";
 
-export async function generateWeeklyReview(
-  deps: GenerateWeeklyReviewDeps
-): Promise<WeeklyReview> {
+export async function generateWeeklyReview(deps: GenerateWeeklyReviewDeps): Promise<WeeklyReview> {
   const { jsonStore, clock } = deps;
   const [performance, dailyInsight, rebalance] = await Promise.all([
-    jsonStore.readJson<PerformanceSnapshot>('data/latest-performance-snapshot.json'),
-    jsonStore.readJson<Record<string, unknown>>('outputs/sol-usdc-daily-insight.json'),
-    jsonStore.readJson<Record<string, unknown>>('outputs/sol-usdc-rebalance-recommendation.json')
+    jsonStore.readJson<PerformanceSnapshot>("data/latest-performance-snapshot.json"),
+    jsonStore.readJson<Record<string, unknown>>("outputs/sol-usdc-daily-insight.json"),
+    jsonStore.readJson<Record<string, unknown>>("outputs/sol-usdc-rebalance-recommendation.json")
   ]);
 
   const decision = makeWeeklyReviewDecision({ performance, dailyInsight, rebalance });
@@ -2495,20 +2475,21 @@ git commit -m "feat(application): generateWeeklyReview use case"
 ### Task 15: Application — `collect-jupiter-price`
 
 **Files:**
+
 - Create: `tests/application/collect-jupiter-price.test.ts`
 - Create: `src/application/collect-jupiter-price.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { collectJupiterPrice } from '../../src/application/collect-jupiter-price.js';
-import { FakeHttp, FakeJsonStore, FakeEnv, FakeClock } from '../fakes/index.js';
+import { describe, expect, it } from "vitest";
+import { collectJupiterPrice } from "../../src/application/collect-jupiter-price.js";
+import { FakeHttp, FakeJsonStore, FakeEnv, FakeClock } from "../fakes/index.js";
 
-const SOL_MINT = 'So11111111111111111111111111111111111111112';
+const SOL_MINT = "So11111111111111111111111111111111111111112";
 
-describe('collectJupiterPrice', () => {
-  it('writes data/latest-price-snapshot.json with usdPrice, source, and clock timestamp', async () => {
+describe("collectJupiterPrice", () => {
+  it("writes data/latest-price-snapshot.json with usdPrice, source, and clock timestamp", async () => {
     const http = new FakeHttp();
     const url = `https://lite-api.jup.ag/price/v3?ids=${encodeURIComponent(SOL_MINT)}`;
     http.setResponse(url, {
@@ -2516,44 +2497,44 @@ describe('collectJupiterPrice', () => {
     });
     const jsonStore = new FakeJsonStore();
     const env = new FakeEnv({ SOL_MINT });
-    const clock = new FakeClock('2026-05-10T12:30:00.000Z');
+    const clock = new FakeClock("2026-05-10T12:30:00.000Z");
 
     await collectJupiterPrice({ http, jsonStore, env, clock });
 
     expect(jsonStore.writes[0]).toEqual({
-      path: 'data/latest-price-snapshot.json',
+      path: "data/latest-price-snapshot.json",
       value: expect.objectContaining({
-        pair: 'SOL/USDC',
-        timestamp: '2026-05-10T12:30:00.000Z',
-        source: 'jupiter-price-v3',
+        pair: "SOL/USDC",
+        timestamp: "2026-05-10T12:30:00.000Z",
+        source: "jupiter-price-v3",
         priceUsd: 175.42,
-        confidence: 'high'
+        confidence: "high"
       })
     });
   });
 
-  it('uses default mint when SOL_MINT env is unset', async () => {
+  it("uses default mint when SOL_MINT env is unset", async () => {
     const http = new FakeHttp();
     const url = `https://lite-api.jup.ag/price/v3?ids=${encodeURIComponent(SOL_MINT)}`;
     http.setResponse(url, { body: { [SOL_MINT]: { usdPrice: 1 } } });
     const jsonStore = new FakeJsonStore();
     const env = new FakeEnv({});
-    const clock = new FakeClock('2026-05-10T12:30:00.000Z');
+    const clock = new FakeClock("2026-05-10T12:30:00.000Z");
 
     await collectJupiterPrice({ http, jsonStore, env, clock });
     expect(http.calls[0]?.url).toBe(url);
   });
 
-  it('throws when usdPrice is missing in the response', async () => {
+  it("throws when usdPrice is missing in the response", async () => {
     const http = new FakeHttp();
     const url = `https://lite-api.jup.ag/price/v3?ids=${encodeURIComponent(SOL_MINT)}`;
     http.setResponse(url, { body: { [SOL_MINT]: {} } });
     const jsonStore = new FakeJsonStore();
     const env = new FakeEnv({ SOL_MINT });
-    const clock = new FakeClock('2026-05-10T12:30:00.000Z');
+    const clock = new FakeClock("2026-05-10T12:30:00.000Z");
 
     await expect(collectJupiterPrice({ http, jsonStore, env, clock })).rejects.toThrow(
-      'Jupiter response did not include usdPrice for SOL'
+      "Jupiter response did not include usdPrice for SOL"
     );
   });
 });
@@ -2569,10 +2550,10 @@ Expected: FAIL — module not found.
 `src/application/collect-jupiter-price.ts`:
 
 ```ts
-import type { HttpClient } from '../ports/http.js';
-import type { JsonStore } from '../ports/json-store.js';
-import type { EnvReader } from '../ports/env.js';
-import type { Clock } from '../ports/clock.js';
+import type { HttpClient } from "../ports/http.js";
+import type { JsonStore } from "../ports/json-store.js";
+import type { EnvReader } from "../ports/env.js";
+import type { Clock } from "../ports/clock.js";
 
 export interface CollectJupiterPriceDeps {
   http: HttpClient;
@@ -2590,26 +2571,26 @@ interface JupiterPriceResponse {
   };
 }
 
-export const PRICE_SNAPSHOT_PATH = 'data/latest-price-snapshot.json';
-const DEFAULT_SOL_MINT = 'So11111111111111111111111111111111111111112';
+export const PRICE_SNAPSHOT_PATH = "data/latest-price-snapshot.json";
+const DEFAULT_SOL_MINT = "So11111111111111111111111111111111111111112";
 
 export async function collectJupiterPrice(deps: CollectJupiterPriceDeps): Promise<void> {
   const { http, jsonStore, env, clock } = deps;
-  const solMint = env.get('SOL_MINT', DEFAULT_SOL_MINT);
+  const solMint = env.get("SOL_MINT", DEFAULT_SOL_MINT);
   const url = `https://lite-api.jup.ag/price/v3?ids=${encodeURIComponent(solMint)}`;
   const response = await http.getJson<JupiterPriceResponse>(url);
   const row = response[solMint];
 
   if (!row?.usdPrice) {
-    throw new Error('Jupiter response did not include usdPrice for SOL');
+    throw new Error("Jupiter response did not include usdPrice for SOL");
   }
 
   await jsonStore.writeJson(PRICE_SNAPSHOT_PATH, {
-    pair: 'SOL/USDC',
+    pair: "SOL/USDC",
     timestamp: clock.now(),
-    source: 'jupiter-price-v3',
+    source: "jupiter-price-v3",
     priceUsd: row.usdPrice,
-    confidence: 'high',
+    confidence: "high",
     raw: row
   });
 }
@@ -2632,63 +2613,72 @@ git commit -m "feat(application): collectJupiterPrice use case"
 ### Task 16: Application — `collect-backend-snapshot`
 
 **Files:**
+
 - Create: `tests/application/collect-backend-snapshot.test.ts`
 - Create: `src/application/collect-backend-snapshot.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { collectBackendSnapshot } from '../../src/application/collect-backend-snapshot.js';
-import { FakeHttp, FakeJsonStore, FakeEnv } from '../fakes/index.js';
+import { describe, expect, it } from "vitest";
+import { collectBackendSnapshot } from "../../src/application/collect-backend-snapshot.js";
+import { FakeHttp, FakeJsonStore, FakeEnv } from "../fakes/index.js";
 
-describe('collectBackendSnapshot', () => {
-  it('writes pool, position, and performance files when all sources succeed', async () => {
+describe("collectBackendSnapshot", () => {
+  it("writes pool, position, and performance files when all sources succeed", async () => {
     const http = new FakeHttp();
-    http.setResponse('http://api.test/api/clmm/sol-usdc/pool-snapshot', { body: { pool: 1 } });
-    http.setResponse('http://api.test/api/clmm/sol-usdc/position-snapshot', { body: { position: 1 } });
-    http.setResponse('http://api.test/api/clmm/sol-usdc/performance-snapshot', { body: { perf: 1 } });
+    http.setResponse("http://api.test/api/clmm/sol-usdc/pool-snapshot", { body: { pool: 1 } });
+    http.setResponse("http://api.test/api/clmm/sol-usdc/position-snapshot", {
+      body: { position: 1 }
+    });
+    http.setResponse("http://api.test/api/clmm/sol-usdc/performance-snapshot", {
+      body: { perf: 1 }
+    });
     const jsonStore = new FakeJsonStore();
-    const env = new FakeEnv({ CLMM_DATA_API_BASE: 'http://api.test' });
+    const env = new FakeEnv({ CLMM_DATA_API_BASE: "http://api.test" });
 
     const result = await collectBackendSnapshot({ http, jsonStore, env });
 
     expect(result.failures).toEqual([]);
     expect(jsonStore.writes.map((w) => w.path).sort()).toEqual([
-      'data/latest-performance-snapshot.json',
-      'data/latest-pool-snapshot.json',
-      'data/latest-position-snapshot.json'
+      "data/latest-performance-snapshot.json",
+      "data/latest-pool-snapshot.json",
+      "data/latest-position-snapshot.json"
     ]);
   });
 
-  it('returns failures array containing per-source errors without throwing', async () => {
+  it("returns failures array containing per-source errors without throwing", async () => {
     const http = new FakeHttp();
-    http.setResponse('http://api.test/api/clmm/sol-usdc/pool-snapshot', { body: { pool: 1 } });
-    http.setResponse('http://api.test/api/clmm/sol-usdc/position-snapshot', { error: new Error('502 bad gateway') });
-    http.setResponse('http://api.test/api/clmm/sol-usdc/performance-snapshot', { body: { perf: 1 } });
+    http.setResponse("http://api.test/api/clmm/sol-usdc/pool-snapshot", { body: { pool: 1 } });
+    http.setResponse("http://api.test/api/clmm/sol-usdc/position-snapshot", {
+      error: new Error("502 bad gateway")
+    });
+    http.setResponse("http://api.test/api/clmm/sol-usdc/performance-snapshot", {
+      body: { perf: 1 }
+    });
     const jsonStore = new FakeJsonStore();
-    const env = new FakeEnv({ CLMM_DATA_API_BASE: 'http://api.test/' });
+    const env = new FakeEnv({ CLMM_DATA_API_BASE: "http://api.test/" });
 
     const result = await collectBackendSnapshot({ http, jsonStore, env });
 
     expect(result.failures).toHaveLength(1);
-    expect(result.failures[0]?.message).toBe('502 bad gateway');
+    expect(result.failures[0]?.message).toBe("502 bad gateway");
     expect(jsonStore.writes.map((w) => w.path)).toEqual(
       expect.arrayContaining([
-        'data/latest-pool-snapshot.json',
-        'data/latest-performance-snapshot.json'
+        "data/latest-pool-snapshot.json",
+        "data/latest-performance-snapshot.json"
       ])
     );
   });
 
-  it('throws when CLMM_DATA_API_BASE is unset', async () => {
+  it("throws when CLMM_DATA_API_BASE is unset", async () => {
     await expect(
       collectBackendSnapshot({
         http: new FakeHttp(),
         jsonStore: new FakeJsonStore(),
         env: new FakeEnv({})
       })
-    ).rejects.toThrow('Missing required environment variable: CLMM_DATA_API_BASE');
+    ).rejects.toThrow("Missing required environment variable: CLMM_DATA_API_BASE");
   });
 });
 ```
@@ -2703,9 +2693,9 @@ Expected: FAIL — module not found.
 `src/application/collect-backend-snapshot.ts`:
 
 ```ts
-import type { HttpClient } from '../ports/http.js';
-import type { JsonStore } from '../ports/json-store.js';
-import type { EnvReader } from '../ports/env.js';
+import type { HttpClient } from "../ports/http.js";
+import type { JsonStore } from "../ports/json-store.js";
+import type { EnvReader } from "../ports/env.js";
 
 export interface CollectBackendSnapshotDeps {
   http: HttpClient;
@@ -2726,13 +2716,22 @@ export async function collectBackendSnapshot(
   deps: CollectBackendSnapshotDeps
 ): Promise<CollectBackendSnapshotResult> {
   const { http, jsonStore, env } = deps;
-  const base = env.get('CLMM_DATA_API_BASE');
-  const normalized = base.replace(/\/$/, '');
+  const base = env.get("CLMM_DATA_API_BASE");
+  const normalized = base.replace(/\/$/, "");
 
   const targets: SnapshotTarget[] = [
-    { path: 'data/latest-pool-snapshot.json', url: `${normalized}/api/clmm/sol-usdc/pool-snapshot` },
-    { path: 'data/latest-position-snapshot.json', url: `${normalized}/api/clmm/sol-usdc/position-snapshot` },
-    { path: 'data/latest-performance-snapshot.json', url: `${normalized}/api/clmm/sol-usdc/performance-snapshot` }
+    {
+      path: "data/latest-pool-snapshot.json",
+      url: `${normalized}/api/clmm/sol-usdc/pool-snapshot`
+    },
+    {
+      path: "data/latest-position-snapshot.json",
+      url: `${normalized}/api/clmm/sol-usdc/position-snapshot`
+    },
+    {
+      path: "data/latest-performance-snapshot.json",
+      url: `${normalized}/api/clmm/sol-usdc/performance-snapshot`
+    }
   ];
 
   const settled = await Promise.allSettled(
@@ -2743,7 +2742,7 @@ export async function collectBackendSnapshot(
   );
 
   const failures = settled
-    .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+    .filter((result): result is PromiseRejectedResult => result.status === "rejected")
     .map((result) =>
       result.reason instanceof Error ? result.reason : new Error(String(result.reason))
     );
@@ -2771,6 +2770,7 @@ git commit -m "feat(application): collectBackendSnapshot use case"
 These are ancillary collectors not in `pnpm` scripts. Move them behind use cases so the boundary rules pass when scripts are rewired.
 
 **Files:**
+
 - Create: `tests/application/ancillary-collectors.test.ts`
 - Create: `src/application/collect-coingecko.ts`
 - Create: `src/application/collect-defillama.ts`
@@ -2778,47 +2778,49 @@ These are ancillary collectors not in `pnpm` scripts. Move them behind use cases
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { collectCoingecko } from '../../src/application/collect-coingecko.js';
-import { collectDefillama } from '../../src/application/collect-defillama.js';
-import { FakeHttp, FakeJsonStore, FakeEnv, FakeClock } from '../fakes/index.js';
+import { describe, expect, it } from "vitest";
+import { collectCoingecko } from "../../src/application/collect-coingecko.js";
+import { collectDefillama } from "../../src/application/collect-defillama.js";
+import { FakeHttp, FakeJsonStore, FakeEnv, FakeClock } from "../fakes/index.js";
 
-describe('collectCoingecko', () => {
-  it('writes data/latest-coingecko-solana-raw.json with timestamp', async () => {
+describe("collectCoingecko", () => {
+  it("writes data/latest-coingecko-solana-raw.json with timestamp", async () => {
     const http = new FakeHttp();
-    const url = 'https://api.coingecko.com/api/v3/coins/solana?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false';
-    http.setResponse(url, { body: { id: 'solana' } });
+    const url =
+      "https://api.coingecko.com/api/v3/coins/solana?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false";
+    http.setResponse(url, { body: { id: "solana" } });
     const jsonStore = new FakeJsonStore();
-    const env = new FakeEnv({ COINGECKO_API_KEY: 'k' });
-    const clock = new FakeClock('2026-05-10T12:00:00.000Z');
+    const env = new FakeEnv({ COINGECKO_API_KEY: "k" });
+    const clock = new FakeClock("2026-05-10T12:00:00.000Z");
 
     await collectCoingecko({ http, jsonStore, env, clock });
 
-    expect(http.calls[0]).toEqual({ url, headers: { 'x-cg-demo-api-key': 'k' } });
-    expect(jsonStore.writes[0]?.path).toBe('data/latest-coingecko-solana-raw.json');
+    expect(http.calls[0]).toEqual({ url, headers: { "x-cg-demo-api-key": "k" } });
+    expect(jsonStore.writes[0]?.path).toBe("data/latest-coingecko-solana-raw.json");
   });
 
-  it('omits api-key header when COINGECKO_API_KEY is unset', async () => {
+  it("omits api-key header when COINGECKO_API_KEY is unset", async () => {
     const http = new FakeHttp();
-    const url = 'https://api.coingecko.com/api/v3/coins/solana?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false';
+    const url =
+      "https://api.coingecko.com/api/v3/coins/solana?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false";
     http.setResponse(url, { body: {} });
     const jsonStore = new FakeJsonStore();
     const env = new FakeEnv({});
-    const clock = new FakeClock('2026-05-10T12:00:00.000Z');
+    const clock = new FakeClock("2026-05-10T12:00:00.000Z");
 
     await collectCoingecko({ http, jsonStore, env, clock });
     expect(http.calls[0]?.headers).toBeUndefined();
   });
 });
 
-describe('collectDefillama', () => {
-  it('writes data/latest-defillama-solana-raw.json with timestamp', async () => {
+describe("collectDefillama", () => {
+  it("writes data/latest-defillama-solana-raw.json with timestamp", async () => {
     const http = new FakeHttp();
-    http.setResponse('https://api.llama.fi/v2/chains', { body: [{ name: 'Solana' }] });
+    http.setResponse("https://api.llama.fi/v2/chains", { body: [{ name: "Solana" }] });
     const jsonStore = new FakeJsonStore();
-    const clock = new FakeClock('2026-05-10T12:00:00.000Z');
+    const clock = new FakeClock("2026-05-10T12:00:00.000Z");
     await collectDefillama({ http, jsonStore, clock });
-    expect(jsonStore.writes[0]?.path).toBe('data/latest-defillama-solana-raw.json');
+    expect(jsonStore.writes[0]?.path).toBe("data/latest-defillama-solana-raw.json");
   });
 });
 ```
@@ -2831,10 +2833,10 @@ Expected: FAIL — modules not found.
 - [ ] **Step 3: Write `src/application/collect-coingecko.ts`**
 
 ```ts
-import type { HttpClient } from '../ports/http.js';
-import type { JsonStore } from '../ports/json-store.js';
-import type { EnvReader } from '../ports/env.js';
-import type { Clock } from '../ports/clock.js';
+import type { HttpClient } from "../ports/http.js";
+import type { JsonStore } from "../ports/json-store.js";
+import type { EnvReader } from "../ports/env.js";
+import type { Clock } from "../ports/clock.js";
 
 export interface CollectCoingeckoDeps {
   http: HttpClient;
@@ -2843,18 +2845,19 @@ export interface CollectCoingeckoDeps {
   clock: Clock;
 }
 
-export const COINGECKO_OUTPUT_PATH = 'data/latest-coingecko-solana-raw.json';
-const URL = 'https://api.coingecko.com/api/v3/coins/solana?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false';
+export const COINGECKO_OUTPUT_PATH = "data/latest-coingecko-solana-raw.json";
+const URL =
+  "https://api.coingecko.com/api/v3/coins/solana?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false";
 
 export async function collectCoingecko(deps: CollectCoingeckoDeps): Promise<void> {
   const { http, jsonStore, env, clock } = deps;
-  const apiKey = env.getOptional('COINGECKO_API_KEY');
+  const apiKey = env.getOptional("COINGECKO_API_KEY");
   const raw = apiKey
-    ? await http.getJson<unknown>(URL, { 'x-cg-demo-api-key': apiKey })
+    ? await http.getJson<unknown>(URL, { "x-cg-demo-api-key": apiKey })
     : await http.getJson<unknown>(URL);
   await jsonStore.writeJson(COINGECKO_OUTPUT_PATH, {
     timestamp: clock.now(),
-    source: 'coingecko',
+    source: "coingecko",
     raw
   });
 }
@@ -2863,9 +2866,9 @@ export async function collectCoingecko(deps: CollectCoingeckoDeps): Promise<void
 - [ ] **Step 4: Write `src/application/collect-defillama.ts`**
 
 ```ts
-import type { HttpClient } from '../ports/http.js';
-import type { JsonStore } from '../ports/json-store.js';
-import type { Clock } from '../ports/clock.js';
+import type { HttpClient } from "../ports/http.js";
+import type { JsonStore } from "../ports/json-store.js";
+import type { Clock } from "../ports/clock.js";
 
 export interface CollectDefillamaDeps {
   http: HttpClient;
@@ -2873,14 +2876,14 @@ export interface CollectDefillamaDeps {
   clock: Clock;
 }
 
-export const DEFILLAMA_OUTPUT_PATH = 'data/latest-defillama-solana-raw.json';
+export const DEFILLAMA_OUTPUT_PATH = "data/latest-defillama-solana-raw.json";
 
 export async function collectDefillama(deps: CollectDefillamaDeps): Promise<void> {
   const { http, jsonStore, clock } = deps;
-  const raw = await http.getJson<unknown>('https://api.llama.fi/v2/chains');
+  const raw = await http.getJson<unknown>("https://api.llama.fi/v2/chains");
   await jsonStore.writeJson(DEFILLAMA_OUTPUT_PATH, {
     timestamp: clock.now(),
-    source: 'defillama',
+    source: "defillama",
     raw
   });
 }
@@ -2903,15 +2906,16 @@ git commit -m "feat(application): coingecko and defillama collector use cases"
 ### Task 18: Application — `load-cron-config`
 
 **Files:**
+
 - Create: `tests/application/load-cron-config.test.ts`
 - Create: `src/application/load-cron-config.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { loadCronConfig } from '../../src/application/load-cron-config.js';
-import { FakeTextReader, FakeEnv } from '../fakes/index.js';
+import { describe, expect, it } from "vitest";
+import { loadCronConfig } from "../../src/application/load-cron-config.js";
+import { FakeTextReader, FakeEnv } from "../fakes/index.js";
 
 const yaml = `
 timezone: America/Edmonton
@@ -2929,42 +2933,42 @@ jobs:
     messageFile: routines/daily.md
 `;
 
-describe('loadCronConfig', () => {
-  it('parses YAML, resolves env defaults, and reads message files via the TextReader port', async () => {
+describe("loadCronConfig", () => {
+  it("parses YAML, resolves env defaults, and reads message files via the TextReader port", async () => {
     const textReader = new FakeTextReader();
-    textReader.seed('cron/jobs.yaml', yaml);
-    textReader.seed('routines/daily.md', 'Daily routine.');
+    textReader.seed("cron/jobs.yaml", yaml);
+    textReader.seed("routines/daily.md", "Daily routine.");
     const env = new FakeEnv({
-      OPENCLAW_MODEL: 'opus',
-      OPENCLAW_THINKING: 'high',
-      OPENCLAW_AGENT: 'claude',
-      OPENCLAW_EXACT: 'true',
-      OPENCLAW_DELIVERY_CHANNEL: 'telegram',
-      OPENCLAW_DELIVERY_TO: '12345'
+      OPENCLAW_MODEL: "opus",
+      OPENCLAW_THINKING: "high",
+      OPENCLAW_AGENT: "claude",
+      OPENCLAW_EXACT: "true",
+      OPENCLAW_DELIVERY_CHANNEL: "telegram",
+      OPENCLAW_DELIVERY_TO: "12345"
     });
 
     const result = await loadCronConfig({ textReader, env });
 
     expect(result.defaults).toEqual({
-      timezone: 'America/Edmonton',
-      session: 'isolated',
-      defaultModel: 'opus',
-      defaultThinking: 'high',
-      agent: 'claude',
+      timezone: "America/Edmonton",
+      session: "isolated",
+      defaultModel: "opus",
+      defaultThinking: "high",
+      agent: "claude",
       exact: true,
-      delivery: { channel: 'telegram', to: '12345' }
+      delivery: { channel: "telegram", to: "12345" }
     });
     expect(result.preparedJobs).toHaveLength(1);
-    expect(result.preparedJobs[0]?.message).toBe('Daily routine.');
-    expect(result.preparedJobs[0]?.job.name).toBe('clmm-daily');
+    expect(result.preparedJobs[0]?.message).toBe("Daily routine.");
+    expect(result.preparedJobs[0]?.job.name).toBe("clmm-daily");
   });
 
-  it('omits delivery when only channel is set without to', async () => {
+  it("omits delivery when only channel is set without to", async () => {
     const textReader = new FakeTextReader();
-    textReader.seed('cron/jobs.yaml', yaml);
-    textReader.seed('routines/daily.md', 'm');
+    textReader.seed("cron/jobs.yaml", yaml);
+    textReader.seed("routines/daily.md", "m");
     const env = new FakeEnv({
-      OPENCLAW_DELIVERY_CHANNEL: 'telegram'
+      OPENCLAW_DELIVERY_CHANNEL: "telegram"
     });
     const result = await loadCronConfig({ textReader, env });
     expect(result.defaults.delivery).toBeUndefined();
@@ -2983,14 +2987,14 @@ Expected: FAIL — module not found.
 `src/application/load-cron-config.ts`:
 
 ```ts
-import YAML from 'yaml';
-import type { TextReader } from '../ports/text-reader.js';
-import type { EnvReader } from '../ports/env.js';
+import YAML from "yaml";
+import type { TextReader } from "../ports/text-reader.js";
+import type { EnvReader } from "../ports/env.js";
 import type {
   CronConfig,
   PreparedCronJob,
   ResolvedCronDefaults
-} from '../contracts/cron-config.js';
+} from "../contracts/cron-config.js";
 
 export interface LoadCronConfigDeps {
   textReader: TextReader;
@@ -3003,21 +3007,17 @@ export interface LoadedCronConfig {
   preparedJobs: PreparedCronJob[];
 }
 
-export const DEFAULT_CRON_CONFIG_PATH = 'cron/jobs.yaml';
+export const DEFAULT_CRON_CONFIG_PATH = "cron/jobs.yaml";
 
-export async function loadCronConfig(
-  deps: LoadCronConfigDeps
-): Promise<LoadedCronConfig> {
+export async function loadCronConfig(deps: LoadCronConfigDeps): Promise<LoadedCronConfig> {
   const { textReader, env, configPath = DEFAULT_CRON_CONFIG_PATH } = deps;
   const config = YAML.parse(await textReader.readText(configPath)) as CronConfig;
 
   const defaultModel = config.modelEnv ? env.getOptional(config.modelEnv) : undefined;
-  const defaultThinking = config.thinkingEnv
-    ? env.getOptional(config.thinkingEnv)
-    : undefined;
+  const defaultThinking = config.thinkingEnv ? env.getOptional(config.thinkingEnv) : undefined;
   const agent = config.agentEnv ? env.getOptional(config.agentEnv) : undefined;
   const exact = config.exactEnv
-    ? (env.getOptional(config.exactEnv) ?? '').toLowerCase() === 'true'
+    ? (env.getOptional(config.exactEnv) ?? "").toLowerCase() === "true"
     : false;
   const channel = config.delivery?.channelEnv
     ? env.getOptional(config.delivery.channelEnv)
@@ -3071,15 +3071,16 @@ git commit -m "feat(application): loadCronConfig parses YAML and resolves env de
 The render output format must match the existing script: `openclaw cron add --name 'foo' --cron '0 7 * * *' ...` with single-quote shell escaping. The use case returns the lines as an array; the entrypoint prints each followed by a blank line.
 
 **Files:**
+
 - Create: `tests/application/render-cron-commands.test.ts`
 - Create: `src/application/render-cron-commands.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { renderCronCommands } from '../../src/application/render-cron-commands.js';
-import { FakeTextReader, FakeEnv } from '../fakes/index.js';
+import { describe, expect, it } from "vitest";
+import { renderCronCommands } from "../../src/application/render-cron-commands.js";
+import { FakeTextReader, FakeEnv } from "../fakes/index.js";
 
 const yaml = `
 timezone: UTC
@@ -3091,12 +3092,12 @@ jobs:
     messageFile: r.md
 `;
 
-describe('renderCronCommands', () => {
+describe("renderCronCommands", () => {
   it('returns a shell-quoted line per job that begins with "openclaw cron add"', async () => {
     const textReader = new FakeTextReader();
-    textReader.seed('cron/jobs.yaml', yaml);
-    textReader.seed('r.md', "Multi'line\nmessage");
-    const env = new FakeEnv({ OPENCLAW_MODEL: 'opus' });
+    textReader.seed("cron/jobs.yaml", yaml);
+    textReader.seed("r.md", "Multi'line\nmessage");
+    const env = new FakeEnv({ OPENCLAW_MODEL: "opus" });
     const lines = await renderCronCommands({ textReader, env });
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("openclaw cron add ");
@@ -3120,10 +3121,10 @@ Expected: FAIL — module not found.
 `src/application/render-cron-commands.ts`:
 
 ```ts
-import type { TextReader } from '../ports/text-reader.js';
-import type { EnvReader } from '../ports/env.js';
-import { buildCronAddArgs } from '../domain/cron-command.js';
-import { loadCronConfig } from './load-cron-config.js';
+import type { TextReader } from "../ports/text-reader.js";
+import type { EnvReader } from "../ports/env.js";
+import { buildCronAddArgs } from "../domain/cron-command.js";
+import { loadCronConfig } from "./load-cron-config.js";
 
 export interface RenderCronCommandsDeps {
   textReader: TextReader;
@@ -3135,9 +3136,7 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
-export async function renderCronCommands(
-  deps: RenderCronCommandsDeps
-): Promise<string[]> {
+export async function renderCronCommands(deps: RenderCronCommandsDeps): Promise<string[]> {
   const { defaults, preparedJobs } = await loadCronConfig(deps);
 
   return preparedJobs.map((prepared) => {
@@ -3153,13 +3152,13 @@ export async function renderCronCommands(
       ...(defaults.delivery ? { delivery: defaults.delivery } : {})
     });
     const flagArgs = args.slice(2);
-    const quoted = flagArgs.map((arg) => (arg.startsWith('--') ? arg : shellQuote(arg)));
-    return ['openclaw', 'cron', 'add', ...quoted].join(' ');
+    const quoted = flagArgs.map((arg) => (arg.startsWith("--") ? arg : shellQuote(arg)));
+    return ["openclaw", "cron", "add", ...quoted].join(" ");
   });
 }
 ```
 
-> Note: the original render script shell-quotes flag *values* but leaves flag *names* (`--name`, `--cron`, etc.) unquoted. The implementation above mirrors that by skipping quoting for any token starting with `--`. Standalone flags like `--exact` and `--announce` already start with `--` so they pass through unquoted.
+> Note: the original render script shell-quotes flag _values_ but leaves flag _names_ (`--name`, `--cron`, etc.) unquoted. The implementation above mirrors that by skipping quoting for any token starting with `--`. Standalone flags like `--exact` and `--announce` already start with `--` so they pass through unquoted.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -3178,15 +3177,16 @@ git commit -m "feat(application): renderCronCommands use case"
 ### Task 20: Application — `sync-cron`
 
 **Files:**
+
 - Create: `tests/application/sync-cron.test.ts`
 - Create: `src/application/sync-cron.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-import { describe, expect, it } from 'vitest';
-import { syncCron } from '../../src/application/sync-cron.js';
-import { FakeTextReader, FakeEnv, FakeCommandRunner } from '../fakes/index.js';
+import { describe, expect, it } from "vitest";
+import { syncCron } from "../../src/application/sync-cron.js";
+import { FakeTextReader, FakeEnv, FakeCommandRunner } from "../fakes/index.js";
 
 const yaml = `
 timezone: UTC
@@ -3201,11 +3201,11 @@ jobs:
     thinking: high
 `;
 
-describe('syncCron', () => {
-  it('returns prepared commands without invoking the runner when apply is false', async () => {
+describe("syncCron", () => {
+  it("returns prepared commands without invoking the runner when apply is false", async () => {
     const textReader = new FakeTextReader();
-    textReader.seed('cron/jobs.yaml', yaml);
-    textReader.seed('r.md', 'msg');
+    textReader.seed("cron/jobs.yaml", yaml);
+    textReader.seed("r.md", "msg");
     const env = new FakeEnv({});
     const commandRunner = new FakeCommandRunner();
 
@@ -3214,22 +3214,22 @@ describe('syncCron', () => {
     expect(result.commands).toHaveLength(2);
     expect(commandRunner.calls).toEqual([]);
     expect(result.commands[0]).toEqual({
-      command: 'openclaw',
-      args: expect.arrayContaining(['cron', 'add', '--name', 'a', '--cron', '0 7 * * *'])
+      command: "openclaw",
+      args: expect.arrayContaining(["cron", "add", "--name", "a", "--cron", "0 7 * * *"])
     });
   });
 
-  it('runs commandRunner with prepared argv when apply is true', async () => {
+  it("runs commandRunner with prepared argv when apply is true", async () => {
     const textReader = new FakeTextReader();
-    textReader.seed('cron/jobs.yaml', yaml);
-    textReader.seed('r.md', 'msg');
+    textReader.seed("cron/jobs.yaml", yaml);
+    textReader.seed("r.md", "msg");
     const env = new FakeEnv({});
     const commandRunner = new FakeCommandRunner();
 
     await syncCron({ textReader, env, commandRunner, apply: true });
     expect(commandRunner.calls).toHaveLength(2);
-    expect(commandRunner.calls[0]?.command).toBe('openclaw');
-    expect(commandRunner.calls[0]?.args.slice(0, 2)).toEqual(['cron', 'add']);
+    expect(commandRunner.calls[0]?.command).toBe("openclaw");
+    expect(commandRunner.calls[0]?.args.slice(0, 2)).toEqual(["cron", "add"]);
   });
 });
 ```
@@ -3244,14 +3244,11 @@ Expected: FAIL — module not found.
 `src/application/sync-cron.ts`:
 
 ```ts
-import type { TextReader } from '../ports/text-reader.js';
-import type { EnvReader } from '../ports/env.js';
-import type { CommandRunner } from '../ports/command-runner.js';
-import {
-  buildCronAddArgs,
-  type CronCommand
-} from '../domain/cron-command.js';
-import { loadCronConfig } from './load-cron-config.js';
+import type { TextReader } from "../ports/text-reader.js";
+import type { EnvReader } from "../ports/env.js";
+import type { CommandRunner } from "../ports/command-runner.js";
+import { buildCronAddArgs, type CronCommand } from "../domain/cron-command.js";
+import { loadCronConfig } from "./load-cron-config.js";
 
 export interface SyncCronDeps {
   textReader: TextReader;
@@ -3319,6 +3316,7 @@ git commit -m "feat(application): syncCron use case with apply gate"
 Jobs are thin curry functions: `job(deps) -> () => useCase(deps)`. Their value is enforcing the orchestration boundary — `scripts/` import only `composition-root` and `jobs/`, not application use cases directly. No tests; the use cases already cover the work.
 
 **Files:**
+
 - Create: `src/jobs/jupiter-price-job.ts`
 - Create: `src/jobs/backend-snapshot-job.ts`
 - Create: `src/jobs/daily-insight-job.ts`
@@ -3336,7 +3334,7 @@ Jobs are thin curry functions: `job(deps) -> () => useCase(deps)`. Their value i
 import {
   collectJupiterPrice,
   type CollectJupiterPriceDeps
-} from '../application/collect-jupiter-price.js';
+} from "../application/collect-jupiter-price.js";
 
 export function jupiterPriceJob(deps: CollectJupiterPriceDeps): () => Promise<void> {
   return () => collectJupiterPrice(deps);
@@ -3350,7 +3348,7 @@ import {
   collectBackendSnapshot,
   type CollectBackendSnapshotDeps,
   type CollectBackendSnapshotResult
-} from '../application/collect-backend-snapshot.js';
+} from "../application/collect-backend-snapshot.js";
 
 export function backendSnapshotJob(
   deps: CollectBackendSnapshotDeps
@@ -3365,8 +3363,8 @@ export function backendSnapshotJob(
 import {
   generateDailyInsight,
   type GenerateDailyInsightDeps
-} from '../application/generate-daily-insight.js';
-import type { DailyInsight } from '../contracts/outputs.js';
+} from "../application/generate-daily-insight.js";
+import type { DailyInsight } from "../contracts/outputs.js";
 
 export function dailyInsightJob(deps: GenerateDailyInsightDeps): () => Promise<DailyInsight> {
   return () => generateDailyInsight(deps);
@@ -3379,8 +3377,8 @@ export function dailyInsightJob(deps: GenerateDailyInsightDeps): () => Promise<D
 import {
   generateRangeReview,
   type GenerateRangeReviewDeps
-} from '../application/generate-range-review.js';
-import type { RangeReview } from '../contracts/outputs.js';
+} from "../application/generate-range-review.js";
+import type { RangeReview } from "../contracts/outputs.js";
 
 export function rangeReviewJob(deps: GenerateRangeReviewDeps): () => Promise<RangeReview> {
   return () => generateRangeReview(deps);
@@ -3393,8 +3391,8 @@ export function rangeReviewJob(deps: GenerateRangeReviewDeps): () => Promise<Ran
 import {
   generateWeeklyReview,
   type GenerateWeeklyReviewDeps
-} from '../application/generate-weekly-review.js';
-import type { WeeklyReview } from '../contracts/outputs.js';
+} from "../application/generate-weekly-review.js";
+import type { WeeklyReview } from "../contracts/outputs.js";
 
 export function weeklyReviewJob(deps: GenerateWeeklyReviewDeps): () => Promise<WeeklyReview> {
   return () => generateWeeklyReview(deps);
@@ -3407,7 +3405,7 @@ export function weeklyReviewJob(deps: GenerateWeeklyReviewDeps): () => Promise<W
 import {
   renderCronCommands,
   type RenderCronCommandsDeps
-} from '../application/render-cron-commands.js';
+} from "../application/render-cron-commands.js";
 
 export function cronRenderJob(deps: RenderCronCommandsDeps): () => Promise<string[]> {
   return () => renderCronCommands(deps);
@@ -3417,11 +3415,7 @@ export function cronRenderJob(deps: RenderCronCommandsDeps): () => Promise<strin
 - [ ] **Step 7: Create `src/jobs/cron-sync-job.ts`**
 
 ```ts
-import {
-  syncCron,
-  type SyncCronDeps,
-  type SyncCronResult
-} from '../application/sync-cron.js';
+import { syncCron, type SyncCronDeps, type SyncCronResult } from "../application/sync-cron.js";
 
 export function cronSyncJob(deps: SyncCronDeps): () => Promise<SyncCronResult> {
   return () => syncCron(deps);
@@ -3431,10 +3425,7 @@ export function cronSyncJob(deps: SyncCronDeps): () => Promise<SyncCronResult> {
 - [ ] **Step 8: Create `src/jobs/coingecko-job.ts`**
 
 ```ts
-import {
-  collectCoingecko,
-  type CollectCoingeckoDeps
-} from '../application/collect-coingecko.js';
+import { collectCoingecko, type CollectCoingeckoDeps } from "../application/collect-coingecko.js";
 
 export function coingeckoJob(deps: CollectCoingeckoDeps): () => Promise<void> {
   return () => collectCoingecko(deps);
@@ -3444,10 +3435,7 @@ export function coingeckoJob(deps: CollectCoingeckoDeps): () => Promise<void> {
 - [ ] **Step 9: Create `src/jobs/defillama-job.ts`**
 
 ```ts
-import {
-  collectDefillama,
-  type CollectDefillamaDeps
-} from '../application/collect-defillama.js';
+import { collectDefillama, type CollectDefillamaDeps } from "../application/collect-defillama.js";
 
 export function defillamaJob(deps: CollectDefillamaDeps): () => Promise<void> {
   return () => collectDefillama(deps);
@@ -3457,15 +3445,15 @@ export function defillamaJob(deps: CollectDefillamaDeps): () => Promise<void> {
 - [ ] **Step 10: Create `src/jobs/index.ts`**
 
 ```ts
-export { jupiterPriceJob } from './jupiter-price-job.js';
-export { backendSnapshotJob } from './backend-snapshot-job.js';
-export { dailyInsightJob } from './daily-insight-job.js';
-export { rangeReviewJob } from './range-review-job.js';
-export { weeklyReviewJob } from './weekly-review-job.js';
-export { cronRenderJob } from './cron-render-job.js';
-export { cronSyncJob } from './cron-sync-job.js';
-export { coingeckoJob } from './coingecko-job.js';
-export { defillamaJob } from './defillama-job.js';
+export { jupiterPriceJob } from "./jupiter-price-job.js";
+export { backendSnapshotJob } from "./backend-snapshot-job.js";
+export { dailyInsightJob } from "./daily-insight-job.js";
+export { rangeReviewJob } from "./range-review-job.js";
+export { weeklyReviewJob } from "./weekly-review-job.js";
+export { cronRenderJob } from "./cron-render-job.js";
+export { cronSyncJob } from "./cron-sync-job.js";
+export { coingeckoJob } from "./coingecko-job.js";
+export { defillamaJob } from "./defillama-job.js";
 ```
 
 - [ ] **Step 11: Verify typecheck**
@@ -3487,6 +3475,7 @@ git commit -m "feat(jobs): thin orchestration wrappers around application use ca
 ### Task 22: Node adapters
 
 **Files:**
+
 - Create: `src/adapters/node/fetch-http.ts`
 - Create: `src/adapters/node/fs-json-store.ts`
 - Create: `src/adapters/node/fs-text-reader.ts`
@@ -3498,13 +3487,13 @@ git commit -m "feat(jobs): thin orchestration wrappers around application use ca
 - [ ] **Step 1: Create `src/adapters/node/fetch-http.ts`**
 
 ```ts
-import type { HttpClient } from '../../ports/http.js';
+import type { HttpClient } from "../../ports/http.js";
 
 export class FetchHttpClient implements HttpClient {
   async getJson<T>(url: string, headers: Record<string, string> = {}): Promise<T> {
     const response = await fetch(url, { headers });
     if (!response.ok) {
-      const body = await response.text().catch(() => '');
+      const body = await response.text().catch(() => "");
       throw new Error(`GET ${url} failed: ${response.status} ${response.statusText} ${body}`);
     }
     return response.json() as Promise<T>;
@@ -3515,24 +3504,24 @@ export class FetchHttpClient implements HttpClient {
 - [ ] **Step 2: Create `src/adapters/node/fs-json-store.ts`**
 
 ```ts
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
-import type { JsonStore } from '../../ports/json-store.js';
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import type { JsonStore } from "../../ports/json-store.js";
 
 export class FsJsonStore implements JsonStore {
   async readJson<T>(path: string): Promise<T | undefined> {
     try {
-      return JSON.parse(await readFile(path, 'utf8')) as T;
+      return JSON.parse(await readFile(path, "utf8")) as T;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (code === 'ENOENT') return undefined;
+      if (code === "ENOENT") return undefined;
       throw error;
     }
   }
 
   async writeJson(path: string, value: unknown): Promise<void> {
     await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   }
 }
 ```
@@ -3540,12 +3529,12 @@ export class FsJsonStore implements JsonStore {
 - [ ] **Step 3: Create `src/adapters/node/fs-text-reader.ts`**
 
 ```ts
-import { readFile } from 'node:fs/promises';
-import type { TextReader } from '../../ports/text-reader.js';
+import { readFile } from "node:fs/promises";
+import type { TextReader } from "../../ports/text-reader.js";
 
 export class FsTextReader implements TextReader {
   async readText(path: string): Promise<string> {
-    return readFile(path, 'utf8');
+    return readFile(path, "utf8");
   }
 }
 ```
@@ -3553,8 +3542,8 @@ export class FsTextReader implements TextReader {
 - [ ] **Step 4: Create `src/adapters/node/process-env.ts`**
 
 ```ts
-import 'dotenv/config';
-import type { EnvReader } from '../../ports/env.js';
+import "dotenv/config";
+import type { EnvReader } from "../../ports/env.js";
 
 export class ProcessEnvReader implements EnvReader {
   get(name: string, fallback?: string): string {
@@ -3575,7 +3564,7 @@ export class ProcessEnvReader implements EnvReader {
 - [ ] **Step 5: Create `src/adapters/node/system-clock.ts`**
 
 ```ts
-import type { Clock } from '../../ports/clock.js';
+import type { Clock } from "../../ports/clock.js";
 
 export class SystemClock implements Clock {
   now(): string {
@@ -3587,17 +3576,17 @@ export class SystemClock implements Clock {
 - [ ] **Step 6: Create `src/adapters/node/spawn-command-runner.ts`**
 
 ```ts
-import { spawn } from 'node:child_process';
-import type { CommandRunner } from '../../ports/command-runner.js';
+import { spawn } from "node:child_process";
+import type { CommandRunner } from "../../ports/command-runner.js";
 
 export class SpawnCommandRunner implements CommandRunner {
   run(command: string, args: string[]): Promise<void> {
     return new Promise((resolve, reject) => {
-      const child = spawn(command, args, { stdio: 'inherit' });
-      child.on('error', reject);
-      child.on('close', (code) => {
+      const child = spawn(command, args, { stdio: "inherit" });
+      child.on("error", reject);
+      child.on("close", (code) => {
         if (code === 0) resolve();
-        else reject(new Error(`${command} ${args.join(' ')} exited with code ${code}`));
+        else reject(new Error(`${command} ${args.join(" ")} exited with code ${code}`));
       });
     });
   }
@@ -3607,18 +3596,18 @@ export class SpawnCommandRunner implements CommandRunner {
 - [ ] **Step 7: Create `src/adapters/node/composition-root.ts`**
 
 ```ts
-import { FetchHttpClient } from './fetch-http.js';
-import { FsJsonStore } from './fs-json-store.js';
-import { FsTextReader } from './fs-text-reader.js';
-import { ProcessEnvReader } from './process-env.js';
-import { SystemClock } from './system-clock.js';
-import { SpawnCommandRunner } from './spawn-command-runner.js';
-import type { HttpClient } from '../../ports/http.js';
-import type { JsonStore } from '../../ports/json-store.js';
-import type { TextReader } from '../../ports/text-reader.js';
-import type { EnvReader } from '../../ports/env.js';
-import type { Clock } from '../../ports/clock.js';
-import type { CommandRunner } from '../../ports/command-runner.js';
+import { FetchHttpClient } from "./fetch-http.js";
+import { FsJsonStore } from "./fs-json-store.js";
+import { FsTextReader } from "./fs-text-reader.js";
+import { ProcessEnvReader } from "./process-env.js";
+import { SystemClock } from "./system-clock.js";
+import { SpawnCommandRunner } from "./spawn-command-runner.js";
+import type { HttpClient } from "../../ports/http.js";
+import type { JsonStore } from "../../ports/json-store.js";
+import type { TextReader } from "../../ports/text-reader.js";
+import type { EnvReader } from "../../ports/env.js";
+import type { Clock } from "../../ports/clock.js";
+import type { CommandRunner } from "../../ports/command-runner.js";
 
 export interface NodeRuntime {
   http: HttpClient;
@@ -3662,13 +3651,14 @@ Each script becomes a thin entrypoint. Existing scripts continue to import the l
 ### Task 23: Rewire `scripts/generate/daily-insight.ts`
 
 **Files:**
+
 - Modify: `scripts/generate/daily-insight.ts` (full rewrite)
 
 - [ ] **Step 1: Replace file content**
 
 ```ts
-import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
-import { dailyInsightJob } from '../../src/jobs/daily-insight-job.js';
+import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
+import { dailyInsightJob } from "../../src/jobs/daily-insight-job.js";
 
 async function main(): Promise<void> {
   const runtime = createNodeRuntime();
@@ -3707,13 +3697,14 @@ git commit -m "refactor(scripts): wire daily-insight to dailyInsightJob"
 ### Task 24: Rewire `scripts/generate/range-review.ts`
 
 **Files:**
+
 - Modify: `scripts/generate/range-review.ts` (full rewrite)
 
 - [ ] **Step 1: Replace file content**
 
 ```ts
-import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
-import { rangeReviewJob } from '../../src/jobs/range-review-job.js';
+import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
+import { rangeReviewJob } from "../../src/jobs/range-review-job.js";
 
 async function main(): Promise<void> {
   const runtime = createNodeRuntime();
@@ -3752,13 +3743,14 @@ git commit -m "refactor(scripts): wire range-review to rangeReviewJob"
 ### Task 25: Rewire `scripts/generate/weekly-review.ts`
 
 **Files:**
+
 - Modify: `scripts/generate/weekly-review.ts` (full rewrite)
 
 - [ ] **Step 1: Replace file content**
 
 ```ts
-import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
-import { weeklyReviewJob } from '../../src/jobs/weekly-review-job.js';
+import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
+import { weeklyReviewJob } from "../../src/jobs/weekly-review-job.js";
 
 async function main(): Promise<void> {
   const runtime = createNodeRuntime();
@@ -3797,13 +3789,14 @@ git commit -m "refactor(scripts): wire weekly-review to weeklyReviewJob"
 ### Task 26: Rewire `scripts/collectors/jupiter-price.ts`
 
 **Files:**
+
 - Modify: `scripts/collectors/jupiter-price.ts` (full rewrite)
 
 - [ ] **Step 1: Replace file content**
 
 ```ts
-import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
-import { jupiterPriceJob } from '../../src/jobs/jupiter-price-job.js';
+import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
+import { jupiterPriceJob } from "../../src/jobs/jupiter-price-job.js";
 
 async function main(): Promise<void> {
   const runtime = createNodeRuntime();
@@ -3838,6 +3831,7 @@ git commit -m "refactor(scripts): wire jupiter-price to jupiterPriceJob"
 ### Task 27: Rewire `scripts/collectors/backend-snapshot.ts`
 
 **Files:**
+
 - Modify: `scripts/collectors/backend-snapshot.ts` (full rewrite)
 
 - [ ] **Step 1: Replace file content**
@@ -3845,8 +3839,8 @@ git commit -m "refactor(scripts): wire jupiter-price to jupiterPriceJob"
 The entrypoint preserves the original behavior: print every per-source error and exit non-zero if any failed.
 
 ```ts
-import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
-import { backendSnapshotJob } from '../../src/jobs/backend-snapshot-job.js';
+import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
+import { backendSnapshotJob } from "../../src/jobs/backend-snapshot-job.js";
 
 async function main(): Promise<void> {
   const runtime = createNodeRuntime();
@@ -3886,6 +3880,7 @@ git commit -m "refactor(scripts): wire backend-snapshot to backendSnapshotJob"
 ### Task 28: Rewire `scripts/openclaw/render-cron-commands.ts`
 
 **Files:**
+
 - Modify: `scripts/openclaw/render-cron-commands.ts` (full rewrite)
 
 - [ ] **Step 1: Replace file content**
@@ -3893,8 +3888,8 @@ git commit -m "refactor(scripts): wire backend-snapshot to backendSnapshotJob"
 The entrypoint prints each rendered line followed by a blank line, matching the original output.
 
 ```ts
-import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
-import { cronRenderJob } from '../../src/jobs/cron-render-job.js';
+import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
+import { cronRenderJob } from "../../src/jobs/cron-render-job.js";
 
 async function main(): Promise<void> {
   const runtime = createNodeRuntime();
@@ -3904,7 +3899,7 @@ async function main(): Promise<void> {
   })();
   for (const line of lines) {
     console.log(line);
-    console.log('');
+    console.log("");
   }
 }
 
@@ -3936,6 +3931,7 @@ git commit -m "refactor(scripts): wire render-cron-commands to cronRenderJob"
 ### Task 29: Rewire `scripts/openclaw/sync-cron.ts`
 
 **Files:**
+
 - Modify: `scripts/openclaw/sync-cron.ts` (full rewrite)
 
 - [ ] **Step 1: Replace file content**
@@ -3943,14 +3939,14 @@ git commit -m "refactor(scripts): wire render-cron-commands to cronRenderJob"
 The entrypoint preserves the dry-run banner and per-job logging format.
 
 ```ts
-import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
-import { cronSyncJob } from '../../src/jobs/cron-sync-job.js';
+import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
+import { cronSyncJob } from "../../src/jobs/cron-sync-job.js";
 
 async function main(): Promise<void> {
-  const apply = process.argv.includes('--apply');
+  const apply = process.argv.includes("--apply");
   if (!apply) {
     console.log(
-      'Dry run. Pass --apply to create jobs. This script only adds jobs; it does not diff/delete existing jobs.'
+      "Dry run. Pass --apply to create jobs. This script only adds jobs; it does not diff/delete existing jobs."
     );
   }
 
@@ -3964,9 +3960,9 @@ async function main(): Promise<void> {
 
   for (let index = 0; index < result.commands.length; index += 1) {
     const cmd = result.commands[index]!;
-    const name = cmd.args[cmd.args.indexOf('--name') + 1] ?? '(unknown)';
+    const name = cmd.args[cmd.args.indexOf("--name") + 1] ?? "(unknown)";
     console.log(`\n# ${name}`);
-    console.log(`${cmd.command} ${cmd.args.map((arg) => JSON.stringify(arg)).join(' ')}`);
+    console.log(`${cmd.command} ${cmd.args.map((arg) => JSON.stringify(arg)).join(" ")}`);
   }
 }
 
@@ -3976,7 +3972,7 @@ main().catch((error) => {
 });
 ```
 
-> Note: original logged commands while iterating *and* invoked `openclaw` between logs. The new flow runs all commands inside the use case (when `apply`), then logs once. To preserve interleaved logging order during apply, swap to `apply: false` and run commands manually here. We accept the simpler flow; the cron output paths and behavior are unchanged. The dry-run text and `# <name>` headers remain identical.
+> Note: original logged commands while iterating _and_ invoked `openclaw` between logs. The new flow runs all commands inside the use case (when `apply`), then logs once. To preserve interleaved logging order during apply, swap to `apply: false` and run commands manually here. We accept the simpler flow; the cron output paths and behavior are unchanged. The dry-run text and `# <name>` headers remain identical.
 
 - [ ] **Step 2: Run the script in dry-run mode**
 
@@ -4000,6 +3996,7 @@ git commit -m "refactor(scripts): wire sync-cron to cronSyncJob"
 ### Task 30: Rewire ancillary collectors
 
 **Files:**
+
 - Modify: `scripts/collectors/coingecko.ts`
 - Modify: `scripts/collectors/defillama.ts`
 - (`scripts/collectors/raydium-placeholder.ts` is unchanged — single console.log with no imports)
@@ -4007,8 +4004,8 @@ git commit -m "refactor(scripts): wire sync-cron to cronSyncJob"
 - [ ] **Step 1: Replace `scripts/collectors/coingecko.ts`**
 
 ```ts
-import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
-import { coingeckoJob } from '../../src/jobs/coingecko-job.js';
+import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
+import { coingeckoJob } from "../../src/jobs/coingecko-job.js";
 
 async function main(): Promise<void> {
   const runtime = createNodeRuntime();
@@ -4029,8 +4026,8 @@ main().catch((error) => {
 - [ ] **Step 2: Replace `scripts/collectors/defillama.ts`**
 
 ```ts
-import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
-import { defillamaJob } from '../../src/jobs/defillama-job.js';
+import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
+import { defillamaJob } from "../../src/jobs/defillama-job.js";
 
 async function main(): Promise<void> {
   const runtime = createNodeRuntime();
@@ -4064,6 +4061,7 @@ git commit -m "refactor(scripts): wire ancillary collectors via use cases"
 ### Task 31: Delete legacy `scripts/lib/*`
 
 **Files:**
+
 - Delete: `scripts/lib/env.ts`
 - Delete: `scripts/lib/fs.ts`
 - Delete: `scripts/lib/http.ts`
@@ -4077,6 +4075,7 @@ Expected: no matches.
 - [ ] **Step 2: Delete the files**
 
 Run:
+
 ```bash
 rm scripts/lib/env.ts scripts/lib/fs.ts scripts/lib/http.ts scripts/lib/metrics.ts
 rmdir scripts/lib 2>/dev/null || true
@@ -4101,6 +4100,7 @@ git commit -m "chore: remove legacy scripts/lib helpers superseded by src/"
 ### Task 32: Add `.dependency-cruiser.cjs` and verify rules
 
 **Files:**
+
 - Create: `.dependency-cruiser.cjs`
 
 - [ ] **Step 1: Create `.dependency-cruiser.cjs`**
@@ -4110,80 +4110,80 @@ git commit -m "chore: remove legacy scripts/lib helpers superseded by src/"
 module.exports = {
   forbidden: [
     {
-      name: 'domain-no-outbound',
-      severity: 'error',
-      from: { path: '^src/domain' },
+      name: "domain-no-outbound",
+      severity: "error",
+      from: { path: "^src/domain" },
       to: {
         path: [
-          '^src/application',
-          '^src/jobs',
-          '^src/adapters',
-          '^src/ports',
-          '^scripts',
-          '^node_modules/(?!typescript)'
+          "^src/application",
+          "^src/jobs",
+          "^src/adapters",
+          "^src/ports",
+          "^scripts",
+          "^node_modules/(?!typescript)"
         ],
-        pathNot: ['^src/contracts/snapshots\\.ts$']
+        pathNot: ["^src/contracts/snapshots\\.ts$"]
       }
     },
     {
-      name: 'domain-no-output-contracts',
-      severity: 'error',
-      from: { path: '^src/domain' },
-      to: { path: '^src/contracts/(outputs|cron-config)\\.ts$' }
+      name: "domain-no-output-contracts",
+      severity: "error",
+      from: { path: "^src/domain" },
+      to: { path: "^src/contracts/(outputs|cron-config)\\.ts$" }
     },
     {
-      name: 'contracts-no-runtime',
-      severity: 'error',
-      from: { path: '^src/contracts' },
+      name: "contracts-no-runtime",
+      severity: "error",
+      from: { path: "^src/contracts" },
       to: {
         path: [
-          '^src/application',
-          '^src/jobs',
-          '^src/adapters',
-          '^src/ports',
-          '^src/domain',
-          '^scripts'
+          "^src/application",
+          "^src/jobs",
+          "^src/adapters",
+          "^src/ports",
+          "^src/domain",
+          "^scripts"
         ]
       }
     },
     {
-      name: 'ports-no-app-or-adapters',
-      severity: 'error',
-      from: { path: '^src/ports' },
-      to: { path: ['^src/application', '^src/jobs', '^src/adapters', '^scripts'] }
+      name: "ports-no-app-or-adapters",
+      severity: "error",
+      from: { path: "^src/ports" },
+      to: { path: ["^src/application", "^src/jobs", "^src/adapters", "^scripts"] }
     },
     {
-      name: 'application-no-adapters-or-jobs',
-      severity: 'error',
-      from: { path: '^src/application' },
-      to: { path: ['^src/jobs', '^src/adapters', '^scripts'] }
+      name: "application-no-adapters-or-jobs",
+      severity: "error",
+      from: { path: "^src/application" },
+      to: { path: ["^src/jobs", "^src/adapters", "^scripts"] }
     },
     {
-      name: 'jobs-no-adapters-or-domain-internals',
-      severity: 'error',
-      from: { path: '^src/jobs' },
-      to: { path: ['^src/adapters', '^scripts', '^src/domain'] }
+      name: "jobs-no-adapters-or-domain-internals",
+      severity: "error",
+      from: { path: "^src/jobs" },
+      to: { path: ["^src/adapters", "^scripts", "^src/domain"] }
     },
     {
-      name: 'adapters-no-app-or-jobs',
-      severity: 'error',
-      from: { path: '^src/adapters' },
-      to: { path: ['^src/application', '^src/jobs', '^scripts'] }
+      name: "adapters-no-app-or-jobs",
+      severity: "error",
+      from: { path: "^src/adapters" },
+      to: { path: ["^src/application", "^src/jobs", "^scripts"] }
     },
     {
-      name: 'inner-layers-no-node-builtins',
-      severity: 'error',
-      from: { path: '^src/(domain|application|jobs|ports|contracts)' },
-      to: { dependencyTypes: ['core'] }
+      name: "inner-layers-no-node-builtins",
+      severity: "error",
+      from: { path: "^src/(domain|application|jobs|ports|contracts)" },
+      to: { dependencyTypes: ["core"] }
     }
   ],
   options: {
-    tsConfig: { fileName: 'tsconfig.json' },
-    doNotFollow: { path: 'node_modules' },
-    includeOnly: '^src',
+    tsConfig: { fileName: "tsconfig.json" },
+    doNotFollow: { path: "node_modules" },
+    includeOnly: "^src",
     enhancedResolveOptions: {
-      exportsFields: ['exports'],
-      conditionNames: ['import', 'require', 'node']
+      exportsFields: ["exports"],
+      conditionNames: ["import", "require", "node"]
     }
   }
 };
@@ -4217,6 +4217,7 @@ git commit -m "chore: enforce layer boundaries via dependency-cruiser"
 These tests assert that, given representative inputs, the use cases produce the same JSON shapes the legacy scripts produced. Captured-output JSON files are committed alongside the inputs.
 
 **Files:**
+
 - Create: `tests/fixtures/snapshots/complete/latest-price-snapshot.json`
 - Create: `tests/fixtures/snapshots/complete/latest-pool-snapshot.json`
 - Create: `tests/fixtures/snapshots/complete/latest-position-snapshot.json`
@@ -4330,59 +4331,59 @@ Daily routine.
 `tests/regression/daily-insight.fixture.test.ts`:
 
 ```ts
-import { readFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
-import { generateDailyInsight } from '../../src/application/generate-daily-insight.js';
-import { FakeJsonStore, FakeClock } from '../fakes/index.js';
+import { readFile } from "node:fs/promises";
+import { describe, expect, it } from "vitest";
+import { generateDailyInsight } from "../../src/application/generate-daily-insight.js";
+import { FakeJsonStore, FakeClock } from "../fakes/index.js";
 
-const FIXED_NOW = '2026-05-09T13:00:00.000Z';
+const FIXED_NOW = "2026-05-09T13:00:00.000Z";
 
 async function loadJson(path: string): Promise<unknown> {
-  return JSON.parse(await readFile(path, 'utf8'));
+  return JSON.parse(await readFile(path, "utf8"));
 }
 
-describe('daily-insight regression', () => {
-  it('matches the captured complete-data output', async () => {
+describe("daily-insight regression", () => {
+  it("matches the captured complete-data output", async () => {
     const jsonStore = new FakeJsonStore();
     jsonStore.seed(
-      'data/latest-price-snapshot.json',
-      await loadJson('tests/fixtures/snapshots/complete/latest-price-snapshot.json')
+      "data/latest-price-snapshot.json",
+      await loadJson("tests/fixtures/snapshots/complete/latest-price-snapshot.json")
     );
     jsonStore.seed(
-      'data/latest-pool-snapshot.json',
-      await loadJson('tests/fixtures/snapshots/complete/latest-pool-snapshot.json')
+      "data/latest-pool-snapshot.json",
+      await loadJson("tests/fixtures/snapshots/complete/latest-pool-snapshot.json")
     );
     jsonStore.seed(
-      'data/latest-position-snapshot.json',
-      await loadJson('tests/fixtures/snapshots/complete/latest-position-snapshot.json')
+      "data/latest-position-snapshot.json",
+      await loadJson("tests/fixtures/snapshots/complete/latest-position-snapshot.json")
     );
     const clock = new FakeClock(FIXED_NOW);
     const result = await generateDailyInsight({ jsonStore, clock });
-    const expected = await loadJson('tests/fixtures/expected/daily-insight-complete.json');
+    const expected = await loadJson("tests/fixtures/expected/daily-insight-complete.json");
     expect(result).toEqual(expected);
   });
 
-  it('matches the captured partial-data output', async () => {
+  it("matches the captured partial-data output", async () => {
     const jsonStore = new FakeJsonStore();
     jsonStore.seed(
-      'data/latest-price-snapshot.json',
-      await loadJson('tests/fixtures/snapshots/partial/latest-price-snapshot.json')
+      "data/latest-price-snapshot.json",
+      await loadJson("tests/fixtures/snapshots/partial/latest-price-snapshot.json")
     );
     jsonStore.seed(
-      'data/latest-pool-snapshot.json',
-      await loadJson('tests/fixtures/snapshots/partial/latest-pool-snapshot.json')
+      "data/latest-pool-snapshot.json",
+      await loadJson("tests/fixtures/snapshots/partial/latest-pool-snapshot.json")
     );
     const clock = new FakeClock(FIXED_NOW);
     const result = await generateDailyInsight({ jsonStore, clock });
-    const expected = await loadJson('tests/fixtures/expected/daily-insight-partial.json');
+    const expected = await loadJson("tests/fixtures/expected/daily-insight-partial.json");
     expect(result).toEqual(expected);
   });
 
-  it('matches the captured stale output', async () => {
+  it("matches the captured stale output", async () => {
     const jsonStore = new FakeJsonStore();
     const clock = new FakeClock(FIXED_NOW);
     const result = await generateDailyInsight({ jsonStore, clock });
-    const expected = await loadJson('tests/fixtures/expected/daily-insight-stale.json');
+    const expected = await loadJson("tests/fixtures/expected/daily-insight-stale.json");
     expect(result).toEqual(expected);
   });
 });
@@ -4440,27 +4441,41 @@ Expected: PASS, 3 tests.
 `tests/regression/range-review.fixture.test.ts`:
 
 ```ts
-import { readFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
-import { generateRangeReview } from '../../src/application/generate-range-review.js';
-import { FakeJsonStore, FakeClock } from '../fakes/index.js';
+import { readFile } from "node:fs/promises";
+import { describe, expect, it } from "vitest";
+import { generateRangeReview } from "../../src/application/generate-range-review.js";
+import { FakeJsonStore, FakeClock } from "../fakes/index.js";
 
-const FIXED_NOW = '2026-05-09T13:00:00.000Z';
-async function loadJson(path: string) { return JSON.parse(await readFile(path, 'utf8')); }
+const FIXED_NOW = "2026-05-09T13:00:00.000Z";
+async function loadJson(path: string) {
+  return JSON.parse(await readFile(path, "utf8"));
+}
 
-describe('range-review regression', () => {
-  it('matches the captured complete-data output', async () => {
+describe("range-review regression", () => {
+  it("matches the captured complete-data output", async () => {
     const jsonStore = new FakeJsonStore();
-    jsonStore.seed('data/latest-price-snapshot.json', await loadJson('tests/fixtures/snapshots/complete/latest-price-snapshot.json'));
-    jsonStore.seed('data/latest-pool-snapshot.json', await loadJson('tests/fixtures/snapshots/complete/latest-pool-snapshot.json'));
-    jsonStore.seed('data/latest-position-snapshot.json', await loadJson('tests/fixtures/snapshots/complete/latest-position-snapshot.json'));
+    jsonStore.seed(
+      "data/latest-price-snapshot.json",
+      await loadJson("tests/fixtures/snapshots/complete/latest-price-snapshot.json")
+    );
+    jsonStore.seed(
+      "data/latest-pool-snapshot.json",
+      await loadJson("tests/fixtures/snapshots/complete/latest-pool-snapshot.json")
+    );
+    jsonStore.seed(
+      "data/latest-position-snapshot.json",
+      await loadJson("tests/fixtures/snapshots/complete/latest-position-snapshot.json")
+    );
     const result = await generateRangeReview({ jsonStore, clock: new FakeClock(FIXED_NOW) });
-    expect(result).toEqual(await loadJson('tests/fixtures/expected/range-review-complete.json'));
+    expect(result).toEqual(await loadJson("tests/fixtures/expected/range-review-complete.json"));
   });
 
-  it('matches the captured stale output', async () => {
-    const result = await generateRangeReview({ jsonStore: new FakeJsonStore(), clock: new FakeClock(FIXED_NOW) });
-    expect(result).toEqual(await loadJson('tests/fixtures/expected/range-review-stale.json'));
+  it("matches the captured stale output", async () => {
+    const result = await generateRangeReview({
+      jsonStore: new FakeJsonStore(),
+      clock: new FakeClock(FIXED_NOW)
+    });
+    expect(result).toEqual(await loadJson("tests/fixtures/expected/range-review-stale.json"));
   });
 });
 ```
@@ -4472,18 +4487,23 @@ Capture expected outputs with a similar inline `node --import tsx -e "..."` bloc
 `tests/regression/weekly-review.fixture.test.ts`:
 
 ```ts
-import { readFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
-import { generateWeeklyReview } from '../../src/application/generate-weekly-review.js';
-import { FakeJsonStore, FakeClock } from '../fakes/index.js';
+import { readFile } from "node:fs/promises";
+import { describe, expect, it } from "vitest";
+import { generateWeeklyReview } from "../../src/application/generate-weekly-review.js";
+import { FakeJsonStore, FakeClock } from "../fakes/index.js";
 
-const FIXED_NOW = '2026-05-09T13:00:00.000Z';
-async function loadJson(path: string) { return JSON.parse(await readFile(path, 'utf8')); }
+const FIXED_NOW = "2026-05-09T13:00:00.000Z";
+async function loadJson(path: string) {
+  return JSON.parse(await readFile(path, "utf8"));
+}
 
-describe('weekly-review regression', () => {
-  it('matches the captured stale output', async () => {
-    const result = await generateWeeklyReview({ jsonStore: new FakeJsonStore(), clock: new FakeClock(FIXED_NOW) });
-    expect(result).toEqual(await loadJson('tests/fixtures/expected/weekly-review-stale.json'));
+describe("weekly-review regression", () => {
+  it("matches the captured stale output", async () => {
+    const result = await generateWeeklyReview({
+      jsonStore: new FakeJsonStore(),
+      clock: new FakeClock(FIXED_NOW)
+    });
+    expect(result).toEqual(await loadJson("tests/fixtures/expected/weekly-review-stale.json"));
   });
 });
 ```
@@ -4495,23 +4515,23 @@ Capture the expected stale output and verify.
 `tests/regression/cron-render.fixture.test.ts`:
 
 ```ts
-import { readFile } from 'node:fs/promises';
-import { describe, expect, it } from 'vitest';
-import { renderCronCommands } from '../../src/application/render-cron-commands.js';
-import { FakeTextReader, FakeEnv } from '../fakes/index.js';
+import { readFile } from "node:fs/promises";
+import { describe, expect, it } from "vitest";
+import { renderCronCommands } from "../../src/application/render-cron-commands.js";
+import { FakeTextReader, FakeEnv } from "../fakes/index.js";
 
-describe('cron-render regression', () => {
-  it('matches the captured render output', async () => {
-    const yaml = await readFile('tests/fixtures/cron/jobs.yaml', 'utf8');
-    const routine = await readFile('tests/fixtures/cron/routines/daily.md', 'utf8');
+describe("cron-render regression", () => {
+  it("matches the captured render output", async () => {
+    const yaml = await readFile("tests/fixtures/cron/jobs.yaml", "utf8");
+    const routine = await readFile("tests/fixtures/cron/routines/daily.md", "utf8");
     const textReader = new FakeTextReader();
-    textReader.seed('cron/jobs.yaml', yaml);
-    textReader.seed('tests/fixtures/cron/routines/daily.md', routine);
-    const env = new FakeEnv({ OPENCLAW_MODEL: 'opus' });
+    textReader.seed("cron/jobs.yaml", yaml);
+    textReader.seed("tests/fixtures/cron/routines/daily.md", routine);
+    const env = new FakeEnv({ OPENCLAW_MODEL: "opus" });
 
     const lines = await renderCronCommands({ textReader, env });
-    const expected = (await readFile('tests/fixtures/expected/cron-render.txt', 'utf8')).trimEnd();
-    expect(lines.join('\n')).toBe(expected);
+    const expected = (await readFile("tests/fixtures/expected/cron-render.txt", "utf8")).trimEnd();
+    expect(lines.join("\n")).toBe(expected);
   });
 });
 ```
@@ -4537,6 +4557,7 @@ git commit -m "test: fixture regression tests for moved use cases"
 ### Task 34: Update `README.md` and `docs/architecture.md`
 
 **Files:**
+
 - Modify: `README.md`
 - Modify: `docs/architecture.md`
 
@@ -4573,7 +4594,7 @@ Evidence-bundle publication is INT-PUBLISH (issue #13). Removal of the legacy re
 
 Insert a new section after "Useful commands":
 
-```markdown
+````markdown
 ## Repo structure
 
 ```text
@@ -4583,6 +4604,7 @@ tests/                            Vitest unit, application, and fixture regressi
 schemas/                          JSON Schema asset directory (unchanged)
 policies/ prompts/ routines/ resources/ memory/ cron/   Non-code product assets (unchanged)
 ```
+````
 
 ## Verification commands
 
@@ -4594,7 +4616,8 @@ pnpm verify          # all three above
 ```
 
 The layered architecture and no-execution boundary are documented in `docs/architecture.md`.
-```
+
+````
 
 - [ ] **Step 3: Run `pnpm verify` once more**
 
@@ -4606,7 +4629,7 @@ Expected: exit 0.
 ```bash
 git add README.md docs/architecture.md
 git commit -m "docs: explain layered monolith and verification commands"
-```
+````
 
 ---
 

@@ -1,11 +1,11 @@
-import YAML from 'yaml';
-import type { TextReader } from '../ports/text-reader.js';
-import type { EnvReader } from '../ports/env.js';
+import YAML from "yaml";
+import type { TextReader } from "../ports/text-reader.js";
+import type { EnvReader } from "../ports/env.js";
 import type {
   CronConfig,
   PreparedCronJob,
   ResolvedCronDefaults
-} from '../contracts/cron-config.js';
+} from "../contracts/cron-config.js";
 
 export interface LoadCronConfigDeps {
   textReader: TextReader;
@@ -18,21 +18,17 @@ export interface LoadedCronConfig {
   preparedJobs: PreparedCronJob[];
 }
 
-export const DEFAULT_CRON_CONFIG_PATH = 'cron/jobs.yaml';
+export const DEFAULT_CRON_CONFIG_PATH = "cron/jobs.yaml";
 
-export async function loadCronConfig(
-  deps: LoadCronConfigDeps
-): Promise<LoadedCronConfig> {
+export async function loadCronConfig(deps: LoadCronConfigDeps): Promise<LoadedCronConfig> {
   const { textReader, env, configPath = DEFAULT_CRON_CONFIG_PATH } = deps;
   const config = YAML.parse(await textReader.readText(configPath)) as CronConfig;
 
   const defaultModel = config.modelEnv ? env.getOptional(config.modelEnv) : undefined;
-  const defaultThinking = config.thinkingEnv
-    ? env.getOptional(config.thinkingEnv)
-    : undefined;
+  const defaultThinking = config.thinkingEnv ? env.getOptional(config.thinkingEnv) : undefined;
   const agent = config.agentEnv ? env.getOptional(config.agentEnv) : undefined;
   const exact = config.exactEnv
-    ? (env.getOptional(config.exactEnv) ?? '').toLowerCase() === 'true'
+    ? (env.getOptional(config.exactEnv) ?? "").toLowerCase() === "true"
     : false;
   const channel = config.delivery?.channelEnv
     ? env.getOptional(config.delivery.channelEnv)
@@ -51,7 +47,7 @@ export async function loadCronConfig(
 
   const preparedJobs: PreparedCronJob[] = await Promise.all(
     config.jobs.map(async (job) => {
-      const message = await textReader.readText(job.messageFile);
+      const message = (await textReader.readText(job.messageFile)).trimEnd();
       const model = job.model ?? defaultModel;
       const thinking = job.thinking ?? defaultThinking;
       return {

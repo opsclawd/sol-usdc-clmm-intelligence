@@ -1,4 +1,4 @@
-import type { TextReader } from '../../src/ports/text-reader.js';
+import type { TextReader } from "../../src/ports/text-reader.js";
 
 export class FakeTextReader implements TextReader {
   private readonly entries = new Map<string, string>();
@@ -11,7 +11,7 @@ export class FakeTextReader implements TextReader {
     const entry = this.entries.get(path);
     if (entry === undefined) {
       const error = new Error(`FakeTextReader: missing ${path}`) as NodeJS.ErrnoException;
-      error.code = 'ENOENT';
+      error.code = "ENOENT";
       throw error;
     }
     return entry;

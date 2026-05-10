@@ -1,4 +1,4 @@
-import type { HttpClient } from '../../src/ports/http.js';
+import type { HttpClient } from "../../src/ports/http.js";
 
 export interface FakeHttpResponse {
   body?: unknown;

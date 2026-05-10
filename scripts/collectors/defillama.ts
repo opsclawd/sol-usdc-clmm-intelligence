@@ -1,5 +1,5 @@
-import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
-import { defillamaJob } from '../../src/jobs/defillama-job.js';
+import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
+import { defillamaJob } from "../../src/jobs/defillama-job.js";
 
 async function main(): Promise<void> {
   const runtime = createNodeRuntime();

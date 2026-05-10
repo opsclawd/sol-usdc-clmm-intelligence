@@ -58,6 +58,7 @@ Stages the repo will evolve through (see design spec and execution plan in `docs
 ## Authority Boundary
 
 You may:
+
 - Read repo files, DB, and configured external sources
 - Collect, normalize, and derive features from raw data
 - Generate LLM research briefs over bounded, structured evidence
@@ -67,6 +68,7 @@ You may:
 - Commit and push when in a scheduled pipeline context
 
 You may not:
+
 - Make final policy decisions or synthesize PolicyInsights (that's regime-engine's job)
 - Sign/submit transactions, move liquidity, swap tokens, withdraw liquidity
 - Treat LLM output as deterministic fact

@@ -1,18 +1,25 @@
+import type { PoolSnapshot, PositionSnapshot, PriceSnapshot } from "../contracts/snapshots.js";
 import type {
-  PoolSnapshot,
-  PositionSnapshot,
-  PriceSnapshot
-} from '../contracts/snapshots.js';
-import type { RecommendedAction, Confidence, RiskLevel, DataQuality, Posture, RangeBias, RebalanceSensitivity, RangeStatus, BreachRisk, FeeEnvironment } from './types.js';
-import { assessDataQuality } from './data-quality.js';
-import { assessRangeStatus } from './range-status.js';
-import { classifyFeeEnvironment } from './fee-classification.js';
+  RecommendedAction,
+  Confidence,
+  RiskLevel,
+  DataQuality,
+  Posture,
+  RangeBias,
+  RebalanceSensitivity,
+  RangeStatus,
+  BreachRisk,
+  FeeEnvironment
+} from "./types.js";
+import { assessDataQuality } from "./data-quality.js";
+import { assessRangeStatus } from "./range-status.js";
+import { classifyFeeEnvironment } from "./fee-classification.js";
 import {
   derivePosture,
   deriveRangeBias,
   deriveRebalanceSensitivity,
   deriveMaxCapitalDeploymentPercent
-} from './advisory-policy.js';
+} from "./advisory-policy.js";
 
 export interface DailyInsightInputs {
   price?: PriceSnapshot;
@@ -21,9 +28,9 @@ export interface DailyInsightInputs {
 }
 
 export interface DailyInsightDecision {
-  pair: 'SOL/USDC';
+  pair: "SOL/USDC";
   marketRegime: string;
-  fundamentalRegime: 'unknown';
+  fundamentalRegime: "unknown";
   recommendedAction: RecommendedAction;
   confidence: Confidence;
   riskLevel: RiskLevel;
@@ -44,9 +51,9 @@ export interface DailyInsightDecision {
   feeEnvironment: {
     classification: FeeEnvironment;
     feeApr?: number;
-    feeAprTrend: 'rising' | 'flat' | 'falling' | 'unknown';
+    feeAprTrend: "rising" | "flat" | "falling" | "unknown";
     volume24hUsd?: number;
-    volumeTrend: 'rising' | 'flat' | 'falling' | 'unknown';
+    volumeTrend: "rising" | "flat" | "falling" | "unknown";
   };
   price: {
     spotPrice?: number;
@@ -58,17 +65,14 @@ export interface DailyInsightDecision {
   executionPermittedByAgent: false;
 }
 
-export function makeDailyInsightDecision(
-  inputs: DailyInsightInputs
-): DailyInsightDecision {
+export function makeDailyInsightDecision(inputs: DailyInsightInputs): DailyInsightDecision {
   const { price, pool, position } = inputs;
   const { quality, missing } = assessDataQuality({ price, pool, position });
   const range = assessRangeStatus(position);
   const feeEnvironment = classifyFeeEnvironment(pool);
 
-  const recommendedAction =
-    quality === 'stale' ? 'pause_rebalances' : range.recommendedAction;
-  const riskLevel = quality === 'stale' ? 'elevated' : range.riskLevel;
+  const recommendedAction = quality === "stale" ? "pause_rebalances" : range.recommendedAction;
+  const riskLevel = quality === "stale" ? "elevated" : range.riskLevel;
 
   const posture = derivePosture({ recommendedAction, riskLevel, feeEnvironment });
   const rangeBias = deriveRangeBias({
@@ -84,11 +88,11 @@ export function makeDailyInsightDecision(
   const maxCapitalDeploymentPercent = deriveMaxCapitalDeploymentPercent(posture);
 
   return {
-    pair: 'SOL/USDC',
+    pair: "SOL/USDC",
     marketRegime: `range_${range.status}_fee_${feeEnvironment}`,
-    fundamentalRegime: 'unknown',
+    fundamentalRegime: "unknown",
     recommendedAction,
-    confidence: quality === 'complete' ? 'medium' : 'low',
+    confidence: quality === "complete" ? "medium" : "low",
     riskLevel,
     dataQuality: quality,
     missingInputs: missing,
@@ -111,32 +115,32 @@ export function makeDailyInsightDecision(
     feeEnvironment: {
       classification: feeEnvironment,
       ...(pool?.feeApr != null ? { feeApr: pool.feeApr } : {}),
-      feeAprTrend: pool?.feeAprTrend ?? 'unknown',
+      feeAprTrend: pool?.feeAprTrend ?? "unknown",
       ...(pool?.volume24hUsd != null ? { volume24hUsd: pool.volume24hUsd } : {}),
-      volumeTrend: pool?.volumeTrend ?? 'unknown'
+      volumeTrend: pool?.volumeTrend ?? "unknown"
     },
     price: {
       ...(pool?.spotPrice != null
         ? { spotPrice: pool.spotPrice }
         : position?.spotPrice != null
-        ? { spotPrice: position.spotPrice }
-        : price?.priceUsd != null
-        ? { spotPrice: price.priceUsd }
-        : {}),
+          ? { spotPrice: position.spotPrice }
+          : price?.priceUsd != null
+            ? { spotPrice: price.priceUsd }
+            : {}),
       ...(price?.priceUsd != null ? { jupiterPriceUsd: price.priceUsd } : {})
     },
     reasoning: [
-      quality === 'complete'
-        ? 'Core price, pool, and position inputs are available.'
-        : `Missing inputs: ${missing.join(', ') || 'unknown'}.`,
+      quality === "complete"
+        ? "Core price, pool, and position inputs are available."
+        : `Missing inputs: ${missing.join(", ") || "unknown"}.`,
       `Range status is ${range.status} with ${range.breachRisk} breach risk.`,
       `Fee environment is ${feeEnvironment}.`,
-      'Recommendation remains advisory only; backend and wallet control execution.'
+      "Recommendation remains advisory only; backend and wallet control execution."
     ],
-    sources: [price?.source, pool?.source, position?.source].filter(
-      (value): value is string => Boolean(value)
+    sources: [price?.source, pool?.source, position?.source].filter((value): value is string =>
+      Boolean(value)
     ),
-    requiresHumanApproval: recommendedAction !== 'hold',
+    requiresHumanApproval: recommendedAction !== "hold",
     executionPermittedByAgent: false
   };
 }
