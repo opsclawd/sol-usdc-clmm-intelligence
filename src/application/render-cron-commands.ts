@@ -31,7 +31,11 @@ export async function renderCronCommands(
       ...(defaults.delivery ? { delivery: defaults.delivery } : {})
     });
     const flagArgs = args.slice(2);
-    const quoted = flagArgs.map((arg) => (arg.startsWith('--') ? arg : shellQuote(arg)));
+    const FLAG_NAMES = new Set([
+      '--name', '--cron', '--tz', '--session', '--message',
+      '--model', '--thinking', '--agent', '--exact', '--announce', '--channel', '--to'
+    ]);
+    const quoted = flagArgs.map((arg) => (FLAG_NAMES.has(arg) ? arg : shellQuote(arg)));
     return ['openclaw', 'cron', 'add', ...quoted].join(' ');
   });
 }
