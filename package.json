@@ -11,7 +11,11 @@
     "review:range": "tsx scripts/generate/range-review.ts",
     "review:weekly": "tsx scripts/generate/weekly-review.ts",
     "cron:render": "tsx scripts/openclaw/render-cron-commands.ts",
-    "cron:sync": "tsx scripts/openclaw/sync-cron.ts"
+    "cron:sync": "tsx scripts/openclaw/sync-cron.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "boundaries": "depcruise --config .dependency-cruiser.cjs src",
+    "verify": "pnpm typecheck && pnpm test && pnpm boundaries"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
@@ -20,7 +24,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "dependency-cruiser": "^16.10.4",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.9"
   }
 }
