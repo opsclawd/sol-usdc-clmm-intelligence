@@ -49,10 +49,6 @@ OPENCLAW_DELIVERY_CHANNEL
 OPENCLAW_DELIVERY_TO
 ```
 
-### Bad recommendation
-
-Do not patch the output manually. Patch the policy or deterministic script that allowed the bad recommendation.
-
 ### Missing data
 
 Correct behavior is conservative:

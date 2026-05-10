@@ -10,7 +10,7 @@ This repo is the **source of truth for pipeline logic**: prompts, policies, sche
 Git repo                     = prompts, policies, schemas, routine specs, durable memory
 OpenClaw Gateway cron         = scheduled isolated agent runs
 Postgres / backend database   = raw market, pool, position, and performance snapshots
-Fastify backend               = deterministic calculations, validation, transaction preparation
+clmm-v2 backend (/insights/sol-usdc/*) = deterministic calculations, validation, bundle delivery
 Wallet / signer               = final authority for execution
 ```
 
@@ -98,12 +98,3 @@ outputs/                          Latest structured outputs for dashboard/backen
 memory/                           Durable agent memory and review logs
 docs/                             Architecture and runbook
 ```
-
-## Promotion path
-
-1. **Recommendation-only**: generate insight JSON. No trades.
-2. **Paper execution**: backend can simulate or paper-rebalance.
-3. **Human-approved execution**: backend prepares transaction, user signs.
-4. **Limited deterministic execution**: only after months of evidence and strict caps.
-
-Skipping directly to autonomous execution is not engineering. It is gambling with automation.
