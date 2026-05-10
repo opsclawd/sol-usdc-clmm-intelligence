@@ -39,6 +39,27 @@ pnpm cron:render          # prints OpenClaw cron add commands
 pnpm cron:sync -- --apply # actually creates OpenClaw cron jobs
 ```
 
+## Repo structure
+
+```text
+src/                              Layered monolith (domain / contracts / ports / application / jobs / adapters)
+scripts/                          Thin entrypoints that call jobs through the Node composition root
+tests/                            Vitest unit, application, and fixture regression tests
+schemas/                          JSON Schema asset directory (unchanged)
+policies/ prompts/ routines/ resources/ memory/ cron/   Non-code product assets (unchanged)
+```
+
+## Verification commands
+
+```bash
+pnpm typecheck       # tsc --noEmit
+pnpm test            # vitest run
+pnpm boundaries      # dependency-cruiser layer checks
+pnpm verify          # all three above
+```
+
+The layered architecture and no-execution boundary are documented in `docs/architecture.md`.
+
 ## Required env vars
 
 See `.env.example`.
