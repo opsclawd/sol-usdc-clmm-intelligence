@@ -1,31 +1,12 @@
-import { readJsonFile, writeJsonFile } from '../lib/fs.js';
+import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
+import { weeklyReviewJob } from '../../src/jobs/weekly-review-job.js';
 
 async function main(): Promise<void> {
-  const performance = await readJsonFile<Record<string, unknown>>('data/latest-performance-snapshot.json');
-  const dailyInsight = await readJsonFile<Record<string, unknown>>('outputs/sol-usdc-daily-insight.json');
-  const rebalance = await readJsonFile<Record<string, unknown>>('outputs/sol-usdc-rebalance-recommendation.json');
-
-  const output = {
-    pair: 'SOL/USDC',
-    timestamp: new Date().toISOString(),
-    dataQuality: performance ? 'partial' : 'stale',
-    summary: performance
-      ? 'Performance snapshot available. Agent should compare CLMM fees, range outcomes, and HODL benchmark.'
-      : 'No backend performance snapshot available. Weekly review should be conservative and avoid policy changes.',
-    inputs: {
-      hasPerformanceSnapshot: Boolean(performance),
-      hasDailyInsight: Boolean(dailyInsight),
-      hasRebalanceRecommendation: Boolean(rebalance)
-    },
-    decisionQualityReview: {
-      grade: 'ungraded',
-      reason: 'Requires backend performance metrics and human review.'
-    },
-    proposedPolicyChanges: [],
-    executionPermittedByAgent: false
-  };
-
-  await writeJsonFile('outputs/weekly-clmm-review.json', output);
+  const runtime = createNodeRuntime();
+  const output = await weeklyReviewJob({
+    jsonStore: runtime.jsonStore,
+    clock: runtime.clock
+  })();
   console.log(JSON.stringify(output, null, 2));
 }
 
