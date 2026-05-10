@@ -32,6 +32,34 @@ function validateEnvelope(response: Record<string, unknown>): ClmmBundle {
     throw new Error("Bundle missing positions array");
   }
 
+  for (const pos of b.positions) {
+    if (!pos || typeof pos !== "object") {
+      throw new Error("Bundle contains non-object position entry");
+    }
+    const p = pos as Record<string, unknown>;
+    if (typeof p.positionId !== "string") throw new Error("Position missing positionId");
+    if (
+      typeof p.rangeState !== "string" ||
+      !["in-range", "below-range", "above-range"].includes(p.rangeState)
+    ) {
+      throw new Error(`Position ${p.positionId ?? "?"} has invalid rangeState`);
+    }
+    if (typeof p.lowerTick !== "number")
+      throw new Error(`Position ${p.positionId ?? "?"} missing lowerTick`);
+    if (typeof p.upperTick !== "number")
+      throw new Error(`Position ${p.positionId ?? "?"} missing upperTick`);
+    if (typeof p.currentTick !== "number")
+      throw new Error(`Position ${p.positionId ?? "?"} missing currentTick`);
+    if (typeof p.positionLiquidity !== "string")
+      throw new Error(`Position ${p.positionId ?? "?"} missing positionLiquidity`);
+    if (typeof p.poolLiquidity !== "string")
+      throw new Error(`Position ${p.positionId ?? "?"} missing poolLiquidity`);
+    if (typeof p.hasActionableTrigger !== "boolean")
+      throw new Error(`Position ${p.positionId ?? "?"} missing hasActionableTrigger`);
+    if (!p.unclaimedFees || typeof p.unclaimedFees !== "object")
+      throw new Error(`Position ${p.positionId ?? "?"} missing unclaimedFees`);
+  }
+
   if (b.source !== "orca") {
     throw new Error(`Expected source orca, got ${String(b.source)}`);
   }

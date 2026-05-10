@@ -74,6 +74,40 @@ describe("collectClmmBundle", () => {
     await expect(collectClmmBundle({ http, jsonStore, env })).rejects.toThrow("pair");
   });
 
+  it("throws when position is missing critical fields", async () => {
+    const http = new FakeHttp();
+    http.setResponse("http://api.test/insights/sol-usdc/bundle/11111111111111111111111111111111", {
+      body: {
+        bundle: {
+          pair: "SOL/USDC",
+          source: "orca",
+          observedAtUnixMs: 1700000000000,
+          pool: {
+            poolId: "abc",
+            currentPrice: 150.5,
+            currentPriceLabel: "$150.50",
+            sqrtPrice: "1000000",
+            tickCurrentIndex: 0,
+            tickSpacing: 64,
+            feeRate: 0.0005,
+            feeRateLabel: "0.05%",
+            poolLiquidity: "1000000",
+            priceSource: "orca_whirlpool_sqrt_price",
+            tokenPairLabel: "SOL/USDC"
+          },
+          srLevels: null,
+          positions: [{ positionId: "p1", rangeState: "in-range" }],
+          alerts: [],
+          dataQuality: { warnings: [], isPartial: false, missingSources: [] }
+        }
+      }
+    });
+    const jsonStore = new FakeJsonStore();
+    const env = new FakeEnv(VALID_ENV);
+
+    await expect(collectClmmBundle({ http, jsonStore, env })).rejects.toThrow("lowerTick");
+  });
+
   it("throws when pool payload is missing critical math fields", async () => {
     const http = new FakeHttp();
     http.setResponse("http://api.test/insights/sol-usdc/bundle/11111111111111111111111111111111", {
