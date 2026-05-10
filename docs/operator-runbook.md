@@ -7,10 +7,10 @@ pnpm install
 cp .env.example .env
 pnpm typecheck
 pnpm collect:price
-pnpm insight:daily
+pnpm collect:clmm-bundle
 ```
 
-If `pnpm collect:backend` fails, your Fastify backend endpoint is not ready or `CLMM_DATA_API_BASE` is wrong.
+If `pnpm collect:clmm-bundle` fails, your clmm-v2 insight endpoint is not ready, `CLMM_DATA_API_BASE` is wrong, or `CLMM_INSIGHTS_API_KEY` is missing.
 
 ## Register OpenClaw jobs
 

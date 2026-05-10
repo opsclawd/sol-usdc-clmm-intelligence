@@ -32,9 +32,7 @@ The render step prints the OpenClaw commands needed to register the cron jobs de
 
 ```bash
 pnpm collect:price        # writes data/latest-price-snapshot.json from Jupiter
-pnpm insight:daily        # writes outputs/sol-usdc-daily-insight.json
-pnpm review:range         # writes outputs/sol-usdc-rebalance-recommendation.json
-pnpm review:weekly        # writes outputs/weekly-clmm-review.json
+pnpm collect:clmm-bundle  # fetches and writes SOL/USDC CLMM bundle from clmm-v2
 pnpm cron:render          # prints OpenClaw cron add commands
 pnpm cron:sync -- --apply # actually creates OpenClaw cron jobs
 ```
@@ -68,6 +66,7 @@ At minimum, for local deterministic runs:
 
 ```bash
 CLMM_DATA_API_BASE=http://localhost:3001
+CLMM_INSIGHTS_API_KEY=<hex-key-from-clmm-v2>
 SOL_MINT=So11111111111111111111111111111111111111112
 USDC_MINT=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
 ```

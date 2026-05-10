@@ -1,14 +1,17 @@
 sources:
-  - name: backend-clmm-api
+  - name: clmm-v2-insights
     priority: critical
     type: internal-api
     env: CLMM_DATA_API_BASE
+    apiKeyEnv: CLMM_INSIGHTS_API_KEY
+    endpoint: /insights/sol-usdc/bundle/:walletId
     purpose:
-      - current_position
-      - pool_snapshot
-      - volatility
-      - fee_apr
-      - range_health
+      - full_bundle
+      - pool_data
+      - positions
+      - support_resistance
+      - alerts
+      - data_quality
 
   - name: raydium-sol-usdc
     priority: critical
