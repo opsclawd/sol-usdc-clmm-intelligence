@@ -23,43 +23,19 @@
       "type": "string"
     },
     "fundamentalRegime": {
-      "enum": [
-        "constructive",
-        "neutral",
-        "deteriorating",
-        "unknown"
-      ]
+      "enum": ["constructive", "neutral", "deteriorating", "unknown"]
     },
     "recommendedAction": {
-      "enum": [
-        "hold",
-        "watch",
-        "tighten_range",
-        "widen_range",
-        "exit_range",
-        "pause_rebalances"
-      ]
+      "enum": ["hold", "watch", "tighten_range", "widen_range", "exit_range", "pause_rebalances"]
     },
     "confidence": {
-      "enum": [
-        "low",
-        "medium",
-        "high"
-      ]
+      "enum": ["low", "medium", "high"]
     },
     "riskLevel": {
-      "enum": [
-        "normal",
-        "elevated",
-        "critical"
-      ]
+      "enum": ["normal", "elevated", "critical"]
     },
     "dataQuality": {
-      "enum": [
-        "complete",
-        "partial",
-        "stale"
-      ]
+      "enum": ["complete", "partial", "stale"]
     },
     "missingInputs": {
       "type": "array",
@@ -69,37 +45,16 @@
     },
     "clmmPolicy": {
       "type": "object",
-      "required": [
-        "posture",
-        "rangeBias",
-        "rebalanceSensitivity",
-        "maxCapitalDeploymentPercent"
-      ],
+      "required": ["posture", "rangeBias", "rebalanceSensitivity", "maxCapitalDeploymentPercent"],
       "properties": {
         "posture": {
-          "enum": [
-            "aggressive",
-            "moderately_aggressive",
-            "neutral",
-            "defensive",
-            "paused"
-          ]
+          "enum": ["aggressive", "moderately_aggressive", "neutral", "defensive", "paused"]
         },
         "rangeBias": {
-          "enum": [
-            "tight",
-            "medium",
-            "wide",
-            "passive"
-          ]
+          "enum": ["tight", "medium", "wide", "passive"]
         },
         "rebalanceSensitivity": {
-          "enum": [
-            "low",
-            "normal",
-            "high",
-            "paused"
-          ]
+          "enum": ["low", "normal", "high", "paused"]
         },
         "maxCapitalDeploymentPercent": {
           "type": "number",

@@ -4,12 +4,12 @@ Range widths are policy recommendations, not exact tick instructions.
 
 ## Baseline buckets
 
-| Bucket | Width | Use case |
-|---|---:|---|
-| Tight | 5-8% | Low volatility, strong fee APR, confirmed consolidation |
-| Medium | 10-18% | Normal active management |
-| Wide | 20-35% | High volatility, directional trend, defensive posture |
-| Passive | 40%+ | Unclear regime, low confidence, avoid churn |
+| Bucket  |  Width | Use case                                                |
+| ------- | -----: | ------------------------------------------------------- |
+| Tight   |   5-8% | Low volatility, strong fee APR, confirmed consolidation |
+| Medium  | 10-18% | Normal active management                                |
+| Wide    | 20-35% | High volatility, directional trend, defensive posture   |
+| Passive |   40%+ | Unclear regime, low confidence, avoid churn             |
 
 ## Bias rules
 

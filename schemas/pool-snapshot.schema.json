@@ -2,11 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "PoolSnapshot",
   "type": "object",
-  "required": [
-    "pair",
-    "timestamp",
-    "source"
-  ],
+  "required": ["pair", "timestamp", "source"],
   "properties": {
     "pair": {
       "const": "SOL/USDC"
@@ -37,28 +33,13 @@
       "type": "number"
     },
     "liquidityTrend": {
-      "enum": [
-        "rising",
-        "flat",
-        "falling",
-        "unknown"
-      ]
+      "enum": ["rising", "flat", "falling", "unknown"]
     },
     "volumeTrend": {
-      "enum": [
-        "rising",
-        "flat",
-        "falling",
-        "unknown"
-      ]
+      "enum": ["rising", "flat", "falling", "unknown"]
     },
     "feeAprTrend": {
-      "enum": [
-        "rising",
-        "flat",
-        "falling",
-        "unknown"
-      ]
+      "enum": ["rising", "flat", "falling", "unknown"]
     }
   },
   "additionalProperties": true

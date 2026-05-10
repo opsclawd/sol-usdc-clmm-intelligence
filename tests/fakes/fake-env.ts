@@ -1,4 +1,4 @@
-import type { EnvReader } from '../../src/ports/env.js';
+import type { EnvReader } from "../../src/ports/env.js";
 
 export class FakeEnv implements EnvReader {
   constructor(private readonly values: Record<string, string | undefined> = {}) {}

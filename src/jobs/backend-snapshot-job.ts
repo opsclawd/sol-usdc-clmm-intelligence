@@ -2,7 +2,7 @@ import {
   collectBackendSnapshot,
   type CollectBackendSnapshotDeps,
   type CollectBackendSnapshotResult
-} from '../application/collect-backend-snapshot.js';
+} from "../application/collect-backend-snapshot.js";
 
 export function backendSnapshotJob(
   deps: CollectBackendSnapshotDeps

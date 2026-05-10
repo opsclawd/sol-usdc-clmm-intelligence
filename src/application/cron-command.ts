@@ -1,4 +1,4 @@
-import type { CronJob } from '../contracts/cron-config.js';
+import type { CronJob } from "../contracts/cron-config.js";
 
 export interface BuildCronAddArgsInputs {
   job: CronJob;
@@ -13,31 +13,37 @@ export interface BuildCronAddArgsInputs {
 }
 
 export interface CronCommand {
-  command: 'openclaw';
+  command: "openclaw";
   args: string[];
 }
 
 export function buildCronAddArgs(inputs: BuildCronAddArgsInputs): CronCommand {
-  const { job, message, timezone, session, exact, defaultModel, defaultThinking, agent, delivery } = inputs;
+  const { job, message, timezone, session, exact, defaultModel, defaultThinking, agent, delivery } =
+    inputs;
   const args: string[] = [
-    'cron',
-    'add',
-    '--name', job.name,
-    '--cron', job.cron,
-    '--tz', timezone,
-    '--session', session,
-    '--message', message
+    "cron",
+    "add",
+    "--name",
+    job.name,
+    "--cron",
+    job.cron,
+    "--tz",
+    timezone,
+    "--session",
+    session,
+    "--message",
+    message
   ];
 
   const model = job.model ?? defaultModel;
   const thinking = job.thinking ?? defaultThinking;
-  if (model) args.push('--model', model);
-  if (thinking) args.push('--thinking', thinking);
-  if (agent) args.push('--agent', agent);
-  if (exact) args.push('--exact');
+  if (model) args.push("--model", model);
+  if (thinking) args.push("--thinking", thinking);
+  if (agent) args.push("--agent", agent);
+  if (exact) args.push("--exact");
   if (delivery && delivery.channel && delivery.to) {
-    args.push('--announce', '--channel', delivery.channel, '--to', delivery.to);
+    args.push("--announce", "--channel", delivery.channel, "--to", delivery.to);
   }
 
-  return { command: 'openclaw', args };
+  return { command: "openclaw", args };
 }

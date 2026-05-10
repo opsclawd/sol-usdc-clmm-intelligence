@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { renderCronCommands } from '../../src/application/render-cron-commands.js';
-import { FakeTextReader, FakeEnv } from '../fakes/index.js';
+import { describe, expect, it } from "vitest";
+import { renderCronCommands } from "../../src/application/render-cron-commands.js";
+import { FakeTextReader, FakeEnv } from "../fakes/index.js";
 
 const yaml = `
 timezone: UTC
@@ -12,12 +12,12 @@ jobs:
     messageFile: r.md
 `;
 
-describe('renderCronCommands', () => {
+describe("renderCronCommands", () => {
   it('returns a shell-quoted line per job that begins with "openclaw cron add"', async () => {
     const textReader = new FakeTextReader();
-    textReader.seed('cron/jobs.yaml', yaml);
-    textReader.seed('r.md', "Multi'line\nmessage");
-    const env = new FakeEnv({ OPENCLAW_MODEL: 'opus' });
+    textReader.seed("cron/jobs.yaml", yaml);
+    textReader.seed("r.md", "Multi'line\nmessage");
+    const env = new FakeEnv({ OPENCLAW_MODEL: "opus" });
     const lines = await renderCronCommands({ textReader, env });
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("openclaw cron add ");

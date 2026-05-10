@@ -1,6 +1,6 @@
 ---
 title: Script-first to layered modular monolith refactor
-date: '2026-05-10'
+date: "2026-05-10"
 category: best-practices
 module: src
 problem_type: best_practice
@@ -66,10 +66,10 @@ Each application use case takes a typed deps object built from port interfaces:
 
 ```typescript
 // src/application/collect-jupiter-price.ts
-import type { HttpClient } from '../ports/http.js';
-import type { JsonStore } from '../ports/json-store.js';
-import type { EnvReader } from '../ports/env.js';
-import type { Clock } from '../ports/clock.js';
+import type { HttpClient } from "../ports/http.js";
+import type { JsonStore } from "../ports/json-store.js";
+import type { EnvReader } from "../ports/env.js";
+import type { Clock } from "../ports/clock.js";
 
 export interface CollectJupiterPriceDeps {
   http: HttpClient;
@@ -92,7 +92,7 @@ const http = new FakeHttp();
 http.setResponse(url, { body: { [SOL_MINT]: { usdPrice: 175.42 } } });
 const jsonStore = new FakeJsonStore();
 const env = new FakeEnv({ SOL_MINT });
-const clock = new FakeClock('2026-05-10T12:30:00.000Z');
+const clock = new FakeClock("2026-05-10T12:30:00.000Z");
 
 await collectJupiterPrice({ http, jsonStore, env, clock });
 expect(jsonStore.writes[0]).toEqual(/* ... */);
@@ -113,8 +113,9 @@ Domain tests are direct unit tests with plain data — no fakes, no infrastructu
 
 ```typescript
 // tests/domain/advisory-policy.test.ts
-expect(derivePosture({ recommendedAction: 'hold', riskLevel: 'normal', feeEnvironment: 'strong' }))
-  .toBe('moderately_aggressive');
+expect(
+  derivePosture({ recommendedAction: "hold", riskLevel: "normal", feeEnvironment: "strong" })
+).toBe("moderately_aggressive");
 ```
 
 ### Job wrappers for cron entrypoints
@@ -163,7 +164,7 @@ currentRangeAssessment: {
 NodeNext module resolution requires `.js` extensions in TypeScript imports:
 
 ```typescript
-import type { HttpClient } from '../ports/http.js';
+import type { HttpClient } from "../ports/http.js";
 ```
 
 ## Why This Matters

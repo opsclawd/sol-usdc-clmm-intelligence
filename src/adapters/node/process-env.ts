@@ -1,5 +1,5 @@
-import 'dotenv/config';
-import type { EnvReader } from '../../ports/env.js';
+import "dotenv/config";
+import type { EnvReader } from "../../ports/env.js";
 
 export class ProcessEnvReader implements EnvReader {
   get(name: string, fallback?: string): string {

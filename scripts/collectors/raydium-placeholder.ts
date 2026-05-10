@@ -9,4 +9,4 @@
  *   data/latest-position-snapshot.json  -> schemas/position-snapshot.schema.json
  ***************************************************************/
 
-console.log('Use scripts/collectors/backend-snapshot.ts or your Fastify Raydium SDK service.');
+console.log("Use scripts/collectors/backend-snapshot.ts or your Fastify Raydium SDK service.");

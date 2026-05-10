@@ -2,12 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "PositionSnapshot",
   "type": "object",
-  "required": [
-    "pair",
-    "timestamp",
-    "source",
-    "inRange"
-  ],
+  "required": ["pair", "timestamp", "source", "inRange"],
   "properties": {
     "pair": {
       "const": "SOL/USDC"

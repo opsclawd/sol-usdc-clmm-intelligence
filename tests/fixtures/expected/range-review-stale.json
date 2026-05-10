@@ -5,11 +5,7 @@
   "confidence": "low",
   "riskLevel": "critical",
   "dataQuality": "stale",
-  "missingInputs": [
-    "price",
-    "pool",
-    "position"
-  ],
+  "missingInputs": ["price", "pool", "position"],
   "currentRangeAssessment": {
     "status": "unknown",
     "breachRisk": "unknown"

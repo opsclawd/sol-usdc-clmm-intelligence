@@ -1,6 +1,6 @@
-import type { HttpClient } from '../ports/http.js';
-import type { JsonStore } from '../ports/json-store.js';
-import type { EnvReader } from '../ports/env.js';
+import type { HttpClient } from "../ports/http.js";
+import type { JsonStore } from "../ports/json-store.js";
+import type { EnvReader } from "../ports/env.js";
 
 export interface CollectBackendSnapshotDeps {
   http: HttpClient;
@@ -21,13 +21,22 @@ export async function collectBackendSnapshot(
   deps: CollectBackendSnapshotDeps
 ): Promise<CollectBackendSnapshotResult> {
   const { http, jsonStore, env } = deps;
-  const base = env.get('CLMM_DATA_API_BASE');
-  const normalized = base.replace(/\/$/, '');
+  const base = env.get("CLMM_DATA_API_BASE");
+  const normalized = base.replace(/\/$/, "");
 
   const targets: SnapshotTarget[] = [
-    { path: 'data/latest-pool-snapshot.json', url: `${normalized}/api/clmm/sol-usdc/pool-snapshot` },
-    { path: 'data/latest-position-snapshot.json', url: `${normalized}/api/clmm/sol-usdc/position-snapshot` },
-    { path: 'data/latest-performance-snapshot.json', url: `${normalized}/api/clmm/sol-usdc/performance-snapshot` }
+    {
+      path: "data/latest-pool-snapshot.json",
+      url: `${normalized}/api/clmm/sol-usdc/pool-snapshot`
+    },
+    {
+      path: "data/latest-position-snapshot.json",
+      url: `${normalized}/api/clmm/sol-usdc/position-snapshot`
+    },
+    {
+      path: "data/latest-performance-snapshot.json",
+      url: `${normalized}/api/clmm/sol-usdc/performance-snapshot`
+    }
   ];
 
   const settled = await Promise.allSettled(
@@ -38,7 +47,7 @@ export async function collectBackendSnapshot(
   );
 
   const failures = settled
-    .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+    .filter((result): result is PromiseRejectedResult => result.status === "rejected")
     .map((result) =>
       result.reason instanceof Error ? result.reason : new Error(String(result.reason))
     );

@@ -6,11 +6,7 @@
   "confidence": "low",
   "riskLevel": "elevated",
   "dataQuality": "stale",
-  "missingInputs": [
-    "price",
-    "pool",
-    "position"
-  ],
+  "missingInputs": ["price", "pool", "position"],
   "clmmPolicy": {
     "posture": "paused",
     "rangeBias": "passive",

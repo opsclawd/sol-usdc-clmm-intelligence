@@ -1,4 +1,4 @@
-import type { JsonStore } from '../../src/ports/json-store.js';
+import type { JsonStore } from "../../src/ports/json-store.js";
 
 export class FakeJsonStore implements JsonStore {
   readonly writes: Array<{ path: string; value: unknown }> = [];

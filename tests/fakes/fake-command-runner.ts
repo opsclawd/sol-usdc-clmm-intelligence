@@ -1,4 +1,4 @@
-import type { CommandRunner } from '../../src/ports/command-runner.js';
+import type { CommandRunner } from "../../src/ports/command-runner.js";
 
 export class FakeCommandRunner implements CommandRunner {
   readonly calls: Array<{ command: string; args: string[] }> = [];
