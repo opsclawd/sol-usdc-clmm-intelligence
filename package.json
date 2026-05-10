@@ -17,7 +17,7 @@
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --check .",
     "boundaries": "depcruise --config .dependency-cruiser.cjs src",
-    "verify": "pnpm typecheck && pnpm test && pnpm boundaries"
+    "verify": "pnpm typecheck && pnpm lint && pnpm format && pnpm test && pnpm boundaries"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

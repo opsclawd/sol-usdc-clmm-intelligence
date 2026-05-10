@@ -47,7 +47,7 @@ export async function loadCronConfig(deps: LoadCronConfigDeps): Promise<LoadedCr
 
   const preparedJobs: PreparedCronJob[] = await Promise.all(
     config.jobs.map(async (job) => {
-      const message = await textReader.readText(job.messageFile);
+      const message = (await textReader.readText(job.messageFile)).trimEnd();
       const model = job.model ?? defaultModel;
       const thinking = job.thinking ?? defaultThinking;
       return {
