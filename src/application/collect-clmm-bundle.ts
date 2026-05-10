@@ -32,6 +32,27 @@ function validateEnvelope(response: Record<string, unknown>): ClmmBundle {
     throw new Error("Bundle missing positions array");
   }
 
+  if (b.source !== "orca") {
+    throw new Error(`Expected source orca, got ${String(b.source)}`);
+  }
+
+  if (typeof b.observedAtUnixMs !== "number") {
+    throw new Error("Bundle missing observedAtUnixMs");
+  }
+
+  if (!Array.isArray(b.alerts)) {
+    throw new Error("Bundle missing alerts array");
+  }
+
+  if (!b.dataQuality || typeof b.dataQuality !== "object") {
+    throw new Error("Bundle missing dataQuality");
+  }
+
+  const pool = b.pool as Record<string, unknown>;
+  if (typeof pool.currentPrice !== "number") {
+    throw new Error("Bundle pool missing currentPrice");
+  }
+
   return b as unknown as ClmmBundle;
 }
 

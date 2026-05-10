@@ -67,6 +67,7 @@ At minimum, for local deterministic runs:
 ```bash
 CLMM_DATA_API_BASE=http://localhost:3001
 CLMM_INSIGHTS_API_KEY=<hex-key-from-clmm-v2>
+WALLET_PUBLIC_KEY=<your-solana-wallet-address>
 SOL_MINT=So11111111111111111111111111111111111111112
 USDC_MINT=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
 ```
