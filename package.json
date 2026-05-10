@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "collect:price": "tsx scripts/collectors/jupiter-price.ts",
     "collect:backend": "tsx scripts/collectors/backend-snapshot.ts",
+    "collect:clmm-bundle": "tsx scripts/collectors/clmm-bundle.ts",
     "insight:daily": "tsx scripts/generate/daily-insight.ts",
     "review:range": "tsx scripts/generate/range-review.ts",
     "review:weekly": "tsx scripts/generate/weekly-review.ts",

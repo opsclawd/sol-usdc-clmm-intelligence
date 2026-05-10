@@ -1,5 +1,6 @@
 export { jupiterPriceJob } from "./jupiter-price-job.js";
 export { backendSnapshotJob } from "./backend-snapshot-job.js";
+export { clmmBundleJob } from "./clmm-bundle-job.js";
 export { dailyInsightJob } from "./daily-insight-job.js";
 export { rangeReviewJob } from "./range-review-job.js";
 export { weeklyReviewJob } from "./weekly-review-job.js";
