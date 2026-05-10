@@ -49,6 +49,7 @@ describe("collectClmmBundle", () => {
     const written = jsonStore.writes[0]!.value as Record<string, unknown>;
     expect(written.pair).toBe("SOL/USDC");
     expect(Array.isArray(written.positions)).toBe(true);
+    expect(http.calls[0]!.headers["x-insights-api-key"]).toBe("test-key-123");
   });
 
   it("throws when response has no bundle field", async () => {
