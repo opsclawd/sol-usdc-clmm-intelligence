@@ -52,6 +52,24 @@ function validateEnvelope(response: Record<string, unknown>): ClmmBundle {
   if (typeof pool.currentPrice !== "number") {
     throw new Error("Bundle pool missing currentPrice");
   }
+  if (typeof pool.poolId !== "string") {
+    throw new Error("Bundle pool missing poolId");
+  }
+  if (typeof pool.sqrtPrice !== "string") {
+    throw new Error("Bundle pool missing sqrtPrice");
+  }
+  if (typeof pool.tickCurrentIndex !== "number") {
+    throw new Error("Bundle pool missing tickCurrentIndex");
+  }
+  if (typeof pool.tickSpacing !== "number") {
+    throw new Error("Bundle pool missing tickSpacing");
+  }
+  if (typeof pool.feeRate !== "number") {
+    throw new Error("Bundle pool missing feeRate");
+  }
+  if (typeof pool.poolLiquidity !== "string") {
+    throw new Error("Bundle pool missing poolLiquidity");
+  }
 
   return b as unknown as ClmmBundle;
 }

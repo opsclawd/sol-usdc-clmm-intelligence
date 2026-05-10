@@ -74,6 +74,28 @@ describe("collectClmmBundle", () => {
     await expect(collectClmmBundle({ http, jsonStore, env })).rejects.toThrow("pair");
   });
 
+  it("throws when pool payload is missing critical math fields", async () => {
+    const http = new FakeHttp();
+    http.setResponse("http://api.test/insights/sol-usdc/bundle/11111111111111111111111111111111", {
+      body: {
+        bundle: {
+          pair: "SOL/USDC",
+          source: "orca",
+          observedAtUnixMs: 1700000000000,
+          pool: { currentPrice: 150.5 },
+          srLevels: null,
+          positions: [],
+          alerts: [],
+          dataQuality: { warnings: [], isPartial: false, missingSources: [] }
+        }
+      }
+    });
+    const jsonStore = new FakeJsonStore();
+    const env = new FakeEnv(VALID_ENV);
+
+    await expect(collectClmmBundle({ http, jsonStore, env })).rejects.toThrow("pool");
+  });
+
   it("throws when CLMM_INSIGHTS_API_KEY is missing", async () => {
     const http = new FakeHttp();
     const jsonStore = new FakeJsonStore();
