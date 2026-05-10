@@ -2,6 +2,7 @@
   "name": "clmm-autopilot-pipeline",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.33.0",
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -14,7 +15,7 @@
     "cron:sync": "tsx scripts/openclaw/sync-cron.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "eslint . --max-warnings 0",
+    "lint": "eslint . --ext .ts --max-warnings 0",
     "format": "prettier --check .",
     "boundaries": "depcruise --config .dependency-cruiser.cjs src",
     "verify": "pnpm typecheck && pnpm lint && pnpm format && pnpm test && pnpm boundaries"
