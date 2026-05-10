@@ -15,16 +15,16 @@ OpenClaw cron wakes an isolated agent
 
 Pipeline code lives under `src/`:
 
-- `src/contracts` — typed snapshot input and output shapes plus cron config types.
-- `src/domain` — pure decision logic (range status, fee classification, data-quality classification, advisory policy, daily / range / weekly decision assembly, cron command building). No I/O, no clock, no env.
+- `src/contracts` — typed snapshot input shapes, cron config types, and output DTOs that compose from domain decision types with transport fields (e.g., `timestamp`).
+- `src/domain` — pure decision logic (range status, fee classification, data-quality classification, advisory policy, daily / range / weekly decision assembly) plus shared domain types (`types.ts`). No I/O, no clock, no env.
 - `src/ports` — interfaces for HTTP, JSON file storage, text reading, env, clock, and command execution.
-- `src/application` — use cases that orchestrate domain functions through ports (collect price, collect backend snapshot, generate daily/range/weekly reviews, render and sync cron jobs).
+- `src/application` — use cases that orchestrate domain functions through ports (collect price, collect backend snapshot, generate daily/range/weekly reviews, render and sync cron jobs) plus cron command building.
 - `src/jobs` — thin orchestration wrappers that bind use cases to dependency objects so cron-driven entrypoints have a single import point.
 - `src/adapters/node` — concrete Node implementations of every port plus a `createNodeRuntime()` composition root.
 
 `scripts/*` are thin entrypoints. Each builds the Node runtime, calls one job, prints output, and sets `process.exitCode` on failure. `pnpm` script names and JSON output paths are unchanged.
 
-Boundary rules are enforced by `dependency-cruiser` (`pnpm boundaries`). The combined `pnpm verify` script runs typecheck, tests, and boundary checks.
+Boundary rules are enforced by `dependency-cruiser` (`pnpm boundaries`) with `tsPreCompilationDeps: true` so type-only imports are included in enforcement. The combined `pnpm verify` script runs typecheck, tests, and boundary checks.
 
 ## No-execution boundary
 

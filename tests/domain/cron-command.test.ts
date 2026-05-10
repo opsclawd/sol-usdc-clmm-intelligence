@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCronAddArgs } from '../../src/domain/cron-command.js';
+import { buildCronAddArgs } from '../../src/application/cron-command.js';
 
 describe('buildCronAddArgs', () => {
   it('builds the minimal argv set when no defaults or delivery are present', () => {

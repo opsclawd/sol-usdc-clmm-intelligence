@@ -3,7 +3,7 @@ import type {
   PositionSnapshot,
   PriceSnapshot
 } from '../contracts/snapshots.js';
-import type { DailyInsight } from '../contracts/outputs.js';
+import type { RecommendedAction, Confidence, RiskLevel, DataQuality, Posture, RangeBias, RebalanceSensitivity, RangeStatus, BreachRisk, FeeEnvironment } from './types.js';
 import { assessDataQuality } from './data-quality.js';
 import { assessRangeStatus } from './range-status.js';
 import { classifyFeeEnvironment } from './fee-classification.js';
@@ -20,7 +20,43 @@ export interface DailyInsightInputs {
   position?: PositionSnapshot;
 }
 
-export type DailyInsightDecision = Omit<DailyInsight, 'timestamp'>;
+export interface DailyInsightDecision {
+  pair: 'SOL/USDC';
+  marketRegime: string;
+  fundamentalRegime: 'unknown';
+  recommendedAction: RecommendedAction;
+  confidence: Confidence;
+  riskLevel: RiskLevel;
+  dataQuality: DataQuality;
+  missingInputs: string[];
+  clmmPolicy: {
+    posture: Posture;
+    rangeBias: RangeBias;
+    rebalanceSensitivity: RebalanceSensitivity;
+    maxCapitalDeploymentPercent: number;
+  };
+  currentRangeAssessment: {
+    status: RangeStatus;
+    breachRisk: BreachRisk;
+    distanceToLowerPercent?: number;
+    distanceToUpperPercent?: number;
+  };
+  feeEnvironment: {
+    classification: FeeEnvironment;
+    feeApr?: number;
+    feeAprTrend: 'rising' | 'flat' | 'falling' | 'unknown';
+    volume24hUsd?: number;
+    volumeTrend: 'rising' | 'flat' | 'falling' | 'unknown';
+  };
+  price: {
+    spotPrice?: number;
+    jupiterPriceUsd?: number;
+  };
+  reasoning: string[];
+  sources: string[];
+  requiresHumanApproval: boolean;
+  executionPermittedByAgent: false;
+}
 
 export function makeDailyInsightDecision(
   inputs: DailyInsightInputs

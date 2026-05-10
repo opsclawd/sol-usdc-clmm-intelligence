@@ -1,5 +1,5 @@
 import type { PoolSnapshot } from '../contracts/snapshots.js';
-import type { FeeEnvironment } from '../contracts/outputs.js';
+import type { FeeEnvironment } from './types.js';
 
 export function classifyFeeEnvironment(pool?: PoolSnapshot): FeeEnvironment {
   if (!pool || pool.feeApr == null) return 'unknown';

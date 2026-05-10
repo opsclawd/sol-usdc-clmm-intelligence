@@ -4,7 +4,7 @@ import type { CommandRunner } from '../ports/command-runner.js';
 import {
   buildCronAddArgs,
   type CronCommand
-} from '../domain/cron-command.js';
+} from './cron-command.js';
 import { loadCronConfig } from './load-cron-config.js';
 
 export interface SyncCronDeps {

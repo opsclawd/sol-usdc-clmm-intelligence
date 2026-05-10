@@ -1,4 +1,4 @@
-import type { DataQuality } from '../contracts/outputs.js';
+import type { DataQuality } from './types.js';
 
 export interface DataQualityAssessment {
   quality: DataQuality;

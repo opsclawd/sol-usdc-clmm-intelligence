@@ -33,7 +33,6 @@ module.exports = {
           '^src/jobs',
           '^src/adapters',
           '^src/ports',
-          '^src/domain',
           '^scripts'
         ]
       }
@@ -72,6 +71,7 @@ module.exports = {
   options: {
     tsConfig: { fileName: 'tsconfig.json' },
     doNotFollow: { path: 'node_modules' },
+    tsPreCompilationDeps: true,
     includeOnly: '^src',
     enhancedResolveOptions: {
       exportsFields: ['exports'],

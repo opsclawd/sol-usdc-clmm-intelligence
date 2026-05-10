@@ -3,7 +3,7 @@ import type {
   PositionSnapshot,
   PriceSnapshot
 } from '../contracts/snapshots.js';
-import type { RangeReview } from '../contracts/outputs.js';
+import type { RecommendedAction, Confidence, RiskLevel, DataQuality, RangeStatus, BreachRisk } from './types.js';
 import { assessDataQuality } from './data-quality.js';
 import { assessRangeStatus } from './range-status.js';
 
@@ -13,7 +13,32 @@ export interface RangeReviewInputs {
   position?: PositionSnapshot;
 }
 
-export type RangeReviewDecision = Omit<RangeReview, 'timestamp'>;
+export interface RangeReviewDecision {
+  pair: 'SOL/USDC';
+  recommendedAction: RecommendedAction;
+  shouldRebalance: boolean;
+  confidence: Confidence;
+  riskLevel: RiskLevel;
+  dataQuality: DataQuality;
+  missingInputs: string[];
+  currentRangeAssessment: {
+    status: RangeStatus;
+    breachRisk: BreachRisk;
+    lowerPrice?: number;
+    upperPrice?: number;
+    spotPrice?: number;
+    distanceToLowerPercent?: number;
+    distanceToUpperPercent?: number;
+    inRange?: boolean;
+  };
+  recommendedRange: {
+    type: 'backend_must_calculate_exact_ticks' | 'unchanged';
+    widthBias: 'wider' | 'unchanged';
+  };
+  reasoning: string[];
+  requiresHumanApproval: boolean;
+  executionPermittedByAgent: false;
+}
 
 const REBALANCE_ACTIONS = new Set(['tighten_range', 'widen_range', 'exit_range']);
 

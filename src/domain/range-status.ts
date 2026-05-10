@@ -4,7 +4,7 @@ import type {
   RangeStatus,
   RecommendedAction,
   RiskLevel
-} from '../contracts/outputs.js';
+} from './types.js';
 
 export interface RangeAssessment {
   status: RangeStatus;

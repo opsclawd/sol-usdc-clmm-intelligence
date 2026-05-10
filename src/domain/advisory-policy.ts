@@ -6,7 +6,7 @@ import type {
   RebalanceSensitivity,
   RecommendedAction,
   RiskLevel
-} from '../contracts/outputs.js';
+} from './types.js';
 
 export interface PolicyInputs {
   recommendedAction: RecommendedAction;

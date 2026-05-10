@@ -1,6 +1,6 @@
 import type { TextReader } from '../ports/text-reader.js';
 import type { EnvReader } from '../ports/env.js';
-import { buildCronAddArgs } from '../domain/cron-command.js';
+import { buildCronAddArgs } from './cron-command.js';
 import { loadCronConfig } from './load-cron-config.js';
 
 export interface RenderCronCommandsDeps {

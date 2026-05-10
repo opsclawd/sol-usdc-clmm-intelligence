@@ -1,5 +1,5 @@
-import type { WeeklyReview } from '../contracts/outputs.js';
 import type { PerformanceSnapshot } from '../contracts/snapshots.js';
+import type { DataQuality } from './types.js';
 
 export interface WeeklyReviewInputs {
   performance?: PerformanceSnapshot;
@@ -7,7 +7,22 @@ export interface WeeklyReviewInputs {
   rebalance?: Record<string, unknown>;
 }
 
-export type WeeklyReviewDecision = Omit<WeeklyReview, 'timestamp'>;
+export interface WeeklyReviewDecision {
+  pair: 'SOL/USDC';
+  dataQuality: Exclude<DataQuality, 'complete'>;
+  summary: string;
+  inputs: {
+    hasPerformanceSnapshot: boolean;
+    hasDailyInsight: boolean;
+    hasRebalanceRecommendation: boolean;
+  };
+  decisionQualityReview: {
+    grade: 'ungraded';
+    reason: string;
+  };
+  proposedPolicyChanges: unknown[];
+  executionPermittedByAgent: false;
+}
 
 export function makeWeeklyReviewDecision(
   inputs: WeeklyReviewInputs
