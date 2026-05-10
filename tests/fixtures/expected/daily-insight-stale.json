@@ -1,0 +1,40 @@
+{
+  "pair": "SOL/USDC",
+  "marketRegime": "range_unknown_fee_unknown",
+  "fundamentalRegime": "unknown",
+  "recommendedAction": "pause_rebalances",
+  "confidence": "low",
+  "riskLevel": "elevated",
+  "dataQuality": "stale",
+  "missingInputs": [
+    "price",
+    "pool",
+    "position"
+  ],
+  "clmmPolicy": {
+    "posture": "paused",
+    "rangeBias": "passive",
+    "rebalanceSensitivity": "paused",
+    "maxCapitalDeploymentPercent": 50
+  },
+  "currentRangeAssessment": {
+    "status": "unknown",
+    "breachRisk": "unknown"
+  },
+  "feeEnvironment": {
+    "classification": "unknown",
+    "feeAprTrend": "unknown",
+    "volumeTrend": "unknown"
+  },
+  "price": {},
+  "reasoning": [
+    "Missing inputs: price, pool, position.",
+    "Range status is unknown with unknown breach risk.",
+    "Fee environment is unknown.",
+    "Recommendation remains advisory only; backend and wallet control execution."
+  ],
+  "sources": [],
+  "requiresHumanApproval": true,
+  "executionPermittedByAgent": false,
+  "timestamp": "2026-05-09T13:00:00.000Z"
+}

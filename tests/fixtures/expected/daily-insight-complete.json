@@ -1,0 +1,47 @@
+{
+  "pair": "SOL/USDC",
+  "marketRegime": "range_healthy_fee_strong",
+  "fundamentalRegime": "unknown",
+  "recommendedAction": "hold",
+  "confidence": "medium",
+  "riskLevel": "normal",
+  "dataQuality": "complete",
+  "missingInputs": [],
+  "clmmPolicy": {
+    "posture": "moderately_aggressive",
+    "rangeBias": "medium",
+    "rebalanceSensitivity": "normal",
+    "maxCapitalDeploymentPercent": 70
+  },
+  "currentRangeAssessment": {
+    "status": "healthy",
+    "breachRisk": "low",
+    "distanceToLowerPercent": 14.5,
+    "distanceToUpperPercent": 14
+  },
+  "feeEnvironment": {
+    "classification": "strong",
+    "feeApr": 95,
+    "feeAprTrend": "rising",
+    "volume24hUsd": 12000000,
+    "volumeTrend": "rising"
+  },
+  "price": {
+    "spotPrice": 175.5,
+    "jupiterPriceUsd": 175.4
+  },
+  "reasoning": [
+    "Core price, pool, and position inputs are available.",
+    "Range status is healthy with low breach risk.",
+    "Fee environment is strong.",
+    "Recommendation remains advisory only; backend and wallet control execution."
+  ],
+  "sources": [
+    "jupiter-price-v3",
+    "fastify-clmm-backend",
+    "fastify-clmm-backend"
+  ],
+  "requiresHumanApproval": false,
+  "executionPermittedByAgent": false,
+  "timestamp": "2026-05-09T13:00:00.000Z"
+}
