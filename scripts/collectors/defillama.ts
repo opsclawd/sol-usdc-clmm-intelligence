@@ -1,14 +1,13 @@
-import { getJson } from '../lib/http.js';
-import { writeJsonFile } from '../lib/fs.js';
+import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
+import { defillamaJob } from '../../src/jobs/defillama-job.js';
 
 async function main(): Promise<void> {
-  // Placeholder collector. Keep raw chain fundamentals outside Git in production.
-  const chainTvl = await getJson<unknown>('https://api.llama.fi/v2/chains');
-  await writeJsonFile('data/latest-defillama-solana-raw.json', {
-    timestamp: new Date().toISOString(),
-    source: 'defillama',
-    raw: chainTvl
-  });
+  const runtime = createNodeRuntime();
+  await defillamaJob({
+    http: runtime.http,
+    jsonStore: runtime.jsonStore,
+    clock: runtime.clock
+  })();
 }
 
 main().catch((error) => {

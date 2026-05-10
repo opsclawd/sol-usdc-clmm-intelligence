@@ -1,0 +1,7 @@
+timezone: America/Edmonton
+session: isolated
+modelEnv: OPENCLAW_MODEL
+jobs:
+  - name: clmm-daily
+    cron: "0 7 * * *"
+    messageFile: tests/fixtures/cron/routines/daily.md

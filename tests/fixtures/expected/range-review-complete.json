@@ -1,0 +1,32 @@
+{
+  "pair": "SOL/USDC",
+  "recommendedAction": "hold",
+  "shouldRebalance": false,
+  "confidence": "medium",
+  "riskLevel": "normal",
+  "dataQuality": "complete",
+  "missingInputs": [],
+  "currentRangeAssessment": {
+    "status": "healthy",
+    "breachRisk": "low",
+    "lowerPrice": 150,
+    "upperPrice": 200,
+    "spotPrice": 175.5,
+    "distanceToLowerPercent": 14.5,
+    "distanceToUpperPercent": 14,
+    "inRange": true
+  },
+  "recommendedRange": {
+    "type": "unchanged",
+    "widthBias": "unchanged"
+  },
+  "reasoning": [
+    "Core inputs available.",
+    "Range status is healthy.",
+    "Breach risk is low.",
+    "No deterministic rebalance trigger confirmed."
+  ],
+  "requiresHumanApproval": false,
+  "executionPermittedByAgent": false,
+  "timestamp": "2026-05-09T13:00:00.000Z"
+}

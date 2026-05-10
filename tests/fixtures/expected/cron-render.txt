@@ -1,0 +1,1 @@
+openclaw cron add --name 'clmm-daily' --cron '0 7 * * *' --tz 'America/Edmonton' --session 'isolated' --message 'Daily routine.' --model 'opus'

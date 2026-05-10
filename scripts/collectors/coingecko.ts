@@ -1,17 +1,14 @@
-import { getOptionalEnv } from '../lib/env.js';
-import { getJson } from '../lib/http.js';
-import { writeJsonFile } from '../lib/fs.js';
+import { createNodeRuntime } from '../../src/adapters/node/composition-root.js';
+import { coingeckoJob } from '../../src/jobs/coingecko-job.js';
 
 async function main(): Promise<void> {
-  const apiKey = getOptionalEnv('COINGECKO_API_KEY');
-  const headers = apiKey ? { 'x-cg-demo-api-key': apiKey } : {};
-  const url = 'https://api.coingecko.com/api/v3/coins/solana?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false';
-  const raw = await getJson<unknown>(url, headers);
-  await writeJsonFile('data/latest-coingecko-solana-raw.json', {
-    timestamp: new Date().toISOString(),
-    source: 'coingecko',
-    raw
-  });
+  const runtime = createNodeRuntime();
+  await coingeckoJob({
+    http: runtime.http,
+    jsonStore: runtime.jsonStore,
+    env: runtime.env,
+    clock: runtime.clock
+  })();
 }
 
 main().catch((error) => {
