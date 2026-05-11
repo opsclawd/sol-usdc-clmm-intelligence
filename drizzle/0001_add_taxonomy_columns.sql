@@ -19,6 +19,10 @@ ALTER TABLE intelligence.normalized_observations
   ADD COLUMN IF NOT EXISTS stale_behavior VARCHAR(24),
   ADD COLUMN IF NOT EXISTS provenance JSONB NOT NULL DEFAULT '{}'::jsonb;
 
+-- Backfill evidence_family from observation_kind for existing rows
+UPDATE intelligence.normalized_observations SET evidence_family = 'price_quality' WHERE observation_kind IN ('price_quote');
+UPDATE intelligence.normalized_observations SET evidence_family = 'clmm_economics' WHERE observation_kind IN ('fee_metrics', 'volume_metrics');
+
 ALTER TABLE intelligence.normalized_observations
   ADD CONSTRAINT chk_norm_obs_signal_class CHECK (signal_class IN ('deterministic', 'probabilistic', 'contextual')),
   ADD CONSTRAINT chk_norm_obs_evidence_family CHECK (evidence_family IN ('clmm_state', 'price_quality', 'clmm_economics', 'execution_safety', 'market_regime', 'support_resistance', 'on_chain_flow', 'perp_liquidation', 'macro_protocol_risk')),
@@ -55,6 +59,41 @@ ALTER TABLE intelligence.derived_features
 ALTER TABLE intelligence.derived_features RENAME COLUMN confidence TO confidence_legacy;
 ALTER TABLE intelligence.derived_features ADD COLUMN IF NOT EXISTS confidence JSONB NOT NULL DEFAULT '{}'::jsonb;
 
+-- Preserve legacy confidence value into new JSONB confidence and confidence_level columns
+UPDATE intelligence.derived_features SET
+  confidence = jsonb_build_object(
+    'components', jsonb_build_object(
+      'sourceReliability', 1,
+      'dataCompleteness', 1,
+      'derivationConfidence', 1,
+      'llmConfidence', null
+    ),
+    'compositeScore', 1,
+    'level', LOWER(confidence_legacy),
+    'weightingVersion', 'v0_legacy',
+    'reasons', '[]'::jsonb
+  ),
+  confidence_level = LOWER(confidence_legacy)
+WHERE confidence_legacy IS NOT NULL;
+
+-- Preserve input_lineage into provenance before dropping
+UPDATE intelligence.derived_features SET provenance = jsonb_build_object(
+  'sourceRefs', '[]'::jsonb,
+  'rawObservationRefs', '[]'::jsonb,
+  'derivedFromRefs', '[]'::jsonb,
+  'processRef', jsonb_build_object(
+    'collector', 'legacy',
+    'jobName', 'legacy',
+    'pipelineRunId', null,
+    'codeVersion', null,
+    'modelVersion', null
+  ),
+  'codeVersion', 'legacy',
+  'runId', null,
+  'legacyInputLineage', COALESCE(input_lineage, 'null'::jsonb)
+)
+WHERE input_lineage IS NOT NULL;
+
 -- Replace input_lineage with provenance (already added above); drop input_lineage
 ALTER TABLE intelligence.derived_features DROP COLUMN IF EXISTS input_lineage;
 
@@ -65,11 +104,13 @@ ALTER TABLE intelligence.derived_features
   ADD CONSTRAINT chk_features_confidence_level CHECK (confidence_level IS NULL OR confidence_level IN ('low', 'medium', 'high')),
   ADD CONSTRAINT chk_features_stale_behavior CHECK (stale_behavior IS NULL OR stale_behavior IN ('exclude', 'degrade_confidence', 'allow_context_only'));
 
+-- Backfill evidence_family from feature_kind for existing rows
+UPDATE intelligence.derived_features SET evidence_family = 'clmm_economics' WHERE feature_kind IN ('fee_apr', 'fee-apr');
+UPDATE intelligence.derived_features SET evidence_family = 'price_quality' WHERE feature_kind IN ('price_quote', 'oracle_divergence', 'volatility_24h');
+
 -- Drop old confidence(varchar) column and its index
 DROP INDEX IF EXISTS intelligence.idx_features_kind_confidence;
 ALTER TABLE intelligence.derived_features DROP COLUMN IF EXISTS confidence_legacy;
-
--- Add confidence_composite and confidence_level columns were added in the first ALTER TABLE block above
 
 -- ═══════════════════════════════════════════════════
 -- evidence_bundles
@@ -85,6 +126,24 @@ ALTER TABLE intelligence.evidence_bundles
   ADD COLUMN IF NOT EXISTS is_stale BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS stale_behavior VARCHAR(24),
   ADD COLUMN IF NOT EXISTS provenance JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- Preserve input_lineage into provenance before dropping
+UPDATE intelligence.evidence_bundles SET provenance = jsonb_build_object(
+  'sourceRefs', '[]'::jsonb,
+  'rawObservationRefs', '[]'::jsonb,
+  'derivedFromRefs', '[]'::jsonb,
+  'processRef', jsonb_build_object(
+    'collector', 'legacy',
+    'jobName', 'legacy',
+    'pipelineRunId', null,
+    'codeVersion', null,
+    'modelVersion', null
+  ),
+  'codeVersion', 'legacy',
+  'runId', null,
+  'legacyInputLineage', COALESCE(input_lineage, 'null'::jsonb)
+)
+WHERE input_lineage IS NOT NULL;
 
 ALTER TABLE intelligence.evidence_bundles DROP COLUMN IF EXISTS input_lineage;
 
@@ -113,6 +172,40 @@ ALTER TABLE intelligence.research_briefs ADD COLUMN IF NOT EXISTS confidence JSO
 ALTER TABLE intelligence.research_briefs ADD COLUMN IF NOT EXISTS confidence_composite NUMERIC(5,4);
 ALTER TABLE intelligence.research_briefs ADD COLUMN IF NOT EXISTS confidence_level VARCHAR(8);
 
+-- Preserve legacy confidence value into new JSONB confidence and confidence_level columns
+UPDATE intelligence.research_briefs SET
+  confidence = jsonb_build_object(
+    'components', jsonb_build_object(
+      'sourceReliability', 1,
+      'dataCompleteness', 1,
+      'derivationConfidence', 1,
+      'llmConfidence', null
+    ),
+    'compositeScore', 1,
+    'level', LOWER(confidence_legacy),
+    'weightingVersion', 'v0_legacy',
+    'reasons', '[]'::jsonb
+  ),
+  confidence_level = LOWER(confidence_legacy)
+WHERE confidence_legacy IS NOT NULL;
+
+-- Preserve source_refs into provenance before dropping
+UPDATE intelligence.research_briefs SET provenance = jsonb_build_object(
+  'sourceRefs', COALESCE(source_refs, '[]'::jsonb),
+  'rawObservationRefs', '[]'::jsonb,
+  'derivedFromRefs', '[]'::jsonb,
+  'processRef', jsonb_build_object(
+    'collector', 'legacy',
+    'jobName', 'legacy',
+    'pipelineRunId', null,
+    'codeVersion', null,
+    'modelVersion', null
+  ),
+  'codeVersion', 'legacy',
+  'runId', null
+)
+WHERE source_refs IS NOT NULL;
+
 -- Drop old columns
 ALTER TABLE intelligence.research_briefs DROP COLUMN IF EXISTS confidence_legacy;
 ALTER TABLE intelligence.research_briefs DROP COLUMN IF EXISTS source_refs;
@@ -122,8 +215,16 @@ ALTER TABLE intelligence.research_briefs
   ADD CONSTRAINT chk_brief_evidence_family CHECK (evidence_family IS NULL OR evidence_family IN ('clmm_state', 'price_quality', 'clmm_economics', 'execution_safety', 'market_regime', 'support_resistance', 'on_chain_flow', 'perp_liquidation', 'macro_protocol_risk')),
   ADD CONSTRAINT chk_brief_confidence_composite CHECK (confidence_composite IS NULL OR (confidence_composite >= 0 AND confidence_composite <= 1)),
   ADD CONSTRAINT chk_brief_confidence_level CHECK (confidence_level IS NULL OR confidence_level IN ('low', 'medium', 'high')),
-  ADD CONSTRAINT chk_brief_stale_behavior CHECK (stale_behavior IS NULL OR stale_behavior IN ('exclude', 'degrade_confidence', 'allow_context_only')),
-  ADD CONSTRAINT chk_brief_taxonomy_summary_required CHECK (evidence_family IS NOT NULL OR taxonomy_summary IS NOT NULL);
+  ADD CONSTRAINT chk_brief_stale_behavior CHECK (stale_behavior IS NULL OR stale_behavior IN ('exclude', 'degrade_confidence', 'allow_context_only'));
+
+-- Backfill evidence_family for existing briefs (contextual briefs get the default family)
+UPDATE intelligence.research_briefs SET evidence_family = 'clmm_state' WHERE evidence_family IS NULL AND taxonomy_summary IS NULL;
+
+-- Add the taxonomy_summary constraint as NOT VALID so it doesn't fail on existing rows,
+-- then validate after backfill
+ALTER TABLE intelligence.research_briefs
+  ADD CONSTRAINT chk_brief_taxonomy_summary_required CHECK (evidence_family IS NOT NULL OR taxonomy_summary IS NOT NULL) NOT VALID;
+ALTER TABLE intelligence.research_briefs VALIDATE CONSTRAINT chk_brief_taxonomy_summary_required;
 
 -- ═══════════════════════════════════════════════════
 -- Kind name migration: kebab-case → snake_case
