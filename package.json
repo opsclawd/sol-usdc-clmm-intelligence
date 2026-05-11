@@ -19,7 +19,7 @@
     "prepare": "husky || true",
     "db:generate": "drizzle-kit generate",
     "db:provision-roles": "tsx scripts/db-provision-roles.ts",
-    "db:migrate": "tsx scripts/db-provision-roles.ts && tsx scripts/db-ensure-schema.ts && drizzle-kit migrate",
+    "db:migrate": "tsx scripts/db-ensure-schema.ts && drizzle-kit migrate",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
