@@ -66,13 +66,7 @@ module.exports = {
       severity: "error",
       from: { path: "^src/db" },
       to: {
-        path: [
-          "^src/application",
-          "^src/jobs",
-          "^src/adapters",
-          "^src/scripts",
-          "^src/ports"
-        ]
+        path: ["^src/application", "^src/jobs", "^src/adapters", "^src/scripts", "^src/ports"]
       }
     },
     {
