@@ -15,10 +15,10 @@ OpenClaw cron wakes an isolated agent
 
 Pipeline code lives under `src/`:
 
-- `src/contracts` — typed snapshot input shapes, cron config types, and output DTOs that compose from domain decision types with transport fields (e.g., `timestamp`).
-- `src/domain` — pure decision logic (range status, fee classification, data-quality classification, advisory policy, daily / range / weekly decision assembly) plus shared domain types (`types.ts`). No I/O, no clock, no env.
+- `src/contracts` — canonical ClmmBundle contract types, cron config types, and PriceSnapshot type.
+- `src/domain` — pure logic (cron command building). No I/O, no clock, no env.
 - `src/ports` — interfaces for HTTP, JSON file storage, text reading, env, clock, and command execution.
-- `src/application` — use cases that orchestrate domain functions through ports (collect price, collect backend snapshot, generate daily/range/weekly reviews, render and sync cron jobs) plus cron command building.
+- `src/application` — use cases that orchestrate through ports (collect clmm bundle, collect price, render and sync cron jobs).
 - `src/jobs` — thin orchestration wrappers that bind use cases to dependency objects so cron-driven entrypoints have a single import point.
 - `src/adapters/node` — concrete Node implementations of every port plus a `createNodeRuntime()` composition root.
 
@@ -72,15 +72,13 @@ Those are deterministic backend responsibilities. The LLM is allowed to advise o
 ## Data flow
 
 ```text
-Raydium/Jupiter/DefiLlama/CoinGecko
-          ↓
-Fastify CLMM backend + database
-          ↓
-repo scripts collect snapshots
-          ↓
-outputs/*.json
-          ↓
-OpenClaw agent summary + memory updates
-          ↓
-dashboard / Telegram / ClickUp / operator review
+Jupiter/DefiLlama/CoinGecko       clmm-v2 (/insights/sol-usdc/*)
+          ↓                                     ↓
+    price collector                          bundle collector
+          ↓                                     ↓
+data/latest-price-snapshot.json       data/latest-clmm-bundle.json
+          ↓                                     ↓
+              OpenClaw agent summary + memory updates
+                              ↓
+            dashboard / Telegram / ClickUp / operator review
 ```

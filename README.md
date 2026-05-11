@@ -10,7 +10,7 @@ This repo is the **source of truth for pipeline logic**: prompts, policies, sche
 Git repo                     = prompts, policies, schemas, routine specs, durable memory
 OpenClaw Gateway cron         = scheduled isolated agent runs
 Postgres / backend database   = raw market, pool, position, and performance snapshots
-Fastify backend               = deterministic calculations, validation, transaction preparation
+clmm-v2 backend (/insights/sol-usdc/*) = deterministic calculations, validation, bundle delivery
 Wallet / signer               = final authority for execution
 ```
 
@@ -32,9 +32,7 @@ The render step prints the OpenClaw commands needed to register the cron jobs de
 
 ```bash
 pnpm collect:price        # writes data/latest-price-snapshot.json from Jupiter
-pnpm insight:daily        # writes outputs/sol-usdc-daily-insight.json
-pnpm review:range         # writes outputs/sol-usdc-rebalance-recommendation.json
-pnpm review:weekly        # writes outputs/weekly-clmm-review.json
+pnpm collect:clmm-bundle  # fetches and writes SOL/USDC CLMM bundle from clmm-v2
 pnpm cron:render          # prints OpenClaw cron add commands
 pnpm cron:sync -- --apply # actually creates OpenClaw cron jobs
 ```
@@ -68,6 +66,8 @@ At minimum, for local deterministic runs:
 
 ```bash
 CLMM_DATA_API_BASE=http://localhost:3001
+CLMM_INSIGHTS_API_KEY=<hex-key-from-clmm-v2>
+WALLET_PUBLIC_KEY=<your-solana-wallet-address>
 SOL_MINT=So11111111111111111111111111111111111111112
 USDC_MINT=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
 ```
@@ -99,12 +99,3 @@ outputs/                          Latest structured outputs for dashboard/backen
 memory/                           Durable agent memory and review logs
 docs/                             Architecture and runbook
 ```
-
-## Promotion path
-
-1. **Recommendation-only**: generate insight JSON. No trades.
-2. **Paper execution**: backend can simulate or paper-rebalance.
-3. **Human-approved execution**: backend prepares transaction, user signs.
-4. **Limited deterministic execution**: only after months of evidence and strict caps.
-
-Skipping directly to autonomous execution is not engineering. It is gambling with automation.

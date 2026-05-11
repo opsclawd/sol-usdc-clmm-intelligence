@@ -7,10 +7,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "collect:price": "tsx scripts/collectors/jupiter-price.ts",
-    "collect:backend": "tsx scripts/collectors/backend-snapshot.ts",
-    "insight:daily": "tsx scripts/generate/daily-insight.ts",
-    "review:range": "tsx scripts/generate/range-review.ts",
-    "review:weekly": "tsx scripts/generate/weekly-review.ts",
+    "collect:clmm-bundle": "tsx scripts/collectors/clmm-bundle.ts",
     "cron:render": "tsx scripts/openclaw/render-cron-commands.ts",
     "cron:sync": "tsx scripts/openclaw/sync-cron.ts",
     "test": "vitest run",

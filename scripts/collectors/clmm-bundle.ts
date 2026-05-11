@@ -1,19 +1,13 @@
 import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
-import { backendSnapshotJob } from "../../src/jobs/backend-snapshot-job.js";
+import { clmmBundleJob } from "../../src/jobs/clmm-bundle-job.js";
 
 async function main(): Promise<void> {
   const runtime = createNodeRuntime();
-  const result = await backendSnapshotJob({
+  await clmmBundleJob({
     http: runtime.http,
     jsonStore: runtime.jsonStore,
     env: runtime.env
   })();
-  if (result.failures.length > 0) {
-    for (const failure of result.failures) {
-      console.error(failure);
-    }
-    process.exitCode = 1;
-  }
 }
 
 main().catch((error) => {

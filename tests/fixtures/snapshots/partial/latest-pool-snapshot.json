@@ -1,7 +1,0 @@
-{
-  "pair": "SOL/USDC",
-  "timestamp": "2026-05-09T12:00:00.000Z",
-  "source": "fastify-clmm-backend",
-  "spotPrice": 175.5,
-  "feeApr": 60
-}

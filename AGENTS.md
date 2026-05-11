@@ -31,10 +31,10 @@ Generate structured, auditable SOL/USDC CLMM evidence bundles. Consume raw facts
 
 The repo is a layered modular monolith under `src/` (INT-ARCH #3):
 
-- `src/contracts` — typed snapshot input/output shapes, cron config types, and eventual evidence taxonomy types (INT-TAXONOMY #6)
-- `src/domain` — pure decision logic (range status, fee classification, data-quality, advisory policy, cron command building). No I/O, no clock, no env.
+- `src/contracts` — canonical ClmmBundle contract types, cron config types, and eventual evidence taxonomy types (INT-TAXONOMY #6)
+- `src/domain` — pure logic (cron command building). No I/O, no clock, no env.
 - `src/ports` — interfaces for HTTP, JSON file storage, text reading, env, clock, command execution (legacy), and eventual repository interfaces (INT-PERSIST #5)
-- `src/application` — use cases orchestrating domain functions through ports
+- `src/application` — use cases orchestrating operations through ports
 - `src/jobs` — thin orchestration wrappers binding use cases to dependency objects
 - `src/adapters/node` — concrete Node implementations of every port plus `createNodeRuntime()` composition root
 
@@ -85,14 +85,13 @@ You may not:
 
 - **INT-EPIC #2** — Evidence-driven intelligence pipeline epic
 - **INT-ARCH #3** — Layered monolith refactor
-- **INT-REPLACE-LEGACY-CLMM-COLLECTOR #4** — Swap legacy collector for clmm-v2 bundle consumer
+- **INT-REPLACE-LEGACY-CLMM-COLLECTOR #4** — CLOSED: swapped legacy collector for clmm-v2 bundle consumer
 - **INT-PERSIST #5** — DB persistence layer (Postgres, `intelligence` schema, Drizzle)
 - **INT-TAXONOMY #6** — Evidence taxonomy types
 - **INT-CORE #7** / **INT-FEATURES #8** — Core intelligence + features extraction
 - **INT-CONTEXT-A #9** / **INT-FLOW-B #10** / **INT-PERP-C #11** — Pattern mining
 - **INT-BRIEFS #12** — LLM research brief generation
 - **INT-PUBLISH #13** — Evidence bundle publication to regime-engine
-- **INT-REMOVE-LEGACY-RECOMMENDATION-FLOWS #14** — Cleanup after new path is live
 
 ## Decision Hierarchy
 

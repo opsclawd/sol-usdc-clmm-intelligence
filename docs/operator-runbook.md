@@ -7,16 +7,33 @@ pnpm install
 cp .env.example .env
 pnpm typecheck
 pnpm collect:price
-pnpm insight:daily
+pnpm collect:clmm-bundle
 ```
 
-If `pnpm collect:backend` fails, your Fastify backend endpoint is not ready or `CLMM_DATA_API_BASE` is wrong.
+If `pnpm collect:clmm-bundle` fails, your clmm-v2 insight endpoint is not ready, `CLMM_DATA_API_BASE` is wrong, or `CLMM_INSIGHTS_API_KEY` is missing.
 
 ## Register OpenClaw jobs
 
 ```bash
 pnpm cron:render
 pnpm cron:sync -- --apply
+openclaw cron list
+```
+
+### Migrating from legacy collector (first time only)
+
+If you had the old `cron/jobs.yaml` registered, four legacy jobs may still be active:
+
+```bash
+openclaw cron remove --name clmm-daily-sol-usdc-insight
+openclaw cron remove --name clmm-range-review
+openclaw cron remove --name clmm-emergency-volatility-check
+openclaw cron remove --name clmm-weekly-performance-review
+```
+
+These jobs reference deleted scripts (`pnpm collect:backend`, `pnpm insight:daily`, `pnpm review:range`) and will fail harmlessly but noisily until removed. Verify cleanup:
+
+```bash
 openclaw cron list
 ```
 
@@ -48,10 +65,6 @@ Check delivery config:
 OPENCLAW_DELIVERY_CHANNEL
 OPENCLAW_DELIVERY_TO
 ```
-
-### Bad recommendation
-
-Do not patch the output manually. Patch the policy or deterministic script that allowed the bad recommendation.
 
 ### Missing data
 
