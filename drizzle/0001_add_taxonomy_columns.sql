@@ -27,8 +27,7 @@ ALTER TABLE intelligence.normalized_observations
   ADD CONSTRAINT chk_norm_obs_stale_behavior CHECK (stale_behavior IS NULL OR stale_behavior IN ('exclude', 'degrade_confidence', 'allow_context_only'));
 
 -- Migrate is_fresh → is_stale (inverted)
-UPDATE intelligence.normalized_observations SET is_stale = NOT is_fresh WHERE is_stale = false AND is_fresh = true;
-UPDATE intelligence.normalized_observations SET is_stale = NOT is_fresh WHERE is_stale = false AND is_fresh = false;
+UPDATE intelligence.normalized_observations SET is_stale = NOT is_fresh;
 
 -- Drop old index and column
 DROP INDEX IF EXISTS intelligence.idx_norm_obs_source_kind_fresh;

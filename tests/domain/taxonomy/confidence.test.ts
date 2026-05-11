@@ -207,6 +207,70 @@ describe("computeConfidence", () => {
     expect(result.compositeScore).toBeGreaterThanOrEqual(0);
   });
 
+  it("throws when weights do not sum to 1.0", () => {
+    const components = {
+      sourceReliability: 0.9,
+      dataCompleteness: 0.8,
+      derivationConfidence: 0.7,
+      llmConfidence: null as number | null
+    };
+    const policy = {
+      weights: {
+        sourceReliability: 0.5,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    };
+    expect(() => computeConfidence(components, policy, "v1")).toThrow(ConfidenceValidationError);
+  });
+
+  it("uses weights as-is when llmConfidence is provided and redistributeLlmWeight is false", () => {
+    const components = {
+      sourceReliability: 0.8,
+      dataCompleteness: 0.7,
+      derivationConfidence: 0.6,
+      llmConfidence: 0.9
+    };
+    const policy = {
+      weights: {
+        sourceReliability: 0.3,
+        dataCompleteness: 0.2,
+        derivationConfidence: 0.2,
+        llmConfidence: 0.3
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: false
+    };
+    const result = computeConfidence(components, policy, "v1");
+    expect(result.compositeScore).toBeCloseTo(0.3 * 0.8 + 0.2 * 0.7 + 0.2 * 0.6 + 0.3 * 0.9, 10);
+    expect(result.reasons).not.toContain("llm_weight_redistributed");
+  });
+
+  it("adds required_component_missing when llmConfidence is null and weight is 0 with no redistribution", () => {
+    const components = {
+      sourceReliability: 0.9,
+      dataCompleteness: 0.8,
+      derivationConfidence: 0.7,
+      llmConfidence: null as number | null
+    };
+    const policy = {
+      weights: {
+        sourceReliability: 0.4,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: false
+    };
+    const result = computeConfidence(components, policy, "v1");
+    expect(result.reasons).toContain("required_component_missing");
+    expect(result.compositeScore).toBeCloseTo(0.4 * 0.9 + 0.3 * 0.8 + 0.3 * 0.7, 10);
+  });
+
   it("includes all components when llmConfidence is non-null", () => {
     const components = {
       sourceReliability: 0.8,

@@ -1,4 +1,6 @@
 import type {
+  ObservationKind,
+  FeatureKind,
   ProvenanceRef,
   ProcessRef,
   ProvenanceRequirements,
@@ -7,7 +9,7 @@ import type {
   Source
 } from "../../contracts/taxonomy.js";
 
-export type ArtifactKind = string;
+export type ArtifactKind = ObservationKind | FeatureKind | "evidence_bundle" | "research_brief";
 
 export function validateProvenance(
   provenance: {

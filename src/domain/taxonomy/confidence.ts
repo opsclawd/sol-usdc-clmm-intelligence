@@ -57,6 +57,10 @@ export function computeConfidence(
       );
     }
 
+    if (!redistributeLlmWeight && weights.llmConfidence === 0) {
+      reasons.push("required_component_missing");
+    }
+
     if (redistributeLlmWeight && weights.llmConfidence > 0) {
       const remainingTotal =
         weights.sourceReliability + weights.dataCompleteness + weights.derivationConfidence;

@@ -3,34 +3,7 @@ import type {
   ResearchBriefRow,
   ResearchBriefInsert
 } from "../../src/ports/brief-repo.js";
-
-const DEFAULT_CONFIDENCE = {
-  components: {
-    sourceReliability: 1,
-    dataCompleteness: 1,
-    derivationConfidence: 1,
-    llmConfidence: null
-  },
-  compositeScore: 1,
-  level: "high" as const,
-  weightingVersion: "v1",
-  reasons: []
-};
-
-const DEFAULT_PROVENANCE = {
-  sourceRefs: [],
-  rawObservationRefs: [],
-  derivedFromRefs: [],
-  processRef: {
-    collector: "test",
-    jobName: "test",
-    pipelineRunId: null,
-    codeVersion: null,
-    modelVersion: null
-  },
-  codeVersion: "test",
-  runId: null
-};
+import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 
 export class FakeBriefRepo implements ResearchBriefRepo {
   private readonly store: ResearchBriefRow[] = [];
