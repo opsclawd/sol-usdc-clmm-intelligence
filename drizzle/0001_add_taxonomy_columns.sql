@@ -59,7 +59,8 @@ ALTER TABLE intelligence.derived_features
 ALTER TABLE intelligence.derived_features RENAME COLUMN confidence TO confidence_legacy;
 ALTER TABLE intelligence.derived_features ADD COLUMN IF NOT EXISTS confidence JSONB NOT NULL DEFAULT '{}'::jsonb;
 
--- Preserve legacy confidence value into new JSONB confidence and confidence_level columns
+-- Preserve legacy confidence value into new JSONB confidence, confidence_level, and confidence_composite
+-- Map legacy levels to composite scores: low→0.3, medium→0.6, high→1.0
 UPDATE intelligence.derived_features SET
   confidence = jsonb_build_object(
     'components', jsonb_build_object(
@@ -68,12 +69,23 @@ UPDATE intelligence.derived_features SET
       'derivationConfidence', 1,
       'llmConfidence', null
     ),
-    'compositeScore', 1,
+    'compositeScore', CASE LOWER(confidence_legacy)
+      WHEN 'low' THEN 0.3
+      WHEN 'medium' THEN 0.6
+      WHEN 'high' THEN 1.0
+      ELSE 0.6
+    END,
     'level', LOWER(confidence_legacy),
     'weightingVersion', 'v0_legacy',
     'reasons', '[]'::jsonb
   ),
-  confidence_level = LOWER(confidence_legacy)
+  confidence_level = LOWER(confidence_legacy),
+  confidence_composite = CASE LOWER(confidence_legacy)
+    WHEN 'low' THEN 0.3
+    WHEN 'medium' THEN 0.6
+    WHEN 'high' THEN 1.0
+    ELSE 0.6
+  END
 WHERE confidence_legacy IS NOT NULL;
 
 -- Preserve input_lineage into provenance before dropping
@@ -172,7 +184,8 @@ ALTER TABLE intelligence.research_briefs ADD COLUMN IF NOT EXISTS confidence JSO
 ALTER TABLE intelligence.research_briefs ADD COLUMN IF NOT EXISTS confidence_composite NUMERIC(5,4);
 ALTER TABLE intelligence.research_briefs ADD COLUMN IF NOT EXISTS confidence_level VARCHAR(8);
 
--- Preserve legacy confidence value into new JSONB confidence and confidence_level columns
+-- Preserve legacy confidence value into new JSONB confidence, confidence_level, and confidence_composite
+-- Map legacy levels to composite scores: low→0.3, medium→0.6, high→1.0
 UPDATE intelligence.research_briefs SET
   confidence = jsonb_build_object(
     'components', jsonb_build_object(
@@ -181,12 +194,23 @@ UPDATE intelligence.research_briefs SET
       'derivationConfidence', 1,
       'llmConfidence', null
     ),
-    'compositeScore', 1,
+    'compositeScore', CASE LOWER(confidence_legacy)
+      WHEN 'low' THEN 0.3
+      WHEN 'medium' THEN 0.6
+      WHEN 'high' THEN 1.0
+      ELSE 0.6
+    END,
     'level', LOWER(confidence_legacy),
     'weightingVersion', 'v0_legacy',
     'reasons', '[]'::jsonb
   ),
-  confidence_level = LOWER(confidence_legacy)
+  confidence_level = LOWER(confidence_legacy),
+  confidence_composite = CASE LOWER(confidence_legacy)
+    WHEN 'low' THEN 0.3
+    WHEN 'medium' THEN 0.6
+    WHEN 'high' THEN 1.0
+    ELSE 0.6
+  END
 WHERE confidence_legacy IS NOT NULL;
 
 -- Preserve source_refs into provenance before dropping
