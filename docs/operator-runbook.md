@@ -20,6 +20,23 @@ pnpm cron:sync -- --apply
 openclaw cron list
 ```
 
+### Migrating from legacy collector (first time only)
+
+If you had the old `cron/jobs.yaml` registered, four legacy jobs may still be active:
+
+```bash
+openclaw cron remove --name clmm-daily-sol-usdc-insight
+openclaw cron remove --name clmm-range-review
+openclaw cron remove --name clmm-emergency-volatility-check
+openclaw cron remove --name clmm-weekly-performance-review
+```
+
+These jobs reference deleted scripts (`pnpm collect:backend`, `pnpm insight:daily`, `pnpm review:range`) and will fail harmlessly but noisily until removed. Verify cleanup:
+
+```bash
+openclaw cron list
+```
+
 ## Test a job
 
 ```bash
