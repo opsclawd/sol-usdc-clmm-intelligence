@@ -9,6 +9,9 @@ export class FakeObservationRepo implements RawObservationRepo {
   private nextId = 1;
 
   async insert(row: RawObservationInsert): Promise<RawObservationRow> {
+    const key = `${row.source}:${row.payloadHash}`;
+    const existing = this.store.get(key);
+    if (existing) return existing;
     const id = this.nextId++;
     const result: RawObservationRow = {
       id,
@@ -21,7 +24,7 @@ export class FakeObservationRepo implements RawObservationRepo {
       sourceRequestMeta: row.sourceRequestMeta ?? null,
       receivedAtUnixMs: row.receivedAtUnixMs
     };
-    this.store.set(`${row.source}:${row.payloadHash}`, result);
+    this.store.set(key, result);
     return result;
   }
 

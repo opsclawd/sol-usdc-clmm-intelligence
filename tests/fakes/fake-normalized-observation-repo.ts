@@ -9,6 +9,13 @@ export class FakeNormalizedObservationRepo implements NormalizedObservationRepo 
   private nextId = 1;
 
   async insert(row: NormalizedObservationInsert): Promise<NormalizedObservationRow> {
+    const existing = this.store.find(
+      (r) =>
+        r.source === row.source &&
+        r.observationKind === row.observationKind &&
+        r.payloadHash === row.payloadHash
+    );
+    if (existing) return existing;
     const result: NormalizedObservationRow = {
       id: this.nextId++,
       rawObservationId: row.rawObservationId,

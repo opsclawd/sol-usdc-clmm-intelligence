@@ -25,8 +25,14 @@ export class DrizzleObservationRepo implements RawObservationRepo {
   constructor(private readonly db: Db) {}
 
   async insert(row: RawObservationInsert): Promise<RawObservationRow> {
-    const [result] = await this.db.insert(rawObservations).values(row).returning();
-    return toPortRow(result!);
+    const [result] = await this.db
+      .insert(rawObservations)
+      .values(row)
+      .onConflictDoNothing({ target: [rawObservations.source, rawObservations.payloadHash] })
+      .returning();
+    if (result) return toPortRow(result);
+    const existing = await this.findByHash(row.source, row.payloadHash);
+    return existing!;
   }
 
   async findByHash(source: string, payloadHash: string): Promise<RawObservationRow | undefined> {

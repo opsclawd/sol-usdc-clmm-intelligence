@@ -21,6 +21,27 @@ describe("RawObservationRepo contract", () => {
     expect(found!.id).toBe(1);
   });
 
+  it("insert is idempotent on duplicate source+payloadHash", async () => {
+    const repo = new FakeObservationRepo();
+    const row1 = await repo.insert({
+      source: "clmm-v2-bundle",
+      observedAtUnixMs: 1000,
+      fetchedAtUnixMs: 1001,
+      payloadHash: "hash-dup",
+      payloadCanonical: "{}",
+      receivedAtUnixMs: 1002
+    });
+    const row2 = await repo.insert({
+      source: "clmm-v2-bundle",
+      observedAtUnixMs: 2000,
+      fetchedAtUnixMs: 2001,
+      payloadHash: "hash-dup",
+      payloadCanonical: "{}",
+      receivedAtUnixMs: 2002
+    });
+    expect(row2.id).toBe(row1.id);
+  });
+
   it("findBySource filters by source and since", async () => {
     const repo = new FakeObservationRepo();
     await repo.insert({

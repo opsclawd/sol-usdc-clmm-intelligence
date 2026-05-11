@@ -9,6 +9,10 @@ export class FakeBundleRepo implements EvidenceBundleRepo {
   private nextId = 1;
 
   async insert(row: EvidenceBundleInsert): Promise<EvidenceBundleRow> {
+    const existing = this.store.find(
+      (r) => r.pair === row.pair && r.payloadHash === row.payloadHash
+    );
+    if (existing) return existing;
     const result: EvidenceBundleRow = {
       id: this.nextId++,
       schemaVersion: row.schemaVersion,

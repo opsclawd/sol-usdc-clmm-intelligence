@@ -26,8 +26,14 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
   constructor(private readonly db: Db) {}
 
   async insert(row: EvidenceBundleInsert): Promise<EvidenceBundleRow> {
-    const [result] = await this.db.insert(evidenceBundles).values(row).returning();
-    return toPortRow(result!);
+    const [result] = await this.db
+      .insert(evidenceBundles)
+      .values(row)
+      .onConflictDoNothing({ target: [evidenceBundles.pair, evidenceBundles.payloadHash] })
+      .returning();
+    if (result) return toPortRow(result);
+    const existing = await this.findLatestByPair(row.pair);
+    return existing!;
   }
 
   async findByPair(pair: string, sinceUnixMs: number): Promise<EvidenceBundleRow[]> {

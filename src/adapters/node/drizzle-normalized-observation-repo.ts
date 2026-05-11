@@ -24,8 +24,20 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
   constructor(private readonly db: Db) {}
 
   async insert(row: NormalizedObservationInsert): Promise<NormalizedObservationRow> {
-    const [result] = await this.db.insert(normalizedObservations).values(row).returning();
-    return toPortRow(result!);
+    const [result] = await this.db
+      .insert(normalizedObservations)
+      .values(row)
+      .onConflictDoNothing({
+        target: [
+          normalizedObservations.source,
+          normalizedObservations.observationKind,
+          normalizedObservations.payloadHash
+        ]
+      })
+      .returning();
+    if (result) return toPortRow(result);
+    const existing = await this.findFreshByKind(row.source, row.observationKind);
+    return existing[0]!;
   }
 
   async findBySource(
