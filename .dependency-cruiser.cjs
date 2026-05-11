@@ -21,7 +21,8 @@ module.exports = {
       name: "domain-no-output-contracts",
       severity: "error",
       from: { path: "^src/domain" },
-      to: { path: "^src/contracts/(outputs|cron-config)\\.ts$" }
+      to: { path: "^src/contracts/(outputs|cron-config)\\.ts$" },
+      comment: "domain/taxonomy imports contracts/taxonomy.ts (allowed)"
     },
     {
       name: "contracts-no-runtime",
@@ -36,6 +37,12 @@ module.exports = {
       severity: "error",
       from: { path: "^src/ports" },
       to: { path: ["^src/application", "^src/jobs", "^src/adapters", "^scripts"] }
+    },
+    {
+      name: "ports-no-domain",
+      severity: "error",
+      from: { path: "^src/ports" },
+      to: { path: "^src/domain" }
     },
     {
       name: "application-no-adapters-or-jobs",

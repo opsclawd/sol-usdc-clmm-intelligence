@@ -3,6 +3,7 @@ import {
   boolean,
   integer,
   jsonb,
+  numeric,
   serial,
   uniqueIndex,
   varchar,
@@ -20,17 +21,25 @@ export const normalizedObservations = intelligence.table(
       .references(() => rawObservations.id, { onDelete: "restrict" }),
     source: varchar("source", { length: 64 }).notNull(),
     observationKind: varchar("observation_kind", { length: 64 }).notNull(),
+    signalClass: varchar("signal_class", { length: 16 }).notNull().default("deterministic"),
+    evidenceFamily: varchar("evidence_family", { length: 32 }).notNull().default("clmm_state"),
     payload: jsonb("payload").notNull(),
     payloadHash: varchar("payload_hash", { length: 64 }).notNull(),
-    isFresh: boolean("is_fresh").notNull().default(true),
+    confidence: jsonb("confidence").notNull().default({}),
+    confidenceComposite: numeric("confidence_composite", { precision: 5, scale: 4 }),
+    confidenceLevel: varchar("confidence_level", { length: 8 }),
+    validUntilUnixMs: bigint("valid_until_unix_ms", { mode: "number" }),
+    isStale: boolean("is_stale").notNull().default(false),
+    staleBehavior: varchar("stale_behavior", { length: 24 }),
+    provenance: jsonb("provenance").notNull().default({}),
     receivedAtUnixMs: bigint("received_at_unix_ms", { mode: "number" }).notNull()
   },
   (t) => [
     uniqueIndex("uniq_norm_obs_source_kind_hash").on(t.source, t.observationKind, t.payloadHash),
-    index("idx_norm_obs_source_kind_fresh").on(
+    index("idx_norm_obs_source_kind_stale").on(
       t.source,
       t.observationKind,
-      t.isFresh,
+      t.isStale,
       t.receivedAtUnixMs
     )
   ]

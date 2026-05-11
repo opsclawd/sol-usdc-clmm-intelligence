@@ -1,0 +1,967 @@
+{
+  "id": "ae1d9dfb-ad23-4a67-836d-0700afa8a334",
+  "prevId": "1a972206-f237-4530-af5d-27511eca3785",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "intelligence.derived_features": {
+      "name": "derived_features",
+      "schema": "intelligence",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "feature_kind": {
+          "name": "feature_kind",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "value": {
+          "name": "value",
+          "type": "double precision",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "structured_payload": {
+          "name": "structured_payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "as_of_unix_ms": {
+          "name": "as_of_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "{}"
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "received_at_unix_ms": {
+          "name": "received_at_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signal_class": {
+          "name": "signal_class",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "deterministic"
+        },
+        "evidence_family": {
+          "name": "evidence_family",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "clmm_state"
+        },
+        "confidence_composite": {
+          "name": "confidence_composite",
+          "type": "numeric(5,4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confidence_level": {
+          "name": "confidence_level",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_until_unix_ms": {
+          "name": "valid_until_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_stale": {
+          "name": "is_stale",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "stale_behavior": {
+          "name": "stale_behavior",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "{}"
+        }
+      },
+      "indexes": {
+        "uniq_features_kind_hash": {
+          "name": "uniq_features_kind_hash",
+          "columns": [
+            {
+              "expression": "feature_kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "payload_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_features_kind_as_of": {
+          "name": "idx_features_kind_as_of",
+          "columns": [
+            {
+              "expression": "feature_kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "as_of_unix_ms",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chk_features_signal_class": {
+          "name": "chk_features_signal_class",
+          "value": "signal_class IN (deterministic, probabilistic, contextual)"
+        },
+        "chk_features_evidence_family": {
+          "name": "chk_features_evidence_family",
+          "value": "evidence_family IN (clmm_state, price_quality, clmm_economics, execution_safety, market_regime, support_resistance, on_chain_flow, perp_liquidation, macro_protocol_risk)"
+        },
+        "chk_features_confidence_composite": {
+          "name": "chk_features_confidence_composite",
+          "value": "confidence_composite IS NULL OR (confidence_composite >= 0 AND confidence_composite <= 1)"
+        },
+        "chk_features_confidence_level": {
+          "name": "chk_features_confidence_level",
+          "value": "confidence_level IS NULL OR confidence_level IN (low, medium, high)"
+        },
+        "chk_features_stale_behavior": {
+          "name": "chk_features_stale_behavior",
+          "value": "stale_behavior IS NULL OR stale_behavior IN (exclude, degrade_confidence, allow_context_only)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "intelligence.evidence_bundles": {
+      "name": "evidence_bundles",
+      "schema": "intelligence",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "schema_version": {
+          "name": "schema_version",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pair": {
+          "name": "pair",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "as_of_unix_ms": {
+          "name": "as_of_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at_unix_ms": {
+          "name": "expires_at_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "received_at_unix_ms": {
+          "name": "received_at_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "taxonomy_summary": {
+          "name": "taxonomy_summary",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dominant_signal_class": {
+          "name": "dominant_signal_class",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "deterministic"
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "{}"
+        },
+        "confidence_composite": {
+          "name": "confidence_composite",
+          "type": "numeric(5,4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confidence_level": {
+          "name": "confidence_level",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_until_unix_ms": {
+          "name": "valid_until_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_stale": {
+          "name": "is_stale",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "stale_behavior": {
+          "name": "stale_behavior",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "{}"
+        }
+      },
+      "indexes": {
+        "uniq_bundle_pair_hash": {
+          "name": "uniq_bundle_pair_hash",
+          "columns": [
+            {
+              "expression": "pair",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "payload_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_bundle_pair_as_of": {
+          "name": "idx_bundle_pair_as_of",
+          "columns": [
+            {
+              "expression": "pair",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "as_of_unix_ms",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_bundle_pair_latest": {
+          "name": "idx_bundle_pair_latest",
+          "columns": [
+            {
+              "expression": "pair",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "received_at_unix_ms",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chk_bundle_dominant_signal_class": {
+          "name": "chk_bundle_dominant_signal_class",
+          "value": "dominant_signal_class IN (deterministic, probabilistic, contextual)"
+        },
+        "chk_bundle_confidence_composite": {
+          "name": "chk_bundle_confidence_composite",
+          "value": "confidence_composite IS NULL OR (confidence_composite >= 0 AND confidence_composite <= 1)"
+        },
+        "chk_bundle_confidence_level": {
+          "name": "chk_bundle_confidence_level",
+          "value": "confidence_level IS NULL OR confidence_level IN (low, medium, high)"
+        },
+        "chk_bundle_stale_behavior": {
+          "name": "chk_bundle_stale_behavior",
+          "value": "stale_behavior IS NULL OR stale_behavior IN (exclude, degrade_confidence, allow_context_only)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "intelligence.normalized_observations": {
+      "name": "normalized_observations",
+      "schema": "intelligence",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "raw_observation_id": {
+          "name": "raw_observation_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "observation_kind": {
+          "name": "observation_kind",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "received_at_unix_ms": {
+          "name": "received_at_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signal_class": {
+          "name": "signal_class",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "deterministic"
+        },
+        "evidence_family": {
+          "name": "evidence_family",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "clmm_state"
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "{}"
+        },
+        "confidence_composite": {
+          "name": "confidence_composite",
+          "type": "numeric(5,4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confidence_level": {
+          "name": "confidence_level",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_until_unix_ms": {
+          "name": "valid_until_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_stale": {
+          "name": "is_stale",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "stale_behavior": {
+          "name": "stale_behavior",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "{}"
+        }
+      },
+      "indexes": {
+        "uniq_norm_obs_source_kind_hash": {
+          "name": "uniq_norm_obs_source_kind_hash",
+          "columns": [
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "observation_kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "payload_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_norm_obs_source_kind_stale": {
+          "name": "idx_norm_obs_source_kind_stale",
+          "columns": [
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "observation_kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "is_stale",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "received_at_unix_ms",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fk_normalized_observations_raw_observation": {
+          "name": "fk_normalized_observations_raw_observation",
+          "tableFrom": "normalized_observations",
+          "tableTo": "raw_observations",
+          "schemaTo": "intelligence",
+          "columnsFrom": ["raw_observation_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chk_norm_obs_signal_class": {
+          "name": "chk_norm_obs_signal_class",
+          "value": "signal_class IN (deterministic, probabilistic, contextual)"
+        },
+        "chk_norm_obs_evidence_family": {
+          "name": "chk_norm_obs_evidence_family",
+          "value": "evidence_family IN (clmm_state, price_quality, clmm_economics, execution_safety, market_regime, support_resistance, on_chain_flow, perp_liquidation, macro_protocol_risk)"
+        },
+        "chk_norm_obs_confidence_composite": {
+          "name": "chk_norm_obs_confidence_composite",
+          "value": "confidence_composite IS NULL OR (confidence_composite >= 0 AND confidence_composite <= 1)"
+        },
+        "chk_norm_obs_confidence_level": {
+          "name": "chk_norm_obs_confidence_level",
+          "value": "confidence_level IS NULL OR confidence_level IN (low, medium, high)"
+        },
+        "chk_norm_obs_stale_behavior": {
+          "name": "chk_norm_obs_stale_behavior",
+          "value": "stale_behavior IS NULL OR stale_behavior IN (exclude, degrade_confidence, allow_context_only)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "intelligence.raw_observations": {
+      "name": "raw_observations",
+      "schema": "intelligence",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "observed_at_unix_ms": {
+          "name": "observed_at_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fetched_at_unix_ms": {
+          "name": "fetched_at_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload_canonical": {
+          "name": "payload_canonical",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parse_status": {
+          "name": "parse_status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "source_request_meta": {
+          "name": "source_request_meta",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "received_at_unix_ms": {
+          "name": "received_at_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "uniq_raw_obs_source_payload_hash": {
+          "name": "uniq_raw_obs_source_payload_hash",
+          "columns": [
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "payload_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_raw_obs_source_observed": {
+          "name": "idx_raw_obs_source_observed",
+          "columns": [
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "observed_at_unix_ms",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "intelligence.research_briefs": {
+      "name": "research_briefs",
+      "schema": "intelligence",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "evidence_bundle_id": {
+          "name": "evidence_bundle_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "prompt_version": {
+          "name": "prompt_version",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model_provider": {
+          "name": "model_provider",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "structured_output": {
+          "name": "structured_output",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "{}"
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "received_at_unix_ms": {
+          "name": "received_at_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signal_class": {
+          "name": "signal_class",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "contextual"
+        },
+        "evidence_family": {
+          "name": "evidence_family",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "taxonomy_summary": {
+          "name": "taxonomy_summary",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confidence_composite": {
+          "name": "confidence_composite",
+          "type": "numeric(5,4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confidence_level": {
+          "name": "confidence_level",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_until_unix_ms": {
+          "name": "valid_until_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_stale": {
+          "name": "is_stale",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "stale_behavior": {
+          "name": "stale_behavior",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "{}"
+        }
+      },
+      "indexes": {
+        "uniq_brief_bundle_hash": {
+          "name": "uniq_brief_bundle_hash",
+          "columns": [
+            {
+              "expression": "evidence_bundle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "payload_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_brief_bundle_id": {
+          "name": "idx_brief_bundle_id",
+          "columns": [
+            {
+              "expression": "evidence_bundle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "received_at_unix_ms",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_brief_model_provider": {
+          "name": "idx_brief_model_provider",
+          "columns": [
+            {
+              "expression": "model_provider",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "received_at_unix_ms",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "fk_research_briefs_evidence_bundle": {
+          "name": "fk_research_briefs_evidence_bundle",
+          "tableFrom": "research_briefs",
+          "tableTo": "evidence_bundles",
+          "schemaTo": "intelligence",
+          "columnsFrom": ["evidence_bundle_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chk_brief_signal_class": {
+          "name": "chk_brief_signal_class",
+          "value": "signal_class IN (deterministic, probabilistic, contextual)"
+        },
+        "chk_brief_evidence_family": {
+          "name": "chk_brief_evidence_family",
+          "value": "evidence_family IS NULL OR evidence_family IN (clmm_state, price_quality, clmm_economics, execution_safety, market_regime, support_resistance, on_chain_flow, perp_liquidation, macro_protocol_risk)"
+        },
+        "chk_brief_confidence_composite": {
+          "name": "chk_brief_confidence_composite",
+          "value": "confidence_composite IS NULL OR (confidence_composite >= 0 AND confidence_composite <= 1)"
+        },
+        "chk_brief_confidence_level": {
+          "name": "chk_brief_confidence_level",
+          "value": "confidence_level IS NULL OR confidence_level IN (low, medium, high)"
+        },
+        "chk_brief_stale_behavior": {
+          "name": "chk_brief_stale_behavior",
+          "value": "stale_behavior IS NULL OR stale_behavior IN (exclude, degrade_confidence, allow_context_only)"
+        },
+        "chk_brief_taxonomy_summary_required": {
+          "name": "chk_brief_taxonomy_summary_required",
+          "value": "evidence_family IS NOT NULL OR taxonomy_summary IS NOT NULL"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {
+    "intelligence": "intelligence"
+  },
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

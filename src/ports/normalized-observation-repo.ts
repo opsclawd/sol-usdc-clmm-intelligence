@@ -1,30 +1,59 @@
+import type {
+  Source,
+  ObservationKind,
+  SignalClass,
+  EvidenceFamily,
+  Confidence,
+  StaleBehavior,
+  Provenance
+} from "../contracts/taxonomy.js";
+
 export interface NormalizedObservationRow {
   id: number;
   rawObservationId: number;
-  source: string;
-  observationKind: string;
+  source: Source;
+  observationKind: ObservationKind;
+  signalClass: SignalClass;
+  evidenceFamily: EvidenceFamily;
   payload: unknown;
   payloadHash: string;
-  isFresh: boolean;
+  confidence: Confidence;
+  confidenceComposite: number | null;
+  confidenceLevel: string | null;
+  validUntilUnixMs: number | null;
+  isStale: boolean;
+  staleBehavior: StaleBehavior | null;
+  provenance: Provenance;
   receivedAtUnixMs: number;
 }
 
 export interface NormalizedObservationInsert {
   rawObservationId: number;
-  source: string;
-  observationKind: string;
+  source: Source;
+  observationKind: ObservationKind;
+  signalClass: SignalClass;
+  evidenceFamily: EvidenceFamily;
   payload: unknown;
   payloadHash: string;
-  isFresh?: boolean;
+  confidence: Confidence;
+  confidenceComposite?: number | null;
+  confidenceLevel?: string | null;
+  validUntilUnixMs?: number | null;
+  isStale?: boolean;
+  staleBehavior?: StaleBehavior | null;
+  provenance: Provenance;
   receivedAtUnixMs: number;
 }
 
 export interface NormalizedObservationRepo {
   insert(row: NormalizedObservationInsert): Promise<NormalizedObservationRow>;
   findBySource(
-    source: string,
-    observationKind: string,
+    source: Source,
+    observationKind: ObservationKind,
     sinceUnixMs: number
   ): Promise<NormalizedObservationRow[]>;
-  findFreshByKind(source: string, observationKind: string): Promise<NormalizedObservationRow[]>;
+  findFreshByKind(
+    source: Source,
+    observationKind: ObservationKind
+  ): Promise<NormalizedObservationRow[]>;
 }

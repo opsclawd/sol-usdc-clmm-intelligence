@@ -3,6 +3,35 @@ import type {
   DerivedFeatureRow,
   DerivedFeatureInsert
 } from "../../src/ports/feature-repo.js";
+import type { FeatureKind } from "../../src/contracts/taxonomy.js";
+
+const DEFAULT_CONFIDENCE = {
+  components: {
+    sourceReliability: 1,
+    dataCompleteness: 1,
+    derivationConfidence: 1,
+    llmConfidence: null
+  },
+  compositeScore: 1,
+  level: "high" as const,
+  weightingVersion: "v1",
+  reasons: []
+};
+
+const DEFAULT_PROVENANCE = {
+  sourceRefs: [],
+  rawObservationRefs: [],
+  derivedFromRefs: [],
+  processRef: {
+    collector: "test",
+    jobName: "test",
+    pipelineRunId: null,
+    codeVersion: null,
+    modelVersion: null
+  },
+  codeVersion: "test",
+  runId: null
+};
 
 export class FakeFeatureRepo implements DerivedFeatureRepo {
   private readonly store: DerivedFeatureRow[] = [];
@@ -16,11 +45,18 @@ export class FakeFeatureRepo implements DerivedFeatureRepo {
     const result: DerivedFeatureRow = {
       id: this.nextId++,
       featureKind: row.featureKind,
+      signalClass: row.signalClass,
+      evidenceFamily: row.evidenceFamily,
       value: row.value ?? null,
       structuredPayload: row.structuredPayload ?? null,
       asOfUnixMs: row.asOfUnixMs,
-      confidence: row.confidence ?? "medium",
-      inputLineage: row.inputLineage ?? null,
+      confidence: row.confidence ?? DEFAULT_CONFIDENCE,
+      confidenceComposite: row.confidenceComposite ?? null,
+      confidenceLevel: row.confidenceLevel ?? null,
+      validUntilUnixMs: row.validUntilUnixMs ?? null,
+      isStale: row.isStale ?? false,
+      staleBehavior: row.staleBehavior ?? null,
+      provenance: row.provenance ?? DEFAULT_PROVENANCE,
       payloadHash: row.payloadHash,
       receivedAtUnixMs: row.receivedAtUnixMs
     };
@@ -29,13 +65,13 @@ export class FakeFeatureRepo implements DerivedFeatureRepo {
   }
 
   async findByHash(
-    featureKind: string,
+    featureKind: FeatureKind,
     payloadHash: string
   ): Promise<DerivedFeatureRow | undefined> {
     return this.store.find((r) => r.featureKind === featureKind && r.payloadHash === payloadHash);
   }
 
-  async findByKind(featureKind: string, sinceUnixMs: number): Promise<DerivedFeatureRow[]> {
+  async findByKind(featureKind: FeatureKind, sinceUnixMs: number): Promise<DerivedFeatureRow[]> {
     return this.store.filter((r) => r.featureKind === featureKind && r.asOfUnixMs >= sinceUnixMs);
   }
 }

@@ -1,10 +1,44 @@
 import { describe, it, expect } from "vitest";
 import { FakeBundleRepo } from "../../tests/fakes/fake-bundle-repo.js";
 
+const DEFAULT_CONFIDENCE = {
+  components: {
+    sourceReliability: 1,
+    dataCompleteness: 1,
+    derivationConfidence: 1,
+    llmConfidence: null
+  },
+  compositeScore: 1,
+  level: "high" as const,
+  weightingVersion: "v1",
+  reasons: []
+};
+
+const DEFAULT_PROVENANCE = {
+  sourceRefs: [],
+  rawObservationRefs: [],
+  derivedFromRefs: [],
+  processRef: {
+    collector: "test",
+    jobName: "test",
+    pipelineRunId: null,
+    codeVersion: null,
+    modelVersion: null
+  },
+  codeVersion: "test",
+  runId: null
+};
+
+const BUNDLE_INSERT = {
+  confidence: DEFAULT_CONFIDENCE,
+  provenance: DEFAULT_PROVENANCE
+};
+
 describe("EvidenceBundleRepo contract", () => {
   it("inserts and finds by pair", async () => {
     const repo = new FakeBundleRepo();
     await repo.insert({
+      ...BUNDLE_INSERT,
       schemaVersion: "1.0",
       pair: "SOL/USDC",
       asOfUnixMs: 1000,
@@ -21,6 +55,7 @@ describe("EvidenceBundleRepo contract", () => {
   it("findLatestByPair returns the most recent", async () => {
     const repo = new FakeBundleRepo();
     await repo.insert({
+      ...BUNDLE_INSERT,
       schemaVersion: "1.0",
       pair: "SOL/USDC",
       asOfUnixMs: 1000,
@@ -30,6 +65,7 @@ describe("EvidenceBundleRepo contract", () => {
       receivedAtUnixMs: 1001
     });
     await repo.insert({
+      ...BUNDLE_INSERT,
       schemaVersion: "1.0",
       pair: "SOL/USDC",
       asOfUnixMs: 1500,

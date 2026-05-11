@@ -12,7 +12,15 @@ describe("evidenceBundles schema", () => {
     expect(columns).toContain("expiresAtUnixMs");
     expect(columns).toContain("payload");
     expect(columns).toContain("payloadHash");
-    expect(columns).toContain("inputLineage");
+    expect(columns).toContain("taxonomySummary");
+    expect(columns).toContain("dominantSignalClass");
+    expect(columns).toContain("confidence");
+    expect(columns).toContain("confidenceComposite");
+    expect(columns).toContain("confidenceLevel");
+    expect(columns).toContain("validUntilUnixMs");
+    expect(columns).toContain("isStale");
+    expect(columns).toContain("staleBehavior");
+    expect(columns).toContain("provenance");
     expect(columns).toContain("version");
     expect(columns).toContain("receivedAtUnixMs");
   });

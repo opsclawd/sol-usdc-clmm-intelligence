@@ -4,6 +4,34 @@ import type {
   EvidenceBundleInsert
 } from "../../src/ports/bundle-repo.js";
 
+const DEFAULT_CONFIDENCE = {
+  components: {
+    sourceReliability: 1,
+    dataCompleteness: 1,
+    derivationConfidence: 1,
+    llmConfidence: null
+  },
+  compositeScore: 1,
+  level: "high" as const,
+  weightingVersion: "v1",
+  reasons: []
+};
+
+const DEFAULT_PROVENANCE = {
+  sourceRefs: [],
+  rawObservationRefs: [],
+  derivedFromRefs: [],
+  processRef: {
+    collector: "test",
+    jobName: "test",
+    pipelineRunId: null,
+    codeVersion: null,
+    modelVersion: null
+  },
+  codeVersion: "test",
+  runId: null
+};
+
 export class FakeBundleRepo implements EvidenceBundleRepo {
   private readonly store: EvidenceBundleRow[] = [];
   private nextId = 1;
@@ -21,7 +49,15 @@ export class FakeBundleRepo implements EvidenceBundleRepo {
       expiresAtUnixMs: row.expiresAtUnixMs,
       payload: row.payload,
       payloadHash: row.payloadHash,
-      inputLineage: row.inputLineage ?? null,
+      taxonomySummary: row.taxonomySummary ?? null,
+      dominantSignalClass: row.dominantSignalClass ?? "deterministic",
+      confidence: row.confidence ?? DEFAULT_CONFIDENCE,
+      confidenceComposite: row.confidenceComposite ?? null,
+      confidenceLevel: row.confidenceLevel ?? null,
+      validUntilUnixMs: row.validUntilUnixMs ?? null,
+      isStale: row.isStale ?? false,
+      staleBehavior: row.staleBehavior ?? null,
+      provenance: row.provenance ?? DEFAULT_PROVENANCE,
       version: row.version ?? 1,
       receivedAtUnixMs: row.receivedAtUnixMs
     };

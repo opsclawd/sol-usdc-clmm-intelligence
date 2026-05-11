@@ -1,3 +1,11 @@
+import type {
+  SignalClass,
+  Confidence,
+  StaleBehavior,
+  Provenance,
+  TaxonomySummary
+} from "../contracts/taxonomy.js";
+
 export interface EvidenceBundleRow {
   id: number;
   schemaVersion: string;
@@ -6,7 +14,15 @@ export interface EvidenceBundleRow {
   expiresAtUnixMs: number;
   payload: unknown;
   payloadHash: string;
-  inputLineage: unknown;
+  taxonomySummary: TaxonomySummary | null;
+  dominantSignalClass: SignalClass;
+  confidence: Confidence;
+  confidenceComposite: number | null;
+  confidenceLevel: string | null;
+  validUntilUnixMs: number | null;
+  isStale: boolean;
+  staleBehavior: StaleBehavior | null;
+  provenance: Provenance;
   version: number;
   receivedAtUnixMs: number;
 }
@@ -18,7 +34,15 @@ export interface EvidenceBundleInsert {
   expiresAtUnixMs: number;
   payload: unknown;
   payloadHash: string;
-  inputLineage?: unknown;
+  taxonomySummary?: TaxonomySummary | null;
+  dominantSignalClass?: SignalClass;
+  confidence: Confidence;
+  confidenceComposite?: number | null;
+  confidenceLevel?: string | null;
+  validUntilUnixMs?: number | null;
+  isStale?: boolean;
+  staleBehavior?: StaleBehavior | null;
+  provenance: Provenance;
   version?: number;
   receivedAtUnixMs: number;
 }

@@ -5,17 +5,30 @@ import type {
   DerivedFeatureInsert,
   DerivedFeatureRow
 } from "../../ports/feature-repo.js";
+import type {
+  FeatureKind,
+  SignalClass,
+  EvidenceFamily,
+  StaleBehavior
+} from "../../contracts/taxonomy.js";
 import type { Db } from "../../db/db.js";
 
 function toPortRow(row: typeof derivedFeatures.$inferSelect): DerivedFeatureRow {
   return {
     id: row.id,
-    featureKind: row.featureKind,
+    featureKind: row.featureKind as FeatureKind,
+    signalClass: row.signalClass as SignalClass,
+    evidenceFamily: row.evidenceFamily as EvidenceFamily,
     value: row.value,
     structuredPayload: row.structuredPayload,
     asOfUnixMs: row.asOfUnixMs,
-    confidence: row.confidence,
-    inputLineage: row.inputLineage,
+    confidence: row.confidence as unknown as DerivedFeatureRow["confidence"],
+    confidenceComposite: row.confidenceComposite ? Number(row.confidenceComposite) : null,
+    confidenceLevel: row.confidenceLevel,
+    validUntilUnixMs: row.validUntilUnixMs ?? null,
+    isStale: row.isStale,
+    staleBehavior: row.staleBehavior as StaleBehavior | null,
+    provenance: row.provenance as unknown as DerivedFeatureRow["provenance"],
     payloadHash: row.payloadHash,
     receivedAtUnixMs: row.receivedAtUnixMs
   };
@@ -27,7 +40,24 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
   async insert(row: DerivedFeatureInsert): Promise<DerivedFeatureRow> {
     const [result] = await this.db
       .insert(derivedFeatures)
-      .values(row)
+      .values({
+        featureKind: row.featureKind,
+        signalClass: row.signalClass,
+        evidenceFamily: row.evidenceFamily,
+        value: row.value ?? null,
+        structuredPayload: row.structuredPayload ?? null,
+        asOfUnixMs: row.asOfUnixMs,
+        confidence: row.confidence as unknown,
+        confidenceComposite:
+          row.confidenceComposite != null ? String(row.confidenceComposite) : null,
+        confidenceLevel: row.confidenceLevel ?? null,
+        validUntilUnixMs: row.validUntilUnixMs ?? null,
+        isStale: row.isStale ?? false,
+        staleBehavior: row.staleBehavior ?? null,
+        provenance: row.provenance as unknown,
+        payloadHash: row.payloadHash,
+        receivedAtUnixMs: row.receivedAtUnixMs
+      })
       .onConflictDoNothing({
         target: [derivedFeatures.featureKind, derivedFeatures.payloadHash]
       })
@@ -38,7 +68,7 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
   }
 
   async findByHash(
-    featureKind: string,
+    featureKind: FeatureKind,
     payloadHash: string
   ): Promise<DerivedFeatureRow | undefined> {
     const [result] = await this.db
@@ -54,7 +84,7 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
     return result ? toPortRow(result) : undefined;
   }
 
-  async findByKind(featureKind: string, sinceUnixMs: number): Promise<DerivedFeatureRow[]> {
+  async findByKind(featureKind: FeatureKind, sinceUnixMs: number): Promise<DerivedFeatureRow[]> {
     const rows = await this.db
       .select()
       .from(derivedFeatures)

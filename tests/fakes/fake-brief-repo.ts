@@ -4,6 +4,34 @@ import type {
   ResearchBriefInsert
 } from "../../src/ports/brief-repo.js";
 
+const DEFAULT_CONFIDENCE = {
+  components: {
+    sourceReliability: 1,
+    dataCompleteness: 1,
+    derivationConfidence: 1,
+    llmConfidence: null
+  },
+  compositeScore: 1,
+  level: "high" as const,
+  weightingVersion: "v1",
+  reasons: []
+};
+
+const DEFAULT_PROVENANCE = {
+  sourceRefs: [],
+  rawObservationRefs: [],
+  derivedFromRefs: [],
+  processRef: {
+    collector: "test",
+    jobName: "test",
+    pipelineRunId: null,
+    codeVersion: null,
+    modelVersion: null
+  },
+  codeVersion: "test",
+  runId: null
+};
+
 export class FakeBriefRepo implements ResearchBriefRepo {
   private readonly store: ResearchBriefRow[] = [];
   private nextId = 1;
@@ -19,8 +47,16 @@ export class FakeBriefRepo implements ResearchBriefRepo {
       promptVersion: row.promptVersion,
       modelProvider: row.modelProvider,
       structuredOutput: row.structuredOutput,
-      confidence: row.confidence ?? "medium",
-      sourceRefs: row.sourceRefs ?? null,
+      signalClass: row.signalClass,
+      evidenceFamily: row.evidenceFamily ?? null,
+      taxonomySummary: row.taxonomySummary ?? null,
+      confidence: row.confidence ?? DEFAULT_CONFIDENCE,
+      confidenceComposite: row.confidenceComposite ?? null,
+      confidenceLevel: row.confidenceLevel ?? null,
+      validUntilUnixMs: row.validUntilUnixMs ?? null,
+      isStale: row.isStale ?? false,
+      staleBehavior: row.staleBehavior ?? null,
+      provenance: row.provenance ?? DEFAULT_PROVENANCE,
       payloadHash: row.payloadHash,
       receivedAtUnixMs: row.receivedAtUnixMs
     };
