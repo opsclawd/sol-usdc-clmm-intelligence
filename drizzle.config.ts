@@ -10,6 +10,7 @@ export default defineConfig({
     ssl: process.env.PG_SSL === "false" ? false : { rejectUnauthorized: false }
   },
   migrations: {
-    table: "intelligence_migrations"
+    table: "intelligence_migrations",
+    schema: "intelligence"
   }
 });

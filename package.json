@@ -18,7 +18,7 @@
     "verify": "pnpm typecheck && pnpm lint && pnpm format && pnpm test && pnpm boundaries",
     "prepare": "husky || true",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "tsx scripts/db-ensure-schema.ts && drizzle-kit migrate",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
