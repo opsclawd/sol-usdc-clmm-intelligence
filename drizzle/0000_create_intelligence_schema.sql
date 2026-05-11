@@ -1,4 +1,11 @@
 -- INT-PERSIST #5: Schema, role provisioning, and table creation for intelligence schema
+--
+-- Design decisions:
+--   FK constraints on raw_observation_id and evidence_bundle_id are intentionally
+--   omitted.  The pipeline is append-only and eventually-consistent: observations,
+--   features, and briefs may arrive out of order or be retried independently.
+--   Enforcing FKs would require strict insertion ordering and couple pipeline
+--   stages that currently operate independently.
 
 CREATE SCHEMA IF NOT EXISTS intelligence;
 
@@ -104,3 +111,7 @@ CREATE INDEX IF NOT EXISTS idx_brief_model_provider
 GRANT SELECT ON ALL TABLES IN SCHEMA intelligence TO intelligence_reader;
 GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA intelligence TO intelligence_writer;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA intelligence TO intelligence_writer;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA intelligence GRANT SELECT ON TABLES TO intelligence_reader;
+ALTER DEFAULT PRIVILEGES IN SCHEMA intelligence GRANT SELECT, INSERT, UPDATE ON TABLES TO intelligence_writer;
+ALTER DEFAULT PRIVILEGES IN SCHEMA intelligence GRANT USAGE ON SEQUENCES TO intelligence_writer;
