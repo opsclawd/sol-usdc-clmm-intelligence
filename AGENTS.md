@@ -32,8 +32,9 @@ Generate structured, auditable SOL/USDC CLMM evidence bundles. Consume raw facts
 The repo is a layered modular monolith under `src/` (INT-ARCH #3):
 
 - `src/contracts` — canonical ClmmBundle contract types, cron config types, and eventual evidence taxonomy types (INT-TAXONOMY #6)
-- `src/domain` — pure logic (cron command building). No I/O, no clock, no env.
-- `src/ports` — interfaces for HTTP, JSON file storage, text reading, env, clock, command execution (legacy), and eventual repository interfaces (INT-PERSIST #5)
+- `src/domain` — pure logic (cron command building, content hashing). No I/O, no clock, no env.
+- `src/ports` — interfaces for HTTP, JSON file storage, text reading, env, clock, command execution (legacy), DB connection, and repository interfaces
+- `src/db` — Drizzle schema definitions, DB factory, and verify helpers. Importable from adapters only.
 - `src/application` — use cases orchestrating operations through ports
 - `src/jobs` — thin orchestration wrappers binding use cases to dependency objects
 - `src/adapters/node` — concrete Node implementations of every port plus `createNodeRuntime()` composition root
@@ -42,7 +43,28 @@ The repo is a layered modular monolith under `src/` (INT-ARCH #3):
 
 ## DB Infrastructure
 
-Shared Railway Postgres, `intelligence` schema, Drizzle ORM with Zod-validated schemas, schema-scoped DB role. Key tables: `raw_observations`, `normalized_observations`, `derived_features`, `research_briefs`, `evidence_bundles`. Managed via `drizzle-kit` (INT-PERSIST #5).
+Shared Railway Postgres, `intelligence` schema, Drizzle ORM, schema-scoped DB role. Key tables: `raw_observations`, `normalized_observations`, `derived_features`, `research_briefs`, `evidence_bundles`. Managed via `drizzle-kit` (INT-PERSIST #5).
+
+### Table Lineage
+
+```
+raw_observations → normalized_observations → derived_features → evidence_bundles → research_briefs
+```
+
+### Repository Ports
+
+- `src/ports/db.ts` — DbConnection (abstracts Drizzle instance creation)
+- `src/ports/observation-repo.ts` — RawObservationRepo
+- `src/ports/normalized-observation-repo.ts` — NormalizedObservationRepo
+- `src/ports/feature-repo.ts` — DerivedFeatureRepo
+- `src/ports/bundle-repo.ts` — EvidenceBundleRepo
+- `src/ports/brief-repo.ts` — ResearchBriefRepo
+
+### Retention Tiers
+
+- Hot: `raw_observations` (90 days)
+- Warm: `normalized_observations`, `derived_features` (365 days)
+- Cold: `evidence_bundles`, `research_briefs` (indefinite, expiry-gated)
 
 ## Evidence Pipeline (Post-INT-ARCH)
 
