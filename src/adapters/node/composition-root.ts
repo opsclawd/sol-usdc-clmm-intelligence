@@ -4,7 +4,6 @@ import { FsTextReader } from "./fs-text-reader.js";
 import { ProcessEnvReader } from "./process-env.js";
 import { SystemClock } from "./system-clock.js";
 import { SpawnCommandRunner } from "./spawn-command-runner.js";
-import { DrizzlePgAdapter } from "./drizzle-pg.js";
 import type { HttpClient } from "../../ports/http.js";
 import type { JsonStore } from "../../ports/json-store.js";
 import type { TextReader } from "../../ports/text-reader.js";
@@ -20,11 +19,12 @@ export interface NodeRuntime {
   env: EnvReader;
   clock: Clock;
   commandRunner: CommandRunner;
-  db: DbConnection;
+  getDb(): Promise<DbConnection>;
 }
 
 export function createNodeRuntime(): NodeRuntime {
   const env = new ProcessEnvReader();
+  let dbPromise: Promise<DbConnection> | undefined;
   return {
     http: new FetchHttpClient(),
     jsonStore: new FsJsonStore(),
@@ -32,6 +32,15 @@ export function createNodeRuntime(): NodeRuntime {
     env,
     clock: new SystemClock(),
     commandRunner: new SpawnCommandRunner(),
-    db: new DrizzlePgAdapter(env)
+    async getDb() {
+      if (!dbPromise) {
+        if (!env.get("DATABASE_URL")) {
+          throw new Error("DATABASE_URL is not configured");
+        }
+        const { DrizzlePgAdapter } = await import("./drizzle-pg.js");
+        dbPromise = Promise.resolve(new DrizzlePgAdapter(env));
+      }
+      return dbPromise;
+    }
   };
 }

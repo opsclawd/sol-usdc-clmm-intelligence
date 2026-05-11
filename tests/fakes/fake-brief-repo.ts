@@ -1,5 +1,8 @@
-import type { ResearchBriefRepo } from "../../src/ports/brief-repo.js";
-import type { ResearchBriefRow, ResearchBriefInsert } from "../../src/db/schema/research-briefs.js";
+import type {
+  ResearchBriefRepo,
+  ResearchBriefRow,
+  ResearchBriefInsert
+} from "../../src/ports/brief-repo.js";
 
 export class FakeBriefRepo implements ResearchBriefRepo {
   private readonly store: ResearchBriefRow[] = [];

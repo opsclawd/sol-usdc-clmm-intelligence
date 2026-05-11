@@ -9,11 +9,17 @@ export async function canonicalHash(payload: unknown): Promise<string> {
 }
 
 function serializeCanonical(payload: unknown): string {
-  if (payload === null || typeof payload !== "object") {
+  if (payload === null || payload === undefined) {
+    return "null";
+  }
+  if (typeof payload !== "object") {
     return JSON.stringify(payload);
   }
-  const sorted = Object.entries(payload as Record<string, unknown>).sort(([a], [b]) =>
-    a.localeCompare(b)
-  );
-  return JSON.stringify(Object.fromEntries(sorted));
+  if (Array.isArray(payload)) {
+    return "[" + payload.map(serializeCanonical).join(",") + "]";
+  }
+  const sorted = Object.entries(payload as Record<string, unknown>)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => [k, serializeCanonical(v)]);
+  return "{" + sorted.map(([k, v]) => `${JSON.stringify(k as string)}:${v}`).join(",") + "}";
 }

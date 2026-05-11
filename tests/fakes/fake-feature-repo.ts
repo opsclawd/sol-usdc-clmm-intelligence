@@ -1,8 +1,8 @@
-import type { DerivedFeatureRepo } from "../../src/ports/feature-repo.js";
 import type {
+  DerivedFeatureRepo,
   DerivedFeatureRow,
   DerivedFeatureInsert
-} from "../../src/db/schema/derived-features.js";
+} from "../../src/ports/feature-repo.js";
 
 export class FakeFeatureRepo implements DerivedFeatureRepo {
   private readonly store: DerivedFeatureRow[] = [];

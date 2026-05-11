@@ -1,8 +1,8 @@
-import type { EvidenceBundleRepo } from "../../src/ports/bundle-repo.js";
 import type {
+  EvidenceBundleRepo,
   EvidenceBundleRow,
   EvidenceBundleInsert
-} from "../../src/db/schema/evidence-bundles.js";
+} from "../../src/ports/bundle-repo.js";
 
 export class FakeBundleRepo implements EvidenceBundleRepo {
   private readonly store: EvidenceBundleRow[] = [];

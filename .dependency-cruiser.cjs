@@ -72,7 +72,7 @@ module.exports = {
     {
       name: "inner-layers-no-db",
       severity: "error",
-      from: { path: "^src/(domain|contracts|application|jobs)" },
+      from: { path: "^src/(domain|contracts|application|jobs|ports)" },
       to: { path: ["^src/db"] }
     }
   ],

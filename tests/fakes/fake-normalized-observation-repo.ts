@@ -1,8 +1,8 @@
-import type { NormalizedObservationRepo } from "../../src/ports/normalized-observation-repo.js";
 import type {
+  NormalizedObservationRepo,
   NormalizedObservationRow,
   NormalizedObservationInsert
-} from "../../src/db/schema/normalized-observations.js";
+} from "../../src/ports/normalized-observation-repo.js";
 
 export class FakeNormalizedObservationRepo implements NormalizedObservationRepo {
   private readonly store: NormalizedObservationRow[] = [];

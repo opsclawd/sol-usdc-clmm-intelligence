@@ -1,4 +1,25 @@
-import type { RawObservationRow, RawObservationInsert } from "../db/schema/raw-observations.js";
+export interface RawObservationRow {
+  id: number;
+  source: string;
+  observedAtUnixMs: number;
+  fetchedAtUnixMs: number;
+  payloadHash: string;
+  payloadCanonical: string;
+  parseStatus: string;
+  sourceRequestMeta: unknown;
+  receivedAtUnixMs: number;
+}
+
+export interface RawObservationInsert {
+  source: string;
+  observedAtUnixMs: number;
+  fetchedAtUnixMs: number;
+  payloadHash: string;
+  payloadCanonical: string;
+  parseStatus?: string;
+  sourceRequestMeta?: unknown;
+  receivedAtUnixMs: number;
+}
 
 export interface RawObservationRepo {
   insert(row: RawObservationInsert): Promise<RawObservationRow>;

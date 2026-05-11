@@ -14,6 +14,24 @@ describe("canonicalHash", () => {
     expect(hash1).toBe(hash2);
   });
 
+  it("produces the same hash regardless of nested key order", async () => {
+    const hash1 = await canonicalHash({ outer: { a: 1, b: 2 } });
+    const hash2 = await canonicalHash({ outer: { b: 2, a: 1 } });
+    expect(hash1).toBe(hash2);
+  });
+
+  it("produces the same hash for deeply nested reordered objects", async () => {
+    const hash1 = await canonicalHash({ x: { y: { z: 1, w: 2 }, q: 3 } });
+    const hash2 = await canonicalHash({ x: { q: 3, y: { w: 2, z: 1 } } });
+    expect(hash1).toBe(hash2);
+  });
+
+  it("produces the same hash for arrays with same nested object key order", async () => {
+    const hash1 = await canonicalHash([{ a: 1, b: 2 }]);
+    const hash2 = await canonicalHash([{ b: 2, a: 1 }]);
+    expect(hash1).toBe(hash2);
+  });
+
   it("produces different hashes for different payloads", async () => {
     const hash1 = await canonicalHash({ a: 1 });
     const hash2 = await canonicalHash({ a: 2 });

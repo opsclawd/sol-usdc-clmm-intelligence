@@ -1,18 +1,31 @@
 import { eq, and, gte } from "drizzle-orm";
 import { normalizedObservations } from "../../db/schema/normalized-observations.js";
-import type { NormalizedObservationRepo } from "../../ports/normalized-observation-repo.js";
 import type {
+  NormalizedObservationRepo,
   NormalizedObservationInsert,
   NormalizedObservationRow
-} from "../../db/schema/normalized-observations.js";
+} from "../../ports/normalized-observation-repo.js";
 import type { Db } from "../../db/db.js";
+
+function toPortRow(row: typeof normalizedObservations.$inferSelect): NormalizedObservationRow {
+  return {
+    id: row.id,
+    rawObservationId: row.rawObservationId,
+    source: row.source,
+    observationKind: row.observationKind,
+    payload: row.payload,
+    payloadHash: row.payloadHash,
+    isFresh: row.isFresh,
+    receivedAtUnixMs: row.receivedAtUnixMs
+  };
+}
 
 export class DrizzleNormalizedObservationRepo implements NormalizedObservationRepo {
   constructor(private readonly db: Db) {}
 
   async insert(row: NormalizedObservationInsert): Promise<NormalizedObservationRow> {
     const [result] = await this.db.insert(normalizedObservations).values(row).returning();
-    return result!;
+    return toPortRow(result!);
   }
 
   async findBySource(
@@ -20,7 +33,7 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
     observationKind: string,
     sinceUnixMs: number
   ): Promise<NormalizedObservationRow[]> {
-    return this.db
+    const rows = await this.db
       .select()
       .from(normalizedObservations)
       .where(
@@ -30,13 +43,14 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
           gte(normalizedObservations.receivedAtUnixMs, sinceUnixMs)
         )
       );
+    return rows.map(toPortRow);
   }
 
   async findFreshByKind(
     source: string,
     observationKind: string
   ): Promise<NormalizedObservationRow[]> {
-    return this.db
+    const rows = await this.db
       .select()
       .from(normalizedObservations)
       .where(
@@ -46,5 +60,6 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
           eq(normalizedObservations.isFresh, true)
         )
       );
+    return rows.map(toPortRow);
   }
 }

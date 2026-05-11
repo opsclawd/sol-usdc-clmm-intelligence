@@ -1,8 +1,8 @@
-import type { RawObservationRepo } from "../../src/ports/observation-repo.js";
 import type {
+  RawObservationRepo,
   RawObservationRow,
   RawObservationInsert
-} from "../../src/db/schema/raw-observations.js";
+} from "../../src/ports/observation-repo.js";
 
 export class FakeObservationRepo implements RawObservationRepo {
   private readonly store = new Map<string, RawObservationRow>();
