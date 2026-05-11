@@ -55,7 +55,7 @@ policies/ prompts/ routines/ resources/ memory/ cron/   Non-code product assets 
 
 This project uses Drizzle ORM with Postgres on the `intelligence` schema.
 
-1. Ensure `DATABASE_URL` is set in your `.env` (include `?schema=intelligence` in the query string)
+1. Ensure `DATABASE_URL` is set in your `.env` (the app sets `search_path=intelligence` automatically)
 2. Run migrations: `pnpm db:migrate`
 3. Verify schema: `SELECT nspname FROM pg_namespace WHERE nspname = 'intelligence';`
 

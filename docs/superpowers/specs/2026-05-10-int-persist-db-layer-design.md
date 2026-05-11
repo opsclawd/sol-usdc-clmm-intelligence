@@ -18,7 +18,7 @@ This issue is **infrastructure only**. It does not modify existing collectors or
 
 Use Drizzle ORM with `pgSchema("intelligence")` — the same pattern used by regime-engine with `pgSchema("regime_engine")`. Each repo owns its own schema on the shared Railway Postgres cluster. No cross-schema foreign keys. Migrations target the `intelligence` schema.
 
-Connection string: `DATABASE_URL?schema=intelligence` (Drizzle Kit connects to the default schema but generates migration SQL targeting `intelligence`).
+Connection string: `DATABASE_URL` (the app sets `search_path=intelligence` via Postgres.js config; Drizzle Kit generates migration SQL targeting `intelligence` schema).
 
 Schema-scoped role: `intelligence_reader` / `intelligence_writer` roles provisioned via the first migration.
 
@@ -287,7 +287,7 @@ New scripts in package.json:
 
 New env vars in `.env.example`:
 
-- `DATABASE_URL` — Postgres connection string with `?schema=intelligence`
+- `DATABASE_URL` — Postgres connection string (the app sets `search_path=intelligence` automatically)
 - `PG_SSL` — Set to `"false"` to disable SSL (default: enabled)
 - `PG_MAX_CONNECTIONS` — Max connection pool size (default: 10)
 

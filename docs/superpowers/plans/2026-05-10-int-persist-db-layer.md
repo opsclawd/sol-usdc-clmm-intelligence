@@ -132,7 +132,7 @@ Append to `.env.example`:
 
 ```
 # --- Database (shared Railway Postgres, intelligence schema) ---
-DATABASE_URL=postgres://user:pass@host:5432/db?schema=intelligence
+DATABASE_URL=postgres://user:pass@host:5432/db
 PG_SSL=true
 PG_MAX_CONNECTIONS=10
 ```
@@ -1971,7 +1971,7 @@ Add a section after the existing environment variables section:
 
 This project uses Drizzle ORM with Postgres on the `intelligence` schema.
 
-1. Ensure `DATABASE_URL` is set in your `.env` (include `?schema=intelligence` in the query string)
+1. Ensure `DATABASE_URL` is set in your `.env` (the app sets `search_path=intelligence` automatically)
 2. Run migrations: `pnpm db:migrate`
 3. Verify schema: `SELECT nspname FROM pg_namespace WHERE nspname = 'intelligence';`
 
