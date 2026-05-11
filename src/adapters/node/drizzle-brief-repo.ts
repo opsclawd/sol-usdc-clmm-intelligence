@@ -42,7 +42,7 @@ export class DrizzleBriefRepo implements ResearchBriefRepo {
         modelProvider: row.modelProvider,
         structuredOutput: row.structuredOutput,
         signalClass: row.signalClass,
-        evidenceFamily: row.evidenceFamily ?? null,
+        evidenceFamily: row.evidenceFamily,
         taxonomySummary: row.taxonomySummary ?? null,
         confidence: row.confidence as unknown,
         confidenceComposite:

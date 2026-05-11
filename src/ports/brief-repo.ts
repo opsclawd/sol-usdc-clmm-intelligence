@@ -33,7 +33,7 @@ export interface ResearchBriefInsert {
   modelProvider: string;
   structuredOutput: unknown;
   signalClass: SignalClass;
-  evidenceFamily?: EvidenceFamily | null;
+  evidenceFamily: EvidenceFamily;
   taxonomySummary?: TaxonomySummary | null;
   confidence: Confidence;
   confidenceComposite?: number | null;

@@ -4,6 +4,7 @@ import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixt
 
 const BRIEF_INSERT = {
   signalClass: "contextual" as const,
+  evidenceFamily: "clmm_state" as const,
   confidence: DEFAULT_CONFIDENCE,
   provenance: DEFAULT_PROVENANCE
 };

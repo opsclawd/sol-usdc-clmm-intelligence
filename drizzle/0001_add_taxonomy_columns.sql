@@ -47,6 +47,8 @@ ALTER TABLE intelligence.derived_features
   ADD COLUMN IF NOT EXISTS valid_until_unix_ms BIGINT,
   ADD COLUMN IF NOT EXISTS is_stale BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS stale_behavior VARCHAR(24),
+  ADD COLUMN IF NOT EXISTS confidence_composite NUMERIC(5,4),
+  ADD COLUMN IF NOT EXISTS confidence_level VARCHAR(8),
   ADD COLUMN IF NOT EXISTS provenance JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 -- Replace confidence(varchar) with confidence(jsonb): rename old, add new
@@ -67,9 +69,7 @@ ALTER TABLE intelligence.derived_features
 DROP INDEX IF EXISTS intelligence.idx_features_kind_confidence;
 ALTER TABLE intelligence.derived_features DROP COLUMN IF EXISTS confidence_legacy;
 
--- Add confidence_composite and confidence_level (already added via ADD COLUMN IF NOT EXISTS above, but let's ensure)
-ALTER TABLE intelligence.derived_features ADD COLUMN IF NOT EXISTS confidence_composite NUMERIC(5,4);
-ALTER TABLE intelligence.derived_features ADD COLUMN IF NOT EXISTS confidence_level VARCHAR(8);
+-- Add confidence_composite and confidence_level columns were added in the first ALTER TABLE block above
 
 -- ═══════════════════════════════════════════════════
 -- evidence_bundles
