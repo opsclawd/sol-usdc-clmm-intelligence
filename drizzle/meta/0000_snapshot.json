@@ -388,8 +388,8 @@
         }
       },
       "foreignKeys": {
-        "normalized_observations_raw_observation_id_raw_observations_id_fk": {
-          "name": "normalized_observations_raw_observation_id_raw_observations_id_fk",
+        "fk_normalized_observations_raw_observation": {
+          "name": "fk_normalized_observations_raw_observation",
           "tableFrom": "normalized_observations",
           "tableTo": "raw_observations",
           "schemaTo": "intelligence",
@@ -627,8 +627,8 @@
         }
       },
       "foreignKeys": {
-        "research_briefs_evidence_bundle_id_evidence_bundles_id_fk": {
-          "name": "research_briefs_evidence_bundle_id_evidence_bundles_id_fk",
+        "fk_research_briefs_evidence_bundle": {
+          "name": "fk_research_briefs_evidence_bundle",
           "tableFrom": "research_briefs",
           "tableTo": "evidence_bundles",
           "schemaTo": "intelligence",
