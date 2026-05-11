@@ -36,8 +36,18 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
       })
       .returning();
     if (result) return toPortRow(result);
-    const existing = await this.findFreshByKind(row.source, row.observationKind);
-    return existing[0]!;
+    const [existing] = await this.db
+      .select()
+      .from(normalizedObservations)
+      .where(
+        and(
+          eq(normalizedObservations.source, row.source),
+          eq(normalizedObservations.observationKind, row.observationKind),
+          eq(normalizedObservations.payloadHash, row.payloadHash)
+        )
+      )
+      .limit(1);
+    return toPortRow(existing!);
   }
 
   async findBySource(

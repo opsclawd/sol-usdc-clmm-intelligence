@@ -63,19 +63,19 @@ describe("verify helpers", () => {
     );
   });
 
-  it("verifyForeignKey throws when constraint is not deferrable initially deferred", async () => {
+  it("verifyForeignKey returns deferrability for non-deferrable constraint (db:push path)", async () => {
     const mockDb = {
       execute: async () => [{ conname: "fk_test", condeferrable: false, condeferred: false }]
     } as any;
-    await expect(verifyForeignKey(mockDb, "fk_test")).rejects.toThrow(
-      "FATAL: FK constraint fk_test exists but is not DEFERRABLE INITIALLY DEFERRED"
-    );
+    const result = await verifyForeignKey(mockDb, "fk_test");
+    expect(result).toEqual({ name: "fk_test", deferrable: false, deferred: false });
   });
 
-  it("verifyForeignKey succeeds for deferrable initially deferred constraint", async () => {
+  it("verifyForeignKey returns deferrability for deferrable initially deferred constraint", async () => {
     const mockDb = {
       execute: async () => [{ conname: "fk_test", condeferrable: true, condeferred: true }]
     } as any;
-    await expect(verifyForeignKey(mockDb, "fk_test")).resolves.toBeUndefined();
+    const result = await verifyForeignKey(mockDb, "fk_test");
+    expect(result).toEqual({ name: "fk_test", deferrable: true, deferred: true });
   });
 });

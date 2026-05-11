@@ -32,8 +32,14 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
       .onConflictDoNothing({ target: [evidenceBundles.pair, evidenceBundles.payloadHash] })
       .returning();
     if (result) return toPortRow(result);
-    const existing = await this.findLatestByPair(row.pair);
-    return existing!;
+    const [existing] = await this.db
+      .select()
+      .from(evidenceBundles)
+      .where(
+        and(eq(evidenceBundles.pair, row.pair), eq(evidenceBundles.payloadHash, row.payloadHash))
+      )
+      .limit(1);
+    return toPortRow(existing!);
   }
 
   async findByPair(pair: string, sinceUnixMs: number): Promise<EvidenceBundleRow[]> {

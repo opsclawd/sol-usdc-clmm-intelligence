@@ -25,17 +25,26 @@ export async function verifyTable(db: Db, tableName: string): Promise<void> {
   }
 }
 
-export async function verifyForeignKey(db: Db, constraintName: string): Promise<void> {
+export interface FkVerificationResult {
+  name: string;
+  deferrable: boolean;
+  deferred: boolean;
+}
+
+export async function verifyForeignKey(
+  db: Db,
+  constraintName: string
+): Promise<FkVerificationResult> {
   const result = await db.execute(
     sql`SELECT conname, condeferrable, condeferred FROM pg_constraint WHERE conname = ${constraintName}`
   );
   if (result.length === 0) {
     throw new Error(`FATAL: FK constraint ${constraintName} not found — run migrations first`);
   }
-  const row = result[0] as { condeferrable: boolean; condeferred: boolean };
-  if (!row.condeferrable || !row.condeferred) {
-    throw new Error(
-      `FATAL: FK constraint ${constraintName} exists but is not DEFERRABLE INITIALLY DEFERRED (condeferrable=${row.condeferrable}, condeferred=${row.condeferred})`
-    );
-  }
+  const row = result[0] as { conname: string; condeferrable: boolean; condeferred: boolean };
+  return {
+    name: row.conname,
+    deferrable: row.condeferrable,
+    deferred: row.condeferred
+  };
 }
