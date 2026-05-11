@@ -6,6 +6,7 @@ export interface DerivedFeatureRow {
   asOfUnixMs: number;
   confidence: string;
   inputLineage: unknown;
+  payloadHash: string;
   receivedAtUnixMs: number;
 }
 
@@ -16,10 +17,12 @@ export interface DerivedFeatureInsert {
   asOfUnixMs: number;
   confidence?: string;
   inputLineage?: unknown;
+  payloadHash: string;
   receivedAtUnixMs: number;
 }
 
 export interface DerivedFeatureRepo {
   insert(row: DerivedFeatureInsert): Promise<DerivedFeatureRow>;
+  findByHash(featureKind: string, payloadHash: string): Promise<DerivedFeatureRow | undefined>;
   findByKind(featureKind: string, sinceUnixMs: number): Promise<DerivedFeatureRow[]>;
 }

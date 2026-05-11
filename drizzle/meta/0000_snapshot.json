@@ -51,6 +51,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
         "received_at_unix_ms": {
           "name": "received_at_unix_ms",
           "type": "bigint",
@@ -59,6 +65,27 @@
         }
       },
       "indexes": {
+        "uniq_features_kind_hash": {
+          "name": "uniq_features_kind_hash",
+          "columns": [
+            {
+              "expression": "feature_kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "payload_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_features_kind_as_of": {
           "name": "idx_features_kind_as_of",
           "columns": [

@@ -58,9 +58,12 @@ CREATE TABLE IF NOT EXISTS intelligence.derived_features (
   as_of_unix_ms BIGINT NOT NULL,
   confidence VARCHAR(16) NOT NULL DEFAULT 'medium',
   input_lineage JSONB,
+  payload_hash VARCHAR(64) NOT NULL,
   received_at_unix_ms BIGINT NOT NULL
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_features_kind_hash
+  ON intelligence.derived_features (feature_kind, payload_hash);
 CREATE INDEX IF NOT EXISTS idx_features_kind_as_of
   ON intelligence.derived_features (feature_kind, as_of_unix_ms, id);
 CREATE INDEX IF NOT EXISTS idx_features_kind_confidence
