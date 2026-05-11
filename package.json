@@ -16,24 +16,30 @@
     "format": "prettier --check .",
     "boundaries": "depcruise --config .dependency-cruiser.cjs src",
     "verify": "pnpm typecheck && pnpm lint && pnpm format && pnpm test && pnpm boundaries",
-    "prepare": "husky || true"
+    "prepare": "husky || true",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.36.4",
+    "postgres": "^3.4.9",
     "yaml": "^2.6.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "dependency-cruiser": "^16.10.4",
-    "eslint": "^8.57.0",
-    "@typescript-eslint/parser": "^7.0.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "dependency-cruiser": "^16.10.4",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^8.57.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "prettier": "^3.5.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "husky": "^9.1.7",
-    "lint-staged": "^16.4.0",
     "vitest": "^2.1.9"
   },
   "lint-staged": {
