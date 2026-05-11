@@ -9,12 +9,15 @@ import {
   index
 } from "drizzle-orm/pg-core";
 import { intelligence } from "./intelligence.js";
+import { rawObservations } from "./raw-observations.js";
 
 export const normalizedObservations = intelligence.table(
   "normalized_observations",
   {
     id: serial("id").primaryKey(),
-    rawObservationId: integer("raw_observation_id").notNull(),
+    rawObservationId: integer("raw_observation_id")
+      .notNull()
+      .references(() => rawObservations.id, { onDelete: "restrict" }),
     source: varchar("source", { length: 64 }).notNull(),
     observationKind: varchar("observation_kind", { length: 64 }).notNull(),
     payload: jsonb("payload").notNull(),

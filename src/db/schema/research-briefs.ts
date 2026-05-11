@@ -1,11 +1,14 @@
 import { bigint, integer, jsonb, serial, varchar, index } from "drizzle-orm/pg-core";
 import { intelligence } from "./intelligence.js";
+import { evidenceBundles } from "./evidence-bundles.js";
 
 export const researchBriefs = intelligence.table(
   "research_briefs",
   {
     id: serial("id").primaryKey(),
-    evidenceBundleId: integer("evidence_bundle_id").notNull(),
+    evidenceBundleId: integer("evidence_bundle_id")
+      .notNull()
+      .references(() => evidenceBundles.id, { onDelete: "restrict" }),
     promptVersion: varchar("prompt_version", { length: 32 }).notNull(),
     modelProvider: varchar("model_provider", { length: 64 }).notNull(),
     structuredOutput: jsonb("structured_output").notNull(),

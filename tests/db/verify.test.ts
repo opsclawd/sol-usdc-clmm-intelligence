@@ -1,6 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from "vitest";
-import { verifyPgConnection, verifyPgSchema, verifyTable } from "../../src/db/verify.js";
+import {
+  verifyPgConnection,
+  verifyPgSchema,
+  verifyTable,
+  verifyForeignKey
+} from "../../src/db/verify.js";
 
 describe("verify helpers", () => {
   it("verifyPgConnection calls db.execute with SELECT 1", async () => {
@@ -45,5 +50,32 @@ describe("verify helpers", () => {
       execute: async () => [{ tablename: "raw_observations" }]
     } as any;
     await expect(verifyTable(mockDb, "raw_observations")).resolves.toBeUndefined();
+  });
+
+  it("verifyForeignKey throws when constraint not found", async () => {
+    const mockDb = {
+      execute: async () => []
+    } as any;
+    await expect(
+      verifyForeignKey(mockDb, "fk_normalized_observations_raw_observation")
+    ).rejects.toThrow(
+      "FATAL: FK constraint fk_normalized_observations_raw_observation not found — run migrations first"
+    );
+  });
+
+  it("verifyForeignKey throws when constraint is not deferrable initially deferred", async () => {
+    const mockDb = {
+      execute: async () => [{ conname: "fk_test", condeferrable: false, condeferred: false }]
+    } as any;
+    await expect(verifyForeignKey(mockDb, "fk_test")).rejects.toThrow(
+      "FATAL: FK constraint fk_test exists but is not DEFERRABLE INITIALLY DEFERRED"
+    );
+  });
+
+  it("verifyForeignKey succeeds for deferrable initially deferred constraint", async () => {
+    const mockDb = {
+      execute: async () => [{ conname: "fk_test", condeferrable: true, condeferred: true }]
+    } as any;
+    await expect(verifyForeignKey(mockDb, "fk_test")).resolves.toBeUndefined();
   });
 });
