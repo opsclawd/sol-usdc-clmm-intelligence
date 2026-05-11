@@ -36,7 +36,7 @@ export async function verifyForeignKey(
   constraintName: string
 ): Promise<FkVerificationResult> {
   const result = await db.execute(
-    sql`SELECT conname, condeferrable, condeferred FROM pg_constraint WHERE conname = ${constraintName}`
+    sql`SELECT conname, condeferrable, condeferred FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace WHERE c.conname = ${constraintName} AND n.nspname = 'intelligence'`
   );
   if (result.length === 0) {
     throw new Error(`FATAL: FK constraint ${constraintName} not found — run migrations first`);
