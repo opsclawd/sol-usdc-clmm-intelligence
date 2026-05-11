@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { researchBriefs } from "../../db/schema/research-briefs.js";
 import type {
   ResearchBriefRepo,
@@ -25,8 +25,33 @@ export class DrizzleBriefRepo implements ResearchBriefRepo {
   constructor(private readonly db: Db) {}
 
   async insert(row: ResearchBriefInsert): Promise<ResearchBriefRow> {
-    const [result] = await this.db.insert(researchBriefs).values(row).returning();
-    return toPortRow(result!);
+    const [result] = await this.db
+      .insert(researchBriefs)
+      .values(row)
+      .onConflictDoNothing({
+        target: [researchBriefs.evidenceBundleId, researchBriefs.payloadHash]
+      })
+      .returning();
+    if (result) return toPortRow(result);
+    const existing = await this.findByHash(row.evidenceBundleId, row.payloadHash);
+    return existing!;
+  }
+
+  async findByHash(
+    evidenceBundleId: number,
+    payloadHash: string
+  ): Promise<ResearchBriefRow | undefined> {
+    const [result] = await this.db
+      .select()
+      .from(researchBriefs)
+      .where(
+        and(
+          eq(researchBriefs.evidenceBundleId, evidenceBundleId),
+          eq(researchBriefs.payloadHash, payloadHash)
+        )
+      )
+      .limit(1);
+    return result ? toPortRow(result) : undefined;
   }
 
   async findByBundleId(evidenceBundleId: number): Promise<ResearchBriefRow[]> {

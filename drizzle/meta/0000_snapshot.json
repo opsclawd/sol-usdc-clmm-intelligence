@@ -583,6 +583,27 @@
         }
       },
       "indexes": {
+        "uniq_brief_bundle_hash": {
+          "name": "uniq_brief_bundle_hash",
+          "columns": [
+            {
+              "expression": "evidence_bundle_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "payload_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_brief_bundle_id": {
           "name": "idx_brief_bundle_id",
           "columns": [

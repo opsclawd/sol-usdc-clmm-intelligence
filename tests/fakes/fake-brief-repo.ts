@@ -9,6 +9,10 @@ export class FakeBriefRepo implements ResearchBriefRepo {
   private nextId = 1;
 
   async insert(row: ResearchBriefInsert): Promise<ResearchBriefRow> {
+    const existing = this.store.find(
+      (r) => r.evidenceBundleId === row.evidenceBundleId && r.payloadHash === row.payloadHash
+    );
+    if (existing) return existing;
     const result: ResearchBriefRow = {
       id: this.nextId++,
       evidenceBundleId: row.evidenceBundleId,
@@ -26,5 +30,14 @@ export class FakeBriefRepo implements ResearchBriefRepo {
 
   async findByBundleId(evidenceBundleId: number): Promise<ResearchBriefRow[]> {
     return this.store.filter((r) => r.evidenceBundleId === evidenceBundleId);
+  }
+
+  async findByHash(
+    evidenceBundleId: number,
+    payloadHash: string
+  ): Promise<ResearchBriefRow | undefined> {
+    return this.store.find(
+      (r) => r.evidenceBundleId === evidenceBundleId && r.payloadHash === payloadHash
+    );
   }
 }

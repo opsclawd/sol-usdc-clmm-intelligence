@@ -96,6 +96,8 @@ CREATE TABLE IF NOT EXISTS intelligence.research_briefs (
   received_at_unix_ms BIGINT NOT NULL
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_brief_bundle_hash
+  ON intelligence.research_briefs (evidence_bundle_id, payload_hash);
 CREATE INDEX IF NOT EXISTS idx_brief_bundle_id
   ON intelligence.research_briefs (evidence_bundle_id, received_at_unix_ms);
 CREATE INDEX IF NOT EXISTS idx_brief_model_provider

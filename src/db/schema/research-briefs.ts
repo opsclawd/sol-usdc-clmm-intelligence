@@ -1,4 +1,4 @@
-import { bigint, integer, jsonb, serial, varchar, index } from "drizzle-orm/pg-core";
+import { bigint, integer, jsonb, serial, varchar, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { intelligence } from "./intelligence.js";
 import { evidenceBundles } from "./evidence-bundles.js";
 
@@ -18,6 +18,7 @@ export const researchBriefs = intelligence.table(
     receivedAtUnixMs: bigint("received_at_unix_ms", { mode: "number" }).notNull()
   },
   (t) => [
+    uniqueIndex("uniq_brief_bundle_hash").on(t.evidenceBundleId, t.payloadHash),
     index("idx_brief_bundle_id").on(t.evidenceBundleId, t.receivedAtUnixMs),
     index("idx_brief_model_provider").on(t.modelProvider, t.receivedAtUnixMs)
   ]
