@@ -1,19 +1,21 @@
--- INT-PERSIST #5: Schema, role provisioning, and table creation for intelligence schema
+-- INT-PERSIST #5: Schema, table creation, and grants for intelligence schema
+-- Role provisioning is in scripts/db-provision-roles.ts (requires CREATEROLE)
+-- This migration assumes roles already exist; run db:provision-roles first.
 
 CREATE SCHEMA IF NOT EXISTS intelligence;
 
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'intelligence_reader') THEN
-    CREATE ROLE intelligence_reader;
-  END IF;
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'intelligence_writer') THEN
-    CREATE ROLE intelligence_writer;
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'intelligence_reader') AND
+     EXISTS (SELECT FROM pg_roles WHERE rolname = 'intelligence_writer') THEN
+    GRANT USAGE ON SCHEMA intelligence TO intelligence_reader, intelligence_writer;
+  ELSIF EXISTS (SELECT FROM pg_roles WHERE rolname = 'intelligence_reader') THEN
+    GRANT USAGE ON SCHEMA intelligence TO intelligence_reader;
+  ELSIF EXISTS (SELECT FROM pg_roles WHERE rolname = 'intelligence_writer') THEN
+    GRANT USAGE ON SCHEMA intelligence TO intelligence_writer;
   END IF;
 END
 $$;
-
-GRANT USAGE ON SCHEMA intelligence TO intelligence_reader, intelligence_writer;
 
 CREATE TABLE IF NOT EXISTS intelligence.raw_observations (
   id SERIAL PRIMARY KEY,
@@ -115,10 +117,17 @@ ALTER TABLE intelligence.research_briefs
   ON DELETE RESTRICT
   DEFERRABLE INITIALLY DEFERRED;
 
-GRANT SELECT ON ALL TABLES IN SCHEMA intelligence TO intelligence_reader;
-GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA intelligence TO intelligence_writer;
-GRANT USAGE ON ALL SEQUENCES IN SCHEMA intelligence TO intelligence_writer;
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA intelligence GRANT SELECT ON TABLES TO intelligence_reader;
-ALTER DEFAULT PRIVILEGES IN SCHEMA intelligence GRANT SELECT, INSERT, UPDATE ON TABLES TO intelligence_writer;
-ALTER DEFAULT PRIVILEGES IN SCHEMA intelligence GRANT USAGE ON SEQUENCES TO intelligence_writer;
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'intelligence_reader') THEN
+    GRANT SELECT ON ALL TABLES IN SCHEMA intelligence TO intelligence_reader;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA intelligence GRANT SELECT ON TABLES TO intelligence_reader;
+  END IF;
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'intelligence_writer') THEN
+    GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA intelligence TO intelligence_writer;
+    GRANT USAGE ON ALL SEQUENCES IN SCHEMA intelligence TO intelligence_writer;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA intelligence GRANT SELECT, INSERT, UPDATE ON TABLES TO intelligence_writer;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA intelligence GRANT USAGE ON SEQUENCES TO intelligence_writer;
+  END IF;
+END
+$$;
