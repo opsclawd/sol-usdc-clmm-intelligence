@@ -27,7 +27,14 @@ async function provisionRoles(): Promise<void> {
       END
       $$
     `;
-    console.log("Provisioned intelligence_reader and intelligence_writer roles");
+    await sql`GRANT USAGE ON SCHEMA intelligence TO intelligence_reader, intelligence_writer`;
+    await sql`GRANT SELECT ON ALL TABLES IN SCHEMA intelligence TO intelligence_reader`;
+    await sql`ALTER DEFAULT PRIVILEGES IN SCHEMA intelligence GRANT SELECT ON TABLES TO intelligence_reader`;
+    await sql`GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA intelligence TO intelligence_writer`;
+    await sql`GRANT USAGE ON ALL SEQUENCES IN SCHEMA intelligence TO intelligence_writer`;
+    await sql`ALTER DEFAULT PRIVILEGES IN SCHEMA intelligence GRANT SELECT, INSERT, UPDATE ON TABLES TO intelligence_writer`;
+    await sql`ALTER DEFAULT PRIVILEGES IN SCHEMA intelligence GRANT USAGE ON SEQUENCES TO intelligence_writer`;
+    console.log("Provisioned intelligence_reader and intelligence_writer roles with grants");
   } catch (error) {
     if (
       error instanceof Error &&
