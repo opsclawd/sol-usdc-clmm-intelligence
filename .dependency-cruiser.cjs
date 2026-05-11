@@ -60,6 +60,20 @@ module.exports = {
       severity: "error",
       from: { path: "^src/(domain|application|jobs|ports|contracts)" },
       to: { dependencyTypes: ["core"] }
+    },
+    {
+      name: "db-no-upstream",
+      severity: "error",
+      from: { path: "^src/db" },
+      to: {
+        path: ["^src/application", "^src/jobs", "^src/adapters", "^src/scripts", "^src/ports"]
+      }
+    },
+    {
+      name: "inner-layers-no-db",
+      severity: "error",
+      from: { path: "^src/(domain|contracts|application|jobs|ports)" },
+      to: { path: ["^src/db"] }
     }
   ],
   options: {

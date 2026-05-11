@@ -33,6 +33,9 @@ The render step prints the OpenClaw commands needed to register the cron jobs de
 ```bash
 pnpm collect:price        # writes data/latest-price-snapshot.json from Jupiter
 pnpm collect:clmm-bundle  # fetches and writes SOL/USDC CLMM bundle from clmm-v2
+pnpm db:generate          # generates Drizzle migrations from schema changes
+pnpm db:migrate           # runs Drizzle migrations against DATABASE_URL
+pnpm db:push              # pushes schema changes directly (dev only)
 pnpm cron:render          # prints OpenClaw cron add commands
 pnpm cron:sync -- --apply # actually creates OpenClaw cron jobs
 ```
@@ -40,12 +43,23 @@ pnpm cron:sync -- --apply # actually creates OpenClaw cron jobs
 ## Repo structure
 
 ```text
-src/                              Layered monolith (domain / contracts / ports / application / jobs / adapters)
+src/                              Layered monolith (domain / contracts / ports / application / jobs / adapters / db)
 scripts/                          Thin entrypoints that call jobs through the Node composition root
 tests/                            Vitest unit, application, and fixture regression tests
+drizzle/                         Drizzle ORM migrations
 schemas/                          JSON Schema asset directory (unchanged)
 policies/ prompts/ routines/ resources/ memory/ cron/   Non-code product assets (unchanged)
 ```
+
+## Database Setup
+
+This project uses Drizzle ORM with Postgres on the `intelligence` schema.
+
+1. Ensure `DATABASE_URL` is set in your `.env` (the app sets `search_path=intelligence` automatically)
+2. Run migrations: `pnpm db:migrate`
+3. Verify schema: `SELECT nspname FROM pg_namespace WHERE nspname = 'intelligence';`
+
+See `drizzle.config.ts` for connection settings.
 
 ## Verification commands
 

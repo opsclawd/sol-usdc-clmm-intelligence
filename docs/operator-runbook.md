@@ -77,3 +77,29 @@ Correct behavior is conservative:
 - partial/stale data quality
 
 If the agent invents missing data, tighten `AGENTS.md`, the routine prompt, or the relevant schema.
+
+## Database Operations
+
+### Run migrations
+
+```bash
+pnpm db:migrate
+```
+
+### Generate new migration (after schema changes)
+
+```bash
+pnpm db:generate
+```
+
+### Push schema to DB (dev only, no migration file)
+
+```bash
+pnpm db:push
+```
+
+### Verify DB connection
+
+```bash
+tsx -e "import { createDb } from './src/db/db.js'; const { db, client } = createDb(process.env.DATABASE_URL); await db.execute({ sql: 'SELECT 1' }); console.log('OK'); await client.end();"
+```
