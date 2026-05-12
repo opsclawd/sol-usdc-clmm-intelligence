@@ -93,11 +93,21 @@ UPDATE intelligence.derived_features SET
       WHEN 'high' THEN 1.0
       ELSE 0.6
     END,
-    'level', LOWER(confidence_legacy),
+    'level', CASE LOWER(confidence_legacy)
+      WHEN 'low' THEN 'low'
+      WHEN 'medium' THEN 'medium'
+      WHEN 'high' THEN 'high'
+      ELSE 'medium'
+    END,
     'weightingVersion', 'v0_legacy',
     'reasons', '[]'::jsonb
   ),
-  confidence_level = LOWER(confidence_legacy),
+  confidence_level = CASE LOWER(confidence_legacy)
+    WHEN 'low' THEN 'low'
+    WHEN 'medium' THEN 'medium'
+    WHEN 'high' THEN 'high'
+    ELSE 'medium'
+  END,
   confidence_composite = CASE LOWER(confidence_legacy)
     WHEN 'low' THEN 0.3
     WHEN 'medium' THEN 0.6
@@ -236,11 +246,21 @@ UPDATE intelligence.research_briefs SET
       WHEN 'high' THEN 1.0
       ELSE 0.6
     END,
-    'level', LOWER(confidence_legacy),
+    'level', CASE LOWER(confidence_legacy)
+      WHEN 'low' THEN 'low'
+      WHEN 'medium' THEN 'medium'
+      WHEN 'high' THEN 'high'
+      ELSE 'medium'
+    END,
     'weightingVersion', 'v0_legacy',
     'reasons', '[]'::jsonb
   ),
-  confidence_level = LOWER(confidence_legacy),
+  confidence_level = CASE LOWER(confidence_legacy)
+    WHEN 'low' THEN 'low'
+    WHEN 'medium' THEN 'medium'
+    WHEN 'high' THEN 'high'
+    ELSE 'medium'
+  END,
   confidence_composite = CASE LOWER(confidence_legacy)
     WHEN 'low' THEN 0.3
     WHEN 'medium' THEN 0.6
