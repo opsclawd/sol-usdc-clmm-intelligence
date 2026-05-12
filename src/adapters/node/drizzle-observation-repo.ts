@@ -5,17 +5,18 @@ import type {
   RawObservationInsert,
   RawObservationRow
 } from "../../ports/observation-repo.js";
+import type { Source } from "../../contracts/taxonomy.js";
 import type { Db } from "../../db/db.js";
 
 function toPortRow(row: typeof rawObservations.$inferSelect): RawObservationRow {
   return {
     id: row.id,
-    source: row.source,
+    source: row.source as Source,
     observedAtUnixMs: row.observedAtUnixMs,
     fetchedAtUnixMs: row.fetchedAtUnixMs,
     payloadHash: row.payloadHash,
     payloadCanonical: row.payloadCanonical,
-    parseStatus: row.parseStatus,
+    parseStatus: row.parseStatus as RawObservationRow["parseStatus"],
     sourceRequestMeta: row.sourceRequestMeta,
     receivedAtUnixMs: row.receivedAtUnixMs
   };
@@ -27,7 +28,16 @@ export class DrizzleObservationRepo implements RawObservationRepo {
   async insert(row: RawObservationInsert): Promise<RawObservationRow> {
     const [result] = await this.db
       .insert(rawObservations)
-      .values(row)
+      .values({
+        source: row.source,
+        observedAtUnixMs: row.observedAtUnixMs,
+        fetchedAtUnixMs: row.fetchedAtUnixMs,
+        payloadHash: row.payloadHash,
+        payloadCanonical: row.payloadCanonical,
+        parseStatus: row.parseStatus ?? "pending",
+        sourceRequestMeta: row.sourceRequestMeta ?? null,
+        receivedAtUnixMs: row.receivedAtUnixMs
+      })
       .onConflictDoNothing({ target: [rawObservations.source, rawObservations.payloadHash] })
       .returning();
     if (result) return toPortRow(result);
@@ -35,7 +45,7 @@ export class DrizzleObservationRepo implements RawObservationRepo {
     return existing!;
   }
 
-  async findByHash(source: string, payloadHash: string): Promise<RawObservationRow | undefined> {
+  async findByHash(source: Source, payloadHash: string): Promise<RawObservationRow | undefined> {
     const [result] = await this.db
       .select()
       .from(rawObservations)
@@ -44,7 +54,7 @@ export class DrizzleObservationRepo implements RawObservationRepo {
     return result ? toPortRow(result) : undefined;
   }
 
-  async findBySource(source: string, sinceUnixMs: number): Promise<RawObservationRow[]> {
+  async findBySource(source: Source, sinceUnixMs: number): Promise<RawObservationRow[]> {
     const rows = await this.db
       .select()
       .from(rawObservations)

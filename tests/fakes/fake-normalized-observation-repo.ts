@@ -3,6 +3,8 @@ import type {
   NormalizedObservationRow,
   NormalizedObservationInsert
 } from "../../src/ports/normalized-observation-repo.js";
+import type { Source, ObservationKind } from "../../src/contracts/taxonomy.js";
+import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 
 export class FakeNormalizedObservationRepo implements NormalizedObservationRepo {
   private readonly store: NormalizedObservationRow[] = [];
@@ -21,9 +23,17 @@ export class FakeNormalizedObservationRepo implements NormalizedObservationRepo 
       rawObservationId: row.rawObservationId,
       source: row.source,
       observationKind: row.observationKind,
+      signalClass: row.signalClass,
+      evidenceFamily: row.evidenceFamily,
       payload: row.payload,
       payloadHash: row.payloadHash,
-      isFresh: row.isFresh ?? true,
+      confidence: row.confidence ?? DEFAULT_CONFIDENCE,
+      confidenceComposite: row.confidenceComposite ?? null,
+      confidenceLevel: row.confidenceLevel ?? null,
+      validUntilUnixMs: row.validUntilUnixMs ?? null,
+      isStale: row.isStale ?? false,
+      staleBehavior: row.staleBehavior ?? null,
+      provenance: row.provenance ?? DEFAULT_PROVENANCE,
       receivedAtUnixMs: row.receivedAtUnixMs
     };
     this.store.push(result);
@@ -31,8 +41,8 @@ export class FakeNormalizedObservationRepo implements NormalizedObservationRepo 
   }
 
   async findBySource(
-    source: string,
-    observationKind: string,
+    source: Source,
+    observationKind: ObservationKind,
     sinceUnixMs: number
   ): Promise<NormalizedObservationRow[]> {
     return this.store.filter(
@@ -44,11 +54,11 @@ export class FakeNormalizedObservationRepo implements NormalizedObservationRepo 
   }
 
   async findFreshByKind(
-    source: string,
-    observationKind: string
+    source: Source,
+    observationKind: ObservationKind
   ): Promise<NormalizedObservationRow[]> {
     return this.store.filter(
-      (r) => r.source === source && r.observationKind === observationKind && r.isFresh
+      (r) => r.source === source && r.observationKind === observationKind && !r.isStale
     );
   }
 }

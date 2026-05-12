@@ -10,8 +10,16 @@ describe("researchBriefs schema", () => {
     expect(columns).toContain("promptVersion");
     expect(columns).toContain("modelProvider");
     expect(columns).toContain("structuredOutput");
+    expect(columns).toContain("signalClass");
+    expect(columns).toContain("evidenceFamily");
+    expect(columns).toContain("taxonomySummary");
     expect(columns).toContain("confidence");
-    expect(columns).toContain("sourceRefs");
+    expect(columns).toContain("confidenceComposite");
+    expect(columns).toContain("confidenceLevel");
+    expect(columns).toContain("validUntilUnixMs");
+    expect(columns).toContain("isStale");
+    expect(columns).toContain("staleBehavior");
+    expect(columns).toContain("provenance");
     expect(columns).toContain("payloadHash");
     expect(columns).toContain("receivedAtUnixMs");
   });

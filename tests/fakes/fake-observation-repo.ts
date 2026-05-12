@@ -3,6 +3,7 @@ import type {
   RawObservationRow,
   RawObservationInsert
 } from "../../src/ports/observation-repo.js";
+import type { Source } from "../../src/contracts/taxonomy.js";
 
 export class FakeObservationRepo implements RawObservationRepo {
   private readonly store = new Map<string, RawObservationRow>();
@@ -28,11 +29,11 @@ export class FakeObservationRepo implements RawObservationRepo {
     return result;
   }
 
-  async findByHash(source: string, payloadHash: string): Promise<RawObservationRow | undefined> {
+  async findByHash(source: Source, payloadHash: string): Promise<RawObservationRow | undefined> {
     return this.store.get(`${source}:${payloadHash}`);
   }
 
-  async findBySource(source: string, sinceUnixMs: number): Promise<RawObservationRow[]> {
+  async findBySource(source: Source, sinceUnixMs: number): Promise<RawObservationRow[]> {
     return [...this.store.values()].filter(
       (r) => r.source === source && r.observedAtUnixMs >= sinceUnixMs
     );

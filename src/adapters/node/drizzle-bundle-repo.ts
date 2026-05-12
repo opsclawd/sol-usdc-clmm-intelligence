@@ -5,6 +5,7 @@ import type {
   EvidenceBundleInsert,
   EvidenceBundleRow
 } from "../../ports/bundle-repo.js";
+import type { SignalClass, StaleBehavior } from "../../contracts/taxonomy.js";
 import type { Db } from "../../db/db.js";
 
 function toPortRow(row: typeof evidenceBundles.$inferSelect): EvidenceBundleRow {
@@ -16,7 +17,15 @@ function toPortRow(row: typeof evidenceBundles.$inferSelect): EvidenceBundleRow 
     expiresAtUnixMs: row.expiresAtUnixMs,
     payload: row.payload,
     payloadHash: row.payloadHash,
-    inputLineage: row.inputLineage,
+    taxonomySummary: row.taxonomySummary as EvidenceBundleRow["taxonomySummary"],
+    dominantSignalClass: row.dominantSignalClass as SignalClass,
+    confidence: row.confidence as unknown as EvidenceBundleRow["confidence"],
+    confidenceComposite: row.confidenceComposite != null ? Number(row.confidenceComposite) : null,
+    confidenceLevel: row.confidenceLevel,
+    validUntilUnixMs: row.validUntilUnixMs ?? null,
+    isStale: row.isStale,
+    staleBehavior: row.staleBehavior as StaleBehavior | null,
+    provenance: row.provenance as unknown as EvidenceBundleRow["provenance"],
     version: row.version,
     receivedAtUnixMs: row.receivedAtUnixMs
   };
@@ -28,7 +37,30 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
   async insert(row: EvidenceBundleInsert): Promise<EvidenceBundleRow> {
     const [result] = await this.db
       .insert(evidenceBundles)
-      .values(row)
+      .values({
+        schemaVersion: row.schemaVersion,
+        pair: row.pair,
+        asOfUnixMs: row.asOfUnixMs,
+        expiresAtUnixMs: row.expiresAtUnixMs,
+        payload: row.payload,
+        payloadHash: row.payloadHash,
+        taxonomySummary: row.taxonomySummary ?? null,
+        dominantSignalClass: row.dominantSignalClass ?? "deterministic",
+        confidence: row.confidence as unknown,
+        confidenceComposite:
+          row.confidenceComposite != null
+            ? String(row.confidenceComposite)
+            : row.confidence.compositeScore != null
+              ? String(row.confidence.compositeScore)
+              : null,
+        confidenceLevel: row.confidenceLevel ?? row.confidence.level ?? null,
+        validUntilUnixMs: row.validUntilUnixMs ?? null,
+        isStale: row.isStale ?? false,
+        staleBehavior: row.staleBehavior ?? null,
+        provenance: row.provenance as unknown,
+        version: row.version ?? 1,
+        receivedAtUnixMs: row.receivedAtUnixMs
+      })
       .onConflictDoNothing({ target: [evidenceBundles.pair, evidenceBundles.payloadHash] })
       .returning();
     if (result) return toPortRow(result);

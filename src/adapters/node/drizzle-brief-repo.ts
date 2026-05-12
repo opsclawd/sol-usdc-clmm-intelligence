@@ -5,6 +5,7 @@ import type {
   ResearchBriefInsert,
   ResearchBriefRow
 } from "../../ports/brief-repo.js";
+import type { SignalClass, EvidenceFamily, StaleBehavior } from "../../contracts/taxonomy.js";
 import type { Db } from "../../db/db.js";
 
 function toPortRow(row: typeof researchBriefs.$inferSelect): ResearchBriefRow {
@@ -14,8 +15,16 @@ function toPortRow(row: typeof researchBriefs.$inferSelect): ResearchBriefRow {
     promptVersion: row.promptVersion,
     modelProvider: row.modelProvider,
     structuredOutput: row.structuredOutput,
-    confidence: row.confidence,
-    sourceRefs: row.sourceRefs,
+    signalClass: row.signalClass as SignalClass,
+    evidenceFamily: row.evidenceFamily as EvidenceFamily | null,
+    taxonomySummary: row.taxonomySummary as ResearchBriefRow["taxonomySummary"],
+    confidence: row.confidence as unknown as ResearchBriefRow["confidence"],
+    confidenceComposite: row.confidenceComposite != null ? Number(row.confidenceComposite) : null,
+    confidenceLevel: row.confidenceLevel,
+    validUntilUnixMs: row.validUntilUnixMs ?? null,
+    isStale: row.isStale,
+    staleBehavior: row.staleBehavior as StaleBehavior | null,
+    provenance: row.provenance as unknown as ResearchBriefRow["provenance"],
     payloadHash: row.payloadHash,
     receivedAtUnixMs: row.receivedAtUnixMs
   };
@@ -27,7 +36,29 @@ export class DrizzleBriefRepo implements ResearchBriefRepo {
   async insert(row: ResearchBriefInsert): Promise<ResearchBriefRow> {
     const [result] = await this.db
       .insert(researchBriefs)
-      .values(row)
+      .values({
+        evidenceBundleId: row.evidenceBundleId,
+        promptVersion: row.promptVersion,
+        modelProvider: row.modelProvider,
+        structuredOutput: row.structuredOutput,
+        signalClass: row.signalClass,
+        evidenceFamily: row.evidenceFamily,
+        taxonomySummary: row.taxonomySummary ?? null,
+        confidence: row.confidence as unknown,
+        confidenceComposite:
+          row.confidenceComposite != null
+            ? String(row.confidenceComposite)
+            : row.confidence.compositeScore != null
+              ? String(row.confidence.compositeScore)
+              : null,
+        confidenceLevel: row.confidenceLevel ?? row.confidence.level ?? null,
+        validUntilUnixMs: row.validUntilUnixMs ?? null,
+        isStale: row.isStale ?? false,
+        staleBehavior: row.staleBehavior ?? null,
+        provenance: row.provenance as unknown,
+        payloadHash: row.payloadHash,
+        receivedAtUnixMs: row.receivedAtUnixMs
+      })
       .onConflictDoNothing({
         target: [researchBriefs.evidenceBundleId, researchBriefs.payloadHash]
       })

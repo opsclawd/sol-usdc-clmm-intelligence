@@ -1,10 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { FakeBundleRepo } from "../../tests/fakes/fake-bundle-repo.js";
+import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
+
+const BUNDLE_INSERT = {
+  confidence: DEFAULT_CONFIDENCE,
+  provenance: DEFAULT_PROVENANCE
+};
 
 describe("EvidenceBundleRepo contract", () => {
   it("inserts and finds by pair", async () => {
     const repo = new FakeBundleRepo();
     await repo.insert({
+      ...BUNDLE_INSERT,
       schemaVersion: "1.0",
       pair: "SOL/USDC",
       asOfUnixMs: 1000,
@@ -21,6 +28,7 @@ describe("EvidenceBundleRepo contract", () => {
   it("findLatestByPair returns the most recent", async () => {
     const repo = new FakeBundleRepo();
     await repo.insert({
+      ...BUNDLE_INSERT,
       schemaVersion: "1.0",
       pair: "SOL/USDC",
       asOfUnixMs: 1000,
@@ -30,6 +38,7 @@ describe("EvidenceBundleRepo contract", () => {
       receivedAtUnixMs: 1001
     });
     await repo.insert({
+      ...BUNDLE_INSERT,
       schemaVersion: "1.0",
       pair: "SOL/USDC",
       asOfUnixMs: 1500,

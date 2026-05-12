@@ -3,6 +3,7 @@ import type {
   ResearchBriefRow,
   ResearchBriefInsert
 } from "../../src/ports/brief-repo.js";
+import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 
 export class FakeBriefRepo implements ResearchBriefRepo {
   private readonly store: ResearchBriefRow[] = [];
@@ -19,8 +20,16 @@ export class FakeBriefRepo implements ResearchBriefRepo {
       promptVersion: row.promptVersion,
       modelProvider: row.modelProvider,
       structuredOutput: row.structuredOutput,
-      confidence: row.confidence ?? "medium",
-      sourceRefs: row.sourceRefs ?? null,
+      signalClass: row.signalClass,
+      evidenceFamily: row.evidenceFamily,
+      taxonomySummary: row.taxonomySummary ?? null,
+      confidence: row.confidence ?? DEFAULT_CONFIDENCE,
+      confidenceComposite: row.confidenceComposite ?? null,
+      confidenceLevel: row.confidenceLevel ?? null,
+      validUntilUnixMs: row.validUntilUnixMs ?? null,
+      isStale: row.isStale ?? false,
+      staleBehavior: row.staleBehavior ?? null,
+      provenance: row.provenance ?? DEFAULT_PROVENANCE,
       payloadHash: row.payloadHash,
       receivedAtUnixMs: row.receivedAtUnixMs
     };

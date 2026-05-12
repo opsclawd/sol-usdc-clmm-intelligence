@@ -3,6 +3,7 @@ import type {
   EvidenceBundleRow,
   EvidenceBundleInsert
 } from "../../src/ports/bundle-repo.js";
+import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 
 export class FakeBundleRepo implements EvidenceBundleRepo {
   private readonly store: EvidenceBundleRow[] = [];
@@ -21,7 +22,15 @@ export class FakeBundleRepo implements EvidenceBundleRepo {
       expiresAtUnixMs: row.expiresAtUnixMs,
       payload: row.payload,
       payloadHash: row.payloadHash,
-      inputLineage: row.inputLineage ?? null,
+      taxonomySummary: row.taxonomySummary ?? null,
+      dominantSignalClass: row.dominantSignalClass ?? "deterministic",
+      confidence: row.confidence ?? DEFAULT_CONFIDENCE,
+      confidenceComposite: row.confidenceComposite ?? null,
+      confidenceLevel: row.confidenceLevel ?? null,
+      validUntilUnixMs: row.validUntilUnixMs ?? null,
+      isStale: row.isStale ?? false,
+      staleBehavior: row.staleBehavior ?? null,
+      provenance: row.provenance ?? DEFAULT_PROVENANCE,
       version: row.version ?? 1,
       receivedAtUnixMs: row.receivedAtUnixMs
     };
