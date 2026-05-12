@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  check,
   doublePrecision,
   jsonb,
   numeric,
@@ -9,6 +10,7 @@ import {
   index,
   uniqueIndex
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { intelligence } from "./intelligence.js";
 
 export const derivedFeatures = intelligence.table(
@@ -33,7 +35,27 @@ export const derivedFeatures = intelligence.table(
   },
   (t) => [
     uniqueIndex("uniq_features_kind_hash").on(t.featureKind, t.payloadHash),
-    index("idx_features_kind_as_of").on(t.featureKind, t.asOfUnixMs, t.id)
+    index("idx_features_kind_as_of").on(t.featureKind, t.asOfUnixMs, t.id),
+    check(
+      "chk_features_signal_class",
+      sql`${t.signalClass} IN ('deterministic', 'probabilistic', 'contextual')`
+    ),
+    check(
+      "chk_features_evidence_family",
+      sql`${t.evidenceFamily} IN ('clmm_state', 'price_quality', 'clmm_economics', 'execution_safety', 'market_regime', 'support_resistance', 'on_chain_flow', 'perp_liquidation', 'macro_protocol_risk')`
+    ),
+    check(
+      "chk_features_confidence_composite",
+      sql`${t.confidenceComposite} IS NULL OR (${t.confidenceComposite} >= 0 AND ${t.confidenceComposite} <= 1)`
+    ),
+    check(
+      "chk_features_confidence_level",
+      sql`${t.confidenceLevel} IS NULL OR ${t.confidenceLevel} IN ('low', 'medium', 'high')`
+    ),
+    check(
+      "chk_features_stale_behavior",
+      sql`${t.staleBehavior} IS NULL OR ${t.staleBehavior} IN ('exclude', 'degrade_confidence', 'allow_context_only')`
+    )
   ]
 );
 

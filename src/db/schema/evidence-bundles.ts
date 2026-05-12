@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  check,
   integer,
   jsonb,
   numeric,
@@ -9,6 +10,7 @@ import {
   varchar,
   index
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { intelligence } from "./intelligence.js";
 
 export const evidenceBundles = intelligence.table(
@@ -38,7 +40,23 @@ export const evidenceBundles = intelligence.table(
   (t) => [
     uniqueIndex("uniq_bundle_pair_hash").on(t.pair, t.payloadHash),
     index("idx_bundle_pair_as_of").on(t.pair, t.asOfUnixMs, t.id),
-    index("idx_bundle_pair_latest").on(t.pair, t.receivedAtUnixMs, t.id)
+    index("idx_bundle_pair_latest").on(t.pair, t.receivedAtUnixMs, t.id),
+    check(
+      "chk_bundle_dominant_signal_class",
+      sql`${t.dominantSignalClass} IN ('deterministic', 'probabilistic', 'contextual')`
+    ),
+    check(
+      "chk_bundle_confidence_composite",
+      sql`${t.confidenceComposite} IS NULL OR (${t.confidenceComposite} >= 0 AND ${t.confidenceComposite} <= 1)`
+    ),
+    check(
+      "chk_bundle_confidence_level",
+      sql`${t.confidenceLevel} IS NULL OR ${t.confidenceLevel} IN ('low', 'medium', 'high')`
+    ),
+    check(
+      "chk_bundle_stale_behavior",
+      sql`${t.staleBehavior} IS NULL OR ${t.staleBehavior} IN ('exclude', 'degrade_confidence', 'allow_context_only')`
+    )
   ]
 );
 
