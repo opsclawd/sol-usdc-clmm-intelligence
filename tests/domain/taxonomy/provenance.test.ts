@@ -371,4 +371,76 @@ describe("validateProvenance with malformed container", () => {
       expect(result.reasons).toContain("invalid_provenance_shape");
     }
   });
+
+  it("does not dereference malformed refs in allowed-source check", () => {
+    const provenance = {
+      ...baseProvenance,
+      sourceRefs: [
+        { source: "clmm-v2-bundle" } as unknown as (typeof baseProvenance.sourceRefs)[number]
+      ]
+    };
+    const requirements = {
+      minRawObservationRefs: 1,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 1,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: ["clmm-v2-bundle" as const]
+    };
+    const result = validateProvenance(provenance, requirements, "pool_state");
+    expect(result).toMatchObject({ valid: false });
+    if (!result.valid) {
+      expect(result.reasons).toContain("malformed_ref");
+      expect(result.reasons).not.toContain("disallowed_source");
+    }
+  });
+
+  it("flags missing_process_ref when processRef fields are undefined", () => {
+    const provenance = {
+      ...baseProvenance,
+      processRef: {
+        collector: undefined as unknown as string,
+        jobName: undefined as unknown as string,
+        pipelineRunId: null,
+        codeVersion: null,
+        modelVersion: null
+      }
+    };
+    const requirements = {
+      minRawObservationRefs: 1,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 1,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: [] as const
+    };
+    const result = validateProvenance(provenance, requirements, "pool_state");
+    expect(result).toMatchObject({ valid: false });
+    if (!result.valid) {
+      expect(result.reasons).toContain("missing_process_ref");
+    }
+  });
+
+  it("flags missing_process_ref when processRef is empty object", () => {
+    const provenance = {
+      ...baseProvenance,
+      processRef: {} as unknown as (typeof baseProvenance)["processRef"]
+    };
+    const requirements = {
+      minRawObservationRefs: 1,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 1,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: [] as const
+    };
+    const result = validateProvenance(provenance, requirements, "pool_state");
+    expect(result).toMatchObject({ valid: false });
+    if (!result.valid) {
+      expect(result.reasons).toContain("missing_process_ref");
+    }
+  });
 });

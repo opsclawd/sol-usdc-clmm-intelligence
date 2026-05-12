@@ -80,6 +80,7 @@ export function validateProvenance(
     errors.push("empty_provenance");
   }
 
+  let hasMalformedRef = false;
   const allRefs = [
     ...provenance.sourceRefs,
     ...provenance.rawObservationRefs,
@@ -88,6 +89,7 @@ export function validateProvenance(
   for (const ref of allRefs) {
     if (!isValidProvenanceRef(ref)) {
       errors.push("malformed_ref");
+      hasMalformedRef = true;
       break;
     }
   }
@@ -105,7 +107,13 @@ export function validateProvenance(
   }
 
   if (requirements.requireProcessRef) {
-    if (provenance.processRef.collector === "" || provenance.processRef.jobName === "") {
+    const { collector, jobName } = provenance.processRef;
+    if (
+      typeof collector !== "string" ||
+      collector === "" ||
+      typeof jobName !== "string" ||
+      jobName === ""
+    ) {
       errors.push("missing_process_ref");
     }
   }
@@ -121,7 +129,7 @@ export function validateProvenance(
     errors.push("missing_run_id");
   }
 
-  if (requirements.allowedSourceRefs.length > 0) {
+  if (requirements.allowedSourceRefs.length > 0 && !hasMalformedRef) {
     for (const ref of allRefs) {
       if (!isAllowedSource(ref.source, requirements.allowedSourceRefs)) {
         errors.push("disallowed_source");
