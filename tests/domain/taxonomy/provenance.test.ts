@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { validateProvenance } from "../../../src/domain/taxonomy/provenance.js";
+import {
+  validateProvenance,
+  isValidProvenanceRef
+} from "../../../src/domain/taxonomy/provenance.js";
 
 const validProcessRef = {
   collector: "clmm-collector",
@@ -219,5 +222,81 @@ describe("validateProvenance", () => {
     if (!result.valid) {
       expect(result.reasons.length).toBeGreaterThanOrEqual(4);
     }
+  });
+
+  it("returns malformed_ref when a ref is missing required fields", () => {
+    const provenance = {
+      ...baseProvenance,
+      sourceRefs: [
+        { source: "clmm-v2-bundle" } as unknown as (typeof baseProvenance.sourceRefs)[number]
+      ]
+    };
+    const requirements = {
+      minRawObservationRefs: 1,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 1,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: [] as const
+    };
+    const result = validateProvenance(provenance, requirements, "pool_state");
+    expect(result).toMatchObject({ valid: false });
+    if (!result.valid) {
+      expect(result.reasons).toContain("malformed_ref");
+    }
+  });
+});
+
+describe("isValidProvenanceRef", () => {
+  it("returns true for a valid ProvenanceRef", () => {
+    expect(
+      isValidProvenanceRef({
+        refType: "raw_observation",
+        id: 1,
+        source: "clmm-v2-bundle",
+        payloadHash: "abc123"
+      })
+    ).toBe(true);
+  });
+
+  it("returns false when refType is invalid", () => {
+    expect(
+      isValidProvenanceRef({
+        refType: "invalid_type",
+        id: 1,
+        source: "clmm-v2-bundle",
+        payloadHash: "abc123"
+      })
+    ).toBe(false);
+  });
+
+  it("returns false when id is not a number", () => {
+    expect(
+      isValidProvenanceRef({
+        refType: "raw_observation",
+        id: "not-a-number",
+        source: "clmm-v2-bundle",
+        payloadHash: "abc123"
+      })
+    ).toBe(false);
+  });
+
+  it("returns false when payloadHash is missing", () => {
+    expect(
+      isValidProvenanceRef({
+        refType: "raw_observation",
+        id: 1,
+        source: "clmm-v2-bundle"
+      })
+    ).toBe(false);
+  });
+
+  it("returns false for null input", () => {
+    expect(isValidProvenanceRef(null)).toBe(false);
+  });
+
+  it("returns false for non-object input", () => {
+    expect(isValidProvenanceRef("string")).toBe(false);
   });
 });

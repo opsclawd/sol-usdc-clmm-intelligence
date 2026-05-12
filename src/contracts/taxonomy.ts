@@ -147,7 +147,8 @@ export type ProvenanceValidationError =
   | "missing_code_version"
   | "missing_run_id"
   | "disallowed_source"
-  | "empty_provenance";
+  | "empty_provenance"
+  | "malformed_ref";
 
 export type ProvenanceValidationResult =
   | { valid: true }

@@ -2,6 +2,7 @@ import type {
   ObservationKind,
   FeatureKind,
   ProvenanceRef,
+  ProvenanceRefType,
   ProcessRef,
   ProvenanceRequirements,
   ProvenanceValidationError,
@@ -10,6 +11,26 @@ import type {
 } from "../../contracts/taxonomy.js";
 
 export type ArtifactKind = ObservationKind | FeatureKind | "evidence_bundle" | "research_brief";
+
+const VALID_REF_TYPES: readonly ProvenanceRefType[] = [
+  "raw_observation",
+  "normalized_observation",
+  "derived_feature",
+  "evidence_bundle",
+  "research_brief"
+];
+
+export function isValidProvenanceRef(ref: unknown): ref is ProvenanceRef {
+  if (typeof ref !== "object" || ref === null) return false;
+  const r = ref as Record<string, unknown>;
+  return (
+    typeof r.refType === "string" &&
+    (VALID_REF_TYPES as readonly string[]).includes(r.refType) &&
+    typeof r.id === "number" &&
+    typeof r.source === "string" &&
+    typeof r.payloadHash === "string"
+  );
+}
 
 export function validateProvenance(
   provenance: {
@@ -32,6 +53,18 @@ export function validateProvenance(
     provenance.derivedFromRefs.length;
   if (totalRefs === 0) {
     errors.push("empty_provenance");
+  }
+
+  const allRefs = [
+    ...provenance.sourceRefs,
+    ...provenance.rawObservationRefs,
+    ...provenance.derivedFromRefs
+  ];
+  for (const ref of allRefs) {
+    if (!isValidProvenanceRef(ref)) {
+      errors.push("malformed_ref");
+      break;
+    }
   }
 
   if (provenance.rawObservationRefs.length < requirements.minRawObservationRefs) {
@@ -64,11 +97,6 @@ export function validateProvenance(
   }
 
   if (requirements.allowedSourceRefs.length > 0) {
-    const allRefs = [
-      ...provenance.sourceRefs,
-      ...provenance.rawObservationRefs,
-      ...provenance.derivedFromRefs
-    ];
     for (const ref of allRefs) {
       if (!isAllowedSource(ref.source, requirements.allowedSourceRefs)) {
         errors.push("disallowed_source");
