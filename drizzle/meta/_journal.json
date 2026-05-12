@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1746969600000,
+      "when": 1778590926407,
       "tag": "0000_create_intelligence_schema",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1747027200000,
-      "tag": "0001_add_taxonomy_columns",
       "breakpoints": true
     }
   ]

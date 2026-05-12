@@ -1,5 +1,5 @@
 {
-  "id": "1a972206-f237-4530-af5d-27511eca3785",
+  "id": "fa6f4d15-ce99-4c35-b392-dd0054a37189",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -19,6 +19,20 @@
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": true
+        },
+        "signal_class": {
+          "name": "signal_class",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'deterministic'"
+        },
+        "evidence_family": {
+          "name": "evidence_family",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'clmm_state'"
         },
         "value": {
           "name": "value",
@@ -40,16 +54,48 @@
         },
         "confidence": {
           "name": "confidence",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'medium'"
-        },
-        "input_lineage": {
-          "name": "input_lineage",
           "type": "jsonb",
           "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "confidence_composite": {
+          "name": "confidence_composite",
+          "type": "numeric(5, 4)",
+          "primaryKey": false,
           "notNull": false
+        },
+        "confidence_level": {
+          "name": "confidence_level",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_until_unix_ms": {
+          "name": "valid_until_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_stale": {
+          "name": "is_stale",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "stale_behavior": {
+          "name": "stale_behavior",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "payload_hash": {
           "name": "payload_hash",
@@ -112,40 +158,34 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "idx_features_kind_confidence": {
-          "name": "idx_features_kind_confidence",
-          "columns": [
-            {
-              "expression": "feature_kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "confidence",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "received_at_unix_ms",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "chk_features_signal_class": {
+          "name": "chk_features_signal_class",
+          "value": "\"intelligence\".\"derived_features\".\"signal_class\" IN ('deterministic', 'probabilistic', 'contextual')"
+        },
+        "chk_features_evidence_family": {
+          "name": "chk_features_evidence_family",
+          "value": "\"intelligence\".\"derived_features\".\"evidence_family\" IN ('clmm_state', 'price_quality', 'clmm_economics', 'execution_safety', 'market_regime', 'support_resistance', 'on_chain_flow', 'perp_liquidation', 'macro_protocol_risk')"
+        },
+        "chk_features_confidence_composite": {
+          "name": "chk_features_confidence_composite",
+          "value": "\"intelligence\".\"derived_features\".\"confidence_composite\" IS NULL OR (\"intelligence\".\"derived_features\".\"confidence_composite\" >= 0 AND \"intelligence\".\"derived_features\".\"confidence_composite\" <= 1)"
+        },
+        "chk_features_confidence_level": {
+          "name": "chk_features_confidence_level",
+          "value": "\"intelligence\".\"derived_features\".\"confidence_level\" IS NULL OR \"intelligence\".\"derived_features\".\"confidence_level\" IN ('low', 'medium', 'high')"
+        },
+        "chk_features_stale_behavior": {
+          "name": "chk_features_stale_behavior",
+          "value": "\"intelligence\".\"derived_features\".\"stale_behavior\" IS NULL OR \"intelligence\".\"derived_features\".\"stale_behavior\" IN ('exclude', 'degrade_confidence', 'allow_context_only')"
+        }
+      },
       "isRLSEnabled": false
     },
     "intelligence.evidence_bundles": {
@@ -194,11 +234,63 @@
           "primaryKey": false,
           "notNull": true
         },
-        "input_lineage": {
-          "name": "input_lineage",
+        "taxonomy_summary": {
+          "name": "taxonomy_summary",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
+        },
+        "dominant_signal_class": {
+          "name": "dominant_signal_class",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'deterministic'"
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "confidence_composite": {
+          "name": "confidence_composite",
+          "type": "numeric(5, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confidence_level": {
+          "name": "confidence_level",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_until_unix_ms": {
+          "name": "valid_until_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_stale": {
+          "name": "is_stale",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "stale_behavior": {
+          "name": "stale_behavior",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "version": {
           "name": "version",
@@ -295,7 +387,24 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "chk_bundle_dominant_signal_class": {
+          "name": "chk_bundle_dominant_signal_class",
+          "value": "\"intelligence\".\"evidence_bundles\".\"dominant_signal_class\" IN ('deterministic', 'probabilistic', 'contextual')"
+        },
+        "chk_bundle_confidence_composite": {
+          "name": "chk_bundle_confidence_composite",
+          "value": "\"intelligence\".\"evidence_bundles\".\"confidence_composite\" IS NULL OR (\"intelligence\".\"evidence_bundles\".\"confidence_composite\" >= 0 AND \"intelligence\".\"evidence_bundles\".\"confidence_composite\" <= 1)"
+        },
+        "chk_bundle_confidence_level": {
+          "name": "chk_bundle_confidence_level",
+          "value": "\"intelligence\".\"evidence_bundles\".\"confidence_level\" IS NULL OR \"intelligence\".\"evidence_bundles\".\"confidence_level\" IN ('low', 'medium', 'high')"
+        },
+        "chk_bundle_stale_behavior": {
+          "name": "chk_bundle_stale_behavior",
+          "value": "\"intelligence\".\"evidence_bundles\".\"stale_behavior\" IS NULL OR \"intelligence\".\"evidence_bundles\".\"stale_behavior\" IN ('exclude', 'degrade_confidence', 'allow_context_only')"
+        }
+      },
       "isRLSEnabled": false
     },
     "intelligence.normalized_observations": {
@@ -326,6 +435,20 @@
           "primaryKey": false,
           "notNull": true
         },
+        "signal_class": {
+          "name": "signal_class",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'deterministic'"
+        },
+        "evidence_family": {
+          "name": "evidence_family",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'clmm_state'"
+        },
         "payload": {
           "name": "payload",
           "type": "jsonb",
@@ -338,12 +461,50 @@
           "primaryKey": false,
           "notNull": true
         },
-        "is_fresh": {
-          "name": "is_fresh",
+        "confidence": {
+          "name": "confidence",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "confidence_composite": {
+          "name": "confidence_composite",
+          "type": "numeric(5, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confidence_level": {
+          "name": "confidence_level",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_until_unix_ms": {
+          "name": "valid_until_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_stale": {
+          "name": "is_stale",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,
-          "default": true
+          "default": false
+        },
+        "stale_behavior": {
+          "name": "stale_behavior",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "received_at_unix_ms": {
           "name": "received_at_unix_ms",
@@ -380,8 +541,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_norm_obs_source_kind_fresh": {
-          "name": "idx_norm_obs_source_kind_fresh",
+        "idx_norm_obs_source_kind_stale": {
+          "name": "idx_norm_obs_source_kind_stale",
           "columns": [
             {
               "expression": "source",
@@ -396,7 +557,7 @@
               "nulls": "last"
             },
             {
-              "expression": "is_fresh",
+              "expression": "is_stale",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -429,7 +590,28 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "chk_norm_obs_signal_class": {
+          "name": "chk_norm_obs_signal_class",
+          "value": "\"intelligence\".\"normalized_observations\".\"signal_class\" IN ('deterministic', 'probabilistic', 'contextual')"
+        },
+        "chk_norm_obs_evidence_family": {
+          "name": "chk_norm_obs_evidence_family",
+          "value": "\"intelligence\".\"normalized_observations\".\"evidence_family\" IN ('clmm_state', 'price_quality', 'clmm_economics', 'execution_safety', 'market_regime', 'support_resistance', 'on_chain_flow', 'perp_liquidation', 'macro_protocol_risk')"
+        },
+        "chk_norm_obs_confidence_composite": {
+          "name": "chk_norm_obs_confidence_composite",
+          "value": "\"intelligence\".\"normalized_observations\".\"confidence_composite\" IS NULL OR (\"intelligence\".\"normalized_observations\".\"confidence_composite\" >= 0 AND \"intelligence\".\"normalized_observations\".\"confidence_composite\" <= 1)"
+        },
+        "chk_norm_obs_confidence_level": {
+          "name": "chk_norm_obs_confidence_level",
+          "value": "\"intelligence\".\"normalized_observations\".\"confidence_level\" IS NULL OR \"intelligence\".\"normalized_observations\".\"confidence_level\" IN ('low', 'medium', 'high')"
+        },
+        "chk_norm_obs_stale_behavior": {
+          "name": "chk_norm_obs_stale_behavior",
+          "value": "\"intelligence\".\"normalized_observations\".\"stale_behavior\" IS NULL OR \"intelligence\".\"normalized_observations\".\"stale_behavior\" IN ('exclude', 'degrade_confidence', 'allow_context_only')"
+        }
+      },
       "isRLSEnabled": false
     },
     "intelligence.raw_observations": {
@@ -583,18 +765,69 @@
           "primaryKey": false,
           "notNull": true
         },
-        "confidence": {
-          "name": "confidence",
+        "signal_class": {
+          "name": "signal_class",
           "type": "varchar(16)",
           "primaryKey": false,
           "notNull": true,
-          "default": "'medium'"
+          "default": "'contextual'"
         },
-        "source_refs": {
-          "name": "source_refs",
+        "evidence_family": {
+          "name": "evidence_family",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "taxonomy_summary": {
+          "name": "taxonomy_summary",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "confidence_composite": {
+          "name": "confidence_composite",
+          "type": "numeric(5, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confidence_level": {
+          "name": "confidence_level",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_until_unix_ms": {
+          "name": "valid_until_unix_ms",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_stale": {
+          "name": "is_stale",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "stale_behavior": {
+          "name": "stale_behavior",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "payload_hash": {
           "name": "payload_hash",
@@ -689,7 +922,32 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "chk_brief_signal_class": {
+          "name": "chk_brief_signal_class",
+          "value": "\"intelligence\".\"research_briefs\".\"signal_class\" IN ('deterministic', 'probabilistic', 'contextual')"
+        },
+        "chk_brief_evidence_family": {
+          "name": "chk_brief_evidence_family",
+          "value": "\"intelligence\".\"research_briefs\".\"evidence_family\" IS NULL OR \"intelligence\".\"research_briefs\".\"evidence_family\" IN ('clmm_state', 'price_quality', 'clmm_economics', 'execution_safety', 'market_regime', 'support_resistance', 'on_chain_flow', 'perp_liquidation', 'macro_protocol_risk')"
+        },
+        "chk_brief_confidence_composite": {
+          "name": "chk_brief_confidence_composite",
+          "value": "\"intelligence\".\"research_briefs\".\"confidence_composite\" IS NULL OR (\"intelligence\".\"research_briefs\".\"confidence_composite\" >= 0 AND \"intelligence\".\"research_briefs\".\"confidence_composite\" <= 1)"
+        },
+        "chk_brief_confidence_level": {
+          "name": "chk_brief_confidence_level",
+          "value": "\"intelligence\".\"research_briefs\".\"confidence_level\" IS NULL OR \"intelligence\".\"research_briefs\".\"confidence_level\" IN ('low', 'medium', 'high')"
+        },
+        "chk_brief_stale_behavior": {
+          "name": "chk_brief_stale_behavior",
+          "value": "\"intelligence\".\"research_briefs\".\"stale_behavior\" IS NULL OR \"intelligence\".\"research_briefs\".\"stale_behavior\" IN ('exclude', 'degrade_confidence', 'allow_context_only')"
+        },
+        "chk_brief_taxonomy_summary_required": {
+          "name": "chk_brief_taxonomy_summary_required",
+          "value": "\"intelligence\".\"research_briefs\".\"evidence_family\" IS NOT NULL OR \"intelligence\".\"research_briefs\".\"taxonomy_summary\" IS NOT NULL"
+        }
+      },
       "isRLSEnabled": false
     }
   },

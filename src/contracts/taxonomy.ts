@@ -62,8 +62,6 @@ export interface Provenance {
   readonly processRef: ProcessRef;
   readonly codeVersion: string;
   readonly runId: string | null;
-  readonly legacySourceRefs?: unknown;
-  readonly legacyInputLineage?: unknown;
 }
 
 export interface ConfidenceComponents {
