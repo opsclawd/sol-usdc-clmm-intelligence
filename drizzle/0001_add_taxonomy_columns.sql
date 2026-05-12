@@ -42,17 +42,20 @@ UPDATE intelligence.normalized_observations SET
 WHERE confidence = '{}'::jsonb;
 
 -- Backfill empty provenance for existing rows with valid legacy structure
+-- sourceRefs and rawObservationRefs use ProvenanceRef contract fields (refType, id, source, payloadHash)
 UPDATE intelligence.normalized_observations SET
   provenance = jsonb_build_object(
     'sourceRefs', jsonb_build_array(jsonb_build_object(
+      'refType', 'raw_observation',
+      'id', raw_observation_id,
       'source', source,
-      'kind', observation_kind,
-      'id', null
+      'payloadHash', payload_hash
     )),
     'rawObservationRefs', jsonb_build_array(jsonb_build_object(
+      'refType', 'raw_observation',
+      'id', raw_observation_id,
       'source', source,
-      'observationId', raw_observation_id,
-      'kind', observation_kind
+      'payloadHash', payload_hash
     )),
     'derivedFromRefs', '[]'::jsonb,
     'processRef', jsonb_build_object(
@@ -160,6 +163,23 @@ UPDATE intelligence.derived_features SET provenance = jsonb_build_object(
 )
 WHERE input_lineage IS NOT NULL;
 
+-- Backfill empty provenance for derived_features rows with null input_lineage
+UPDATE intelligence.derived_features SET provenance = jsonb_build_object(
+  'sourceRefs', '[]'::jsonb,
+  'rawObservationRefs', '[]'::jsonb,
+  'derivedFromRefs', '[]'::jsonb,
+  'processRef', jsonb_build_object(
+    'collector', 'legacy',
+    'jobName', 'legacy',
+    'pipelineRunId', null,
+    'codeVersion', null,
+    'modelVersion', null
+  ),
+  'codeVersion', 'legacy',
+  'runId', null
+)
+WHERE input_lineage IS NULL AND provenance = '{}'::jsonb;
+
 -- Replace input_lineage with provenance (already added above); drop input_lineage
 ALTER TABLE intelligence.derived_features DROP COLUMN IF EXISTS input_lineage;
 
@@ -210,6 +230,23 @@ UPDATE intelligence.evidence_bundles SET provenance = jsonb_build_object(
   'legacyInputLineage', COALESCE(input_lineage, 'null'::jsonb)
 )
 WHERE input_lineage IS NOT NULL;
+
+-- Backfill empty provenance for evidence_bundles rows with null input_lineage
+UPDATE intelligence.evidence_bundles SET provenance = jsonb_build_object(
+  'sourceRefs', '[]'::jsonb,
+  'rawObservationRefs', '[]'::jsonb,
+  'derivedFromRefs', '[]'::jsonb,
+  'processRef', jsonb_build_object(
+    'collector', 'legacy',
+    'jobName', 'legacy',
+    'pipelineRunId', null,
+    'codeVersion', null,
+    'modelVersion', null
+  ),
+  'codeVersion', 'legacy',
+  'runId', null
+)
+WHERE input_lineage IS NULL AND provenance = '{}'::jsonb;
 
 ALTER TABLE intelligence.evidence_bundles DROP COLUMN IF EXISTS input_lineage;
 
@@ -311,6 +348,23 @@ UPDATE intelligence.research_briefs SET provenance = jsonb_build_object(
   'runId', null
 )
 WHERE source_refs IS NOT NULL;
+
+-- Backfill empty provenance for research_briefs rows with null source_refs
+UPDATE intelligence.research_briefs SET provenance = jsonb_build_object(
+  'sourceRefs', '[]'::jsonb,
+  'rawObservationRefs', '[]'::jsonb,
+  'derivedFromRefs', '[]'::jsonb,
+  'processRef', jsonb_build_object(
+    'collector', 'legacy',
+    'jobName', 'legacy',
+    'pipelineRunId', null,
+    'codeVersion', null,
+    'modelVersion', null
+  ),
+  'codeVersion', 'legacy',
+  'runId', null
+)
+WHERE source_refs IS NULL AND provenance = '{}'::jsonb;
 
 -- Drop old columns
 ALTER TABLE intelligence.research_briefs DROP COLUMN IF EXISTS confidence_legacy;
