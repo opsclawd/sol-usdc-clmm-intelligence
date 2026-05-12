@@ -125,7 +125,7 @@ export function validateProvenance(
     errors.push("missing_code_version");
   }
 
-  if (requirements.requireRunId && provenance.runId === null) {
+  if (requirements.requireRunId && (provenance.runId === null || provenance.runId === "")) {
     errors.push("missing_run_id");
   }
 
