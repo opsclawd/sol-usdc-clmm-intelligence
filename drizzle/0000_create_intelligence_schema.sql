@@ -1,4 +1,4 @@
-CREATE SCHEMA "intelligence";
+CREATE SCHEMA IF NOT EXISTS "intelligence";
 --> statement-breakpoint
 CREATE TABLE "intelligence"."derived_features" (
 	"id" serial PRIMARY KEY NOT NULL,
@@ -128,6 +128,14 @@ CREATE INDEX "idx_brief_model_provider" ON "intelligence"."research_briefs" USIN
 --> statement-breakpoint
 DO $$
 BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'intelligence_reader') AND
+     EXISTS (SELECT FROM pg_roles WHERE rolname = 'intelligence_writer') THEN
+    GRANT USAGE ON SCHEMA intelligence TO intelligence_reader, intelligence_writer;
+  ELSIF EXISTS (SELECT FROM pg_roles WHERE rolname = 'intelligence_reader') THEN
+    GRANT USAGE ON SCHEMA intelligence TO intelligence_reader;
+  ELSIF EXISTS (SELECT FROM pg_roles WHERE rolname = 'intelligence_writer') THEN
+    GRANT USAGE ON SCHEMA intelligence TO intelligence_writer;
+  END IF;
   IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'intelligence_reader') THEN
     GRANT SELECT ON ALL TABLES IN SCHEMA intelligence TO intelligence_reader;
     ALTER DEFAULT PRIVILEGES IN SCHEMA intelligence GRANT SELECT ON TABLES TO intelligence_reader;
