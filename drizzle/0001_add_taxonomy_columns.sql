@@ -335,9 +335,11 @@ UPDATE intelligence.research_briefs SET
   END
 WHERE confidence_legacy IS NOT NULL;
 
--- Preserve source_refs into provenance before dropping
+-- Preserve source_refs into provenance.legacySourceRefs before dropping
+-- (legacy refs don't conform to ProvenanceRef shape, so keep them under a
+--  separate key rather than polluting the canonical sourceRefs array)
 UPDATE intelligence.research_briefs SET provenance = jsonb_build_object(
-  'sourceRefs', COALESCE(source_refs, '[]'::jsonb),
+  'sourceRefs', '[]'::jsonb,
   'rawObservationRefs', '[]'::jsonb,
   'derivedFromRefs', '[]'::jsonb,
   'processRef', jsonb_build_object(
@@ -348,7 +350,8 @@ UPDATE intelligence.research_briefs SET provenance = jsonb_build_object(
     'modelVersion', null
   ),
   'codeVersion', 'legacy',
-  'runId', null
+  'runId', null,
+  'legacySourceRefs', COALESCE(source_refs, 'null'::jsonb)
 )
 WHERE source_refs IS NOT NULL;
 
