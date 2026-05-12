@@ -23,6 +23,24 @@ ALTER TABLE intelligence.normalized_observations
 UPDATE intelligence.normalized_observations SET evidence_family = 'price_quality' WHERE observation_kind IN ('price_quote');
 UPDATE intelligence.normalized_observations SET evidence_family = 'clmm_economics' WHERE observation_kind IN ('fee_metrics', 'volume_metrics');
 
+-- Backfill empty confidence for existing rows with valid medium-confidence default
+UPDATE intelligence.normalized_observations SET
+  confidence = jsonb_build_object(
+    'components', jsonb_build_object(
+      'sourceReliability', 1,
+      'dataCompleteness', 1,
+      'derivationConfidence', 1,
+      'llmConfidence', null
+    ),
+    'compositeScore', 0.6,
+    'level', 'medium',
+    'weightingVersion', 'v0_legacy',
+    'reasons', '[]'::jsonb
+  ),
+  confidence_composite = 0.6,
+  confidence_level = 'medium'
+WHERE confidence = '{}'::jsonb;
+
 ALTER TABLE intelligence.normalized_observations
   ADD CONSTRAINT chk_norm_obs_signal_class CHECK (signal_class IN ('deterministic', 'probabilistic', 'contextual')),
   ADD CONSTRAINT chk_norm_obs_evidence_family CHECK (evidence_family IN ('clmm_state', 'price_quality', 'clmm_economics', 'execution_safety', 'market_regime', 'support_resistance', 'on_chain_flow', 'perp_liquidation', 'macro_protocol_risk')),

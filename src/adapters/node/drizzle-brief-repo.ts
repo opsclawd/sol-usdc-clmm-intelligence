@@ -19,7 +19,7 @@ function toPortRow(row: typeof researchBriefs.$inferSelect): ResearchBriefRow {
     evidenceFamily: row.evidenceFamily as EvidenceFamily | null,
     taxonomySummary: row.taxonomySummary as ResearchBriefRow["taxonomySummary"],
     confidence: row.confidence as unknown as ResearchBriefRow["confidence"],
-    confidenceComposite: row.confidenceComposite ? Number(row.confidenceComposite) : null,
+    confidenceComposite: row.confidenceComposite != null ? Number(row.confidenceComposite) : null,
     confidenceLevel: row.confidenceLevel,
     validUntilUnixMs: row.validUntilUnixMs ?? null,
     isStale: row.isStale,

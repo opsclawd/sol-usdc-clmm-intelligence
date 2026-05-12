@@ -20,7 +20,7 @@ function toPortRow(row: typeof evidenceBundles.$inferSelect): EvidenceBundleRow 
     taxonomySummary: row.taxonomySummary as EvidenceBundleRow["taxonomySummary"],
     dominantSignalClass: row.dominantSignalClass as SignalClass,
     confidence: row.confidence as unknown as EvidenceBundleRow["confidence"],
-    confidenceComposite: row.confidenceComposite ? Number(row.confidenceComposite) : null,
+    confidenceComposite: row.confidenceComposite != null ? Number(row.confidenceComposite) : null,
     confidenceLevel: row.confidenceLevel,
     validUntilUnixMs: row.validUntilUnixMs ?? null,
     isStale: row.isStale,

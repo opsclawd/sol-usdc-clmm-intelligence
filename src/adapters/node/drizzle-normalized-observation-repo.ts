@@ -25,7 +25,7 @@ function toPortRow(row: typeof normalizedObservations.$inferSelect): NormalizedO
     payload: row.payload,
     payloadHash: row.payloadHash,
     confidence: row.confidence as unknown as NormalizedObservationRow["confidence"],
-    confidenceComposite: row.confidenceComposite ? Number(row.confidenceComposite) : null,
+    confidenceComposite: row.confidenceComposite != null ? Number(row.confidenceComposite) : null,
     confidenceLevel: row.confidenceLevel,
     validUntilUnixMs: row.validUntilUnixMs ?? null,
     isStale: row.isStale,

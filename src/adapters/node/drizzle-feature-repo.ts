@@ -23,7 +23,7 @@ function toPortRow(row: typeof derivedFeatures.$inferSelect): DerivedFeatureRow 
     structuredPayload: row.structuredPayload,
     asOfUnixMs: row.asOfUnixMs,
     confidence: row.confidence as unknown as DerivedFeatureRow["confidence"],
-    confidenceComposite: row.confidenceComposite ? Number(row.confidenceComposite) : null,
+    confidenceComposite: row.confidenceComposite != null ? Number(row.confidenceComposite) : null,
     confidenceLevel: row.confidenceLevel,
     validUntilUnixMs: row.validUntilUnixMs ?? null,
     isStale: row.isStale,
