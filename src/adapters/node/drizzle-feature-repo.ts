@@ -49,8 +49,12 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
         asOfUnixMs: row.asOfUnixMs,
         confidence: row.confidence as unknown,
         confidenceComposite:
-          row.confidenceComposite != null ? String(row.confidenceComposite) : null,
-        confidenceLevel: row.confidenceLevel ?? null,
+          row.confidenceComposite != null
+            ? String(row.confidenceComposite)
+            : row.confidence.compositeScore != null
+              ? String(row.confidence.compositeScore)
+              : null,
+        confidenceLevel: row.confidenceLevel ?? row.confidence.level ?? null,
         validUntilUnixMs: row.validUntilUnixMs ?? null,
         isStale: row.isStale ?? false,
         staleBehavior: row.staleBehavior ?? null,

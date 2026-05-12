@@ -159,6 +159,24 @@ WHERE input_lineage IS NOT NULL;
 
 ALTER TABLE intelligence.evidence_bundles DROP COLUMN IF EXISTS input_lineage;
 
+-- Backfill empty confidence for existing bundle rows with a valid low-confidence default
+UPDATE intelligence.evidence_bundles SET
+  confidence = jsonb_build_object(
+    'components', jsonb_build_object(
+      'sourceReliability', 1,
+      'dataCompleteness', 1,
+      'derivationConfidence', 1,
+      'llmConfidence', null
+    ),
+    'compositeScore', 0.6,
+    'level', 'medium',
+    'weightingVersion', 'v0_legacy',
+    'reasons', '[]'::jsonb
+  ),
+  confidence_composite = 0.6,
+  confidence_level = 'medium'
+WHERE confidence = '{}'::jsonb;
+
 ALTER TABLE intelligence.evidence_bundles
   ADD CONSTRAINT chk_bundle_dominant_signal_class CHECK (dominant_signal_class IN ('deterministic', 'probabilistic', 'contextual')),
   ADD CONSTRAINT chk_bundle_confidence_composite CHECK (confidence_composite IS NULL OR (confidence_composite >= 0 AND confidence_composite <= 1)),
