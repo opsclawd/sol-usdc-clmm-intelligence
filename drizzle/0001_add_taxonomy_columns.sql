@@ -41,6 +41,32 @@ UPDATE intelligence.normalized_observations SET
   confidence_level = 'medium'
 WHERE confidence = '{}'::jsonb;
 
+-- Backfill empty provenance for existing rows with valid legacy structure
+UPDATE intelligence.normalized_observations SET
+  provenance = jsonb_build_object(
+    'sourceRefs', jsonb_build_array(jsonb_build_object(
+      'source', source,
+      'kind', observation_kind,
+      'id', null
+    )),
+    'rawObservationRefs', jsonb_build_array(jsonb_build_object(
+      'source', source,
+      'observationId', raw_observation_id,
+      'kind', observation_kind
+    )),
+    'derivedFromRefs', '[]'::jsonb,
+    'processRef', jsonb_build_object(
+      'collector', source,
+      'jobName', 'legacy',
+      'pipelineRunId', null,
+      'codeVersion', null,
+      'modelVersion', null
+    ),
+    'codeVersion', 'legacy',
+    'runId', null
+  )
+WHERE provenance = '{}'::jsonb;
+
 ALTER TABLE intelligence.normalized_observations
   ADD CONSTRAINT chk_norm_obs_signal_class CHECK (signal_class IN ('deterministic', 'probabilistic', 'contextual')),
   ADD CONSTRAINT chk_norm_obs_evidence_family CHECK (evidence_family IN ('clmm_state', 'price_quality', 'clmm_economics', 'execution_safety', 'market_regime', 'support_resistance', 'on_chain_flow', 'perp_liquidation', 'macro_protocol_risk')),
