@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   validateProvenance,
-  isValidProvenanceRef
+  isValidProvenanceRef,
+  isValidProvenanceContainer
 } from "../../../src/domain/taxonomy/provenance.js";
 
 const validProcessRef = {
@@ -298,5 +299,76 @@ describe("isValidProvenanceRef", () => {
 
   it("returns false for non-object input", () => {
     expect(isValidProvenanceRef("string")).toBe(false);
+  });
+});
+
+describe("isValidProvenanceContainer", () => {
+  it("returns true for a valid Provenance container", () => {
+    expect(isValidProvenanceContainer(baseProvenance)).toBe(true);
+  });
+
+  it("returns false when sourceRefs is not an array", () => {
+    expect(isValidProvenanceContainer({ ...baseProvenance, sourceRefs: "not-array" })).toBe(false);
+  });
+
+  it("returns false when rawObservationRefs is not an array", () => {
+    expect(isValidProvenanceContainer({ ...baseProvenance, rawObservationRefs: {} })).toBe(false);
+  });
+
+  it("returns false when derivedFromRefs is not an array", () => {
+    expect(isValidProvenanceContainer({ ...baseProvenance, derivedFromRefs: null })).toBe(false);
+  });
+
+  it("returns false when processRef is not an object", () => {
+    expect(isValidProvenanceContainer({ ...baseProvenance, processRef: "bad" })).toBe(false);
+  });
+
+  it("returns false for empty object", () => {
+    expect(isValidProvenanceContainer({})).toBe(false);
+  });
+
+  it("returns false for null", () => {
+    expect(isValidProvenanceContainer(null)).toBe(false);
+  });
+});
+
+describe("validateProvenance with malformed container", () => {
+  it("returns invalid_provenance_shape when sourceRefs is not an array", () => {
+    const provenance = {
+      ...baseProvenance,
+      sourceRefs: "not-array" as unknown as (typeof baseProvenance.sourceRefs)[number][]
+    };
+    const requirements = {
+      minRawObservationRefs: 1,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 1,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: [] as const
+    };
+    const result = validateProvenance(provenance, requirements, "pool_state");
+    expect(result).toMatchObject({ valid: false });
+    if (!result.valid) {
+      expect(result.reasons).toContain("invalid_provenance_shape");
+    }
+  });
+
+  it("returns invalid_provenance_shape for empty object", () => {
+    const provenance = {} as unknown as Parameters<typeof validateProvenance>[0];
+    const requirements = {
+      minRawObservationRefs: 0,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 0,
+      requireProcessRef: false,
+      requireCodeVersion: false,
+      requireRunId: false,
+      allowedSourceRefs: [] as const
+    };
+    const result = validateProvenance(provenance, requirements, "pool_state");
+    expect(result).toMatchObject({ valid: false });
+    if (!result.valid) {
+      expect(result.reasons).toContain("invalid_provenance_shape");
+    }
   });
 });

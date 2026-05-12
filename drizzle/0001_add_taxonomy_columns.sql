@@ -43,23 +43,24 @@ WHERE confidence = '{}'::jsonb;
 
 -- Backfill empty provenance for existing rows with valid legacy structure
 -- sourceRefs and rawObservationRefs use ProvenanceRef contract fields (refType, id, source, payloadHash)
-UPDATE intelligence.normalized_observations SET
-  provenance = jsonb_build_object(
+-- JOIN raw_observations to get the correct payload_hash and source for raw refs
+UPDATE intelligence.normalized_observations n
+SET provenance = jsonb_build_object(
     'sourceRefs', jsonb_build_array(jsonb_build_object(
       'refType', 'raw_observation',
-      'id', raw_observation_id,
-      'source', source,
-      'payloadHash', payload_hash
+      'id', n.raw_observation_id,
+      'source', COALESCE(r.source, n.source),
+      'payloadHash', COALESCE(r.payload_hash, n.payload_hash)
     )),
     'rawObservationRefs', jsonb_build_array(jsonb_build_object(
       'refType', 'raw_observation',
-      'id', raw_observation_id,
-      'source', source,
-      'payloadHash', payload_hash
+      'id', n.raw_observation_id,
+      'source', COALESCE(r.source, n.source),
+      'payloadHash', COALESCE(r.payload_hash, n.payload_hash)
     )),
     'derivedFromRefs', '[]'::jsonb,
     'processRef', jsonb_build_object(
-      'collector', source,
+      'collector', COALESCE(r.source, n.source),
       'jobName', 'legacy',
       'pipelineRunId', null,
       'codeVersion', null,
@@ -68,7 +69,9 @@ UPDATE intelligence.normalized_observations SET
     'codeVersion', 'legacy',
     'runId', null
   )
-WHERE provenance = '{}'::jsonb;
+FROM intelligence.raw_observations r
+WHERE n.provenance = '{}'::jsonb
+  AND r.id = n.raw_observation_id;
 
 ALTER TABLE intelligence.normalized_observations
   ADD CONSTRAINT chk_norm_obs_signal_class CHECK (signal_class IN ('deterministic', 'probabilistic', 'contextual')),

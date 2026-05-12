@@ -32,6 +32,27 @@ export function isValidProvenanceRef(ref: unknown): ref is ProvenanceRef {
   );
 }
 
+export function isValidProvenanceContainer(value: unknown): value is {
+  sourceRefs: readonly unknown[];
+  rawObservationRefs: readonly unknown[];
+  derivedFromRefs: readonly unknown[];
+  processRef: Record<string, unknown>;
+  codeVersion: string;
+  runId: string | null;
+} {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    Array.isArray(v.sourceRefs) &&
+    Array.isArray(v.rawObservationRefs) &&
+    Array.isArray(v.derivedFromRefs) &&
+    typeof v.processRef === "object" &&
+    v.processRef !== null &&
+    typeof v.codeVersion === "string" &&
+    (v.runId === null || typeof v.runId === "string")
+  );
+}
+
 export function validateProvenance(
   provenance: {
     sourceRefs: readonly ProvenanceRef[];
@@ -46,6 +67,10 @@ export function validateProvenance(
 ): ProvenanceValidationResult {
   void _artifactKind;
   const errors: ProvenanceValidationError[] = [];
+
+  if (!isValidProvenanceContainer(provenance)) {
+    return { valid: false, reasons: ["invalid_provenance_shape"] };
+  }
 
   const totalRefs =
     provenance.sourceRefs.length +
