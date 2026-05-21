@@ -2,7 +2,7 @@
 
 This repo is the advisory/evidence pipeline for the SOL/USDC CLMM Autopilot system.
 
-It stores prompts, policies, schemas, OpenClaw routines, source definitions, durable memory, local snapshots, and deterministic collector code used to produce higher-level PolicyInsights for a user managing an Orca SOL/USDC Whirlpool LP position.
+It stores prompts, policies, schemas, OpenClaw routines, source definitions, durable memory, local snapshots, deterministic collector code, and evidence-pipeline infrastructure used to research a user-managed Orca SOL/USDC Whirlpool LP position.
 
 It is not the execution product. It does not own the mobile app, wallet connection, transaction preparation, signing flow, Solana RPC fan-out, or CLMM worker jobs. Those belong to `clmm-v2`.
 
@@ -17,9 +17,9 @@ This repo currently provides:
 - local JSON outputs under `data/` and `outputs/` for agent consumption and operator review;
 - Drizzle/Postgres support under the `intelligence` schema;
 - dependency-cruiser boundaries that keep domain/application logic separated from Node adapters;
-- a hard no-execution boundary: recommendations are allowed, direct execution is not.
+- a hard no-execution boundary: analysis is allowed, direct execution is not.
 
-The intelligence pipeline is allowed to analyze, summarize, score, remember, and publish advisory artifacts. It is not allowed to submit transactions or bypass the product's user-approval flow.
+The pipeline is allowed to collect, normalize, derive, summarize, score, remember, and publish evidence. It is not allowed to bypass the product's user-approval flow.
 
 ## How the three repos work together today
 
@@ -28,7 +28,7 @@ The intelligence pipeline is allowed to analyze, summarize, score, remember, and
                                 |
                                 v
                          regime-engine
-              regime, S/R, S/R theses, policy insights
+              regime, S/R, S/R theses, current insights
                                 ^
                                 | execution result events
                                 |
@@ -46,36 +46,154 @@ Wallet + App  <---- BFF/API + Worker ----> Orca / Jupiter / Solana RPC
 Today:
 
 - `clmm-v2` is the operational product. It owns wallet connection, monitored positions, alerts, preview approval, signing handoff, transaction submission, reconciliation, and history.
-- `regime-engine` is the deterministic analytics and ledger service. It stores candles, computes current regime, stores S/R and insight blocks, and records CLMM execution-result events.
-- `sol-usdc-clmm-intelligence` is the advisory/evidence pipeline. It pulls CLMM bundles from `clmm-v2`, combines them with price/source/research context, runs OpenClaw routines, and maintains durable advisory memory.
+- `regime-engine` is the deterministic analytics and ledger service. It stores candles, computes current regime, stores S/R/current insight blocks, and records CLMM execution-result events.
+- `sol-usdc-clmm-intelligence` is the advisory/evidence pipeline. It pulls CLMM bundles from `clmm-v2`, combines them with price/source/research context, runs OpenClaw routines, and maintains durable memory.
+
+## Open roadmap and future state
+
+Open issues #2 and #7 through #13 define the corrected architecture: this repo should become a durable evidence pipeline, not the final policy author.
+
+The corrected boundary is:
+
+```text
+intelligence engine = collect + normalize + derive + summarize evidence
+regime-engine       = synthesize canonical PolicyInsight
+clmm-v2             = consume/display final policy and own live LP state
+```
+
+### Evidence-pipeline epic
+
+Tracked by #2.
+
+The roadmap refactors this repo from a script-first OpenClaw artifact pipeline into a durable evidence pipeline that gathers, normalizes, stores, derives, summarizes, and publishes structured research evidence for Regime Engine.
+
+In scope:
+
+- layered modular architecture;
+- persistence contracts for raw observations, normalized records, derived features, evidence bundles, research briefs, and publish attempts;
+- deterministic feature derivation for the core SOL/USDC evidence set;
+- contextual research collectors;
+- schema-constrained LLM summarization over bounded evidence bundles;
+- structured evidence publication to Regime Engine.
+
+Out of scope:
+
+- wallet signing;
+- swaps, rebalances, liquidity mutation, or transaction submission;
+- final policy synthesis;
+- user-facing app display.
+
+### Core deterministic source ingestion
+
+Tracked by #7.
+
+The ingestion layer should collect and normalize at least:
+
+- `clmm-v2` SOL/USDC insight bundle for raw LP/pool/alert facts;
+- Orca pool/public stats for pool-level volume, fees, and TVL context where needed;
+- Pyth or equivalent canonical SOL/USD oracle observations;
+- Jupiter quotes and price observations for DEX comparison and route context;
+- Solana network/status inputs needed for deterministic availability warnings.
+
+Raw responses should be persisted before normalization. Partial source failures should produce explicit warnings, not fabricated values.
+
+### Deterministic feature derivation
+
+Tracked by #8.
+
+Numerical features should be computed by code, not by an LLM. Required feature families include:
+
+- price quality: oracle/DEX divergence, oracle confidence-width warnings, wick/spike flags, breakout confirmation inputs;
+- CLMM economics: fee APR/yield, expected fee capture, volume/liquidity ratio, inventory skew, fee-to-volatility ratio, rebalance cost, range-distance metrics, breach-risk inputs;
+- market/execution context: realized volatility, volume confirmation, liquidity-cliff candidates, and generic route/slippage context that does not become user-specific execution authority.
+
+Every feature should carry input lineage, as-of time, freshness, and confidence. Missing inputs should degrade explicitly.
+
+### Contextual research collectors
+
+Tracked by #9, #10, and #11.
+
+Research collector packs should add:
+
+- support/resistance theses;
+- macro calendar and high-impact scheduled events;
+- Solana protocol incidents and ecosystem news;
+- regulatory headlines relevant to SOL/USDC market risk;
+- whale transfers and whale swaps;
+- stablecoin mint/burn and transfer flows;
+- DEX net flow and SOL buy/sell pressure;
+- defensible CEX flow proxies;
+- funding rates, open interest, perp/spot basis, liquidation clusters, and leverage-crowding proxies.
+
+Facts and interpretations must remain separate. A transfer is a fact; motive is an interpretation. Noisy signals should carry explicit source-quality and confidence metadata.
+
+### Schema-constrained research briefs
+
+Tracked by #12.
+
+The LLM should summarize bounded structured evidence, not invent deterministic metrics and not make final policy decisions.
+
+A `ResearchBrief` should include:
+
+- pair;
+- `asOf` / `expiresAt`;
+- source bundle refs;
+- headline;
+- key changes since prior brief;
+- supports-current-regime assessment where applicable;
+- major risks;
+- confidence;
+- source refs;
+- warnings / missing evidence;
+- prompt version;
+- model/provider metadata.
+
+Invalid model output should fail closed or enter a clear degraded state.
+
+### Evidence publication to Regime Engine
+
+Tracked by #13 and #21.
+
+The future outbound publisher should target Regime Engine's evidence-ingest endpoint, not the legacy final-insight route.
+
+Expected payload content:
+
+- deterministic feature summaries;
+- contextual evidence summaries;
+- LLM research brief;
+- freshness/confidence/provenance metadata;
+- source refs;
+- versioning and idempotency fields.
+
+Publish attempts should be persisted with target endpoint, evidence bundle ID, optional research brief ID, idempotency key, request/payload hashes, status, HTTP status, response body, error information, attempt number, and timestamps.
 
 ## Mature system vision
 
 The mature system is a closed loop:
 
-1. `clmm-v2` observes supported SOL/USDC Orca Whirlpool positions and exposes safe read-only snapshots through `/insights/sol-usdc/*`.
-2. `regime-engine` maintains deterministic market context: candle history, trend/chop classification, CLMM suitability, support/resistance, S/R theses, and stored policy insights.
-3. This repo runs scheduled intelligence routines against CLMM bundles, market sources, prior predictions, durable memory, and policy constraints.
-4. This repo publishes structured PolicyInsights back to `regime-engine`.
-5. `clmm-v2` reads those insights through backend-only adapters and uses them as context in the product experience.
+1. `clmm-v2` observes supported SOL/USDC Orca Whirlpool positions and exposes safe read-only raw LP evidence through `/insights/sol-usdc/*`.
+2. This repo collects raw observations, normalizes source data, derives deterministic features, builds evidence bundles, and generates schema-constrained research briefs.
+3. This repo publishes structured evidence to `regime-engine` through the future evidence ingest contract.
+4. `regime-engine` selects/scored evidence, combines it with deterministic market regime state, and synthesizes one canonical PolicyInsight.
+5. `clmm-v2` reads that canonical PolicyInsight through backend-only adapters and displays it with freshness/risk/confidence context.
 6. Execution outcomes flow from `clmm-v2` into `regime-engine`; this repo can later review those outcomes to measure signal quality and update memory.
 
-In the mature product, a minimal Anchor receipt/claim program may record one execution receipt per epoch after a completed user-approved execution. That proof layer is not implemented here. This repo remains advisory and evidence-oriented.
+In the mature product, a minimal Anchor receipt/claim program may record one execution receipt per epoch after a completed user-approved flow. That proof layer is not implemented here. This repo remains evidence-oriented.
 
 ## System boundary
 
 ```text
 Git repo                     = prompts, policies, schemas, routines, durable memory, collector code
 OpenClaw Gateway cron         = scheduled isolated agent runs
-Postgres / backend database   = durable intelligence records and low-frequency evidence state
+Postgres / backend database   = raw observations, normalized records, features, evidence bundles, briefs, publish attempts
 clmm-v2 BFF                   = source of truth for live CLMM pool, position, alert, and bundle reads
-regime-engine                 = source of truth for market regime, S/R, policy insight storage, and result ledger
+regime-engine                 = source of truth for market regime, evidence ingest, policy synthesis, and result ledger
 Wallet / signer               = final authority for user-approved execution
 ```
 
 ## Non-negotiable rule
 
-The LLM may produce recommendations. It may not directly rebalance, withdraw, swap, sign, submit, or execute. Any action that affects a user position must go through `clmm-v2` and the user's wallet approval path.
+The LLM may summarize and explain evidence. It may not directly rebalance, withdraw, swap, sign, submit, or execute. Any action that affects a user position must go through `clmm-v2` and the user's approval path.
 
 ## Data flow today
 
@@ -91,9 +209,28 @@ data/latest-price-snapshot.json       data/latest-clmm-bundle.json
                            |
                            v
               advisory output / operator review
-                           |
-                           v
-      optional publish to regime-engine /v1/insights/sol-usdc
+```
+
+## Future evidence flow
+
+```text
+raw source adapters
+       |
+       v
+raw observations -> normalized records -> deterministic features
+       |                  |                       |
+       +------------------+-----------------------+
+                          v
+                  evidence bundle
+                          |
+                          v
+             schema-constrained research brief
+                          |
+                          v
+       publish attempt -> regime-engine /v1/evidence/sol-usdc
+                          |
+                          v
+          Regime Engine canonical PolicyInsight synthesis
 ```
 
 ## Integration contracts
@@ -123,16 +260,25 @@ Header: x-insights-api-key: <CLMM_INSIGHTS_API_KEY>
 
 The BFF response is validated before writing `data/latest-clmm-bundle.json`. Expected bundle content includes pair, source, pool snapshot, positions, range state, ticks, liquidity, unclaimed fees, actionable-trigger flags, alerts, observed time, and data-quality metadata.
 
+Future bundle work in `clmm-v2` should add missing raw LP facts required for deterministic feature derivation while preserving the read-only character of this API.
+
 ### Writing to `regime-engine`
 
-When configured, OpenClaw-generated policy insights should be published to:
+Current/legacy final-insight route:
 
 ```text
 POST /v1/insights/sol-usdc
 Header: X-Insight-Ingest-Token: <INSIGHT_INGEST_TOKEN>
 ```
 
-`regime-engine` then becomes the serving layer for current and historical PolicyInsights, which `clmm-v2` can read through its backend-only `CurrentPolicyInsightsAdapter`.
+Future evidence route:
+
+```text
+POST /v1/evidence/sol-usdc
+Header: X-Evidence-Ingest-Token: <shared-secret>
+```
+
+New work should target the evidence route and evidence contract. The final PolicyInsight should be generated by Regime Engine, not authored by this repo.
 
 ## Minimal setup
 
@@ -212,10 +358,10 @@ The app sets `search_path=intelligence` automatically. See `drizzle.config.ts` f
 Pipeline code lives under `src/`:
 
 ```text
-src/contracts       Canonical CLMM bundle, cron config, and price snapshot types
+src/contracts       Canonical CLMM bundle, cron config, price snapshot, and evidence contracts
 src/domain          Pure logic; no I/O, env, clock, or process access
-src/ports           Interfaces for HTTP, JSON storage, text reading, env, clock, commands
-src/application     Use cases for collectors and cron rendering/sync
+src/ports           Interfaces for HTTP, JSON storage, text reading, env, clock, commands, persistence
+src/application     Use cases for collectors, evidence assembly, publishing, and cron rendering/sync
 src/jobs            Thin orchestration wrappers bound to runtime dependencies
 src/adapters/node   Node implementations and createNodeRuntime() composition root
 ```
@@ -246,7 +392,7 @@ scripts/                          Deterministic collectors/generators/OpenClaw h
 src/                              Layered TypeScript pipeline code
 tests/                            Vitest unit, application, and fixture regression tests
 drizzle/                          Drizzle migrations
-data/                             Local snapshots; raw high-frequency data belongs elsewhere
+data/                             Local snapshots; raw high-frequency data belongs in persistence/backend systems
 outputs/                          Latest structured outputs for dashboard/backend review
 memory/                           Durable agent memory and review logs
 docs/                             Architecture, runbooks, specs, and plans
@@ -257,6 +403,7 @@ docs/                             Architecture, runbooks, specs, and plans
 - This repo is not the source of truth for high-frequency market data.
 - This repo is not the source of truth for live position execution state.
 - Raw price ticks, pool snapshots, and every fee accrual update belong in Postgres or the backend owner service, not Git.
-- OpenClaw output is advisory unless and until a downstream deterministic service accepts it through an explicit contract.
+- OpenClaw output is advisory evidence unless and until a downstream deterministic service accepts it through an explicit contract.
 - Any future publish path to `regime-engine` must be schema-validated, authenticated, idempotent, and observable.
+- The outbound payload should be evidence, not final policy conclusions.
 - Recommendations must preserve the no-execution boundary.
