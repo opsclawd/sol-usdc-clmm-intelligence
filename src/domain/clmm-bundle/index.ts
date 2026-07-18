@@ -6,3 +6,5 @@ export {
 } from "./validate.js";
 
 export { deriveClmmSourceObservationKey, type ClmmSourceObservationIdentity } from "./identity.js";
+
+export { normalizeClmmBundle } from "./normalize.js";
