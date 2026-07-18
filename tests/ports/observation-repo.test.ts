@@ -87,7 +87,9 @@ describe("RawObservationRepo contract", () => {
 
       expect(conflict.outcome).toBe("conflict");
       expect(conflict.row.payloadHash).toBe(hash1);
-      expect(conflict.incomingPayloadHash).toBe(hash2);
+      expect(
+        (conflict as { outcome: "conflict"; incomingPayloadHash: string }).incomingPayloadHash
+      ).toBe(hash2);
 
       const stillStored = await repo.findByIdentity("clmm-v2-bundle", "obs-key-conflict");
       expect(stillStored!.payloadHash).toBe(hash1);
