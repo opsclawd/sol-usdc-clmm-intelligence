@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { makeClmmBundle, makeFeeAmount } from "../../fixtures/clmm-bundle.js";
+import {
+  makeClmmBundle,
+  makeFeeAmount,
+  makePoolData,
+  makeDataQuality
+} from "../../fixtures/clmm-bundle.js";
 import { normalizeClmmBundle } from "../../../src/domain/clmm-bundle/normalize.js";
+import type { ClmmBundle, PositionData } from "../../../src/contracts/clmm-bundle.js";
 
 describe("normalizeClmmBundle", () => {
   describe("fact cardinality", () => {
@@ -97,18 +103,58 @@ describe("normalizeClmmBundle", () => {
 
   describe("absence preservation", () => {
     it("materializes unavailable optional values as null while retaining zero false empty arrays and decimal strings", () => {
-      const bundle = makeClmmBundle({
-        positions: [
-          {
-            unclaimedFeesUsd: null,
-            unclaimedRewardsUsd: null,
-            triggerId: undefined,
-            breachDirection: undefined,
-            unclaimedRewards: []
+      const positionWithoutOptionals: PositionData = {
+        walletId: "wallet-abc-456",
+        positionId: "position-001",
+        poolId: "pool-solusdc-123",
+        pair: "SOL/USDC",
+        source: "orca",
+        observedAtUnixMs: 1705315800000,
+        rangeState: "in-range",
+        lowerTick: 49500,
+        upperTick: 50100,
+        currentTick: 49800,
+        lowerPriceLabel: "145.20",
+        upperPriceLabel: "155.80",
+        currentPrice: 149.85,
+        currentPriceLabel: "149.85",
+        rangeDistance: {
+          belowLowerTickPercent: -3.1,
+          aboveUpperTickPercent: 3.97
+        },
+        feeRateLabel: "0.05%",
+        unclaimedFees: {
+          feeOwedA: {
+            raw: "0",
+            decimals: 6,
+            symbol: "SOL",
+            mint: "So11111111111111111111111111111111111111112"
+          },
+          feeOwedB: {
+            raw: "0",
+            decimals: 6,
+            symbol: "USDC",
+            mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
           }
-        ],
-        alerts: []
-      });
+        },
+        unclaimedRewards: [],
+        unclaimedFeesUsd: null,
+        unclaimedRewardsUsd: null,
+        positionLiquidity: "1234567890",
+        poolLiquidity: "9876543210",
+        hasActionableTrigger: false
+      };
+
+      const bundle: ClmmBundle = {
+        pair: "SOL/USDC",
+        source: "orca",
+        observedAtUnixMs: 1705315800000,
+        pool: makePoolData(),
+        srLevels: null,
+        positions: [positionWithoutOptionals],
+        alerts: [],
+        dataQuality: makeDataQuality()
+      };
 
       const candidates = normalizeClmmBundle(bundle);
       const positionCandidate = candidates.find((c) => c.kind === "position_state")!;
@@ -121,6 +167,7 @@ describe("normalizeClmmBundle", () => {
 
       expect(feeCandidate.unclaimedFeesUsd).toBeNull();
       expect(feeCandidate.unclaimedRewardsUsd).toBeNull();
+      expect(feeCandidate.unclaimedRewards).toEqual([]);
     });
 
     it("retains zero values in fee amounts", () => {

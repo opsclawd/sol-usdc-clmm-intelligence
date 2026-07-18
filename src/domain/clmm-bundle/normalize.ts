@@ -66,8 +66,12 @@ function mapPositionState(pair: "SOL/USDC", position: PositionData): PositionSta
     rangeDistance: {
       belowLowerTickPercent: position.rangeDistance.belowLowerTickPercent,
       aboveUpperTickPercent: position.rangeDistance.aboveUpperTickPercent,
-      belowLowerPricePercent: position.rangeDistance.belowLowerPricePercent,
-      aboveUpperPricePercent: position.rangeDistance.aboveUpperPricePercent
+      ...(position.rangeDistance.belowLowerPricePercent !== undefined && {
+        belowLowerPricePercent: position.rangeDistance.belowLowerPricePercent
+      }),
+      ...(position.rangeDistance.aboveUpperPricePercent !== undefined && {
+        aboveUpperPricePercent: position.rangeDistance.aboveUpperPricePercent
+      })
     },
     feeRateLabel: position.feeRateLabel,
     positionLiquidity: position.positionLiquidity,
