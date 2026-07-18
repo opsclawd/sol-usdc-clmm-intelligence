@@ -10,7 +10,7 @@ export class FakeObservationRepo implements RawObservationRepo {
   private nextId = 1;
 
   async insert(row: RawObservationInsert): Promise<RawObservationRow> {
-    const key = `${row.source}:${row.payloadHash}`;
+    const key = `${row.source}:${row.sourceObservationKey}`;
     const existing = this.store.get(key);
     if (existing) return existing;
     const id = this.nextId++;
@@ -30,8 +30,17 @@ export class FakeObservationRepo implements RawObservationRepo {
     return result;
   }
 
+  async findByKey(
+    source: Source,
+    sourceObservationKey: string
+  ): Promise<RawObservationRow | undefined> {
+    return this.store.get(`${source}:${sourceObservationKey}`);
+  }
+
   async findByHash(source: Source, payloadHash: string): Promise<RawObservationRow | undefined> {
-    return this.store.get(`${source}:${payloadHash}`);
+    return [...this.store.values()].find(
+      (r) => r.source === source && r.payloadHash === payloadHash
+    );
   }
 
   async findBySource(source: Source, sinceUnixMs: number): Promise<RawObservationRow[]> {

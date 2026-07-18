@@ -45,8 +45,25 @@ export class DrizzleObservationRepo implements RawObservationRepo {
       })
       .returning();
     if (result) return toPortRow(result);
-    const existing = await this.findByHash(row.source, row.payloadHash);
+    const existing = await this.findByKey(row.source, row.sourceObservationKey);
     return existing!;
+  }
+
+  async findByKey(
+    source: Source,
+    sourceObservationKey: string
+  ): Promise<RawObservationRow | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(rawObservations)
+      .where(
+        and(
+          eq(rawObservations.source, source),
+          eq(rawObservations.sourceObservationKey, sourceObservationKey)
+        )
+      )
+      .limit(1);
+    return row ? toPortRow(row) : undefined;
   }
 
   async findByHash(source: Source, payloadHash: string): Promise<RawObservationRow | undefined> {

@@ -22,7 +22,7 @@ describe("RawObservationRepo contract", () => {
     expect(found!.id).toBe(1);
   });
 
-  it("insert is idempotent on duplicate source+payloadHash", async () => {
+  it("insert is idempotent on duplicate source+sourceObservationKey", async () => {
     const repo = new FakeObservationRepo();
     const row1 = await repo.insert({
       source: "clmm-v2-bundle",
@@ -38,11 +38,50 @@ describe("RawObservationRepo contract", () => {
       sourceObservationKey: "obs-key-dup",
       observedAtUnixMs: 2000,
       fetchedAtUnixMs: 2001,
-      payloadHash: "hash-dup",
+      payloadHash: "different-hash",
       payloadCanonical: "{}",
       receivedAtUnixMs: 2002
     });
     expect(row2.id).toBe(row1.id);
+  });
+
+  it("same source + different sourceObservationKey are distinct observations", async () => {
+    const repo = new FakeObservationRepo();
+    const row1 = await repo.insert({
+      source: "clmm-v2-bundle",
+      sourceObservationKey: "obs-key-1",
+      observedAtUnixMs: 1000,
+      fetchedAtUnixMs: 1001,
+      payloadHash: "hash-1",
+      payloadCanonical: "{}",
+      receivedAtUnixMs: 1002
+    });
+    const row2 = await repo.insert({
+      source: "clmm-v2-bundle",
+      sourceObservationKey: "obs-key-2",
+      observedAtUnixMs: 2000,
+      fetchedAtUnixMs: 2001,
+      payloadHash: "hash-1",
+      payloadCanonical: "{}",
+      receivedAtUnixMs: 2002
+    });
+    expect(row2.id).not.toBe(row1.id);
+  });
+
+  it("findByKey returns existing row by source and sourceObservationKey", async () => {
+    const repo = new FakeObservationRepo();
+    await repo.insert({
+      source: "clmm-v2-bundle",
+      sourceObservationKey: "find-key-test",
+      observedAtUnixMs: 1000,
+      fetchedAtUnixMs: 1001,
+      payloadHash: "hash-find",
+      payloadCanonical: "{}",
+      receivedAtUnixMs: 1002
+    });
+    const found = await repo.findByKey("clmm-v2-bundle", "find-key-test");
+    expect(found).toBeDefined();
+    expect(found!.sourceObservationKey).toBe("find-key-test");
   });
 
   it("findBySource filters by source and since", async () => {

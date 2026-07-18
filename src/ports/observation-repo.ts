@@ -27,6 +27,7 @@ export interface RawObservationInsert {
 
 export interface RawObservationRepo {
   insert(row: RawObservationInsert): Promise<RawObservationRow>;
+  findByKey(source: Source, sourceObservationKey: string): Promise<RawObservationRow | undefined>;
   findByHash(source: Source, payloadHash: string): Promise<RawObservationRow | undefined>;
   findBySource(source: Source, sinceUnixMs: number): Promise<RawObservationRow[]>;
 }
