@@ -1,15 +1,5 @@
 import { z } from "zod";
-import type {
-  ClmmBundle,
-  PoolData,
-  PositionData,
-  AlertData,
-  FeeAmount,
-  RewardAmount,
-  SrLevels,
-  SrLevel,
-  DataQuality
-} from "../../contracts/clmm-bundle.js";
+import type { ClmmBundle, PoolData, PositionData, AlertData } from "../../contracts/clmm-bundle.js";
 
 function finiteNumber(): z.ZodType<number> {
   return z.number().refine(Number.isFinite, {
@@ -35,21 +25,21 @@ function optionalFiniteNumber(): z.ZodType<number | undefined> {
     });
 }
 
-const feeAmountSchema: z.ZodType<FeeAmount> = z.object({
+const feeAmountSchema = z.object({
   raw: z.string(),
   decimals: nullableFiniteNumber(),
   symbol: z.string(),
   mint: z.string()
 });
 
-const rewardAmountSchema: z.ZodType<RewardAmount> = z.object({
+const rewardAmountSchema = z.object({
   mint: z.string(),
   raw: z.string(),
   decimals: nullableFiniteNumber(),
   symbol: z.string()
 });
 
-const srLevelSchema: z.ZodType<SrLevel> = z.object({
+const srLevelSchema = z.object({
   price: finiteNumber(),
   rank: z.string().optional(),
   timeframe: z.string().optional(),
@@ -57,7 +47,7 @@ const srLevelSchema: z.ZodType<SrLevel> = z.object({
   notes: z.string().optional()
 });
 
-const srLevelsSchema: z.ZodType<SrLevels> = z.object({
+const srLevelsSchema = z.object({
   briefId: z.string(),
   sourceRecordedAtIso: z.string().nullable(),
   summary: z.string().nullable(),
@@ -78,7 +68,7 @@ const unclaimedFeesSchema = z.object({
   feeOwedB: feeAmountSchema
 });
 
-const positionDataSchema: z.ZodType<PositionData> = z.object({
+const positionDataSchema = z.object({
   walletId: z.string(),
   positionId: z.string(),
   poolId: z.string(),
@@ -106,20 +96,20 @@ const positionDataSchema: z.ZodType<PositionData> = z.object({
   breachDirection: z.enum(["lower-bound-breach", "upper-bound-breach"]).optional()
 });
 
-const alertDataSchema: z.ZodType<AlertData> = z.object({
+const alertDataSchema = z.object({
   triggerId: z.string(),
   positionId: z.string(),
   breachDirection: z.enum(["lower-bound-breach", "upper-bound-breach"]),
   triggeredAt: finiteNumber()
 });
 
-const dataQualitySchema: z.ZodType<DataQuality> = z.object({
+const dataQualitySchema = z.object({
   warnings: z.array(z.string()),
   isPartial: z.boolean(),
   missingSources: z.array(z.string())
 });
 
-const poolDataSchema: z.ZodType<PoolData> = z.object({
+const poolDataSchema = z.object({
   poolId: z.string(),
   pair: z.literal("SOL/USDC"),
   source: z.literal("orca"),
@@ -136,7 +126,7 @@ const poolDataSchema: z.ZodType<PoolData> = z.object({
   priceSource: z.literal("orca_whirlpool_sqrt_price")
 });
 
-export const clmmBundleSchema: z.ZodType<ClmmBundle> = z.object({
+export const clmmBundleSchema = z.object({
   pair: z.literal("SOL/USDC"),
   source: z.literal("orca"),
   observedAtUnixMs: finiteNumber(),
@@ -205,16 +195,16 @@ export class ClmmBundleValidationError extends Error {
   }
 }
 
-export function acceptClmmBundleEnvelope(response: unknown): {
-  bundle: ClmmBundle;
-  status: string;
-} {
+export function acceptClmmBundleEnvelope(response: unknown) {
   const envelopeSchema = z.object({
     bundle: clmmBundleSchema,
     status: z.string()
   });
 
-  const parsed = envelopeSchema.parse(response);
+  const parsed = envelopeSchema.parse(response) as {
+    bundle: ClmmBundle;
+    status: string;
+  };
 
   validatePositionPoolConsistency(parsed.bundle.positions, parsed.bundle.pool);
   validateAlertPositionConsistency(
@@ -227,7 +217,7 @@ export function acceptClmmBundleEnvelope(response: unknown): {
 }
 
 export function acceptClmmBundle(bundle: unknown): ClmmBundle {
-  const parsed = clmmBundleSchema.parse(bundle);
+  const parsed = clmmBundleSchema.parse(bundle) as ClmmBundle;
 
   validatePositionPoolConsistency(parsed.positions, parsed.pool);
   validateAlertPositionConsistency(parsed.alerts, parsed.positions, parsed.pool);

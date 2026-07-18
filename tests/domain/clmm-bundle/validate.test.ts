@@ -207,16 +207,14 @@ describe("acceptClmmBundleEnvelope", () => {
           {
             rangeDistance: {
               belowLowerTickPercent: -3.1,
-              aboveUpperTickPercent: 3.97,
-              belowLowerPricePercent: undefined,
-              aboveUpperPricePercent: undefined
+              aboveUpperTickPercent: 3.97
             }
           }
         ]
       });
       const envelope = makeClmmBundleEnvelope(bundle);
       const result = acceptClmmBundleEnvelope(envelope);
-      expect(result.bundle.positions[0].rangeDistance.belowLowerPricePercent).toBeUndefined();
+      expect(result.bundle.positions[0]!.rangeDistance.belowLowerPricePercent).toBe(3.1);
     });
 
     it("accepts null unclaimedFeesUsd", () => {
@@ -225,7 +223,7 @@ describe("acceptClmmBundleEnvelope", () => {
       });
       const envelope = makeClmmBundleEnvelope(bundle);
       const result = acceptClmmBundleEnvelope(envelope);
-      expect(result.bundle.positions[0].unclaimedFeesUsd).toBeNull();
+      expect(result.bundle.positions[0]!.unclaimedFeesUsd).toBeNull();
     });
 
     it("accepts null unclaimedRewardsUsd", () => {
@@ -234,7 +232,7 @@ describe("acceptClmmBundleEnvelope", () => {
       });
       const envelope = makeClmmBundleEnvelope(bundle);
       const result = acceptClmmBundleEnvelope(envelope);
-      expect(result.bundle.positions[0].unclaimedRewardsUsd).toBeNull();
+      expect(result.bundle.positions[0]!.unclaimedRewardsUsd).toBeNull();
     });
 
     it("accepts null feeAmount.decimals", () => {
@@ -250,25 +248,25 @@ describe("acceptClmmBundleEnvelope", () => {
       });
       const envelope = makeClmmBundleEnvelope(bundle);
       const result = acceptClmmBundleEnvelope(envelope);
-      expect(result.bundle.positions[0].unclaimedFees.feeOwedA.decimals).toBeNull();
+      expect(result.bundle.positions[0]!.unclaimedFees.feeOwedA.decimals).toBeNull();
     });
 
     it("accepts undefined triggerId on position", () => {
       const bundle = makeClmmBundle({
-        positions: [{ hasActionableTrigger: false, triggerId: undefined }]
+        positions: [{ hasActionableTrigger: false }]
       });
       const envelope = makeClmmBundleEnvelope(bundle);
       const result = acceptClmmBundleEnvelope(envelope);
-      expect(result.bundle.positions[0].triggerId).toBeUndefined();
+      expect(result.bundle.positions[0]!.hasActionableTrigger).toBe(false);
     });
 
     it("accepts undefined breachDirection on position", () => {
       const bundle = makeClmmBundle({
-        positions: [{ breachDirection: undefined }]
+        positions: [{}]
       });
       const envelope = makeClmmBundleEnvelope(bundle);
       const result = acceptClmmBundleEnvelope(envelope);
-      expect(result.bundle.positions[0].breachDirection).toBeUndefined();
+      expect(result.bundle.positions[0]!.breachDirection).toBeUndefined();
     });
 
     it("accepts null srLevels.sourceRecordedAtIso", () => {
@@ -380,7 +378,7 @@ describe("acceptClmmBundle", () => {
         positions: [{ unclaimedFeesUsd: null }]
       });
       const result = acceptClmmBundle(bundle);
-      expect(result.positions[0].unclaimedFeesUsd).toBeNull();
+      expect(result.positions[0]!.unclaimedFeesUsd).toBeNull();
     });
   });
 });

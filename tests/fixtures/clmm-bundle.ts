@@ -47,7 +47,7 @@ export function makeSrLevels(overrides?: Partial<SrLevels>): SrLevels {
     sourceRecordedAtIso: "2024-01-15T10:30:00.000Z",
     summary: "SOL/USDC resistance at 150.5",
     capturedAtUnixMs: 1705315800000,
-    supports: [makeSrLevel({ price: 140.0, rank: undefined, timeframe: undefined })],
+    supports: [makeSrLevel({ price: 140.0 })],
     resistances: [makeSrLevel()],
     ...overrides
   };
@@ -74,6 +74,20 @@ export function makePoolData(overrides?: Partial<PoolData>): PoolData {
 }
 
 export function makePositionData(overrides?: Partial<PositionData>): PositionData {
+  const defaultRangeDistance = {
+    belowLowerTickPercent: -3.1,
+    aboveUpperTickPercent: 3.97,
+    belowLowerPricePercent: 3.1
+  };
+
+  const { rangeDistance: _rd, ...restOverrides } = overrides ?? {};
+  const rangeDistance = _rd
+    ? {
+        ...defaultRangeDistance,
+        ..._rd
+      }
+    : defaultRangeDistance;
+
   return {
     walletId: "wallet-abc-456",
     positionId: "position-001",
@@ -89,12 +103,7 @@ export function makePositionData(overrides?: Partial<PositionData>): PositionDat
     upperPriceLabel: "155.80",
     currentPrice: 149.85,
     currentPriceLabel: "149.85",
-    rangeDistance: {
-      belowLowerTickPercent: -3.1,
-      aboveUpperTickPercent: 3.97,
-      belowLowerPricePercent: 3.1,
-      aboveUpperPricePercent: undefined
-    },
+    rangeDistance,
     feeRateLabel: "0.05%",
     unclaimedFees: {
       feeOwedA: makeFeeAmount({
@@ -110,8 +119,7 @@ export function makePositionData(overrides?: Partial<PositionData>): PositionDat
     poolLiquidity: "9876543210",
     hasActionableTrigger: true,
     triggerId: "trigger-001",
-    breachDirection: undefined,
-    ...overrides
+    ...restOverrides
   };
 }
 
@@ -168,7 +176,12 @@ export function makeClmmBundle(overrides?: ClmmBundleOverrides): ClmmBundle {
     })
   );
 
-  const srLevels = overrides?.srLevels !== undefined ? overrides.srLevels : makeSrLevels();
+  const srLevels: SrLevels | null =
+    overrides?.srLevels === null
+      ? null
+      : overrides?.srLevels !== undefined
+        ? (overrides.srLevels as SrLevels)
+        : makeSrLevels();
 
   return {
     pair: "SOL/USDC",
