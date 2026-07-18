@@ -158,6 +158,7 @@ export async function collectClmmBundle(
     return await normalizeAndStore(
       deps,
       existingRow,
+      rawInsertResult,
       validatedBundle,
       bundle,
       codeVersion,
@@ -168,6 +169,7 @@ export async function collectClmmBundle(
   return await normalizeAndStore(
     deps,
     rawInsertResult.row,
+    rawInsertResult,
     bundle,
     bundle,
     codeVersion,
@@ -178,6 +180,7 @@ export async function collectClmmBundle(
 async function normalizeAndStore(
   deps: CollectClmmBundleDeps,
   rawRow: RawObservationRow,
+  rawOutcome: RawInsertOutcome,
   bundle: ClmmBundle,
   compatibilityBundle: ClmmBundle,
   codeVersion: string,
@@ -248,7 +251,7 @@ async function normalizeAndStore(
 
   return {
     rawObservationId: rawRow.id,
-    rawOutcome: { outcome: "inserted", row: rawRow },
+    rawOutcome,
     normalizedCount,
     parseStatus
   };
