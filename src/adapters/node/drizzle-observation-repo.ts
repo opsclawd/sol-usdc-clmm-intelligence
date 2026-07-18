@@ -3,9 +3,10 @@ import { rawObservations } from "../../db/schema/raw-observations.js";
 import type {
   RawObservationRepo,
   RawObservationInsert,
-  RawObservationRow
+  RawObservationRow,
+  RawInsertOutcome
 } from "../../ports/observation-repo.js";
-import type { Source } from "../../contracts/taxonomy.js";
+import type { Source, ParseStatus } from "../../contracts/taxonomy.js";
 import type { Db } from "../../db/db.js";
 
 function toPortRow(row: typeof rawObservations.$inferSelect): RawObservationRow {
@@ -26,7 +27,7 @@ function toPortRow(row: typeof rawObservations.$inferSelect): RawObservationRow 
 export class DrizzleObservationRepo implements RawObservationRepo {
   constructor(private readonly db: Db) {}
 
-  async insert(row: RawObservationInsert): Promise<RawObservationRow> {
+  async insertOrClassify(row: RawObservationInsert): Promise<RawInsertOutcome> {
     const [result] = await this.db
       .insert(rawObservations)
       .values({
@@ -44,12 +45,33 @@ export class DrizzleObservationRepo implements RawObservationRepo {
         target: [rawObservations.source, rawObservations.sourceObservationKey]
       })
       .returning();
-    if (result) return toPortRow(result);
-    const existing = await this.findByKey(row.source, row.sourceObservationKey);
-    return existing!;
+
+    if (result) {
+      return { outcome: "inserted", row: toPortRow(result) };
+    }
+
+    const existing = await this.findByIdentity(row.source, row.sourceObservationKey);
+    if (!existing) {
+      throw new Error("Unexpected: row not found after conflict");
+    }
+
+    if (existing.payloadHash === row.payloadHash) {
+      return { outcome: "identical_replay", row: existing };
+    }
+
+    return { outcome: "conflict", row: existing, incomingPayloadHash: row.payloadHash };
   }
 
-  async findByKey(
+  async findById(id: number): Promise<RawObservationRow | undefined> {
+    const [row] = await this.db
+      .select()
+      .from(rawObservations)
+      .where(eq(rawObservations.id, id))
+      .limit(1);
+    return row ? toPortRow(row) : undefined;
+  }
+
+  async findByIdentity(
     source: Source,
     sourceObservationKey: string
   ): Promise<RawObservationRow | undefined> {
@@ -83,5 +105,17 @@ export class DrizzleObservationRepo implements RawObservationRepo {
         and(eq(rawObservations.source, source), gte(rawObservations.observedAtUnixMs, sinceUnixMs))
       );
     return rows.map(toPortRow);
+  }
+
+  async updateParseStatus(id: number, status: ParseStatus): Promise<RawObservationRow> {
+    const [updated] = await this.db
+      .update(rawObservations)
+      .set({ parseStatus: status })
+      .where(eq(rawObservations.id, id))
+      .returning();
+    if (!updated) {
+      throw new Error(`Row with id ${id} not found`);
+    }
+    return toPortRow(updated);
   }
 }

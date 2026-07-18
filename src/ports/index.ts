@@ -8,7 +8,8 @@ export type { DbConnection } from "./db.js";
 export type {
   RawObservationRepo,
   RawObservationRow,
-  RawObservationInsert
+  RawObservationInsert,
+  RawInsertOutcome
 } from "./observation-repo.js";
 export type {
   NormalizedObservationRepo,
