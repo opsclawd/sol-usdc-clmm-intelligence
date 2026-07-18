@@ -164,6 +164,64 @@ export const observationKindRegistry = {
     },
     active: true,
     schemaVersion: 1
+  },
+  trigger_event: {
+    kind: "trigger_event",
+    evidenceFamily: "execution_safety",
+    signalClass: "deterministic",
+    source: "clmm-v2-bundle",
+    freshnessPolicy: {
+      maxObservedAgeMs: 60_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "exclude"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.4,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      ...DEFAULT_PROVENANCE_REQUIREMENTS,
+      allowedSourceRefs: ["clmm-v2-bundle"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  data_quality: {
+    kind: "data_quality",
+    evidenceFamily: "execution_safety",
+    signalClass: "deterministic",
+    source: "clmm-v2-bundle",
+    freshnessPolicy: {
+      maxObservedAgeMs: 60_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "exclude"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.4,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      ...DEFAULT_PROVENANCE_REQUIREMENTS,
+      allowedSourceRefs: ["clmm-v2-bundle"]
+    },
+    active: true,
+    schemaVersion: 1
   }
 } as const satisfies Record<ObservationKind, ObservationKindEntry>;
 

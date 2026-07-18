@@ -20,7 +20,9 @@ export type ObservationKind =
   | "position_state"
   | "price_quote"
   | "fee_metrics"
-  | "volume_metrics";
+  | "volume_metrics"
+  | "trigger_event"
+  | "data_quality";
 
 export type FeatureKind = "fee_apr" | "oracle_divergence" | "volatility_24h" | "liquidity_depth";
 

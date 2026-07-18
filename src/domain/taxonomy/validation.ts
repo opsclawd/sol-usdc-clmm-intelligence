@@ -14,7 +14,9 @@ const OBSERVATION_KINDS = new Set<ObservationKind>([
   "position_state",
   "price_quote",
   "fee_metrics",
-  "volume_metrics"
+  "volume_metrics",
+  "trigger_event",
+  "data_quality"
 ]);
 
 const FEATURE_KINDS = new Set<FeatureKind>([

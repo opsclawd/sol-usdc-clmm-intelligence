@@ -41,7 +41,9 @@ describe("observationKindRegistry", () => {
     "position_state",
     "price_quote",
     "fee_metrics",
-    "volume_metrics"
+    "volume_metrics",
+    "trigger_event",
+    "data_quality"
   ];
 
   it("has an entry for every ObservationKind union member", () => {
@@ -157,5 +159,49 @@ describe("getFeatureKindEntry", () => {
     const entry = getFeatureKindEntry("fee_apr");
     expect(entry.kind).toBe("fee_apr");
     expect(entry.evidenceFamily).toBe("clmm_economics");
+  });
+});
+
+describe("trigger_event and data_quality are deterministic execution_safety kinds with 60-second exclude-on-stale policies", () => {
+  const triggerEntry = getObservationKindEntry("trigger_event");
+  const dataQualityEntry = getObservationKindEntry("data_quality");
+
+  it("trigger_event is deterministic execution_safety from clmm-v2-bundle", () => {
+    expect(triggerEntry.signalClass).toBe("deterministic");
+    expect(triggerEntry.evidenceFamily).toBe("execution_safety");
+    expect(triggerEntry.source).toBe("clmm-v2-bundle");
+  });
+
+  it("trigger_event has 60-second max age, 5-second skew, exclude stale behavior", () => {
+    expect(triggerEntry.freshnessPolicy.maxObservedAgeMs).toBe(60_000);
+    expect(triggerEntry.freshnessPolicy.clockSkewToleranceMs).toBe(5_000);
+    expect(triggerEntry.freshnessPolicy.staleBehavior).toBe("exclude");
+  });
+
+  it("data_quality is deterministic execution_safety from clmm-v2-bundle", () => {
+    expect(dataQualityEntry.signalClass).toBe("deterministic");
+    expect(dataQualityEntry.evidenceFamily).toBe("execution_safety");
+    expect(dataQualityEntry.source).toBe("clmm-v2-bundle");
+  });
+
+  it("data_quality has 60-second max age, 5-second skew, exclude stale behavior", () => {
+    expect(dataQualityEntry.freshnessPolicy.maxObservedAgeMs).toBe(60_000);
+    expect(dataQualityEntry.freshnessPolicy.clockSkewToleranceMs).toBe(5_000);
+    expect(dataQualityEntry.freshnessPolicy.staleBehavior).toBe("exclude");
+  });
+
+  it("both use schema version 1", () => {
+    expect(triggerEntry.schemaVersion).toBe(1);
+    expect(dataQualityEntry.schemaVersion).toBe(1);
+  });
+
+  it("both are active", () => {
+    expect(triggerEntry.active).toBe(true);
+    expect(dataQualityEntry.active).toBe(true);
+  });
+
+  it("both allow direct provenance with clmm-v2-bundle source", () => {
+    expect(triggerEntry.provenanceRequirements.allowedSourceRefs).toContain("clmm-v2-bundle");
+    expect(dataQualityEntry.provenanceRequirements.allowedSourceRefs).toContain("clmm-v2-bundle");
   });
 });
