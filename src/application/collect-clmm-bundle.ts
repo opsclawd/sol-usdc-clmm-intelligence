@@ -1,116 +1,92 @@
 import type { HttpClient } from "../ports/http.js";
 import type { JsonStore } from "../ports/json-store.js";
 import type { EnvReader } from "../ports/env.js";
+import type { Clock } from "../ports/clock.js";
+import type { RawObservationRepo, RawInsertOutcome } from "../ports/observation-repo.js";
+import type { NormalizedObservationRepo } from "../ports/normalized-observation-repo.js";
+import type { Source, ParseStatus } from "../contracts/taxonomy.js";
+import { acceptClmmBundleEnvelope, acceptClmmBundle } from "../domain/clmm-bundle/validate.js";
+import { deriveClmmSourceObservationKey } from "../domain/clmm-bundle/identity.js";
+import { normalizeClmmBundle } from "../domain/clmm-bundle/normalize.js";
+import { enrichClmmCandidates } from "../domain/clmm-bundle/enrich.js";
+import { canonicalizePayload } from "../domain/content-hash.js";
 import type { ClmmBundle } from "../contracts/clmm-bundle.js";
+import type { ClmmNormalizedCandidate } from "../contracts/normalized-clmm-observation.js";
 
 export interface CollectClmmBundleDeps {
   http: HttpClient;
   jsonStore: JsonStore;
   env: EnvReader;
+  clock: Clock;
+  rawObservationRepo: RawObservationRepo;
+  normalizedObservationRepo: NormalizedObservationRepo;
+}
+
+export interface CollectClmmBundleResult {
+  rawObservationId: number;
+  rawOutcome: RawInsertOutcome;
+  normalizedCount: number;
+  parseStatus: ParseStatus;
+}
+
+export class ClmmObservationConflictError extends Error {
+  constructor(
+    public readonly source: Source,
+    public readonly sourceObservationKey: string,
+    public readonly existingPayloadHash: string,
+    public readonly incomingPayloadHash: string
+  ) {
+    super(
+      `Conflict for ${source}:${sourceObservationKey}: existing hash ${existingPayloadHash} vs incoming ${incomingPayloadHash}`
+    );
+    this.name = "ClmmObservationConflictError";
+  }
 }
 
 export const CLMM_BUNDLE_PATH = "data/latest-clmm-bundle.json";
+const SOURCE: Source = "clmm-v2-bundle";
 
 function validateEnvelope(response: Record<string, unknown>): ClmmBundle {
-  const bundle = response.bundle;
-
-  if (!bundle || typeof bundle !== "object") {
-    throw new Error("Response missing bundle field");
-  }
-
-  const b = bundle as Record<string, unknown>;
-
-  if (b.pair !== "SOL/USDC") {
-    throw new Error(`Expected pair SOL/USDC, got ${String(b.pair)}`);
-  }
-
-  if (!b.pool || typeof b.pool !== "object") {
-    throw new Error("Bundle missing pool data");
-  }
-
-  if (!Array.isArray(b.positions)) {
-    throw new Error("Bundle missing positions array");
-  }
-
-  for (const pos of b.positions) {
-    if (!pos || typeof pos !== "object") {
-      throw new Error("Bundle contains non-object position entry");
-    }
-    const p = pos as Record<string, unknown>;
-    if (typeof p.positionId !== "string") throw new Error("Position missing positionId");
-    if (
-      typeof p.rangeState !== "string" ||
-      !["in-range", "below-range", "above-range"].includes(p.rangeState)
-    ) {
-      throw new Error(`Position ${p.positionId ?? "?"} has invalid rangeState`);
-    }
-    if (typeof p.lowerTick !== "number")
-      throw new Error(`Position ${p.positionId ?? "?"} missing lowerTick`);
-    if (typeof p.upperTick !== "number")
-      throw new Error(`Position ${p.positionId ?? "?"} missing upperTick`);
-    if (typeof p.currentTick !== "number")
-      throw new Error(`Position ${p.positionId ?? "?"} missing currentTick`);
-    if (typeof p.positionLiquidity !== "string")
-      throw new Error(`Position ${p.positionId ?? "?"} missing positionLiquidity`);
-    if (typeof p.poolLiquidity !== "string")
-      throw new Error(`Position ${p.positionId ?? "?"} missing poolLiquidity`);
-    if (typeof p.hasActionableTrigger !== "boolean")
-      throw new Error(`Position ${p.positionId ?? "?"} missing hasActionableTrigger`);
-    if (!p.unclaimedFees || typeof p.unclaimedFees !== "object")
-      throw new Error(`Position ${p.positionId ?? "?"} missing unclaimedFees`);
-  }
-
-  if (b.source !== "orca") {
-    throw new Error(`Expected source orca, got ${String(b.source)}`);
-  }
-
-  if (typeof b.observedAtUnixMs !== "number") {
-    throw new Error("Bundle missing observedAtUnixMs");
-  }
-
-  if (!Array.isArray(b.alerts)) {
-    throw new Error("Bundle missing alerts array");
-  }
-
-  if (!b.dataQuality || typeof b.dataQuality !== "object") {
-    throw new Error("Bundle missing dataQuality");
-  }
-
-  const pool = b.pool as Record<string, unknown>;
-  if (typeof pool.currentPrice !== "number") {
-    throw new Error("Bundle pool missing currentPrice");
-  }
-  if (typeof pool.poolId !== "string") {
-    throw new Error("Bundle pool missing poolId");
-  }
-  if (typeof pool.sqrtPrice !== "string") {
-    throw new Error("Bundle pool missing sqrtPrice");
-  }
-  if (typeof pool.tickCurrentIndex !== "number") {
-    throw new Error("Bundle pool missing tickCurrentIndex");
-  }
-  if (typeof pool.tickSpacing !== "number") {
-    throw new Error("Bundle pool missing tickSpacing");
-  }
-  if (typeof pool.feeRate !== "number") {
-    throw new Error("Bundle pool missing feeRate");
-  }
-  if (typeof pool.poolLiquidity !== "string") {
-    throw new Error("Bundle pool missing poolLiquidity");
-  }
-
-  return b as unknown as ClmmBundle;
+  const { bundle } = acceptClmmBundleEnvelope(response);
+  return bundle;
 }
 
-export async function collectClmmBundle(deps: CollectClmmBundleDeps): Promise<void> {
-  const { http, jsonStore, env } = deps;
+async function hashWalletPublicKey(wallet: string): Promise<string> {
+  const { payloadHash } = await canonicalizePayload({ wallet });
+  return payloadHash;
+}
+
+interface RedactedRequestMeta {
+  method: "GET";
+  path: string;
+  walletPublicKeyHash: string;
+  intelligenceCodeVersion: string | null;
+  intelligencePipelineRunId: string | null;
+}
+
+function parseClockNow(clock: Clock): number {
+  const now = clock.now();
+  const parsed = Date.parse(now);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Invalid clock value: ${now}`);
+  }
+  return parsed;
+}
+
+export async function collectClmmBundle(
+  deps: CollectClmmBundleDeps
+): Promise<CollectClmmBundleResult> {
+  const { http, jsonStore, env, clock, rawObservationRepo } = deps;
 
   const base = env.get("CLMM_DATA_API_BASE");
   const apiKey = env.get("CLMM_INSIGHTS_API_KEY");
   const walletId = env.get("WALLET_PUBLIC_KEY");
+  const codeVersion = env.getOptional("INTELLIGENCE_CODE_VERSION") ?? "development";
+  const pipelineRunId = env.getOptional("INTELLIGENCE_PIPELINE_RUN_ID") ?? null;
 
-  const normalized = base.replace(/\/$/, "");
-  const url = `${normalized}/insights/sol-usdc/bundle/${walletId}`;
+  const normalizedBase = base.replace(/\/$/, "");
+  const path = `/insights/sol-usdc/bundle/${walletId}`;
+  const url = `${normalizedBase}${path}`;
 
   const response = await http.getJson<Record<string, unknown>>(url, {
     "x-insights-api-key": apiKey
@@ -118,5 +94,156 @@ export async function collectClmmBundle(deps: CollectClmmBundleDeps): Promise<vo
 
   const bundle = validateEnvelope(response);
 
-  await jsonStore.writeJson(CLMM_BUNDLE_PATH, bundle);
+  const receivedAtUnixMs = parseClockNow(clock);
+  const { payloadCanonical, payloadHash } = await canonicalizePayload(bundle);
+
+  const walletHash = await hashWalletPublicKey(walletId);
+  const sourceObservationKey = await deriveClmmSourceObservationKey({
+    identityVersion: 1,
+    walletId,
+    pair: bundle.pair,
+    poolId: bundle.pool.poolId,
+    observedAtUnixMs: bundle.observedAtUnixMs
+  });
+
+  const redactedMeta: RedactedRequestMeta = {
+    method: "GET",
+    path,
+    walletPublicKeyHash: walletHash,
+    intelligenceCodeVersion: codeVersion,
+    intelligencePipelineRunId: pipelineRunId
+  };
+
+  const rawInsertResult = await rawObservationRepo.insertOrClassify({
+    source: SOURCE,
+    sourceObservationKey,
+    observedAtUnixMs: bundle.observedAtUnixMs,
+    fetchedAtUnixMs: bundle.observedAtUnixMs,
+    payloadHash,
+    payloadCanonical,
+    parseStatus: "pending",
+    sourceRequestMeta: redactedMeta,
+    receivedAtUnixMs
+  });
+
+  if (rawInsertResult.outcome === "conflict") {
+    throw new ClmmObservationConflictError(
+      SOURCE,
+      sourceObservationKey,
+      rawInsertResult.row.payloadHash,
+      rawInsertResult.incomingPayloadHash
+    );
+  }
+
+  if (rawInsertResult.outcome === "identical_replay") {
+    const existingRow = rawInsertResult.row;
+
+    if (existingRow.parseStatus === "parsed") {
+      await jsonStore.writeJson(CLMM_BUNDLE_PATH, bundle);
+      return {
+        rawObservationId: existingRow.id,
+        rawOutcome: rawInsertResult,
+        normalizedCount: 0,
+        parseStatus: "parsed"
+      };
+    }
+
+    const canonicalBundle = JSON.parse(existingRow.payloadCanonical) as ClmmBundle;
+    const validatedBundle = acceptClmmBundle(canonicalBundle);
+    return await normalizeAndStore(
+      deps,
+      existingRow,
+      validatedBundle,
+      bundle,
+      codeVersion,
+      pipelineRunId
+    );
+  }
+
+  return await normalizeAndStore(
+    deps,
+    rawInsertResult.row,
+    bundle,
+    bundle,
+    codeVersion,
+    pipelineRunId
+  );
+}
+
+async function normalizeAndStore(
+  deps: CollectClmmBundleDeps,
+  rawRow: { id: number },
+  bundle: ClmmBundle,
+  compatibilityBundle: ClmmBundle,
+  codeVersion: string,
+  pipelineRunId: string | null
+): Promise<CollectClmmBundleResult> {
+  const { clock, rawObservationRepo, normalizedObservationRepo, jsonStore } = deps;
+
+  const receivedAtUnixMs = parseClockNow(clock);
+  const nowMs = receivedAtUnixMs;
+
+  let parseStatus: ParseStatus = "pending";
+  let normalizedCount = 0;
+
+  try {
+    const candidates = normalizeClmmBundle(bundle);
+
+    const enrichmentCandidates = candidates.map((candidate) => ({
+      id: rawRow.id,
+      source: SOURCE,
+      payloadHash: "",
+      receivedAtUnixMs,
+      fetchedAtUnixMs: bundle.observedAtUnixMs,
+      observedAtUnixMs: bundle.observedAtUnixMs,
+      kind: candidate.kind,
+      payload: candidate as ClmmNormalizedCandidate
+    }));
+
+    const enriched = await enrichClmmCandidates({
+      candidates: enrichmentCandidates,
+      nowMs,
+      codeVersion,
+      runId: pipelineRunId
+    });
+
+    const normInserts = enriched.map((e, i) => {
+      const cand = candidates[i]!;
+      return {
+        rawObservationId: rawRow.id,
+        source: SOURCE,
+        observationKind: cand.kind,
+        signalClass: e.signalClass,
+        evidenceFamily: e.evidenceFamily,
+        payload: cand,
+        payloadHash: e.payloadHash,
+        confidence: e.confidence,
+        confidenceComposite: e.confidence.compositeScore,
+        confidenceLevel: e.confidence.level,
+        validUntilUnixMs: e.freshness.validUntilUnixMs,
+        isStale: e.freshness.isStale,
+        staleBehavior: e.freshness.staleBehavior,
+        provenance: e.provenance,
+        receivedAtUnixMs
+      };
+    });
+
+    await normalizedObservationRepo.insertMany(normInserts);
+    normalizedCount = normInserts.length;
+    parseStatus = "parsed";
+  } catch (err) {
+    await rawObservationRepo.updateParseStatus(rawRow.id, "failed");
+    throw err;
+  }
+
+  await rawObservationRepo.updateParseStatus(rawRow.id, parseStatus);
+
+  await jsonStore.writeJson(CLMM_BUNDLE_PATH, compatibilityBundle);
+
+  return {
+    rawObservationId: rawRow.id,
+    rawOutcome: { outcome: "inserted", row: { id: rawRow.id } },
+    normalizedCount,
+    parseStatus
+  };
 }
