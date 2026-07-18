@@ -1,4 +1,4 @@
-import { eq, and, gte } from "drizzle-orm";
+import { eq, and, gte, or } from "drizzle-orm";
 import { normalizedObservations } from "../../db/schema/normalized-observations.js";
 import type {
   NormalizedObservationRepo,
@@ -49,64 +49,136 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
     if (rows.length === 0) return [];
 
     return this.db.transaction(async (tx) => {
-      const results: (typeof normalizedObservations.$inferSelect | null)[] = new Array(
-        rows.length
-      ).fill(null);
+      const values = rows.map((row) => ({
+        rawObservationId: row.rawObservationId,
+        source: row.source,
+        observationKind: row.observationKind,
+        signalClass: row.signalClass,
+        evidenceFamily: row.evidenceFamily,
+        payload: row.payload,
+        payloadHash: row.payloadHash,
+        confidence: row.confidence as unknown,
+        confidenceComposite:
+          row.confidenceComposite != null
+            ? String(row.confidenceComposite)
+            : row.confidence.compositeScore != null
+              ? String(row.confidence.compositeScore)
+              : null,
+        confidenceLevel: row.confidenceLevel ?? row.confidence.level ?? null,
+        validUntilUnixMs: row.validUntilUnixMs ?? null,
+        isStale: row.isStale ?? false,
+        staleBehavior: row.staleBehavior ?? null,
+        provenance: row.provenance as unknown,
+        receivedAtUnixMs: row.receivedAtUnixMs
+      }));
 
+      const inserted = await tx
+        .insert(normalizedObservations)
+        .values(values)
+        .onConflictDoNothing({
+          target: [
+            normalizedObservations.rawObservationId,
+            normalizedObservations.observationKind,
+            normalizedObservations.payloadHash
+          ]
+        })
+        .returning();
+
+      const insertedCount = inserted.length;
+
+      if (insertedCount === rows.length) {
+        return inserted.map(toPortRow);
+      }
+
+      if (insertedCount === 0) {
+        const conflictKeys = rows.map((r) => ({
+          rawObservationId: r.rawObservationId,
+          observationKind: r.observationKind,
+          payloadHash: r.payloadHash
+        }));
+
+        const filterConditions = conflictKeys.map((key) =>
+          and(
+            eq(normalizedObservations.rawObservationId, key.rawObservationId),
+            eq(normalizedObservations.observationKind, key.observationKind),
+            eq(normalizedObservations.payloadHash, key.payloadHash)
+          )
+        );
+
+        const existingRows = await tx
+          .select()
+          .from(normalizedObservations)
+          .where(or(...filterConditions));
+
+        const existingMap = new Map<string, typeof normalizedObservations.$inferSelect>();
+        for (const r of existingRows) {
+          const key = `${r.rawObservationId}:${r.observationKind}:${r.payloadHash}`;
+          existingMap.set(key, r);
+        }
+
+        return rows.map((row) => {
+          const key = `${row.rawObservationId}:${row.observationKind}:${row.payloadHash}`;
+          const existing = existingMap.get(key)!;
+          return toPortRow(existing);
+        });
+      }
+
+      const insertedSet = new Set(
+        inserted.map((r) => `${r.rawObservationId}:${r.observationKind}:${r.payloadHash}`)
+      );
+
+      const results: NormalizedObservationRow[] = new Array(rows.length);
       for (let i = 0; i < rows.length; i++) {
-        const row = rows[i]!;
-        const [inserted] = await tx
-          .insert(normalizedObservations)
-          .values({
-            rawObservationId: row.rawObservationId,
-            source: row.source,
-            observationKind: row.observationKind,
-            signalClass: row.signalClass,
-            evidenceFamily: row.evidenceFamily,
-            payload: row.payload,
-            payloadHash: row.payloadHash,
-            confidence: row.confidence as unknown,
-            confidenceComposite:
-              row.confidenceComposite != null
-                ? String(row.confidenceComposite)
-                : row.confidence.compositeScore != null
-                  ? String(row.confidence.compositeScore)
-                  : null,
-            confidenceLevel: row.confidenceLevel ?? row.confidence.level ?? null,
-            validUntilUnixMs: row.validUntilUnixMs ?? null,
-            isStale: row.isStale ?? false,
-            staleBehavior: row.staleBehavior ?? null,
-            provenance: row.provenance as unknown,
-            receivedAtUnixMs: row.receivedAtUnixMs
-          })
-          .onConflictDoNothing({
-            target: [
-              normalizedObservations.rawObservationId,
-              normalizedObservations.observationKind,
-              normalizedObservations.payloadHash
-            ]
-          })
-          .returning();
-
-        if (inserted) {
-          results[i] = inserted;
-        } else {
-          const [existing] = await tx
-            .select()
-            .from(normalizedObservations)
-            .where(
-              and(
-                eq(normalizedObservations.rawObservationId, row.rawObservationId),
-                eq(normalizedObservations.observationKind, row.observationKind),
-                eq(normalizedObservations.payloadHash, row.payloadHash)
-              )
-            )
-            .limit(1);
-          results[i] = existing ?? null;
+        const key = `${rows[i]!.rawObservationId}:${rows[i]!.observationKind}:${rows[i]!.payloadHash}`;
+        if (insertedSet.has(key)) {
+          results[i] = toPortRow(
+            inserted.find(
+              (r) =>
+                r.rawObservationId === rows[i]!.rawObservationId &&
+                r.observationKind === rows[i]!.observationKind &&
+                r.payloadHash === rows[i]!.payloadHash
+            )!
+          );
         }
       }
 
-      return results.map((r) => toPortRow(r!));
+      const missingKeys = rows
+        .filter((_, i) => results[i] === undefined)
+        .map((r) => ({
+          rawObservationId: r.rawObservationId,
+          observationKind: r.observationKind,
+          payloadHash: r.payloadHash
+        }));
+
+      if (missingKeys.length > 0) {
+        const filterConditions = missingKeys.map((key) =>
+          and(
+            eq(normalizedObservations.rawObservationId, key.rawObservationId),
+            eq(normalizedObservations.observationKind, key.observationKind),
+            eq(normalizedObservations.payloadHash, key.payloadHash)
+          )
+        );
+
+        const existingRows = await tx
+          .select()
+          .from(normalizedObservations)
+          .where(or(...filterConditions));
+
+        const existingMap = new Map<string, typeof normalizedObservations.$inferSelect>();
+        for (const r of existingRows) {
+          const key = `${r.rawObservationId}:${r.observationKind}:${r.payloadHash}`;
+          existingMap.set(key, r);
+        }
+
+        for (let i = 0; i < rows.length; i++) {
+          if (results[i] === undefined) {
+            const key = `${rows[i]!.rawObservationId}:${rows[i]!.observationKind}:${rows[i]!.payloadHash}`;
+            results[i] = toPortRow(existingMap.get(key)!);
+          }
+        }
+      }
+
+      return results;
     });
   }
 

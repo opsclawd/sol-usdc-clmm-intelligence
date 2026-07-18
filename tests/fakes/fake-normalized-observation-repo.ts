@@ -26,12 +26,19 @@ export class FakeNormalizedObservationRepo implements NormalizedObservationRepo 
       if (this.failAtIndex === i) {
         throw new Error(`FakeNormalizedObservationRepo: fail at index ${i}`);
       }
-      const existing = this.store.find(
-        (r) =>
-          r.rawObservationId === row.rawObservationId &&
-          r.observationKind === row.observationKind &&
-          r.payloadHash === row.payloadHash
-      );
+      const existing =
+        this.store.find(
+          (r) =>
+            r.rawObservationId === row.rawObservationId &&
+            r.observationKind === row.observationKind &&
+            r.payloadHash === row.payloadHash
+        ) ||
+        newRows.find(
+          (r) =>
+            r.rawObservationId === row.rawObservationId &&
+            r.observationKind === row.observationKind &&
+            r.payloadHash === row.payloadHash
+        );
       if (existing) {
         staged.push(existing);
       } else {
