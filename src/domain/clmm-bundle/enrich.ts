@@ -13,6 +13,7 @@ import { getObservationKindEntry } from "../taxonomy/registry.js";
 import { computeFreshness } from "../taxonomy/freshness.js";
 import { computeConfidence } from "../taxonomy/confidence.js";
 import { validateProvenance } from "../taxonomy/provenance.js";
+import { canonicalizePayload } from "../content-hash.js";
 import type { ClmmNormalizedCandidate } from "../../contracts/normalized-clmm-observation.js";
 
 export interface ClmmEnrichmentCandidate {
@@ -36,6 +37,7 @@ export interface EnrichmentInput {
 export interface EnrichedClmmObservation {
   readonly id: number;
   readonly source: Source;
+  readonly payloadCanonical: string;
   readonly payloadHash: string;
   readonly receivedAtUnixMs: number;
   readonly fetchedAtUnixMs: number;
@@ -122,65 +124,72 @@ function buildDirectProvenance(
   };
 }
 
-export function enrichClmmCandidates(input: EnrichmentInput): readonly EnrichedClmmObservation[] {
+export async function enrichClmmCandidates(
+  input: EnrichmentInput
+): Promise<readonly EnrichedClmmObservation[]> {
   const { candidates, nowMs, codeVersion, runId } = input;
   const collector = "clmm-v2-bundle";
   const jobName = "clmm-intelligence-enrichment";
 
-  return candidates.map((candidate) => {
-    const entry = getObservationKindEntry(candidate.kind);
+  return Promise.all(
+    candidates.map(async (candidate) => {
+      const { payloadCanonical, payloadHash } = await canonicalizePayload(candidate.payload);
 
-    const freshness = computeFreshness(
-      {
-        observedAtUnixMs: candidate.observedAtUnixMs,
-        fetchedAtUnixMs: candidate.fetchedAtUnixMs,
-        receivedAtUnixMs: candidate.receivedAtUnixMs
-      },
-      entry.freshnessPolicy,
-      nowMs,
-      candidate.kind
-    );
+      const entry = getObservationKindEntry(candidate.kind);
 
-    const dataCompleteness = computeDataCompleteness(candidate.kind, candidate.payload);
-
-    const confidence = computeConfidence(
-      {
-        sourceReliability: 1,
-        dataCompleteness,
-        derivationConfidence: 1,
-        llmConfidence: null
-      },
-      entry.confidencePolicy,
-      COMPLETENESS_WEIGHTING_VERSION
-    );
-
-    const provenance = buildDirectProvenance(candidate, codeVersion, runId, collector, jobName);
-
-    const provenanceResult = validateProvenance(
-      provenance,
-      entry.provenanceRequirements,
-      candidate.kind
-    );
-
-    if (!provenanceResult.valid) {
-      throw new Error(
-        `Provenance validation failed for ${candidate.kind}: ${provenanceResult.reasons.join(", ")}`
+      const freshness = computeFreshness(
+        {
+          observedAtUnixMs: candidate.observedAtUnixMs,
+          fetchedAtUnixMs: candidate.fetchedAtUnixMs,
+          receivedAtUnixMs: candidate.receivedAtUnixMs
+        },
+        entry.freshnessPolicy,
+        nowMs,
+        candidate.kind
       );
-    }
 
-    return {
-      id: candidate.id,
-      source: candidate.source,
-      payloadHash: candidate.payloadHash,
-      receivedAtUnixMs: candidate.receivedAtUnixMs,
-      fetchedAtUnixMs: candidate.fetchedAtUnixMs,
-      observedAtUnixMs: candidate.observedAtUnixMs,
-      kind: candidate.kind,
-      evidenceFamily: entry.evidenceFamily,
-      signalClass: entry.signalClass,
-      confidence,
-      freshness,
-      provenance
-    };
-  });
+      const dataCompleteness = computeDataCompleteness(candidate.kind, candidate.payload);
+
+      const confidence = computeConfidence(
+        {
+          sourceReliability: 1,
+          dataCompleteness,
+          derivationConfidence: 1,
+          llmConfidence: null
+        },
+        entry.confidencePolicy,
+        COMPLETENESS_WEIGHTING_VERSION
+      );
+
+      const provenance = buildDirectProvenance(candidate, codeVersion, runId, collector, jobName);
+
+      const provenanceResult = validateProvenance(
+        provenance,
+        entry.provenanceRequirements,
+        candidate.kind
+      );
+
+      if (!provenanceResult.valid) {
+        throw new Error(
+          `Provenance validation failed for ${candidate.kind}: ${provenanceResult.reasons.join(", ")}`
+        );
+      }
+
+      return {
+        id: candidate.id,
+        source: candidate.source,
+        payloadCanonical,
+        payloadHash,
+        receivedAtUnixMs: candidate.receivedAtUnixMs,
+        fetchedAtUnixMs: candidate.fetchedAtUnixMs,
+        observedAtUnixMs: candidate.observedAtUnixMs,
+        kind: candidate.kind,
+        evidenceFamily: entry.evidenceFamily,
+        signalClass: entry.signalClass,
+        confidence,
+        freshness,
+        provenance
+      };
+    })
+  );
 }
