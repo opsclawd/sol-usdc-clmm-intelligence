@@ -45,9 +45,6 @@ export function createNodeRuntime(): NodeRuntime {
     commandRunner: new SpawnCommandRunner(),
     async getDb() {
       if (!dbPromise) {
-        if (!env.get("DATABASE_URL")) {
-          throw new Error("DATABASE_URL is not configured");
-        }
         const { DrizzlePgAdapter } = await import("./drizzle-pg.js");
         dbPromise = Promise.resolve(new DrizzlePgAdapter(env));
       }
@@ -55,16 +52,14 @@ export function createNodeRuntime(): NodeRuntime {
     },
     async getPersistence() {
       if (!persistencePromise) {
-        if (!env.get("DATABASE_URL")) {
-          throw new Error("DATABASE_URL is not configured");
-        }
         persistencePromise = (async () => {
           const { DrizzlePgAdapter } = await import("./drizzle-pg.js");
           const { DrizzleObservationRepo } = await import("./drizzle-observation-repo.js");
           const { DrizzleNormalizedObservationRepo } =
             await import("./drizzle-normalized-observation-repo.js");
 
-          const connection = new DrizzlePgAdapter(env);
+          type DrizzlePgAdapterInstance = InstanceType<typeof DrizzlePgAdapter>;
+          const connection = (await this.getDb()) as DrizzlePgAdapterInstance;
           const rawObservationRepo = new DrizzleObservationRepo(connection.db);
           const normalizedObservationRepo = new DrizzleNormalizedObservationRepo(connection.db);
 

@@ -18,6 +18,7 @@ export async function runClmmBundleCollector(
   };
   let collectionError: unknown;
   let result: CollectClmmBundleResult | undefined;
+  let closeError: unknown;
   try {
     result = await clmmBundleJob(deps)();
   } catch (err) {
@@ -25,7 +26,8 @@ export async function runClmmBundleCollector(
   } finally {
     try {
       await connection.close();
-    } catch (closeError) {
+    } catch (err) {
+      closeError = err;
       console.error("Failed to close database connection:", closeError);
       if (result !== undefined) {
         console.error("Collection result before close failure:", result);
@@ -34,6 +36,9 @@ export async function runClmmBundleCollector(
   }
   if (collectionError !== undefined) {
     throw collectionError;
+  }
+  if (closeError !== undefined) {
+    throw closeError;
   }
   return result!;
 }
