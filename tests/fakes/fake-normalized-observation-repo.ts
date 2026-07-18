@@ -11,6 +11,10 @@ export class FakeNormalizedObservationRepo implements NormalizedObservationRepo 
   private nextId = 1;
   failAtIndex: number | null = null;
 
+  get count(): number {
+    return this.store.length;
+  }
+
   async insert(row: NormalizedObservationInsert): Promise<NormalizedObservationRow> {
     const results = await this.insertMany([row]);
     return results[0]!;

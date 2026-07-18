@@ -128,7 +128,7 @@ describe("collectClmmBundle", () => {
       ).rejects.toThrow();
 
       expect(rawObservationRepo["store"].size).toBe(0);
-      expect(normalizedObservationRepo.store.length).toBe(0);
+      expect(normalizedObservationRepo.count).toBe(0);
     });
   });
 
@@ -299,7 +299,7 @@ describe("collectClmmBundle", () => {
 
       const rawRows = [...rawObservationRepo["store"].values()];
       expect(rawRows[0]!.parseStatus).toBe("parsed");
-      expect(normalizedObservationRepo.store.length).toBeGreaterThan(0);
+      expect(normalizedObservationRepo.count).toBeGreaterThan(0);
 
       jsonStore.writeError = null;
       await collectClmmBundle({
@@ -351,6 +351,145 @@ describe("collectClmmBundle", () => {
       expect(meta).not.toHaveProperty("x-insights-api-key");
       expect(meta).not.toHaveProperty("headers");
       expect(meta).not.toHaveProperty("apiKey");
+    });
+  });
+
+  describe("identical pending or failed replay normalizes from stored canonical payload", () => {
+    it("normalizes from payloadCanonical when parseStatus is pending", async () => {
+      const { http, jsonStore, env, clock, rawObservationRepo, normalizedObservationRepo } =
+        makeDeps();
+      http.setResponse(
+        "http://api.test/insights/sol-usdc/bundle/11111111111111111111111111111111",
+        {
+          body: VALID_BUNDLE
+        }
+      );
+
+      await collectClmmBundle({
+        http,
+        jsonStore,
+        env,
+        clock,
+        rawObservationRepo,
+        normalizedObservationRepo
+      });
+
+      const rawRows = [...rawObservationRepo["store"].values()];
+      expect(rawRows[0]!.parseStatus).toBe("parsed");
+
+      await rawObservationRepo.updateParseStatus(rawRows[0]!.id, "pending");
+
+      const normalizedCountBefore = normalizedObservationRepo.count;
+      await collectClmmBundle({
+        http,
+        jsonStore,
+        env,
+        clock,
+        rawObservationRepo,
+        normalizedObservationRepo
+      });
+
+      expect(normalizedObservationRepo.count).toBe(normalizedCountBefore);
+      const updatedRawRows = [...rawObservationRepo["store"].values()];
+      expect(updatedRawRows[0]!.parseStatus).toBe("parsed");
+    });
+
+    it("normalizes from payloadCanonical when parseStatus is failed", async () => {
+      const { http, jsonStore, env, clock, rawObservationRepo, normalizedObservationRepo } =
+        makeDeps();
+      http.setResponse(
+        "http://api.test/insights/sol-usdc/bundle/11111111111111111111111111111111",
+        {
+          body: VALID_BUNDLE
+        }
+      );
+
+      await collectClmmBundle({
+        http,
+        jsonStore,
+        env,
+        clock,
+        rawObservationRepo,
+        normalizedObservationRepo
+      });
+
+      const rawRows = [...rawObservationRepo["store"].values()];
+      expect(rawRows[0]!.parseStatus).toBe("parsed");
+
+      await rawObservationRepo.updateParseStatus(rawRows[0]!.id, "failed");
+
+      const normalizedCountBefore = normalizedObservationRepo.count;
+      await collectClmmBundle({
+        http,
+        jsonStore,
+        env,
+        clock,
+        rawObservationRepo,
+        normalizedObservationRepo
+      });
+
+      expect(normalizedObservationRepo.count).toBe(normalizedCountBefore);
+      const updatedRawRows = [...rawObservationRepo["store"].values()];
+      expect(updatedRawRows[0]!.parseStatus).toBe("parsed");
+    });
+  });
+
+  describe("status failure after normalized commit fails and safely replays idempotently", () => {
+    it("leaves normalized rows durable and replays idempotently", async () => {
+      const { http, jsonStore, env, clock, rawObservationRepo, normalizedObservationRepo } =
+        makeDeps();
+      http.setResponse(
+        "http://api.test/insights/sol-usdc/bundle/11111111111111111111111111111111",
+        {
+          body: VALID_BUNDLE
+        }
+      );
+
+      await collectClmmBundle({
+        http,
+        jsonStore,
+        env,
+        clock,
+        rawObservationRepo,
+        normalizedObservationRepo
+      });
+
+      const normalizedCountAfterFirst = normalizedObservationRepo.count;
+      const rawRows = [...rawObservationRepo["store"].values()];
+      expect(rawRows[0]!.parseStatus).toBe("parsed");
+
+      await rawObservationRepo.updateParseStatus(rawRows[0]!.id, "pending");
+
+      rawObservationRepo.failOnUpdateParseStatus = new Error("status update failed");
+
+      await expect(
+        collectClmmBundle({
+          http,
+          jsonStore,
+          env,
+          clock,
+          rawObservationRepo,
+          normalizedObservationRepo
+        })
+      ).rejects.toThrow("status update failed");
+
+      const rawRowsAfterFailure = [...rawObservationRepo["store"].values()];
+      expect(rawRowsAfterFailure[0]!.parseStatus).toBe("pending");
+      expect(normalizedObservationRepo.count).toBe(normalizedCountAfterFirst);
+
+      rawObservationRepo.failOnUpdateParseStatus = null;
+      await collectClmmBundle({
+        http,
+        jsonStore,
+        env,
+        clock,
+        rawObservationRepo,
+        normalizedObservationRepo
+      });
+
+      expect(normalizedObservationRepo.count).toBe(normalizedCountAfterFirst);
+      const finalRawRows = [...rawObservationRepo["store"].values()];
+      expect(finalRawRows[0]!.parseStatus).toBe("parsed");
     });
   });
 });

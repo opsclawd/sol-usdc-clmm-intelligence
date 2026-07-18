@@ -2,7 +2,11 @@ import type { HttpClient } from "../ports/http.js";
 import type { JsonStore } from "../ports/json-store.js";
 import type { EnvReader } from "../ports/env.js";
 import type { Clock } from "../ports/clock.js";
-import type { RawObservationRepo, RawInsertOutcome } from "../ports/observation-repo.js";
+import type {
+  RawObservationRepo,
+  RawInsertOutcome,
+  RawObservationRow
+} from "../ports/observation-repo.js";
 import type { NormalizedObservationRepo } from "../ports/normalized-observation-repo.js";
 import type { Source, ParseStatus } from "../contracts/taxonomy.js";
 import { acceptClmmBundleEnvelope, acceptClmmBundle } from "../domain/clmm-bundle/validate.js";
@@ -10,6 +14,7 @@ import { deriveClmmSourceObservationKey } from "../domain/clmm-bundle/identity.j
 import { normalizeClmmBundle } from "../domain/clmm-bundle/normalize.js";
 import { enrichClmmCandidates } from "../domain/clmm-bundle/enrich.js";
 import { canonicalizePayload } from "../domain/content-hash.js";
+import { getObservationKindEntry } from "../domain/taxonomy/registry.js";
 import type { ClmmBundle } from "../contracts/clmm-bundle.js";
 import type { ClmmNormalizedCandidate } from "../contracts/normalized-clmm-observation.js";
 
@@ -172,7 +177,7 @@ export async function collectClmmBundle(
 
 async function normalizeAndStore(
   deps: CollectClmmBundleDeps,
-  rawRow: { id: number },
+  rawRow: RawObservationRow,
   bundle: ClmmBundle,
   compatibilityBundle: ClmmBundle,
   codeVersion: string,
@@ -209,6 +214,7 @@ async function normalizeAndStore(
 
     const normInserts = enriched.map((e, i) => {
       const cand = candidates[i]!;
+      const entry = getObservationKindEntry(e.kind);
       return {
         rawObservationId: rawRow.id,
         source: SOURCE,
@@ -222,7 +228,7 @@ async function normalizeAndStore(
         confidenceLevel: e.confidence.level,
         validUntilUnixMs: e.freshness.validUntilUnixMs,
         isStale: e.freshness.isStale,
-        staleBehavior: e.freshness.staleBehavior,
+        staleBehavior: entry.freshnessPolicy.staleBehavior,
         provenance: e.provenance,
         receivedAtUnixMs
       };
@@ -242,7 +248,7 @@ async function normalizeAndStore(
 
   return {
     rawObservationId: rawRow.id,
-    rawOutcome: { outcome: "inserted", row: { id: rawRow.id } },
+    rawOutcome: { outcome: "inserted", row: rawRow },
     normalizedCount,
     parseStatus
   };

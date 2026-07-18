@@ -10,6 +10,7 @@ export class FakeObservationRepo implements RawObservationRepo {
   private readonly store = new Map<number, RawObservationRow>();
   private readonly identityIndex = new Map<string, RawObservationRow>();
   private nextId = 1;
+  failOnUpdateParseStatus: Error | null = null;
 
   async insertOrClassify(row: RawObservationInsert): Promise<RawInsertOutcome> {
     const key = `${row.source}:${row.sourceObservationKey}`;
@@ -62,6 +63,9 @@ export class FakeObservationRepo implements RawObservationRepo {
   }
 
   async updateParseStatus(id: number, status: ParseStatus): Promise<RawObservationRow> {
+    if (this.failOnUpdateParseStatus) {
+      throw this.failOnUpdateParseStatus;
+    }
     const existing = this.store.get(id);
     if (!existing) {
       throw new Error(`Row with id ${id} not found`);
