@@ -36,7 +36,11 @@ export const normalizedObservations = intelligence.table(
     receivedAtUnixMs: bigint("received_at_unix_ms", { mode: "number" }).notNull()
   },
   (t) => [
-    uniqueIndex("uniq_norm_obs_source_kind_hash").on(t.source, t.observationKind, t.payloadHash),
+    uniqueIndex("uniq_norm_obs_raw_kind_hash").on(
+      t.rawObservationId,
+      t.observationKind,
+      t.payloadHash
+    ),
     index("idx_norm_obs_source_kind_stale").on(
       t.source,
       t.observationKind,
