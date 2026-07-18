@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, type Mock } from "vitest";
 import type { HttpClient } from "../../src/ports/http.js";
 import type { JsonStore } from "../../src/ports/json-store.js";
+import type { TextReader } from "../../src/ports/text-reader.js";
 import type { EnvReader } from "../../src/ports/env.js";
 import type { Clock } from "../../src/ports/clock.js";
 import type { CommandRunner } from "../../src/ports/command-runner.js";
@@ -67,6 +68,12 @@ function createMockJsonStore(): JsonStore {
     readJson: vi.fn(),
     writeJson: vi.fn()
   } as unknown as JsonStore;
+}
+
+function createMockTextReader(): TextReader {
+  return {
+    readText: vi.fn()
+  };
 }
 
 const TEST_ENV = {
@@ -176,6 +183,7 @@ describe("clmm-bundle collector lifecycle", () => {
       const runtime: NodeRuntime = {
         http,
         jsonStore,
+        textReader: createMockTextReader(),
         env,
         clock,
         commandRunner: createMockCommandRunner(),
@@ -214,6 +222,7 @@ describe("clmm-bundle collector lifecycle", () => {
       const runtime: NodeRuntime = {
         http,
         jsonStore,
+        textReader: createMockTextReader(),
         env,
         clock,
         commandRunner: createMockCommandRunner(),
@@ -254,6 +263,7 @@ describe("clmm-bundle collector lifecycle", () => {
       const runtime: NodeRuntime = {
         http,
         jsonStore,
+        textReader: createMockTextReader(),
         env,
         clock,
         commandRunner: createMockCommandRunner(),

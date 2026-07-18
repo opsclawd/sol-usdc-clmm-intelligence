@@ -16,9 +16,12 @@ export async function runClmmBundleCollector(
     rawObservationRepo,
     normalizedObservationRepo
   };
-  let result: CollectClmmBundleResult;
+  let collectionError: unknown;
+  let result: CollectClmmBundleResult | undefined;
   try {
     result = await clmmBundleJob(deps)();
+  } catch (err) {
+    collectionError = err;
   } finally {
     try {
       await connection.close();
@@ -28,6 +31,9 @@ export async function runClmmBundleCollector(
         console.error("Collection result before close failure:", result);
       }
     }
+  }
+  if (collectionError !== undefined) {
+    throw collectionError;
   }
   return result!;
 }
