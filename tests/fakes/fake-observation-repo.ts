@@ -17,6 +17,7 @@ export class FakeObservationRepo implements RawObservationRepo {
     const result: RawObservationRow = {
       id,
       source: row.source,
+      sourceObservationKey: row.sourceObservationKey,
       observedAtUnixMs: row.observedAtUnixMs,
       fetchedAtUnixMs: row.fetchedAtUnixMs,
       payloadHash: row.payloadHash,

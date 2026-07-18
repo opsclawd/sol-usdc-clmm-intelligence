@@ -65,7 +65,7 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
       })
       .onConflictDoNothing({
         target: [
-          normalizedObservations.source,
+          normalizedObservations.rawObservationId,
           normalizedObservations.observationKind,
           normalizedObservations.payloadHash
         ]

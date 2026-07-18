@@ -8,6 +8,7 @@ describe("RawObservationRepo contract", () => {
     const hash = await canonicalHash({ test: "data" });
     const row = await repo.insert({
       source: "clmm-v2-bundle",
+      sourceObservationKey: "obs-key-1",
       observedAtUnixMs: 1000,
       fetchedAtUnixMs: 1001,
       payloadHash: hash,
@@ -25,6 +26,7 @@ describe("RawObservationRepo contract", () => {
     const repo = new FakeObservationRepo();
     const row1 = await repo.insert({
       source: "clmm-v2-bundle",
+      sourceObservationKey: "obs-key-dup",
       observedAtUnixMs: 1000,
       fetchedAtUnixMs: 1001,
       payloadHash: "hash-dup",
@@ -33,6 +35,7 @@ describe("RawObservationRepo contract", () => {
     });
     const row2 = await repo.insert({
       source: "clmm-v2-bundle",
+      sourceObservationKey: "obs-key-dup",
       observedAtUnixMs: 2000,
       fetchedAtUnixMs: 2001,
       payloadHash: "hash-dup",
@@ -46,6 +49,7 @@ describe("RawObservationRepo contract", () => {
     const repo = new FakeObservationRepo();
     await repo.insert({
       source: "jupiter-price",
+      sourceObservationKey: "obs-key-jup",
       observedAtUnixMs: 500,
       fetchedAtUnixMs: 501,
       payloadHash: "hash-1",
@@ -54,6 +58,7 @@ describe("RawObservationRepo contract", () => {
     });
     await repo.insert({
       source: "clmm-v2-bundle",
+      sourceObservationKey: "obs-key-clmm",
       observedAtUnixMs: 1000,
       fetchedAtUnixMs: 1001,
       payloadHash: "hash-2",

@@ -12,6 +12,7 @@ function toPortRow(row: typeof rawObservations.$inferSelect): RawObservationRow 
   return {
     id: row.id,
     source: row.source as Source,
+    sourceObservationKey: row.sourceObservationKey,
     observedAtUnixMs: row.observedAtUnixMs,
     fetchedAtUnixMs: row.fetchedAtUnixMs,
     payloadHash: row.payloadHash,
@@ -30,6 +31,7 @@ export class DrizzleObservationRepo implements RawObservationRepo {
       .insert(rawObservations)
       .values({
         source: row.source,
+        sourceObservationKey: row.sourceObservationKey,
         observedAtUnixMs: row.observedAtUnixMs,
         fetchedAtUnixMs: row.fetchedAtUnixMs,
         payloadHash: row.payloadHash,
@@ -38,7 +40,9 @@ export class DrizzleObservationRepo implements RawObservationRepo {
         sourceRequestMeta: row.sourceRequestMeta ?? null,
         receivedAtUnixMs: row.receivedAtUnixMs
       })
-      .onConflictDoNothing({ target: [rawObservations.source, rawObservations.payloadHash] })
+      .onConflictDoNothing({
+        target: [rawObservations.source, rawObservations.sourceObservationKey]
+      })
       .returning();
     if (result) return toPortRow(result);
     const existing = await this.findByHash(row.source, row.payloadHash);

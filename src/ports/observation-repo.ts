@@ -3,6 +3,7 @@ import type { Source, ParseStatus } from "../contracts/taxonomy.js";
 export interface RawObservationRow {
   id: number;
   source: Source;
+  sourceObservationKey: string;
   observedAtUnixMs: number;
   fetchedAtUnixMs: number;
   payloadHash: string;
@@ -14,6 +15,7 @@ export interface RawObservationRow {
 
 export interface RawObservationInsert {
   source: Source;
+  sourceObservationKey: string;
   observedAtUnixMs: number;
   fetchedAtUnixMs: number;
   payloadHash: string;
