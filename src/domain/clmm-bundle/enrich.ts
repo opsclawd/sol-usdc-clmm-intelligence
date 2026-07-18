@@ -82,7 +82,7 @@ function computeDataCompleteness(kind: ObservationKind, payload: ClmmNormalizedC
 
   let presentCount = 0;
   for (const field of fields) {
-    const value = (payload as Record<string, unknown>)[field];
+    const value = (payload as unknown as Record<string, unknown>)[field];
     if (value !== null && value !== undefined) {
       presentCount++;
     }
