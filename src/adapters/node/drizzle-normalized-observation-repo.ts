@@ -118,27 +118,26 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
 
         return rows.map((row) => {
           const key = `${row.rawObservationId}:${row.observationKind}:${row.payloadHash}`;
-          const existing = existingMap.get(key)!;
+          const existing = existingMap.get(key);
+          if (existing === undefined) {
+            throw new Error(`Concurrent deletion conflict: no existing row found for key=${key}`);
+          }
           return toPortRow(existing);
         });
       }
 
-      const insertedSet = new Set(
-        inserted.map((r) => `${r.rawObservationId}:${r.observationKind}:${r.payloadHash}`)
-      );
+      const insertedMap = new Map<string, typeof normalizedObservations.$inferSelect>();
+      for (const r of inserted) {
+        const key = `${r.rawObservationId}:${r.observationKind}:${r.payloadHash}`;
+        insertedMap.set(key, r);
+      }
 
       const results: NormalizedObservationRow[] = new Array(rows.length);
       for (let i = 0; i < rows.length; i++) {
         const key = `${rows[i]!.rawObservationId}:${rows[i]!.observationKind}:${rows[i]!.payloadHash}`;
-        if (insertedSet.has(key)) {
-          results[i] = toPortRow(
-            inserted.find(
-              (r) =>
-                r.rawObservationId === rows[i]!.rawObservationId &&
-                r.observationKind === rows[i]!.observationKind &&
-                r.payloadHash === rows[i]!.payloadHash
-            )!
-          );
+        const insertedRow = insertedMap.get(key);
+        if (insertedRow !== undefined) {
+          results[i] = toPortRow(insertedRow);
         }
       }
 
@@ -173,7 +172,11 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
         for (let i = 0; i < rows.length; i++) {
           if (results[i] === undefined) {
             const key = `${rows[i]!.rawObservationId}:${rows[i]!.observationKind}:${rows[i]!.payloadHash}`;
-            results[i] = toPortRow(existingMap.get(key)!);
+            const existing = existingMap.get(key);
+            if (existing === undefined) {
+              throw new Error(`Concurrent deletion conflict: no existing row found for key=${key}`);
+            }
+            results[i] = toPortRow(existing);
           }
         }
       }
