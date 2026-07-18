@@ -186,9 +186,9 @@ async function normalizeAndStore(
   codeVersion: string,
   pipelineRunId: string | null
 ): Promise<CollectClmmBundleResult> {
-  const { clock, rawObservationRepo, normalizedObservationRepo, jsonStore } = deps;
+  const { rawObservationRepo, normalizedObservationRepo, jsonStore } = deps;
 
-  const receivedAtUnixMs = parseClockNow(clock);
+  const receivedAtUnixMs = rawRow.receivedAtUnixMs;
   const nowMs = receivedAtUnixMs;
 
   let parseStatus: ParseStatus = "pending";
@@ -241,7 +241,11 @@ async function normalizeAndStore(
     normalizedCount = normInserts.length;
     parseStatus = "parsed";
   } catch (err) {
-    await rawObservationRepo.updateParseStatus(rawRow.id, "failed");
+    try {
+      await rawObservationRepo.updateParseStatus(rawRow.id, "failed");
+    } catch {
+      throw err;
+    }
     throw err;
   }
 
