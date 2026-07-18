@@ -77,7 +77,7 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
       .from(normalizedObservations)
       .where(
         and(
-          eq(normalizedObservations.source, row.source),
+          eq(normalizedObservations.rawObservationId, row.rawObservationId),
           eq(normalizedObservations.observationKind, row.observationKind),
           eq(normalizedObservations.payloadHash, row.payloadHash)
         )

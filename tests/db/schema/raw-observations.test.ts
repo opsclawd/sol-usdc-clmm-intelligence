@@ -18,7 +18,6 @@ describe("rawObservations schema", () => {
   });
 
   it("sourceObservationKey is nullable in schema", () => {
-    const columns = getColumnNames(rawObservations);
-    expect(columns).toContain("sourceObservationKey");
+    expect(rawObservations.sourceObservationKey.notNull).toBe(false);
   });
 });

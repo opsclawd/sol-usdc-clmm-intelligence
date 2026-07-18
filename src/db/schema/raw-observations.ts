@@ -6,7 +6,7 @@ export const rawObservations = intelligence.table(
   {
     id: serial("id").primaryKey(),
     source: varchar("source", { length: 64 }).notNull(),
-    sourceObservationKey: text("source_observation_key").notNull(),
+    sourceObservationKey: text("source_observation_key"),
     observedAtUnixMs: bigint("observed_at_unix_ms", { mode: "number" }).notNull(),
     fetchedAtUnixMs: bigint("fetched_at_unix_ms", { mode: "number" }).notNull(),
     payloadHash: varchar("payload_hash", { length: 64 }).notNull(),

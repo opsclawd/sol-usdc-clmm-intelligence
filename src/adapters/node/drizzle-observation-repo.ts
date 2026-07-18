@@ -12,7 +12,7 @@ function toPortRow(row: typeof rawObservations.$inferSelect): RawObservationRow 
   return {
     id: row.id,
     source: row.source as Source,
-    sourceObservationKey: row.sourceObservationKey,
+    sourceObservationKey: row.sourceObservationKey as string,
     observedAtUnixMs: row.observedAtUnixMs,
     fetchedAtUnixMs: row.fetchedAtUnixMs,
     payloadHash: row.payloadHash,
