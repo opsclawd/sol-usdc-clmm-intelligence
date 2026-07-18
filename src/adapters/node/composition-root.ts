@@ -11,6 +11,14 @@ import type { EnvReader } from "../../ports/env.js";
 import type { Clock } from "../../ports/clock.js";
 import type { CommandRunner } from "../../ports/command-runner.js";
 import type { DbConnection } from "../../ports/db.js";
+import type { RawObservationRepo } from "../../ports/observation-repo.js";
+import type { NormalizedObservationRepo } from "../../ports/normalized-observation-repo.js";
+
+export interface Persistence {
+  connection: DbConnection;
+  rawObservationRepo: RawObservationRepo;
+  normalizedObservationRepo: NormalizedObservationRepo;
+}
 
 export interface NodeRuntime {
   http: HttpClient;
@@ -20,11 +28,14 @@ export interface NodeRuntime {
   clock: Clock;
   commandRunner: CommandRunner;
   getDb(): Promise<DbConnection>;
+  getPersistence(): Promise<Persistence>;
 }
 
 export function createNodeRuntime(): NodeRuntime {
   const env = new ProcessEnvReader();
   let dbPromise: Promise<DbConnection> | undefined;
+  let persistencePromise: Promise<Persistence> | undefined;
+
   return {
     http: new FetchHttpClient(),
     jsonStore: new FsJsonStore(),
@@ -41,6 +52,26 @@ export function createNodeRuntime(): NodeRuntime {
         dbPromise = Promise.resolve(new DrizzlePgAdapter(env));
       }
       return dbPromise;
+    },
+    async getPersistence() {
+      if (!persistencePromise) {
+        if (!env.get("DATABASE_URL")) {
+          throw new Error("DATABASE_URL is not configured");
+        }
+        persistencePromise = (async () => {
+          const { DrizzlePgAdapter } = await import("./drizzle-pg.js");
+          const { DrizzleObservationRepo } = await import("./drizzle-observation-repo.js");
+          const { DrizzleNormalizedObservationRepo } =
+            await import("./drizzle-normalized-observation-repo.js");
+
+          const connection = new DrizzlePgAdapter(env);
+          const rawObservationRepo = new DrizzleObservationRepo(connection.db);
+          const normalizedObservationRepo = new DrizzleNormalizedObservationRepo(connection.db);
+
+          return { connection, rawObservationRepo, normalizedObservationRepo };
+        })();
+      }
+      return persistencePromise;
     }
   };
 }
