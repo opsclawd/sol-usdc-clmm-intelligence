@@ -44,7 +44,7 @@ function serializeCanonical(payload: unknown): string {
     return "[" + payload.map(serializeCanonical).join(",") + "]";
   }
   const sorted = Object.entries(payload as Record<string, unknown>)
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([k, v]) => [k, serializeCanonical(v)]);
   return "{" + sorted.map(([k, v]) => `${JSON.stringify(k as string)}:${v}`).join(",") + "}";
 }
