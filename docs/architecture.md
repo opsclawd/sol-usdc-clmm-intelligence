@@ -71,14 +71,37 @@ Those are deterministic backend responsibilities. The LLM is allowed to advise o
 
 ## Data flow
 
+**clmm-v2** owns live wallet, position, and execution truth. This repo owns observational history only. The database is required; there is no latest-file-only fallback and no policy or execution authority is added by this layer.
+
 ```text
-Jupiter/DefiLlama/CoinGecko       clmm-v2 (/insights/sol-usdc/*)
-          ↓                                     ↓
-    price collector                          bundle collector
-          ↓                                     ↓
-data/latest-price-snapshot.json       data/latest-clmm-bundle.json
-          ↓                                     ↓
-              OpenClaw agent summary + memory updates
-                              ↓
-            dashboard / Telegram / ClickUp / operator review
+clmm-v2 /insights/sol-usdc/bundle/:walletId
+               |
+               v (raw observation, append-only)
+        raw_observations
+               |
+               v (normalized, validated, immutable)
+     normalized_observations
+               |
+               v (derived, computed features)
+        derived_features
+               |
+               v (optional compatibility artifact)
+        data/latest-clmm-bundle.json
+               |
+               v
+     OpenClaw routine + durable memory
+               |
+               v
+     advisory output / operator review
+```
+
+Legacy price-only path (still supported alongside the DB-backed pipeline):
+
+```text
+Jupiter price API
+       |
+       v
+data/latest-price-snapshot.json
+       |
+       +--> OpenClaw routine + durable memory
 ```

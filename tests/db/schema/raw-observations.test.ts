@@ -7,6 +7,7 @@ describe("rawObservations schema", () => {
     const columns = getColumnNames(rawObservations);
     expect(columns).toContain("id");
     expect(columns).toContain("source");
+    expect(columns).toContain("sourceObservationKey");
     expect(columns).toContain("observedAtUnixMs");
     expect(columns).toContain("fetchedAtUnixMs");
     expect(columns).toContain("payloadHash");
@@ -14,5 +15,9 @@ describe("rawObservations schema", () => {
     expect(columns).toContain("parseStatus");
     expect(columns).toContain("sourceRequestMeta");
     expect(columns).toContain("receivedAtUnixMs");
+  });
+
+  it("sourceObservationKey is nullable in schema", () => {
+    expect(rawObservations.sourceObservationKey.notNull).toBe(false);
   });
 });

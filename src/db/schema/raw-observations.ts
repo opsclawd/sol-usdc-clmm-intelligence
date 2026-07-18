@@ -6,6 +6,7 @@ export const rawObservations = intelligence.table(
   {
     id: serial("id").primaryKey(),
     source: varchar("source", { length: 64 }).notNull(),
+    sourceObservationKey: text("source_observation_key"),
     observedAtUnixMs: bigint("observed_at_unix_ms", { mode: "number" }).notNull(),
     fetchedAtUnixMs: bigint("fetched_at_unix_ms", { mode: "number" }).notNull(),
     payloadHash: varchar("payload_hash", { length: 64 }).notNull(),
@@ -15,7 +16,8 @@ export const rawObservations = intelligence.table(
     receivedAtUnixMs: bigint("received_at_unix_ms", { mode: "number" }).notNull()
   },
   (t) => [
-    uniqueIndex("uniq_raw_obs_source_payload_hash").on(t.source, t.payloadHash),
+    uniqueIndex("uniq_raw_obs_source_observation_key").on(t.source, t.sourceObservationKey),
+    index("idx_raw_obs_source_payload_hash").on(t.source, t.payloadHash),
     index("idx_raw_obs_source_observed").on(t.source, t.observedAtUnixMs, t.id)
   ]
 );

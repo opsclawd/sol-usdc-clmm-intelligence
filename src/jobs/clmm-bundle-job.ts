@@ -1,8 +1,9 @@
 import {
   collectClmmBundle,
-  type CollectClmmBundleDeps
+  type CollectClmmBundleDeps,
+  type CollectClmmBundleResult
 } from "../application/collect-clmm-bundle.js";
 
-export function clmmBundleJob(deps: CollectClmmBundleDeps): () => Promise<void> {
+export function clmmBundleJob(deps: CollectClmmBundleDeps): () => Promise<CollectClmmBundleResult> {
   return () => collectClmmBundle(deps);
 }

@@ -3,6 +3,7 @@ import type { JsonStore } from "../../src/ports/json-store.js";
 export class FakeJsonStore implements JsonStore {
   readonly writes: Array<{ path: string; value: unknown }> = [];
   private readonly entries = new Map<string, unknown>();
+  writeError: Error | null = null;
 
   seed(path: string, value: unknown): void {
     this.entries.set(path, value);
@@ -13,6 +14,9 @@ export class FakeJsonStore implements JsonStore {
   }
 
   async writeJson(path: string, value: unknown): Promise<void> {
+    if (this.writeError) {
+      throw this.writeError;
+    }
     this.writes.push({ path, value });
     this.entries.set(path, value);
   }
