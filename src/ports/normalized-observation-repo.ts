@@ -47,6 +47,7 @@ export interface NormalizedObservationInsert {
 
 export interface NormalizedObservationRepo {
   insert(row: NormalizedObservationInsert): Promise<NormalizedObservationRow>;
+  insertMany(rows: readonly NormalizedObservationInsert[]): Promise<NormalizedObservationRow[]>;
   findBySource(
     source: Source,
     observationKind: ObservationKind,

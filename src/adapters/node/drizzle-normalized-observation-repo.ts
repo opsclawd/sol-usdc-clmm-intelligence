@@ -39,51 +39,75 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
   constructor(private readonly db: Db) {}
 
   async insert(row: NormalizedObservationInsert): Promise<NormalizedObservationRow> {
-    const [result] = await this.db
-      .insert(normalizedObservations)
-      .values({
-        rawObservationId: row.rawObservationId,
-        source: row.source,
-        observationKind: row.observationKind,
-        signalClass: row.signalClass,
-        evidenceFamily: row.evidenceFamily,
-        payload: row.payload,
-        payloadHash: row.payloadHash,
-        confidence: row.confidence as unknown,
-        confidenceComposite:
-          row.confidenceComposite != null
-            ? String(row.confidenceComposite)
-            : row.confidence.compositeScore != null
-              ? String(row.confidence.compositeScore)
-              : null,
-        confidenceLevel: row.confidenceLevel ?? row.confidence.level ?? null,
-        validUntilUnixMs: row.validUntilUnixMs ?? null,
-        isStale: row.isStale ?? false,
-        staleBehavior: row.staleBehavior ?? null,
-        provenance: row.provenance as unknown,
-        receivedAtUnixMs: row.receivedAtUnixMs
-      })
-      .onConflictDoNothing({
-        target: [
-          normalizedObservations.rawObservationId,
-          normalizedObservations.observationKind,
-          normalizedObservations.payloadHash
-        ]
-      })
-      .returning();
-    if (result) return toPortRow(result);
-    const [existing] = await this.db
-      .select()
-      .from(normalizedObservations)
-      .where(
-        and(
-          eq(normalizedObservations.rawObservationId, row.rawObservationId),
-          eq(normalizedObservations.observationKind, row.observationKind),
-          eq(normalizedObservations.payloadHash, row.payloadHash)
-        )
-      )
-      .limit(1);
-    return toPortRow(existing!);
+    const results = await this.insertMany([row]);
+    return results[0]!;
+  }
+
+  async insertMany(
+    rows: readonly NormalizedObservationInsert[]
+  ): Promise<NormalizedObservationRow[]> {
+    if (rows.length === 0) return [];
+
+    return this.db.transaction(async (tx) => {
+      const results: (typeof normalizedObservations.$inferSelect | null)[] = new Array(
+        rows.length
+      ).fill(null);
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]!;
+        const [inserted] = await tx
+          .insert(normalizedObservations)
+          .values({
+            rawObservationId: row.rawObservationId,
+            source: row.source,
+            observationKind: row.observationKind,
+            signalClass: row.signalClass,
+            evidenceFamily: row.evidenceFamily,
+            payload: row.payload,
+            payloadHash: row.payloadHash,
+            confidence: row.confidence as unknown,
+            confidenceComposite:
+              row.confidenceComposite != null
+                ? String(row.confidenceComposite)
+                : row.confidence.compositeScore != null
+                  ? String(row.confidence.compositeScore)
+                  : null,
+            confidenceLevel: row.confidenceLevel ?? row.confidence.level ?? null,
+            validUntilUnixMs: row.validUntilUnixMs ?? null,
+            isStale: row.isStale ?? false,
+            staleBehavior: row.staleBehavior ?? null,
+            provenance: row.provenance as unknown,
+            receivedAtUnixMs: row.receivedAtUnixMs
+          })
+          .onConflictDoNothing({
+            target: [
+              normalizedObservations.rawObservationId,
+              normalizedObservations.observationKind,
+              normalizedObservations.payloadHash
+            ]
+          })
+          .returning();
+
+        if (inserted) {
+          results[i] = inserted;
+        } else {
+          const [existing] = await tx
+            .select()
+            .from(normalizedObservations)
+            .where(
+              and(
+                eq(normalizedObservations.rawObservationId, row.rawObservationId),
+                eq(normalizedObservations.observationKind, row.observationKind),
+                eq(normalizedObservations.payloadHash, row.payloadHash)
+              )
+            )
+            .limit(1);
+          results[i] = existing ?? null;
+        }
+      }
+
+      return results.map((r) => toPortRow(r!));
+    });
   }
 
   async findBySource(
