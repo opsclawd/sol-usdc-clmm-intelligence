@@ -75,8 +75,10 @@ describe("collectClmmBundle", () => {
       };
       const originalInsertMany =
         normalizedObservationRepo.insertMany.bind(normalizedObservationRepo);
+      let capturedNormalizedRows: readonly unknown[] = [];
       normalizedObservationRepo.insertMany = async (rows) => {
         events.push("normalized_batch");
+        capturedNormalizedRows = rows;
         return originalInsertMany(rows);
       };
       const originalUpdateParseStatus =
@@ -99,6 +101,18 @@ describe("collectClmmBundle", () => {
       expect(events).toContain("normalized_batch");
       expect(events).toContain("parse_status_parsed");
       expect(jsonStore.writes.length).toBeGreaterThan(0);
+
+      expect(capturedNormalizedRows.length).toBeGreaterThan(0);
+      for (const row of capturedNormalizedRows) {
+        const r = row as Record<string, unknown>;
+        expect(r).toHaveProperty("payloadHash");
+        expect(typeof r.payloadHash).toBe("string");
+        expect((r.payloadHash as string).length).toBeGreaterThan(0);
+        expect(r).toHaveProperty("receivedAtUnixMs");
+        expect(typeof r.receivedAtUnixMs).toBe("number");
+        expect(r).toHaveProperty("rawObservationId");
+        expect(typeof r.rawObservationId).toBe("number");
+      }
       expect(jsonStore.writes[jsonStore.writes.length - 1]?.path).toBe(
         "data/latest-clmm-bundle.json"
       );

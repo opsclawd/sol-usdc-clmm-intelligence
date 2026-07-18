@@ -123,7 +123,7 @@ export async function collectClmmBundle(
     source: SOURCE,
     sourceObservationKey,
     observedAtUnixMs: bundle.observedAtUnixMs,
-    fetchedAtUnixMs: bundle.observedAtUnixMs,
+    fetchedAtUnixMs: receivedAtUnixMs,
     payloadHash,
     payloadCanonical,
     parseStatus: "pending",
@@ -200,9 +200,9 @@ async function normalizeAndStore(
     const enrichmentCandidates = candidates.map((candidate) => ({
       id: rawRow.id,
       source: SOURCE,
-      payloadHash: "",
+      payloadHash: rawRow.payloadHash,
       receivedAtUnixMs,
-      fetchedAtUnixMs: bundle.observedAtUnixMs,
+      fetchedAtUnixMs: rawRow.fetchedAtUnixMs,
       observedAtUnixMs: bundle.observedAtUnixMs,
       kind: candidate.kind,
       payload: candidate as ClmmNormalizedCandidate
