@@ -19,7 +19,10 @@ export function normalizeClmmBundle(bundle: ClmmBundle): readonly ClmmNormalized
   }
 
   for (const alert of bundle.alerts) {
-    candidates.push(mapTriggerEvent(bundle.pair, alert, bundle.pool.observedAtUnixMs));
+    const matchingPosition = bundle.positions.find((p) => p.positionId === alert.positionId);
+    if (!matchingPosition)
+      throw new Error("Invalid position reference in alert: " + alert.positionId);
+    candidates.push(mapTriggerEvent(bundle.pair, alert, matchingPosition.observedAtUnixMs));
   }
 
   candidates.push(mapDataQuality(bundle.pair, bundle.dataQuality, bundle.pool.observedAtUnixMs));
@@ -66,12 +69,8 @@ function mapPositionState(pair: "SOL/USDC", position: PositionData): PositionSta
     rangeDistance: {
       belowLowerTickPercent: position.rangeDistance.belowLowerTickPercent,
       aboveUpperTickPercent: position.rangeDistance.aboveUpperTickPercent,
-      ...(position.rangeDistance.belowLowerPricePercent !== undefined && {
-        belowLowerPricePercent: position.rangeDistance.belowLowerPricePercent
-      }),
-      ...(position.rangeDistance.aboveUpperPricePercent !== undefined && {
-        aboveUpperPricePercent: position.rangeDistance.aboveUpperPricePercent
-      })
+      belowLowerPricePercent: position.rangeDistance.belowLowerPricePercent ?? null,
+      aboveUpperPricePercent: position.rangeDistance.aboveUpperPricePercent ?? null
     },
     feeRateLabel: position.feeRateLabel,
     positionLiquidity: position.positionLiquidity,

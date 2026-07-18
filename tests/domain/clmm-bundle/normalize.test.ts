@@ -7,6 +7,7 @@ import {
 } from "../../fixtures/clmm-bundle.js";
 import { normalizeClmmBundle } from "../../../src/domain/clmm-bundle/normalize.js";
 import type { ClmmBundle, PositionData } from "../../../src/contracts/clmm-bundle.js";
+import type { PositionStatePayloadV1 } from "../../../src/contracts/normalized-clmm-observation.js";
 
 describe("normalizeClmmBundle", () => {
   describe("fact cardinality", () => {
@@ -164,6 +165,9 @@ describe("normalizeClmmBundle", () => {
       expect(positionCandidate.unclaimedRewardsUsd).toBeNull();
       expect(positionCandidate.triggerId).toBeNull();
       expect(positionCandidate.breachDirection).toBeNull();
+      const posState = positionCandidate as PositionStatePayloadV1;
+      expect(posState.rangeDistance.belowLowerPricePercent).toBeNull();
+      expect(posState.rangeDistance.aboveUpperPricePercent).toBeNull();
 
       expect(feeCandidate.unclaimedFeesUsd).toBeNull();
       expect(feeCandidate.unclaimedRewardsUsd).toBeNull();
@@ -444,6 +448,17 @@ describe("normalizeClmmBundle", () => {
 
       expect(triggerCandidate.positionId).toBe("position-001");
       expect(triggerCandidate.triggerId).toBe("trigger-001");
+    });
+
+    it("throws when alert references non-existent position", () => {
+      const bundle = makeClmmBundle({
+        positions: [{ positionId: "position-001" }],
+        alerts: [{ triggerId: "trigger-999", positionId: "position-999" }]
+      });
+
+      expect(() => normalizeClmmBundle(bundle)).toThrow(
+        "Invalid position reference in alert: position-999"
+      );
     });
   });
 });

@@ -33,8 +33,8 @@ export interface PositionStatePayloadV1 {
   readonly rangeDistance: {
     readonly belowLowerTickPercent: number;
     readonly aboveUpperTickPercent: number;
-    readonly belowLowerPricePercent?: number;
-    readonly aboveUpperPricePercent?: number;
+    readonly belowLowerPricePercent: number | null;
+    readonly aboveUpperPricePercent: number | null;
   };
   readonly feeRateLabel: string;
   readonly positionLiquidity: string;
