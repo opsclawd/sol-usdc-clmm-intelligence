@@ -243,6 +243,34 @@ export const observationKindRegistry = {
     },
     active: true,
     schemaVersion: 1
+  },
+  pool_statistics: {
+    kind: "pool_statistics",
+    evidenceFamily: "clmm_economics",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 300_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "degrade_confidence"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.4,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      ...DEFAULT_PROVENANCE_REQUIREMENTS,
+      allowedSourceRefs: ["orca-public-api"]
+    },
+    active: true,
+    schemaVersion: 1
   }
 } as const satisfies Record<ObservationKind, ObservationKindEntry>;
 

@@ -117,3 +117,10 @@ describe("TaxonomyValidationError", () => {
     }
   });
 });
+
+describe("runtime taxonomy parity", () => {
+  it("parses pool statistics and orca public api literals", () => {
+    expect(parseObservationKind("pool_statistics")).toBe("pool_statistics");
+    expect(parseSource("orca-public-api")).toBe("orca-public-api");
+  });
+});

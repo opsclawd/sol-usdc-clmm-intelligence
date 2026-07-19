@@ -17,7 +17,8 @@ const OBSERVATION_KINDS = new Set<ObservationKind>([
   "fee_metrics",
   "volume_metrics",
   "trigger_event",
-  "data_quality"
+  "data_quality",
+  "pool_statistics"
 ]);
 
 const FEATURE_KINDS = new Set<FeatureKind>([
@@ -34,7 +35,8 @@ const SOURCES = new Set<Source>([
   "coingecko",
   "defillama",
   "pyth-hermes",
-  "jupiter-quote"
+  "jupiter-quote",
+  "orca-public-api"
 ]);
 
 const SIGNAL_CLASSES = new Set<SignalClass>(["deterministic", "probabilistic", "contextual"]);
