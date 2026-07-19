@@ -1,24 +1,22 @@
-# Implementation Log - Task 7
+# Implementation Log - Task 8
 
 ## Overview
 
-Implemented Task 7: Coordinate the four core sources concurrently.
+Implemented Task 8: Bind the core job and operator command.
 
 ## Implementation Details
 
-1. **Tests First (TDD)**: Created `tests/application/collect-core.test.ts` verifying all requirements and behavioral invariants:
-   - Concurrency checking (`starts all four leaves before awaiting and invokes each exactly once`).
-   - Shared run context object identity checking (`passes the same collection context object to all four leaves`).
-   - Independent error containment (`preserves successful outcomes when sibling leaves reject`).
-   - Outcome status checks mapping to `COMPLETE`, `PARTIAL`, `UNAVAILABLE`, and `FAILED` scenarios.
-   - Ordering logic validation (`orders named outcomes and warnings independently of promise completion timing`).
-2. **Implementation**: Implemented `src/application/collect-core.ts`:
-   - Defined `CoreLeaf`, `CollectCoreDeps`, and the `collectCore` function.
-   - Parallelized leaf queries and guarded their catch blocks independently using `mapSourceError`.
-   - Utilized pure domain collection reducers to calculate warnings, status, and counts.
-   - Derived `shouldFailCommand` from overall status.
+1. **Tests First (TDD)**: Created `tests/scripts/core-collection.test.ts` verifying all requirements and behavioral invariants:
+   - `creates one context then binds clmm pyth jupiter and orca leaves` - verifies job creates one context and binds the collectors to it.
+   - `prints every source outcome and exits by derived overall status` - verifies script prints source outcomes and exits non-zero for FAILED/UNAVAILABLE.
+   - `closes the database once after all source outcomes settle` - verifies the database connection closes exactly once.
+   - `reports cleanup failure without rewriting committed source outcomes` - verifies cleanup close failures report redacted errors without rewriting outcomes.
+2. **Implementation**:
+   - Created `src/jobs/core-collection-job.ts` to implement `coreCollectionJob` and `runCoreCollectionJob` which sets up the context once and binds all four core collectors (CLMM bundle, Pyth hermes, Jupiter quote, Orca public API) and passes them to `collectCore`.
+   - Modified `src/jobs/index.ts` to export the new job functions.
+   - Created `scripts/collectors/core-collection.ts` to orchestrate node runtime setup, job run, JSON stringification, status-derived process exits, database closing, and redacted cleanup errors.
+   - Modified `package.json` to register `"collect:core": "tsx scripts/collectors/core-collection.ts"`.
 3. **Verification**:
-   - `pnpm exec vitest run tests/application/collect-core.test.ts` passed successfully.
-   - ESLint and Prettier runs checks have been fully satisfied.
-   - TS compilation via `pnpm typecheck` compiles cleanly.
-   - Dependency-cruiser architectural check via `pnpm boundaries` passed cleanly.
+   - `pnpm exec vitest run tests/scripts/core-collection.test.ts` passed successfully.
+   - ESLint and Prettier check runs have been fully satisfied.
+   - `pnpm boundaries` dependency check passed successfully.
