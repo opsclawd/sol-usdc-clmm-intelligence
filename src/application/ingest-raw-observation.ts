@@ -120,26 +120,29 @@ export async function ingestRawObservation<TAccepted, TCandidate, TEnriched>(
     }
 
     let replayParseStatus: ParseStatus = "pending";
+    let replayNormalizedCount = 0;
+    let replayAccepted: TAccepted | undefined;
     try {
       const revalidator = revalidateStoredCanonical ?? validatePayload;
-      const { accepted } = revalidator(existingRow.payloadCanonical);
-      const candidates = buildCandidates(accepted, existingRow);
+      const result = revalidator(existingRow.payloadCanonical);
+      replayAccepted = result.accepted;
+      const candidates = buildCandidates(replayAccepted, existingRow);
 
       const runId: string | null = null;
       const enriched = await enrichCandidates(candidates, existingRow, runId);
-      const normalizedCount = await insertNormalized(enriched, candidates, existingRow);
+      replayNormalizedCount = await insertNormalized(enriched, candidates, existingRow);
 
       replayParseStatus = "parsed";
       await rawObservationRepo.updateParseStatus(existingRow.id, replayParseStatus);
 
       if (writeCompatibilityOutput) {
-        await writeCompatibilityOutput(accepted, existingRow);
+        await writeCompatibilityOutput(replayAccepted, existingRow);
       }
 
       return {
         rawObservationId: existingRow.id,
         rawOutcome: rawInsertResult,
-        normalizedCount,
+        normalizedCount: replayNormalizedCount,
         parseStatus: replayParseStatus
       };
     } catch (err) {

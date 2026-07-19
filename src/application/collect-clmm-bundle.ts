@@ -145,7 +145,7 @@ export async function collectClmmBundle(
         return { accepted: acceptClmmBundle(parsed) };
       },
       buildCandidates: (accepted) => normalizeClmmBundle(accepted),
-      enrichCandidates: async (candidates, rawRow, runId) => {
+      enrichCandidates: async (candidates, rawRow) => {
         const receivedAtUnixMs = rawRow.receivedAtUnixMs;
         const enrichmentCandidates = candidates.map((candidate) => ({
           id: rawRow.id,
@@ -162,7 +162,7 @@ export async function collectClmmBundle(
           candidates: enrichmentCandidates,
           nowMs: receivedAtUnixMs,
           codeVersion,
-          runId
+          runId: pipelineRunId
         });
       },
       insertNormalized: async (enriched, candidates, rawRow) => {
