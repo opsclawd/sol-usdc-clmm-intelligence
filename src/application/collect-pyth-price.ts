@@ -281,10 +281,7 @@ export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<Pric
       }
     });
 
-    const firstCandidate =
-      result.rawOutcome.outcome === "inserted"
-        ? normalizePythPrice(envelope, feedId, fetchedAtUnixMs)
-        : normalizePythPrice(envelope, feedId, fetchedAtUnixMs);
+    const firstCandidate = normalizePythPrice(envelope, feedId, fetchedAtUnixMs);
 
     const warnings = firstCandidate.warnings;
     const hasWideConfidence = warnings.includes("wide_confidence_interval");
@@ -292,7 +289,12 @@ export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<Pric
     let freshness: Freshness;
     let confidenceLevel: ConfidenceLevel;
 
-    const normalizedRows = await normalizedObservationRepo.findBySource(SOURCE, "oracle_price", 0);
+    const lookbackWindowMs = 5 * 60 * 1000;
+    const normalizedRows = await normalizedObservationRepo.findBySource(
+      SOURCE,
+      "oracle_price",
+      receivedAtUnixMs - lookbackWindowMs
+    );
     const latestNormalized = normalizedRows[normalizedRows.length - 1];
 
     if (latestNormalized) {
