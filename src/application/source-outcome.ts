@@ -3,25 +3,9 @@ import type { Source } from "../contracts/taxonomy.js";
 import type { PriceSourceResult } from "./price-source-result.js";
 import { PostPersistenceOutputError } from "./ingest-raw-observation.js";
 import type { CollectClmmBundleResult } from "./collect-clmm-bundle.js";
+import { redactSecretMentions } from "../domain/redact-secrets.js";
 
-export function redactDiagnostic(text: string): string {
-  if (!text) return "";
-  let redacted = text;
-  const keys = [
-    "api[_-]?key",
-    "bearer\\s*token",
-    "auth\\s*token",
-    "bearer",
-    "token",
-    "auth",
-    "secret"
-  ];
-  for (const key of keys) {
-    const regex = new RegExp(`(${key})\\s*([=:]\\s*|\\s+)(\\S+)`, "gi");
-    redacted = redacted.replace(regex, "[REDACTED]");
-  }
-  return redacted;
-}
+export const redactDiagnostic = redactSecretMentions;
 
 export function mapPriceSourceOutcome(
   sourceKey: "pyth" | "jupiter",

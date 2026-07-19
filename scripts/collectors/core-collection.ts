@@ -1,39 +1,6 @@
 import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
 import { runCoreCollectionJob } from "../../src/jobs/core-collection-job.js";
-
-const SECRET_KEY_PATTERN = /(api[_-]?key|bearer|token|auth|secret)/i;
-
-function redactSecretMentions(text: string): string {
-  let redacted = text;
-  const keys = [
-    "api[_-]?key",
-    "bearer\\s*token",
-    "auth\\s*token",
-    "bearer",
-    "token",
-    "auth",
-    "secret"
-  ];
-  for (const key of keys) {
-    const regex = new RegExp(`(${key})\\s*([=:]\\s*|\\s+)(\\S+)`, "gi");
-    redacted = redacted.replace(regex, "[REDACTED]");
-  }
-  for (const key of keys) {
-    const regex = new RegExp(key, "gi");
-    redacted = redacted.replace(regex, "[REDACTED]");
-  }
-  return redacted;
-}
-
-function secretRedactingReplacer(key: string, value: unknown): unknown {
-  if (SECRET_KEY_PATTERN.test(key)) {
-    return "[REDACTED]";
-  }
-  if (typeof value === "string") {
-    return redactSecretMentions(value);
-  }
-  return value;
-}
+import { redactSecretMentions, secretRedactingReplacer } from "../../src/domain/redact-secrets.js";
 
 export async function runCoreCollection(): Promise<void> {
   const runtime = createNodeRuntime();
