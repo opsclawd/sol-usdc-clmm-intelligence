@@ -198,8 +198,13 @@ function parsePriceImpactToBasisPoints(priceImpactPct: string): string {
   const priceImpactDecimal = BigInt(priceImpactPct.replace(".", ""));
   const decimalIndex = priceImpactPct.indexOf(".");
   const decimalPlaces = decimalIndex >= 0 ? priceImpactPct.length - decimalIndex - 1 : 0;
-  const multiplier = 10n ** BigInt(Math.max(0, 4 - decimalPlaces));
-  const bpsValue = priceImpactDecimal * multiplier;
+  let bpsValue: bigint;
+  if (decimalPlaces > 4) {
+    bpsValue = priceImpactDecimal / 10n ** BigInt(decimalPlaces - 4);
+  } else {
+    const multiplier = 10n ** BigInt(Math.max(0, 4 - decimalPlaces));
+    bpsValue = priceImpactDecimal * multiplier;
+  }
   return String(bpsValue);
 }
 
@@ -214,12 +219,11 @@ export function normalizeJupiterQuote(
     throw new Error("Output amount must be positive");
   }
 
-  const fractionalPart = outAmountAtomic % BigInt(10 ** SOL_USD_ASSETS.baseDecimals);
+  const divisor = 10n ** BigInt(SOL_USD_ASSETS.quoteDecimals);
+  const integerPart = outAmountAtomic / divisor;
+  const fractionalPart = outAmountAtomic % divisor;
   const priceDecimal =
-    "0." +
-    String(fractionalPart)
-      .padStart(SOL_USD_ASSETS.baseDecimals, "0")
-      .slice(0, SOL_USD_ASSETS.quoteDecimals);
+    String(integerPart) + "." + String(fractionalPart).padStart(SOL_USD_ASSETS.quoteDecimals, "0");
 
   const warnings: PriceObservationWarning[] = [];
 

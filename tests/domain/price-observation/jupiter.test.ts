@@ -296,7 +296,7 @@ describe("Jupiter Executable Quote Processing", () => {
         await import("../../../src/domain/price-observation/jupiter.js");
       const quote = makeJupiterQuote({ inAmount: "1000000000", outAmount: "175000000" });
       const result = normalizeJupiterQuote(quote, Date.now());
-      expect(result.quoteData.price).toBe("0.175000");
+      expect(result.quoteData.price).toBe("175.000000");
     });
 
     it("emits exact implied price for 6-decimal USDC output", async () => {
@@ -304,7 +304,7 @@ describe("Jupiter Executable Quote Processing", () => {
         await import("../../../src/domain/price-observation/jupiter.js");
       const quote = makeJupiterQuote({ inAmount: "1000000000", outAmount: "175000000" });
       const result = normalizeJupiterQuote(quote, Date.now());
-      expect(result.quoteData.price).toBe("0.175000");
+      expect(result.quoteData.price).toBe("175.000000");
     });
 
     it("computes exact price impact ratio in basis points", async () => {
@@ -399,7 +399,7 @@ describe("Jupiter Executable Quote Processing", () => {
         await import("../../../src/domain/price-observation/jupiter.js");
       const quote = makeJupiterQuote({ inAmount: "1000000000", outAmount: "175123456" });
       const result = normalizeJupiterQuote(quote, Date.now());
-      expect(result.quoteData.price).toBe("0.175123");
+      expect(result.quoteData.price).toBe("175.123456");
     });
 
     it("computes exact 9-decimal SOL price from atomic input", async () => {
@@ -407,7 +407,7 @@ describe("Jupiter Executable Quote Processing", () => {
         await import("../../../src/domain/price-observation/jupiter.js");
       const quote = makeJupiterQuote({ inAmount: "1000000000", outAmount: "175000000" });
       const result = normalizeJupiterQuote(quote, Date.now());
-      expect(result.quoteData.price).toBe("0.175000");
+      expect(result.quoteData.price).toBe("175.000000");
     });
 
     it("avoids floating-point arithmetic for price impact parsing", async () => {
