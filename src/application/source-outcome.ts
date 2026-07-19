@@ -20,12 +20,6 @@ export function redactDiagnostic(text: string): string {
     const regex = new RegExp(`(${key})\\s*([=:]\\s*|\\s+)([a-zA-Z0-9_-]+)`, "gi");
     redacted = redacted.replace(regex, "[REDACTED]");
   }
-  redacted = redacted
-    .replace(/api[_-]?key/gi, "[REDACTED]")
-    .replace(/bearer/gi, "[REDACTED]")
-    .replace(/token/gi, "[REDACTED]")
-    .replace(/auth/gi, "[REDACTED]")
-    .replace(/secret/gi, "[REDACTED]");
   return redacted;
 }
 
