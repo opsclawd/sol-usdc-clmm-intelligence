@@ -1,6 +1,6 @@
 # Task Context: Task 6
 
-Title: Add atomic raw insert classification and parse-status operations
+Title: Preserve durable side-effect failures and map every leaf outcome
 
 ## Workspace & Scope Constraints
 
@@ -10,85 +10,130 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-22
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-24
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-22
-Start Commit: 354e656925912cc7e58de7220277b1694b69286d
+Branch: ai/issue-24
+Start Commit: f7a18d04ef7d634a88ba3e8a3a6eec1ad65ab581
 
 ## Task Requirements
 
 **Files:**
 
-- Modify: `src/ports/observation-repo.ts`
-- Modify: `src/ports/index.ts`
-- Modify: `src/adapters/node/drizzle-observation-repo.ts`
-- Modify: `tests/fakes/fake-observation-repo.ts`
-- Modify: `tests/ports/observation-repo.test.ts`
-- Create: `tests/adapters/node/drizzle-observation-repos.integration.test.ts`
+- Modify: `src/application/ingest-raw-observation.ts`
+- Modify: `src/application/price-source-result.ts`
+- Modify: `src/application/collect-clmm-bundle.ts`
+- Modify: `src/application/collect-jupiter-quote.ts`
+- Create: `src/application/source-outcome.ts`
+- Modify: `tests/application/ingest-raw-observation.test.ts`
+- Modify: `tests/application/collect-clmm-bundle.test.ts`
+- Modify: `tests/application/collect-jupiter-quote.test.ts`
+- Create: `tests/application/source-outcome.test.ts`
 
-**Behavioral invariants to test first:**
+**Exported API changes:** Add `PostPersistenceOutputError`, extend the `failed` member of `PriceSourceResult` with optional durable evidence metadata, and export `redactDiagnostic`, `mapPriceSourceOutcome`, `mapClmmSourceOutcome`, and `mapSourceError`.
 
-- `insertOrClassify returns inserted for a new source identity` creates one immutable pending row.
-- `insertOrClassify returns identical_replay for equal identity and content` returns the existing row without mutation.
-- `insertOrClassify returns conflict for equal identity and unequal content` exposes existing/incoming hashes and preserves stored evidence.
-- `equal content under distinct source identities creates distinct raw rows` prevents cross-wallet collapse.
-- `updateParseStatus changes only parseStatus and findById reloads the persisted row` keeps raw evidence immutable.
-- `concurrent equivalent inserts classify as one inserted and one identical replay` requires unique-constraint recovery rather than check-then-insert alone.
-
-- [ ] **Step 1: Rewrite the fake port contract tests around `sourceObservationKey`, `insertOrClassify`, `findById`, `findByIdentity`, and `updateParseStatus`; add raw-only disposable-Postgres integration cases for unique-race and immutability behavior.**
-- [ ] **Step 2: Run `pnpm vitest run tests/ports/observation-repo.test.ts tests/adapters/node/drizzle-observation-repos.integration.test.ts` and confirm interface/method failures.** The integration suite may use `TEST_DATABASE_URL` and must skip with an explicit message when absent; never point it at a production/shared database.
-- [ ] **Step 3: Change the port and every implementation in this same task.** Define:
+- [ ] **Step 1: Write side-effect recovery tests first.** Add `preserves durable evidence metadata when compatibility output fails` to the shared ingestion tests, asserting raw ID, raw outcome, normalized count, and parsed status on the typed error. Extend the existing CLMM/Jupiter compatibility-file failure cases to assert that mapping reports `failed` with `hasUsableEvidence: true`, the durable raw ID/count, and a redacted diagnostic.
+- [ ] **Step 2: Write source mapping tests first.** Cover every `PriceSourceResult` status, CLMM accepted/replay result, `ClmmObservationConflictError`, typed post-persistence output error, and unexpected error. Name cases `maps leaf status without inferring usability from status alone` and `redacts secrets before diagnostics cross the aggregate boundary`.
+- [ ] **Step 3: Run focused tests and confirm missing typed error/mappers fail.** Run `pnpm exec vitest run tests/application/ingest-raw-observation.test.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-jupiter-quote.test.ts tests/application/source-outcome.test.ts`.
+- [ ] **Step 4: Preserve post-persistence state in the shared lifecycle.** Wrap only `writeCompatibilityOutput` failures after parsed/replay success in:
 
 ```ts
-export type RawInsertOutcome =
-  | { outcome: "inserted"; row: RawObservationRow }
-  | { outcome: "identical_replay"; row: RawObservationRow }
-  | { outcome: "conflict"; row: RawObservationRow; incomingPayloadHash: string };
+export class PostPersistenceOutputError extends Error {
+  readonly rawObservationId: number;
+  readonly rawOutcome: "inserted" | "identical_replay";
+  readonly normalizedCount: number;
+  readonly parseStatus: "parsed";
 
-export interface RawObservationRepo {
-  insertOrClassify(row: RawObservationInsert): Promise<RawInsertOutcome>;
-  findById(id: number): Promise<RawObservationRow | undefined>;
-  findByIdentity(
-    source: Source,
-    sourceObservationKey: string
-  ): Promise<RawObservationRow | undefined>;
-  findByHash(source: Source, payloadHash: string): Promise<RawObservationRow | undefined>;
-  findBySource(source: Source, sinceUnixMs: number): Promise<RawObservationRow[]>;
-  updateParseStatus(id: number, status: ParseStatus): Promise<RawObservationRow>;
+  constructor(
+    message: string,
+    state: {
+      readonly rawObservationId: number;
+      readonly rawOutcome: "inserted" | "identical_replay";
+      readonly normalizedCount: number;
+      readonly parseStatus: "parsed";
+    },
+    options: ErrorOptions
+  ) {
+    super(message, options);
+    this.name = "PostPersistenceOutputError";
+    this.rawObservationId = state.rawObservationId;
+    this.rawOutcome = state.rawOutcome;
+    this.normalizedCount = state.normalizedCount;
+    this.parseStatus = state.parseStatus;
+  }
 }
 ```
 
-Add `sourceObservationKey` to insert/row shapes. The Drizzle adapter must attempt insert with conflict-do-nothing on `(source, sourceObservationKey)`, reload by identity, and classify by payload hash; the fake must mirror these semantics.
+Keep its original error as `cause`. Do not wrap validation, normalization, normalized insertion, or parse-status failures because their durability state is different.
 
-- [ ] **Step 4: Rerun the focused port/integration tests, then run `pnpm exec eslint src/ports/observation-repo.ts src/ports/index.ts src/adapters/node/drizzle-observation-repo.ts tests/fakes/fake-observation-repo.ts tests/ports/observation-repo.test.ts tests/adapters/node/drizzle-observation-repos.integration.test.ts --max-warnings 0` and `pnpm exec prettier --check src/ports/observation-repo.ts src/ports/index.ts src/adapters/node/drizzle-observation-repo.ts tests/fakes/fake-observation-repo.ts tests/ports/observation-repo.test.ts tests/adapters/node/drizzle-observation-repos.integration.test.ts`.**
-- [ ] **Step 5: Commit:** `git add src/ports/observation-repo.ts src/ports/index.ts src/adapters/node/drizzle-observation-repo.ts tests/fakes/fake-observation-repo.ts tests/ports/observation-repo.test.ts tests/adapters/node/drizzle-observation-repos.integration.test.ts && git commit -m "feat(persist): classify raw observation replays"`.
+- [ ] **Step 5: Implement safe leaf mapping.** Extend only the price `failed` variant without breaking existing producers:
+
+```ts
+export type FailedResult = Readonly<{
+  status: "failed";
+  summary: string;
+  durableEvidence?: Readonly<{
+    rawObservationId: number;
+    normalizedCount: number;
+  }>;
+  hasUsableEvidence?: boolean;
+}>;
+```
+
+Move the existing secret redaction to `redactDiagnostic(text: string): string`, retain `PriceSourceResult.safeSummary`, and implement these exact mapper boundaries:
+
+```ts
+export function mapPriceSourceOutcome(
+  sourceKey: "pyth" | "jupiter",
+  source: "pyth-hermes" | "jupiter-quote",
+  result: PriceSourceResult
+): SourceCollectionOutcome;
+
+export function mapClmmSourceOutcome(result: CollectClmmBundleResult): SourceCollectionOutcome;
+
+export function mapSourceError(
+  sourceKey: CoreSourceKey,
+  source: Source,
+  error: unknown
+): SourceCollectionOutcome;
+```
+
+Map source-specific warnings to `{ source, code, message }` without flattening provenance. Preserve explicit `hasUsableEvidence`; never derive it solely from `status`. Map compatibility errors as failed-but-durable, conflicts with both hashes redacted/truncated, and unexpected errors as non-usable `failed`.
+
+- [ ] **Step 6: Verify this task.** Run the focused Vitest command from Step 3, `pnpm exec eslint src/application/ingest-raw-observation.ts src/application/price-source-result.ts src/application/collect-clmm-bundle.ts src/application/collect-jupiter-quote.ts src/application/source-outcome.ts tests/application/ingest-raw-observation.test.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-jupiter-quote.test.ts tests/application/source-outcome.test.ts --max-warnings 0`, and `pnpm exec prettier --check src/application/ingest-raw-observation.ts src/application/price-source-result.ts src/application/collect-clmm-bundle.ts src/application/collect-jupiter-quote.ts src/application/source-outcome.ts tests/application/ingest-raw-observation.test.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-jupiter-quote.test.ts tests/application/source-outcome.test.ts`.
+- [ ] **Step 7: Commit.** Run `git add src/application/ingest-raw-observation.ts src/application/price-source-result.ts src/application/collect-clmm-bundle.ts src/application/collect-jupiter-quote.ts src/application/source-outcome.ts tests/application/ingest-raw-observation.test.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-jupiter-quote.test.ts tests/application/source-outcome.test.ts && git commit -m "feat: preserve durable collector outcomes"`.
+
+**Task invariants:**
+
+- `durable compatibility failure` — test case `preserves durable evidence metadata when compatibility output fails`.
+- `explicit leaf usability` — test case `maps leaf status without inferring usability from status alone`.
+- `aggregate diagnostic redaction` — test case `redacts secrets before diagnostics cross the aggregate boundary`.
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/ports/observation-repo.ts
-- src/ports/index.ts
-- src/adapters/node/drizzle-observation-repo.ts
-- tests/fakes/fake-observation-repo.ts
-- tests/ports/observation-repo.test.ts
-- tests/adapters/node/drizzle-observation-repos.integration.test.ts
+- src/application/ingest-raw-observation.ts
+- src/application/price-source-result.ts
+- src/application/collect-clmm-bundle.ts
+- src/application/collect-jupiter-quote.ts
+- src/application/source-outcome.ts
+- tests/application/ingest-raw-observation.test.ts
+- tests/application/collect-clmm-bundle.test.ts
+- tests/application/collect-jupiter-quote.test.ts
+- tests/application/source-outcome.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm vitest run tests/ports/observation-repo.test.ts tests/adapters/node/drizzle-observation-repos.integration.test.ts
-pnpm exec eslint src/ports/observation-repo.ts src/ports/index.ts src/adapters/node/drizzle-observation-repo.ts tests/fakes/fake-observation-repo.ts tests/ports/observation-repo.test.ts tests/adapters/node/drizzle-observation-repos.integration.test.ts --max-warnings 0
-pnpm exec prettier --check src/ports/observation-repo.ts src/ports/index.ts src/adapters/node/drizzle-observation-repo.ts tests/fakes/fake-observation-repo.ts tests/ports/observation-repo.test.ts tests/adapters/node/drizzle-observation-repos.integration.test.ts
+pnpm exec vitest run tests/application/ingest-raw-observation.test.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-jupiter-quote.test.ts tests/application/source-outcome.test.ts
+pnpm exec eslint src/application/ingest-raw-observation.ts src/application/price-source-result.ts src/application/collect-clmm-bundle.ts src/application/collect-jupiter-quote.ts src/application/source-outcome.ts tests/application/ingest-raw-observation.test.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-jupiter-quote.test.ts tests/application/source-outcome.test.ts --max-warnings 0
+pnpm exec prettier --check src/application/ingest-raw-observation.ts src/application/price-source-result.ts src/application/collect-clmm-bundle.ts src/application/collect-jupiter-quote.ts src/application/source-outcome.ts tests/application/ingest-raw-observation.test.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-jupiter-quote.test.ts tests/application/source-outcome.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **new raw insertion**: A previously unseen source identity creates one pending immutable row and returns inserted. (Test: `insertOrClassify returns inserted for a new source identity`)
-- **identical raw replay**: Equal identity and content returns the existing row without mutation. (Test: `insertOrClassify returns identical_replay for equal identity and content`)
-- **raw identity conflict**: Equal identity and unequal content reports both hashes and preserves stored evidence. (Test: `insertOrClassify returns conflict for equal identity and unequal content`)
-- **equal content distinct identity**: Equal payload hashes under different source identities create different rows. (Test: `equal content under distinct source identities creates distinct raw rows`)
-- **parse metadata mutability**: Status updates cannot mutate identity, content, timestamps, or request metadata. (Test: `updateParseStatus changes only parseStatus and findById reloads the persisted row`)
-- **concurrent replay classification**: A unique-constraint race yields one inserted and one identical replay outcome. (Test: `concurrent equivalent inserts classify as one inserted and one identical replay`)
+- **durable compatibility failure**: A post-persistence compatibility failure carries raw ID, outcome, normalized count, and parsed state without rolling back database evidence. (Test: `preserves durable evidence metadata when compatibility output fails`)
+- **explicit leaf usability**: Mapping preserves the leaf's explicit usability flag and does not infer it only from the status label. (Test: `maps leaf status without inferring usability from status alone`)
+- **aggregate diagnostic redaction**: Secrets and credential labels are redacted before any diagnostic enters a core outcome. (Test: `redacts secrets before diagnostics cross the aggregate boundary`)

@@ -25,7 +25,7 @@ describe("source-outcome mapping", () => {
           isStale: false,
           validUntilUnixMs: 1000,
           derivedAt: 500,
-          policyKind: "pyth",
+          policyKind: "oracle_price",
           reasons: []
         },
         confidenceLevel: "high"
@@ -46,7 +46,7 @@ describe("source-outcome mapping", () => {
           isStale: false,
           validUntilUnixMs: 1000,
           derivedAt: 500,
-          policyKind: "pyth",
+          policyKind: "oracle_price",
           reasons: []
         },
         confidenceLevel: "high"
@@ -65,7 +65,7 @@ describe("source-outcome mapping", () => {
           isStale: true,
           validUntilUnixMs: 1000,
           derivedAt: 500,
-          policyKind: "pyth",
+          policyKind: "oracle_price",
           reasons: []
         },
         confidenceLevel: "high"
