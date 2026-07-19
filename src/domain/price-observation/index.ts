@@ -44,3 +44,6 @@ export type {
   OraclePricePayloadV1,
   ExecutableQuotePayloadV1
 } from "../../contracts/normalized-price-observation.js";
+
+export { enrichPriceObservation } from "./enrich.js";
+export type { EnrichPriceObservationInput } from "./enrich.js";
