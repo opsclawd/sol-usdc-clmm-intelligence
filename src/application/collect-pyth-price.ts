@@ -32,7 +32,8 @@ import type { OraclePricePayloadV1 } from "../contracts/normalized-price-observa
 import {
   ingestRawObservation,
   RawObservationConflictError,
-  type IngestRawObservationDeps
+  type IngestRawObservationDeps,
+  PostPersistenceOutputError
 } from "./ingest-raw-observation.js";
 import { HttpRequestError } from "../ports/http.js";
 import type {
@@ -46,7 +47,8 @@ import type {
   UnavailableResult,
   MalformedResult,
   NoRouteResult,
-  ConflictResult
+  ConflictResult,
+  FailedResult
 } from "./price-source-result.js";
 
 import type { CollectionRunContext } from "./create-collection-run-context.js";
@@ -377,6 +379,18 @@ export async function collectPythPrice(
         existingPayloadHash: err.existingPayloadHash,
         incomingPayloadHash: err.incomingPayloadHash
       } as ConflictResult;
+    }
+    if (err instanceof Error && err.name === "PostPersistenceOutputError") {
+      const ppe = err as PostPersistenceOutputError;
+      return {
+        status: "failed",
+        summary: ppe.message,
+        durableEvidence: {
+          rawObservationId: ppe.rawObservationId,
+          normalizedCount: ppe.normalizedCount
+        },
+        hasUsableEvidence: true
+      } as FailedResult;
     }
     return mapHttpError(err);
   }

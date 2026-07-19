@@ -4,6 +4,7 @@ import type { EnvReader } from "../ports/env.js";
 import type { Clock } from "../ports/clock.js";
 import type { RawObservationRepo } from "../ports/observation-repo.js";
 import type { NormalizedObservationRepo } from "../ports/normalized-observation-repo.js";
+import { mapSourceError } from "./source-outcome.js";
 import type { SourceCollectionOutcome, SourceWarning } from "../contracts/collection-run.js";
 import type { Freshness, ConfidenceLevel, Source } from "../contracts/taxonomy.js";
 import {
@@ -269,6 +270,10 @@ export async function collectOrcaPoolStatistics(
       diagnostic: null
     };
   } catch (err) {
+    if (err instanceof Error && err.name === "PostPersistenceOutputError") {
+      return mapSourceError(SOURCE_KEY, SOURCE, err);
+    }
+
     let rawObservationId: number | null = null;
     try {
       const existing = await rawObservationRepo.findByIdentity(SOURCE, sourceObservationKey);

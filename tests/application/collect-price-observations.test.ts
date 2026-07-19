@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { collectPriceObservations } from "../../src/application/collect-price-observations.js";
-import type { AcceptedResult } from "../../src/application/price-source-result.js";
 import { HttpRequestError } from "../../src/ports/http.js";
 import { FakeHttp, FakeJsonStore, FakeEnv, FakeClock } from "../fakes/index.js";
 import { FakeObservationRepo } from "../fakes/fake-observation-repo.js";
@@ -84,12 +83,8 @@ describe("collectPriceObservations", () => {
     expect(result.pyth.status).toBe("accepted");
     expect(result.jupiter.status).toBe("accepted");
 
-    const pythRow = await deps.rawObservationRepo.findById(
-      (result.pyth as AcceptedResult).rawObservationId!
-    );
-    const jupRow = await deps.rawObservationRepo.findById(
-      (result.jupiter as AcceptedResult).rawObservationId!
-    );
+    const pythRow = await deps.rawObservationRepo.findById(result.pyth.rawObservationId!);
+    const jupRow = await deps.rawObservationRepo.findById(result.jupiter.rawObservationId!);
     expect(pythRow?.sourceRequestMeta).toEqual(expect.objectContaining({ runId: "run-123" }));
     expect(jupRow?.sourceRequestMeta).toEqual(expect.objectContaining({ runId: "run-123" }));
   });
@@ -244,9 +239,9 @@ describe("collectPriceObservations", () => {
       )
     });
     const resultFail = await collectPriceObservations(depsFail, VALID_CONTEXT);
-    expect(resultFail.pyth).not.toHaveProperty("rawObservationId");
-    expect(resultFail.pyth).not.toHaveProperty("normalizedCount");
-    expect(resultFail.jupiter).not.toHaveProperty("rawObservationId");
-    expect(resultFail.jupiter).not.toHaveProperty("normalizedCount");
+    expect(resultFail.pyth.rawObservationId).toBeNull();
+    expect(resultFail.pyth.normalizedCount).toBe(0);
+    expect(resultFail.jupiter.rawObservationId).toBeNull();
+    expect(resultFail.jupiter.normalizedCount).toBe(0);
   });
 });
