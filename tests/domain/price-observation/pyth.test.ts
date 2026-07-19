@@ -96,7 +96,7 @@ describe("Pyth Oracle Price Processing", () => {
       const { acceptPythEnvelope } = await import("../../../src/domain/price-observation/pyth.js");
       const envelope = makePythHermesEnvelopeWithExtraFields();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = acceptPythEnvelope(envelope as any, SOL_USD_FEED_ID);
+      const result = acceptPythEnvelope(envelope as any, SOL_USD_FEED_ID) as any;
       expect(result.envelope.extraField).toBe("should be retained");
       expect(result.envelope.nested.data).toBe(42);
     });
@@ -216,7 +216,7 @@ describe("Pyth Oracle Price Processing", () => {
       expect(result.confidenceRatio).toBe("0.01");
     });
 
-    it("adds oracle_confidence_wide warning when ratio exceeds 100 bps", async () => {
+    it("adds wide_confidence_interval warning when ratio exceeds 100 bps", async () => {
       const { normalizePythPrice } = await import("../../../src/domain/price-observation/pyth.js");
       const envelope = makePythHermesEnvelope({
         parsed: [
@@ -230,7 +230,7 @@ describe("Pyth Oracle Price Processing", () => {
         ]
       });
       const result = normalizePythPrice(envelope, SOL_USD_FEED_ID);
-      expect(result.warnings).toContain("oracle_confidence_wide");
+      expect(result.warnings).toContain("wide_confidence_interval");
     });
 
     it("does not add warning when ratio is at or below 100 bps", async () => {

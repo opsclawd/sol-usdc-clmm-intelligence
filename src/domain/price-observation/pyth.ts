@@ -126,7 +126,7 @@ export function normalizePythPrice(
 
   const ratioBpsValue = (BigInt(confidenceAtomic) * BigInt(10000)) / BigInt(priceAtomic);
   if (ratioBpsValue > BigInt(100)) {
-    warnings.push("oracle_confidence_wide");
+    warnings.push("wide_confidence_interval");
   }
 
   const observedAtUnixMs = priceUpdate.price.timestamp * 1000;

@@ -1,21 +1,10 @@
-export interface PythHermesParsedPrice {
-  readonly price: string;
-  readonly confidence: string;
-  readonly exponent: number;
-  readonly status: "trading" | "halted" | "auction" | "unknown";
-  readonly timestamp: number;
-}
+import type {
+  PythHermesEnvelope,
+  PythHermesPriceUpdate,
+  PythHermesParsedPrice
+} from "../../src/domain/price-observation/pyth.js";
 
-export interface PythHermesEnvelope {
-  readonly binary: string;
-  readonly parsed: readonly PythHermesParsedPrice[];
-}
-
-export interface PythHermesPriceUpdate {
-  readonly id: string;
-  readonly price: PythHermesParsedPrice;
-  readonly slot: number;
-}
+export { PythHermesEnvelope, PythHermesPriceUpdate, PythHermesParsedPrice };
 
 export const SOL_USD_FEED_ID = "0xef0d8b6fda2ceba41da15d4095d2da0a20eb45e80c3700d8e0ea47d0f1be8d9d";
 
@@ -54,8 +43,8 @@ export function makePythHermesPriceUpdate(
 }
 
 export function makePythHermesEnvelopeWithExtraFields(): PythHermesEnvelope & {
-  readonly extraField: string;
-  readonly nested: { readonly data: number };
+  extraField: string;
+  nested: { data: number };
 } {
   return {
     binary: "base64encodedbinarydata",
