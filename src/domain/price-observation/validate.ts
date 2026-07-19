@@ -70,7 +70,7 @@ const routeSummaryAvailableSchema = z.object({
 
 const routeSummaryUnavailableSchema = z.object({
   routeAvailable: z.literal(false),
-  failureReason: z.string()
+  failureReason: z.string().optional()
 });
 
 const routeSummarySchema = z.union([routeSummaryAvailableSchema, routeSummaryUnavailableSchema]);
@@ -84,7 +84,7 @@ const quoteDataSchema = z.object({
   fetchedAtUnixMs: finiteNumber()
 });
 
-export const oraclePricePayloadV1Schema: z.ZodType<OraclePricePayloadV1> = z.object({
+export const oraclePricePayloadV1Schema = z.object({
   kind: z.literal("oracle_price"),
   schemaVersion: z.literal(1),
   pair: z.literal("SOL/USDC"),
@@ -96,7 +96,7 @@ export const oraclePricePayloadV1Schema: z.ZodType<OraclePricePayloadV1> = z.obj
   warnings: z.array(priceObservationWarningSchema)
 });
 
-export const executableQuotePayloadV1Schema: z.ZodType<ExecutableQuotePayloadV1> = z.object({
+export const executableQuotePayloadV1Schema = z.object({
   kind: z.literal("executable_quote"),
   schemaVersion: z.literal(1),
   pair: z.literal("SOL/USDC"),
@@ -140,7 +140,7 @@ export function acceptExecutableQuotePayload(payload: unknown): ExecutableQuoteP
     if (!issue) throw new PriceObservationValidationError("unknown", "validation failed");
     throw new PriceObservationValidationError(issue.path.join("."), issue.message);
   }
-  return result.data;
+  return result.data as ExecutableQuotePayloadV1;
 }
 
 export function acceptPriceNormalizedCandidate(
@@ -152,5 +152,5 @@ export function acceptPriceNormalizedCandidate(
     if (!issue) throw new PriceObservationValidationError("unknown", "validation failed");
     throw new PriceObservationValidationError(issue.path.join("."), issue.message);
   }
-  return result.data;
+  return result.data as OraclePricePayloadV1 | ExecutableQuotePayloadV1;
 }
