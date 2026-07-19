@@ -44,6 +44,11 @@ export type TimeoutResult = Readonly<{
   summary: string;
 }>;
 
+export type NetworkResult = Readonly<{
+  status: "network";
+  summary: string;
+}>;
+
 export type UnavailableResult = Readonly<{
   status: "unavailable";
   summary: string;
@@ -78,6 +83,7 @@ export type PriceSourceResult =
   | StaleResult
   | DegradedResult
   | TimeoutResult
+  | NetworkResult
   | UnavailableResult
   | MalformedResult
   | NoRouteResult
@@ -105,6 +111,8 @@ export function safeSummary(result: PriceSourceResult): string {
       return `degraded|id=${result.rawObservationId}|reason=${result.reason}|warnings=${result.warnings.join(",")}`;
     case "timeout":
       return `timeout|${redactSecrets(result.summary)}`;
+    case "network":
+      return `network|${redactSecrets(result.summary)}`;
     case "unavailable":
       return `unavailable|${redactSecrets(result.summary)}|status=${result.httpStatus}`;
     case "malformed":

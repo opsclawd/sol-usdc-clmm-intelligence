@@ -3,8 +3,18 @@ import type { JsonStore } from "../ports/json-store.js";
 import type { EnvReader } from "../ports/env.js";
 import type { Clock } from "../ports/clock.js";
 import type { RawObservationRepo } from "../ports/observation-repo.js";
-import type { NormalizedObservationRepo } from "../ports/normalized-observation-repo.js";
-import type { Source, Freshness, ConfidenceLevel } from "../contracts/taxonomy.js";
+import type {
+  NormalizedObservationRepo,
+  NormalizedObservationInsert
+} from "../ports/normalized-observation-repo.js";
+import type {
+  Freshness,
+  ConfidenceLevel,
+  ObservationKind,
+  SignalClass,
+  EvidenceFamily,
+  Confidence
+} from "../contracts/taxonomy.js";
 import {
   acceptPythEnvelope,
   derivePythSourceObservationKey,
@@ -32,6 +42,7 @@ import type {
   StaleResult,
   DegradedResult,
   TimeoutResult,
+  NetworkResult,
   UnavailableResult,
   MalformedResult,
   NoRouteResult,
@@ -55,7 +66,7 @@ interface RedactedRequestMeta {
   readonly runId: string | null;
 }
 
-const SOURCE: Source = "pyth-hermes";
+const SOURCE = "pyth-hermes" as const;
 const SCHEMA_VERSION = 1;
 const DEFAULT_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_ATTEMPTS = 2;
@@ -104,7 +115,7 @@ function mapHttpError(err: unknown): PriceSourceResult {
       case "timeout":
         return { status: "timeout", summary: err.message } as TimeoutResult;
       case "network":
-        return { status: "network" as const, summary: err.message };
+        return { status: "network", summary: err.message } as NetworkResult;
       case "invalid_json":
         return { status: "malformed", summary: err.message } as MalformedResult;
       case "http_status":
@@ -151,11 +162,12 @@ export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<Pric
   let acceptResult: AcceptPythEnvelopeResult;
 
   try {
-    const response = await http.getJson<PythHermesEnvelope>(url, {
-      headers: Object.keys(headers).length > 0 ? headers : undefined,
+    const requestOptions = {
+      ...(Object.keys(headers).length > 0 && { headers }),
       timeoutMs: DEFAULT_TIMEOUT_MS,
       maxAttempts: DEFAULT_MAX_ATTEMPTS
-    });
+    };
+    const response = await http.getJson<PythHermesEnvelope>(url, requestOptions);
     envelope = response;
     acceptResult = acceptPythEnvelope(envelope, feedId);
   } catch (err) {
@@ -239,20 +251,21 @@ export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<Pric
       insertNormalized: async (enriched, candidates, rawRow) => {
         if (enriched.length === 0) return 0;
 
-        const entry = getObservationKindEntry(enriched[0]!.observationKind);
+        const entry = getObservationKindEntry(enriched[0]!.observationKind as ObservationKind);
         const normInserts = enriched.map((e, i) => {
           const cand = candidates[i]!;
+          const conf = e.confidence as Confidence;
           return {
             rawObservationId: rawRow.id,
             source: SOURCE,
             observationKind: cand.kind,
-            signalClass: e.signalClass,
-            evidenceFamily: e.evidenceFamily,
+            signalClass: e.signalClass as SignalClass,
+            evidenceFamily: e.evidenceFamily as EvidenceFamily,
             payload: cand as OraclePricePayloadV1,
             payloadHash: e.payloadHash,
-            confidence: e.confidence,
-            confidenceComposite: e.confidence.compositeScore,
-            confidenceLevel: e.confidence.level,
+            confidence: conf,
+            confidenceComposite: conf.compositeScore,
+            confidenceLevel: conf.level,
             validUntilUnixMs: e.validUntilUnixMs,
             isStale: e.isStale,
             staleBehavior: entry.freshnessPolicy.staleBehavior,
@@ -261,7 +274,9 @@ export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<Pric
           };
         });
 
-        await normalizedObservationRepo.insertMany(normInserts);
+        await normalizedObservationRepo.insertMany(
+          normInserts as readonly NormalizedObservationInsert[]
+        );
         return normInserts.length;
       }
     });
