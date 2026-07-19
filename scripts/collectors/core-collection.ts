@@ -15,7 +15,7 @@ function redactSecretMentions(text: string): string {
     "secret"
   ];
   for (const key of keys) {
-    const regex = new RegExp(`(${key})\\s*([=:]\\s*|\\s+)([a-zA-Z0-9_-]+)`, "gi");
+    const regex = new RegExp(`(${key})\\s*([=:]\\s*|\\s+)(\\S+)`, "gi");
     redacted = redacted.replace(regex, "[REDACTED]");
   }
   for (const key of keys) {

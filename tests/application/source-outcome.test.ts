@@ -163,6 +163,16 @@ describe("source-outcome mapping", () => {
       expect(clean.toLowerCase()).toContain("[redacted]");
     });
 
+    it("redacts secrets with non-alphanumeric characters like dots, pluses, or slashes", () => {
+      const dirty =
+        "Error: api_key=eyJhbGciOi.eyJzdWIiOi.SflKxwRJSMe/KKF2QT4fwpMe+g, token=abc.def+ghi/jkl";
+      const clean = redactDiagnostic(dirty);
+      expect(clean).not.toContain("eyJhbGciOi");
+      expect(clean).not.toContain("SflKxwRJSMe");
+      expect(clean).not.toContain("abc.def");
+      expect(clean.toLowerCase()).toContain("[redacted]");
+    });
+
     it("maps errors with redacted diagnostics", () => {
       const unexpectedErr = new Error("failed: secret api_key=123");
       const mapped = mapSourceError("pyth", "pyth-hermes", unexpectedErr);
