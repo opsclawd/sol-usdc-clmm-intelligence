@@ -99,7 +99,7 @@ export const observationKindRegistry = {
     },
     provenanceRequirements: {
       ...DEFAULT_PROVENANCE_REQUIREMENTS,
-      allowedSourceRefs: ["pyth-hermes", "jupiter-quote"]
+      allowedSourceRefs: ["pyth-hermes", "jupiter-price", "jupiter-price-v3"]
     },
     active: true,
     schemaVersion: 1
@@ -127,7 +127,7 @@ export const observationKindRegistry = {
     },
     provenanceRequirements: {
       ...DEFAULT_PROVENANCE_REQUIREMENTS,
-      allowedSourceRefs: ["pyth-hermes", "jupiter-quote"]
+      allowedSourceRefs: ["jupiter-quote"]
     },
     active: true,
     schemaVersion: 1

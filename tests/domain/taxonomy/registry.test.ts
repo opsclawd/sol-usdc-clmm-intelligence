@@ -234,15 +234,18 @@ describe("registers source-independent price kinds with exclude-on-stale policie
     expect(executableQuoteEntry).not.toHaveProperty("source");
   });
 
-  it("oracle_price allows pyth-hermes and jupiter-quote as provenance sources", () => {
+  it("oracle_price allows pyth-hermes, jupiter-price, and jupiter-price-v3 as provenance sources", () => {
     expect(oraclePriceEntry.provenanceRequirements.allowedSourceRefs).toContain("pyth-hermes");
-    expect(oraclePriceEntry.provenanceRequirements.allowedSourceRefs).toContain("jupiter-quote");
+    expect(oraclePriceEntry.provenanceRequirements.allowedSourceRefs).toContain("jupiter-price");
+    expect(oraclePriceEntry.provenanceRequirements.allowedSourceRefs).toContain("jupiter-price-v3");
   });
 
-  it("executable_quote allows pyth-hermes and jupiter-quote as provenance sources", () => {
-    expect(executableQuoteEntry.provenanceRequirements.allowedSourceRefs).toContain("pyth-hermes");
+  it("executable_quote allows jupiter-quote as provenance source", () => {
     expect(executableQuoteEntry.provenanceRequirements.allowedSourceRefs).toContain(
       "jupiter-quote"
+    );
+    expect(executableQuoteEntry.provenanceRequirements.allowedSourceRefs).not.toContain(
+      "pyth-hermes"
     );
   });
 });
