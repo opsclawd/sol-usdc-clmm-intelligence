@@ -46,7 +46,7 @@ export interface ExecutableQuotePayloadV1 {
     readonly quoteDecimals: number;
   };
   readonly quoteData: {
-    readonly price: string;
+    readonly price: string | null;
     readonly slippageBps: number;
     readonly thresholdBps: number;
     readonly exactProbe: "exactIn" | "exactOut";
@@ -58,15 +58,20 @@ export interface ExecutableQuotePayloadV1 {
     readonly observedAtUnixMs: number;
     readonly slot: number;
   };
-  readonly routeSummary: {
-    readonly routeAvailable: true;
-    readonly hops: ReadonlyArray<{
-      readonly pool: string;
-      readonly inputMint: string;
-      readonly outputMint: string;
-      readonly protocol: string;
-    }>;
-  };
+  readonly routeSummary:
+    | {
+        readonly routeAvailable: true;
+        readonly hops: ReadonlyArray<{
+          readonly pool: string;
+          readonly inputMint: string;
+          readonly outputMint: string;
+          readonly protocol: string;
+        }>;
+      }
+    | {
+        readonly routeAvailable: false;
+        readonly failureReason?: string;
+      };
   readonly warnings: readonly PriceObservationWarning[];
   readonly priceImpactRatio: string;
 }
