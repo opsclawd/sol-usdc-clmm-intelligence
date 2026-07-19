@@ -30,6 +30,16 @@ export {
   type NormalizePythPriceResult
 } from "./pyth.js";
 
+export {
+  acceptJupiterQuote,
+  deriveJupiterSourceObservationKey,
+  normalizeJupiterQuote,
+  type JupiterQuote,
+  type AcceptJupiterQuoteResult,
+  type JupiterSourceIdentityInput,
+  type NormalizeJupiterQuoteResult
+} from "./jupiter.js";
+
 export type {
   OraclePricePayloadV1,
   ExecutableQuotePayloadV1
