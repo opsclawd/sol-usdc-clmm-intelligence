@@ -2,8 +2,17 @@ import type {
   OraclePricePayloadV1,
   ExecutableQuotePayloadV1
 } from "../../contracts/normalized-price-observation.js";
-import type { NormalizedObservationInsert } from "../../db/schema/normalized-observations.js";
-import type { ConfidenceComponents, ConfidenceReason } from "../../contracts/taxonomy.js";
+import type {
+  Source,
+  ObservationKind,
+  SignalClass,
+  EvidenceFamily,
+  Confidence,
+  StaleBehavior,
+  Provenance,
+  ConfidenceComponents,
+  ConfidenceReason
+} from "../../contracts/taxonomy.js";
 import { canonicalizePayload } from "../content-hash.js";
 import { computeFreshness } from "../taxonomy/freshness.js";
 import { computeConfidence } from "../taxonomy/confidence.js";
@@ -49,9 +58,27 @@ function deriveSourceReliabilityDegradation(
   return { sourceReliability: 1, reasons };
 }
 
+export interface EnrichedPriceObservation {
+  readonly rawObservationId: number;
+  readonly source: Source;
+  readonly observationKind: ObservationKind;
+  readonly signalClass: SignalClass;
+  readonly evidenceFamily: EvidenceFamily;
+  readonly payload: unknown;
+  readonly payloadHash: string;
+  readonly confidence: Confidence;
+  readonly confidenceComposite: string;
+  readonly confidenceLevel: string;
+  readonly validUntilUnixMs: number;
+  readonly isStale: boolean;
+  readonly staleBehavior: StaleBehavior | null;
+  readonly provenance: Provenance;
+  readonly receivedAtUnixMs: number;
+}
+
 export async function enrichPriceObservation(
   input: EnrichPriceObservationInput
-): Promise<NormalizedObservationInsert> {
+): Promise<EnrichedPriceObservation> {
   const {
     rawObservationId,
     source,
@@ -144,7 +171,7 @@ export async function enrichPriceObservation(
     derivedFromRefs: [] as readonly {
       refType: "derived_feature";
       id: number;
-      source: string;
+      source: Source;
       payloadHash: string;
     }[],
     processRef: {
@@ -164,15 +191,15 @@ export async function enrichPriceObservation(
     observationKind,
     signalClass: entry.signalClass,
     evidenceFamily: entry.evidenceFamily,
-    payload: payload as NormalizedObservationInsert["payload"],
+    payload,
     payloadHash: canonicalPayloadHash,
-    confidence: confidence as NormalizedObservationInsert["confidence"],
+    confidence,
     confidenceComposite: String(confidence.compositeScore),
     confidenceLevel: confidence.level,
     validUntilUnixMs: freshness.validUntilUnixMs,
     isStale: freshness.isStale,
     staleBehavior: freshnessPolicy.staleBehavior,
-    provenance: provenance as NormalizedObservationInsert["provenance"],
+    provenance,
     receivedAtUnixMs
   };
 }
