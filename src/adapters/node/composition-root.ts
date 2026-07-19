@@ -32,7 +32,7 @@ export interface NodeRuntime {
 }
 
 export function createNodeRuntime(): NodeRuntime {
-  // Resolves environment variables including JUPITER_API_BASE and JUPITER_API_KEY
+  // Resolves environment variables including JUPITER_API_BASE, JUPITER_API_KEY, PYTH_HERMES_BASE_URL, and PYTH_API_KEY
   const env = new ProcessEnvReader();
   let dbPromise: Promise<DbConnection> | undefined;
   let persistencePromise: Promise<Persistence> | undefined;
