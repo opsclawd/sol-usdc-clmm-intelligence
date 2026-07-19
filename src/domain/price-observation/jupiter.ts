@@ -196,14 +196,15 @@ export interface NormalizeJupiterQuoteResult extends ExecutableQuotePayloadV1 {}
 
 function parsePriceImpactToBasisPoints(priceImpactPct: string): string {
   const priceImpactDecimal = BigInt(priceImpactPct.replace(".", ""));
-  const decimalPlaces = priceImpactPct.includes(".") ? priceImpactPct.split(".")[1].length : 0;
+  const decimalIndex = priceImpactPct.indexOf(".");
+  const decimalPlaces = decimalIndex >= 0 ? priceImpactPct.length - decimalIndex - 1 : 0;
   const multiplier = 10n ** BigInt(Math.max(0, 4 - decimalPlaces));
   const bpsValue = priceImpactDecimal * multiplier;
   return String(bpsValue);
 }
 
 export function normalizeJupiterQuote(
-  quote: JupiterQuote,
+  quote: unknown,
   fetchedAtUnixMs: number
 ): NormalizeJupiterQuoteResult {
   const { quote: acceptedQuote } = acceptJupiterQuote(quote);

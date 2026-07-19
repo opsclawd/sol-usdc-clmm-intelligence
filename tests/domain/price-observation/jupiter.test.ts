@@ -350,7 +350,7 @@ describe("Jupiter Executable Quote Processing", () => {
         swapMode: "ExactIn",
         outAmount: "175000000",
         contextSlot: 123456789,
-        routePlan: [makeJupiterQuote().routePlan[0]]
+        routePlan: [makeJupiterQuote().routePlan[0]!]
       });
       expect(() => acceptJupiterQuote(quote)).not.toThrow();
     });
