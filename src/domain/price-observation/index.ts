@@ -9,6 +9,27 @@ export {
   PriceObservationValidationError
 } from "./validate.js";
 
+export {
+  atomicToDecimalString,
+  computeConfidenceBounds,
+  computeConfidenceRatioBps,
+  isValidIntegerString,
+  isValidExponent,
+  isValidTimestamp
+} from "./decimal.js";
+
+export {
+  acceptPythEnvelope,
+  derivePythSourceObservationKey,
+  normalizePythPrice,
+  type PythHermesEnvelope,
+  type PythHermesPriceUpdate,
+  type PythHermesParsedPrice,
+  type AcceptPythEnvelopeResult,
+  type PythSourceIdentityInput,
+  type NormalizePythPriceResult
+} from "./pyth.js";
+
 export type {
   OraclePricePayloadV1,
   ExecutableQuotePayloadV1
