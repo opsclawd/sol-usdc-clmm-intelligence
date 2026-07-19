@@ -13,8 +13,8 @@ export interface CollectPriceObservationsDeps {
   jsonStore: JsonStore;
   env: EnvReader;
   clock: Clock;
-  rawObservationRepo?: RawObservationRepo;
-  normalizedObservationRepo?: NormalizedObservationRepo;
+  rawObservationRepo: RawObservationRepo;
+  normalizedObservationRepo: NormalizedObservationRepo;
 }
 
 export interface CollectPriceObservationsResult {
@@ -33,19 +33,7 @@ function isUsable(result: PriceSourceResult): boolean {
 export async function collectPriceObservations(
   deps: CollectPriceObservationsDeps
 ): Promise<CollectPriceObservationsResult> {
-  const resolvedDeps = { ...deps };
-  if (!resolvedDeps.rawObservationRepo || !resolvedDeps.normalizedObservationRepo) {
-    const rootPath = "../adapters/node/composition-root.js";
-    const { createNodeRuntime } = await import(rootPath);
-    const runtime = createNodeRuntime();
-    const persistence = await runtime.getPersistence();
-    resolvedDeps.rawObservationRepo =
-      resolvedDeps.rawObservationRepo ?? persistence.rawObservationRepo;
-    resolvedDeps.normalizedObservationRepo =
-      resolvedDeps.normalizedObservationRepo ?? persistence.normalizedObservationRepo;
-  }
-
-  const fullDeps = resolvedDeps as CollectPythPriceDeps & CollectJupiterQuoteDeps;
+  const fullDeps = deps as CollectPythPriceDeps & CollectJupiterQuoteDeps;
 
   // Starts both independent source pipelines before awaiting either result
   const pythPromise = collectPythPrice(fullDeps).catch((err): PriceSourceResult => {
