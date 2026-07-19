@@ -107,4 +107,16 @@ export class FakeNormalizedObservationRepo implements NormalizedObservationRepo 
     matches.sort((a, b) => b.receivedAtUnixMs - a.receivedAtUnixMs);
     return matches[0] || null;
   }
+
+  async findByRawObservation(
+    rawObservationId: number,
+    observationKind: ObservationKind
+  ): Promise<NormalizedObservationRow | null> {
+    const matches = this.store.filter(
+      (r) => r.rawObservationId === rawObservationId && r.observationKind === observationKind
+    );
+    if (matches.length === 0) return null;
+    matches.sort((a, b) => b.receivedAtUnixMs - a.receivedAtUnixMs);
+    return matches[0] || null;
+  }
 }

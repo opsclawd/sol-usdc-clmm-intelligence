@@ -61,4 +61,8 @@ export interface NormalizedObservationRepo {
     source: Source,
     observationKind: ObservationKind
   ): Promise<NormalizedObservationRow | null>;
+  findByRawObservation(
+    rawObservationId: number,
+    observationKind: ObservationKind
+  ): Promise<NormalizedObservationRow | null>;
 }

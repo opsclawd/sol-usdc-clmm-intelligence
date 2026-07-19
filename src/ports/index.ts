@@ -12,6 +12,7 @@ export type {
   RawObservationInsert,
   RawInsertOutcome
 } from "./observation-repo.js";
+// Normalized observation repository port interface and rows
 export type {
   NormalizedObservationRepo,
   NormalizedObservationRow,
