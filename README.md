@@ -221,15 +221,30 @@ clmm-v2 /insights/sol-usdc/bundle/:walletId
      advisory output / operator review
 ```
 
-Legacy price-only path (still supported alongside the DB-backed pipeline):
+Durable price data flow (Pyth & Jupiter):
+
+Both Pyth Hermes and Jupiter quote feeds are collected in a raw-first flow and persisted to Postgres before normalization. The Postgres database tables (`raw_observations` and `normalized_observations`) are the absolute authority. The local JSON file `data/latest-price-snapshot.json` is a legacy compatibility snapshot ONLY. If Pyth succeeds but Jupiter quote fails, the job succeeds partially but the compatibility snapshot remains stale (it is NOT overwritten with oracle data).
 
 ```text
-Jupiter price API
-       |
-       v
-data/latest-price-snapshot.json
-       |
-       +--> OpenClaw routine + durable memory
+        Pyth Hermes API              Jupiter Quote API
+               |                             |
+               +--------------+--------------+
+                              v
+             raw_observations (append-only)
+                              |
+                              v
+           normalized_observations (immutable)
+                              |
+            +-----------------+-----------------+
+            v                                   v
+      derived_features             data/latest-price-snapshot.json
+ (future oracle/DEX features)       (Compatibility snapshot fallback)
+                                                |
+                                                v
+                                  OpenClaw routine + memory
+                                                |
+                                                v
+                                    Advisory review / Operator
 ```
 
 ## Future evidence flow
@@ -314,7 +329,7 @@ The render step prints the OpenClaw commands needed to register cron jobs define
 ## Useful commands
 
 ```bash
-pnpm collect:price        # writes data/latest-price-snapshot.json from Jupiter
+pnpm collect:price        # collects Pyth and Jupiter telemetry to Postgres, updates compatibility snapshot
 pnpm collect:clmm-bundle  # fetches and writes SOL/USDC CLMM bundle from clmm-v2
 pnpm db:generate          # generates Drizzle migrations from schema changes
 pnpm db:migrate           # runs Drizzle migrations against DATABASE_URL

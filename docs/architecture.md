@@ -95,13 +95,40 @@ clmm-v2 /insights/sol-usdc/bundle/:walletId
      advisory output / operator review
 ```
 
-Legacy price-only path (still supported alongside the DB-backed pipeline):
+## Durable price data flow (Pyth & Jupiter)
+
+The price telemetry pipeline collects observations from two independent sources before normalizing them. Both sources are collected in a raw-first flow and persisted to Postgres before normalization:
+
+- **Pyth Hermes**: Authenticated oracle feed. Produces `oracle_price` observations.
+- **Jupiter Quote**: Public quote-only API (used as a 50 bps slippage probe). Produces `executable_quote` observations.
 
 ```text
-Jupiter price API
-       |
-       v
-data/latest-price-snapshot.json
-       |
-       +--> OpenClaw routine + durable memory
+        Pyth Hermes API              Jupiter Quote API
+               |                             |
+               +--------------+--------------+
+                              v
+             raw_observations (append-only)
+                              |
+                              v
+           normalized_observations (immutable)
+                              |
+            +-----------------+-----------------+
+            v                                   v
+      derived_features             data/latest-price-snapshot.json
+ (e.g. divergence check,            (Compatibility snapshot fallback)
+  future oracle/DEX feature)                    |
+                                                v
+                                  OpenClaw routine + memory
+                                                |
+                                                v
+                                    Advisory review / Operator
 ```
+
+Key Architectural Invariants:
+
+1. **Postgres Authority**: The database tables (`raw_observations` and `normalized_observations`) are the absolute authority. The local JSON file `data/latest-price-snapshot.json` is a legacy compatibility snapshot ONLY and must never be treated as the source of truth.
+2. **Compatibility Staleness Caveat**: If Pyth collection succeeds but Jupiter quote collection fails, the job succeeds partially but the compatibility snapshot `data/latest-price-snapshot.json` remains stale (it is NOT overwritten with oracle-only price data). Structured warnings are raised, and the operator must check the DB for current facts.
+3. **No Execution/Transaction Authority**: Jupiter quotes are used solely as generic market price evidence. This repository does not construct Solana instructions, sign transactions, or execute swaps.
+4. **Source-Independent Kinds**: Ingestion normalizes raw inputs into generic `oracle_price` and `executable_quote` kinds defined in the signal taxonomy.
+5. **No Derivative Features Yet**: Advanced feature derivation (e.g., oracle/DEX divergence) is out-of-scope for the current implementation.
+6. **Operator Handoff**: `pnpm collect:price` remains the canonical CLI/operator interface for gathering price telemetry.

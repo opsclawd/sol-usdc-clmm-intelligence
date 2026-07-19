@@ -24,13 +24,38 @@ sources:
       - fee_apr
       - volume
 
-  - name: jupiter-price
+  - name: pyth-hermes
+    priority: high
+    type: authenticated-api
+    env: PYTH_HERMES_BASE_URL
+    apiKeyEnv: PYTH_API_KEY
+    feedIdEnv: PYTH_SOL_USD_FEED_ID
+    purpose:
+      - oracle_price
+      - price_sanity_check
+    policy:
+      timeoutMs: 5000
+      maxAttempts: 2
+    limitations:
+      - Requires active feed subscription or hermes endpoint access.
+      - Requires Pyth API key in production environment.
+
+  - name: jupiter-quote
     priority: high
     type: public-api
-    url: https://lite-api.jup.ag/price/v3
+    env: JUPITER_API_BASE
+    apiKeyEnv: JUPITER_API_KEY
     purpose:
-      - realtime_sol_price
+      - executable_quote
       - price_sanity_check
+    policy:
+      timeoutMs: 5000
+      maxAttempts: 2
+      slippageBps: 50
+    limitations:
+      - Slippage-sensitive (configured to 50 bps probe).
+      - Jupiter API Key is required for high rate-limits in production.
+      - Output amount is quote-relative. Freshness is 30 seconds receipt-relative (no wall-clock source timestamp).
 
   - name: defillama-solana
     priority: high
