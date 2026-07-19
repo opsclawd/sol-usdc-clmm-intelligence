@@ -1,6 +1,22 @@
 import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
 import { runPriceObservationsJob } from "../../src/jobs/price-observations-job.js";
 
+function redactSecrets(text: string): string {
+  return text
+    .replace(/api[_-]?key/gi, "[REDACTED]")
+    .replace(/bearer/gi, "[REDACTED]")
+    .replace(/token/gi, "[REDACTED]")
+    .replace(/auth/gi, "[REDACTED]")
+    .replace(/secret/gi, "[REDACTED]");
+}
+
+function secretRedactingReplacer(_key: string, value: unknown): unknown {
+  if (typeof value === "string") {
+    return redactSecrets(value);
+  }
+  return value;
+}
+
 export async function runCollector(): Promise<void> {
   const runtime = createNodeRuntime();
   const persistence = await runtime.getPersistence();
@@ -14,7 +30,7 @@ export async function runCollector(): Promise<void> {
   });
 
   // Prints the structured result (JSON) safely without leaking secrets
-  console.log(JSON.stringify(result, null, 2));
+  console.log(JSON.stringify(result, secretRedactingReplacer, 2));
 
   if (result.shouldFailCommand) {
     process.exitCode = 1;
