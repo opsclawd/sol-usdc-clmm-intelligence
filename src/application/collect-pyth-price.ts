@@ -154,6 +154,9 @@ export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<Pric
   let envelope: PythHermesEnvelope;
   let acceptResult: AcceptPythEnvelopeResult;
   let firstCandidate: ReturnType<typeof normalizePythPrice> | undefined;
+  let enrichedIsStale: boolean | undefined;
+  let enrichedValidUntilUnixMs: number | undefined;
+  let enrichedConfidenceLevel: ConfidenceLevel | undefined;
 
   try {
     const requestOptions = {
@@ -176,7 +179,8 @@ export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<Pric
 
   const sourceObservationKey = await derivePythSourceObservationKey({
     feedId,
-    publishTimeUnixSeconds: acceptResult.priceUpdate.price.timestamp
+    publishTimeUnixSeconds: acceptResult.priceUpdate.price.timestamp,
+    slot: acceptResult.priceUpdate.slot ?? 0
   });
 
   const redactedMeta = buildRedactedMeta({
@@ -241,6 +245,9 @@ export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<Pric
         };
 
         const enriched = await enrichPriceObservation(input);
+        enrichedIsStale = enriched.isStale;
+        enrichedValidUntilUnixMs = enriched.validUntilUnixMs;
+        enrichedConfidenceLevel = enriched.confidenceLevel as ConfidenceLevel;
         return [enriched];
       },
       insertNormalized: async (enriched, candidates, rawRow) => {
@@ -286,29 +293,42 @@ export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<Pric
     let freshness: Freshness;
     let confidenceLevel: ConfidenceLevel;
 
-    const latestNormalized = await normalizedObservationRepo.findLatestByKind(
-      SOURCE,
-      "oracle_price"
-    );
-
-    if (latestNormalized) {
+    if (enrichedIsStale !== undefined) {
       freshness = {
-        isStale: latestNormalized.isStale,
-        validUntilUnixMs: latestNormalized.validUntilUnixMs ?? 0,
+        isStale: enrichedIsStale,
+        validUntilUnixMs: enrichedValidUntilUnixMs ?? 0,
         derivedAt: receivedAtUnixMs,
         policyKind: "oracle_price",
         reasons: []
       };
-      confidenceLevel = (latestNormalized.confidenceLevel as ConfidenceLevel) ?? "medium";
+      confidenceLevel = enrichedConfidenceLevel ?? "medium";
     } else {
-      freshness = {
-        isStale: false,
-        validUntilUnixMs: observedAtUnixMs + 60_000,
-        derivedAt: receivedAtUnixMs,
-        policyKind: "oracle_price",
-        reasons: []
-      };
-      confidenceLevel = "medium";
+      // enrichCandidates is skipped when ingestRawObservation short-circuits on an
+      // already-parsed identical replay, so fall back to the last persisted row.
+      const latestNormalized = await normalizedObservationRepo.findLatestByKind(
+        SOURCE,
+        "oracle_price"
+      );
+
+      if (latestNormalized) {
+        freshness = {
+          isStale: latestNormalized.isStale,
+          validUntilUnixMs: latestNormalized.validUntilUnixMs ?? 0,
+          derivedAt: receivedAtUnixMs,
+          policyKind: "oracle_price",
+          reasons: []
+        };
+        confidenceLevel = (latestNormalized.confidenceLevel as ConfidenceLevel) ?? "medium";
+      } else {
+        freshness = {
+          isStale: false,
+          validUntilUnixMs: observedAtUnixMs + 60_000,
+          derivedAt: receivedAtUnixMs,
+          policyKind: "oracle_price",
+          reasons: []
+        };
+        confidenceLevel = "medium";
+      }
     }
 
     if (freshness.isStale) {

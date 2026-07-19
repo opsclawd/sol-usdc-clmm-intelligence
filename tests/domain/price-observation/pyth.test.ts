@@ -121,11 +121,13 @@ describe("Pyth Oracle Price Processing", () => {
         await import("../../../src/domain/price-observation/pyth.js");
       const key1 = await derivePythSourceObservationKey({
         feedId: SOL_USD_FEED_ID,
-        publishTimeUnixSeconds: 1710000000
+        publishTimeUnixSeconds: 1710000000,
+        slot: 100
       });
       const key2 = await derivePythSourceObservationKey({
         publishTimeUnixSeconds: 1710000000,
-        feedId: SOL_USD_FEED_ID
+        feedId: SOL_USD_FEED_ID,
+        slot: 100
       });
       expect(key1).toBe(key2);
     });
@@ -135,11 +137,13 @@ describe("Pyth Oracle Price Processing", () => {
         await import("../../../src/domain/price-observation/pyth.js");
       const key1 = await derivePythSourceObservationKey({
         feedId: SOL_USD_FEED_ID,
-        publishTimeUnixSeconds: 1710000000
+        publishTimeUnixSeconds: 1710000000,
+        slot: 100
       });
       const key2 = await derivePythSourceObservationKey({
         feedId: "0x0000000000000000000000000000000000000000000000000000000000000000",
-        publishTimeUnixSeconds: 1710000000
+        publishTimeUnixSeconds: 1710000000,
+        slot: 100
       });
       expect(key1).not.toBe(key2);
     });
@@ -149,11 +153,29 @@ describe("Pyth Oracle Price Processing", () => {
         await import("../../../src/domain/price-observation/pyth.js");
       const key1 = await derivePythSourceObservationKey({
         feedId: SOL_USD_FEED_ID,
-        publishTimeUnixSeconds: 1710000000
+        publishTimeUnixSeconds: 1710000000,
+        slot: 100
       });
       const key2 = await derivePythSourceObservationKey({
         feedId: SOL_USD_FEED_ID,
-        publishTimeUnixSeconds: 1710000001
+        publishTimeUnixSeconds: 1710000001,
+        slot: 100
+      });
+      expect(key1).not.toBe(key2);
+    });
+
+    it("changes when slot changes", async () => {
+      const { derivePythSourceObservationKey } =
+        await import("../../../src/domain/price-observation/pyth.js");
+      const key1 = await derivePythSourceObservationKey({
+        feedId: SOL_USD_FEED_ID,
+        publishTimeUnixSeconds: 1710000000,
+        slot: 100
+      });
+      const key2 = await derivePythSourceObservationKey({
+        feedId: SOL_USD_FEED_ID,
+        publishTimeUnixSeconds: 1710000000,
+        slot: 101
       });
       expect(key1).not.toBe(key2);
     });
@@ -163,7 +185,8 @@ describe("Pyth Oracle Price Processing", () => {
         await import("../../../src/domain/price-observation/pyth.js");
       const key = await derivePythSourceObservationKey({
         feedId: SOL_USD_FEED_ID,
-        publishTimeUnixSeconds: 1710000000
+        publishTimeUnixSeconds: 1710000000,
+        slot: 100
       });
       expect(key).toMatch(/^[0-9a-f]{64}$/);
     });
@@ -408,11 +431,13 @@ describe("Pyth Oracle Price Processing", () => {
         await import("../../../src/domain/price-observation/pyth.js");
       const key1 = await derivePythSourceObservationKey({
         feedId: SOL_USD_FEED_ID,
-        publishTimeUnixSeconds: 1710000000
+        publishTimeUnixSeconds: 1710000000,
+        slot: 100
       });
       const key2 = await derivePythSourceObservationKey({
         feedId: SOL_USD_FEED_ID,
-        publishTimeUnixSeconds: 1710000000
+        publishTimeUnixSeconds: 1710000000,
+        slot: 100
       });
       expect(key1).toBe(key2);
     });
@@ -482,7 +507,8 @@ describe("Pyth Oracle Price Processing", () => {
         await import("../../../src/domain/price-observation/pyth.js");
       const key = await derivePythSourceObservationKey({
         feedId: SOL_USD_FEED_ID,
-        publishTimeUnixSeconds: 1710000000
+        publishTimeUnixSeconds: 1710000000,
+        slot: 100
       });
       expect(key).toHaveLength(64);
     });

@@ -79,15 +79,17 @@ export function acceptPythEnvelope(
 export interface PythSourceIdentityInput {
   readonly feedId: string;
   readonly publishTimeUnixSeconds: number;
+  readonly slot: number;
 }
 
 export async function derivePythSourceObservationKey(
   input: PythSourceIdentityInput
 ): Promise<string> {
   const identityPayload = {
-    identityVersion: 1,
+    identityVersion: 2,
     feedId: input.feedId,
-    publishTimeUnixSeconds: input.publishTimeUnixSeconds
+    publishTimeUnixSeconds: input.publishTimeUnixSeconds,
+    slot: input.slot
   };
   return canonicalHash(identityPayload);
 }
