@@ -1,6 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it } from "vitest";
-import type { Source, ParseStatus } from "../../src/contracts/taxonomy.js";
+import type {
+  Source,
+  ParseStatus,
+  ObservationKind,
+  SignalClass,
+  EvidenceFamily,
+  Confidence,
+  Provenance
+} from "../../src/contracts/taxonomy.js";
 import type {
   RawObservationRepo,
   RawInsertOutcome,
@@ -32,16 +40,16 @@ export class RawObservationConflictError extends Error {
 
 interface TestCandidate {
   id: number;
-  kind: string;
+  kind: ObservationKind;
   payload: unknown;
 }
 
 interface TestNormalized {
-  observationKind: string;
-  signalClass: "deterministic" | "probabilistic" | "contextual";
-  evidenceFamily: "clmm_state" | "price_quality";
+  observationKind: ObservationKind;
+  signalClass: SignalClass;
+  evidenceFamily: EvidenceFamily;
   payloadHash: string;
-  confidence: { compositeScore: number; level: string };
+  confidence: Confidence;
   freshness: { isStale: boolean; validUntilUnixMs: number };
 }
 
@@ -199,6 +207,41 @@ async function makeCanonicalWithHash(
   return { payloadCanonical: canonical, payloadHash: hash };
 }
 
+function makeTestConfidence(
+  level: "low" | "medium" | "high" = "high",
+  compositeScore: number = 0.9
+): Confidence {
+  return {
+    components: {
+      sourceReliability: 1,
+      dataCompleteness: 1,
+      derivationConfidence: 1,
+      llmConfidence: null
+    },
+    compositeScore,
+    level,
+    weightingVersion: "test-v1",
+    reasons: []
+  };
+}
+
+function makeTestProvenance(): Provenance {
+  return {
+    sourceRefs: [],
+    rawObservationRefs: [],
+    derivedFromRefs: [],
+    processRef: {
+      collector: "test-collector",
+      jobName: "test-job",
+      pipelineRunId: null,
+      codeVersion: "test-v1",
+      modelVersion: null
+    },
+    codeVersion: "test-v1",
+    runId: null
+  };
+}
+
 describe("ingestRawObservation", () => {
   describe("persists raw before normalized and parsed before compatibility output", () => {
     it("enforces durable ordering", async () => {
@@ -251,24 +294,24 @@ describe("ingestRawObservation", () => {
               signalClass: "deterministic" as const,
               evidenceFamily: "clmm_state" as const,
               payloadHash: "hash",
-              confidence: { compositeScore: 0.9, level: "high" },
+              confidence: makeTestConfidence(),
               freshness: { isStale: false, validUntilUnixMs: 2000 }
             })),
           insertNormalized: async (normals) => {
             const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
               rawObservationId: 1,
               source: TEST_SOURCE,
-              observationKind: n.observationKind as any,
+              observationKind: n.observationKind,
               signalClass: n.signalClass,
               evidenceFamily: n.evidenceFamily,
               payload: {},
               payloadHash: n.payloadHash,
-              confidence: n.confidence as any,
+              confidence: n.confidence,
               confidenceComposite: n.confidence.compositeScore,
               confidenceLevel: n.confidence.level,
               validUntilUnixMs: n.freshness.validUntilUnixMs,
               isStale: n.freshness.isStale,
-              provenance: {},
+              provenance: makeTestProvenance(),
               receivedAtUnixMs: 1002
             }));
             const results = await normRepo.insertMany(inserts);
@@ -322,24 +365,24 @@ describe("ingestRawObservation", () => {
               signalClass: "deterministic" as const,
               evidenceFamily: "clmm_state" as const,
               payloadHash: "hash",
-              confidence: { compositeScore: 0.9, level: "high" },
+              confidence: makeTestConfidence(),
               freshness: { isStale: false, validUntilUnixMs: 2000 }
             })),
           insertNormalized: async (normals) => {
             const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
               rawObservationId: 1,
               source: TEST_SOURCE,
-              observationKind: n.observationKind as any,
+              observationKind: n.observationKind,
               signalClass: n.signalClass,
               evidenceFamily: n.evidenceFamily,
               payload: {},
               payloadHash: n.payloadHash,
-              confidence: n.confidence as any,
+              confidence: n.confidence,
               confidenceComposite: n.confidence.compositeScore,
               confidenceLevel: n.confidence.level,
               validUntilUnixMs: n.freshness.validUntilUnixMs,
               isStale: n.freshness.isStale,
-              provenance: {},
+              provenance: makeTestProvenance(),
               receivedAtUnixMs: 1002
             }));
             const results = await normRepo.insertMany(inserts);
@@ -372,24 +415,24 @@ describe("ingestRawObservation", () => {
               signalClass: "deterministic" as const,
               evidenceFamily: "clmm_state" as const,
               payloadHash: "hash",
-              confidence: { compositeScore: 0.9, level: "high" },
+              confidence: makeTestConfidence(),
               freshness: { isStale: false, validUntilUnixMs: 2000 }
             })),
           insertNormalized: async (normals) => {
             const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
               rawObservationId: 1,
               source: TEST_SOURCE,
-              observationKind: n.observationKind as any,
+              observationKind: n.observationKind,
               signalClass: n.signalClass,
               evidenceFamily: n.evidenceFamily,
               payload: {},
               payloadHash: n.payloadHash,
-              confidence: n.confidence as any,
+              confidence: n.confidence,
               confidenceComposite: n.confidence.compositeScore,
               confidenceLevel: n.confidence.level,
               validUntilUnixMs: n.freshness.validUntilUnixMs,
               isStale: n.freshness.isStale,
-              provenance: {},
+              provenance: makeTestProvenance(),
               receivedAtUnixMs: 1002
             }));
             const results = await normRepo.insertMany(inserts);
@@ -431,24 +474,24 @@ describe("ingestRawObservation", () => {
               signalClass: "deterministic" as const,
               evidenceFamily: "clmm_state" as const,
               payloadHash: "hash",
-              confidence: { compositeScore: 0.9, level: "high" },
+              confidence: makeTestConfidence(),
               freshness: { isStale: false, validUntilUnixMs: 2000 }
             })),
           insertNormalized: async (normals) => {
             const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
               rawObservationId: 1,
               source: TEST_SOURCE,
-              observationKind: n.observationKind as any,
+              observationKind: n.observationKind,
               signalClass: n.signalClass,
               evidenceFamily: n.evidenceFamily,
               payload: {},
               payloadHash: n.payloadHash,
-              confidence: n.confidence as any,
+              confidence: n.confidence,
               confidenceComposite: n.confidence.compositeScore,
               confidenceLevel: n.confidence.level,
               validUntilUnixMs: n.freshness.validUntilUnixMs,
               isStale: n.freshness.isStale,
-              provenance: {},
+              provenance: makeTestProvenance(),
               receivedAtUnixMs: 1002
             }));
             const results = await normRepo.insertMany(inserts);
@@ -481,24 +524,24 @@ describe("ingestRawObservation", () => {
               signalClass: "deterministic" as const,
               evidenceFamily: "clmm_state" as const,
               payloadHash: "hash",
-              confidence: { compositeScore: 0.9, level: "high" },
+              confidence: makeTestConfidence(),
               freshness: { isStale: false, validUntilUnixMs: 2000 }
             })),
           insertNormalized: async (normals) => {
             const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
               rawObservationId: 1,
               source: TEST_SOURCE,
-              observationKind: n.observationKind as any,
+              observationKind: n.observationKind,
               signalClass: n.signalClass,
               evidenceFamily: n.evidenceFamily,
               payload: {},
               payloadHash: n.payloadHash,
-              confidence: n.confidence as any,
+              confidence: n.confidence,
               confidenceComposite: n.confidence.compositeScore,
               confidenceLevel: n.confidence.level,
               validUntilUnixMs: n.freshness.validUntilUnixMs,
               isStale: n.freshness.isStale,
-              provenance: {},
+              provenance: makeTestProvenance(),
               receivedAtUnixMs: 1002
             }));
             const results = await normRepo.insertMany(inserts);
@@ -541,24 +584,24 @@ describe("ingestRawObservation", () => {
               signalClass: "deterministic" as const,
               evidenceFamily: "clmm_state" as const,
               payloadHash: "hash",
-              confidence: { compositeScore: 0.9, level: "high" },
+              confidence: makeTestConfidence(),
               freshness: { isStale: false, validUntilUnixMs: 2000 }
             })),
           insertNormalized: async (normals) => {
             const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
               rawObservationId: 1,
               source: TEST_SOURCE,
-              observationKind: n.observationKind as any,
+              observationKind: n.observationKind,
               signalClass: n.signalClass,
               evidenceFamily: n.evidenceFamily,
               payload: {},
               payloadHash: n.payloadHash,
-              confidence: n.confidence as any,
+              confidence: n.confidence,
               confidenceComposite: n.confidence.compositeScore,
               confidenceLevel: n.confidence.level,
               validUntilUnixMs: n.freshness.validUntilUnixMs,
               isStale: n.freshness.isStale,
-              provenance: {},
+              provenance: makeTestProvenance(),
               receivedAtUnixMs: 1002
             }));
             const results = await normRepo.insertMany(inserts);
@@ -591,24 +634,24 @@ describe("ingestRawObservation", () => {
               signalClass: "deterministic" as const,
               evidenceFamily: "clmm_state" as const,
               payloadHash: "hash",
-              confidence: { compositeScore: 0.9, level: "high" },
+              confidence: makeTestConfidence(),
               freshness: { isStale: false, validUntilUnixMs: 2000 }
             })),
           insertNormalized: async (normals) => {
             const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
               rawObservationId: 1,
               source: TEST_SOURCE,
-              observationKind: n.observationKind as any,
+              observationKind: n.observationKind,
               signalClass: n.signalClass,
               evidenceFamily: n.evidenceFamily,
               payload: {},
               payloadHash: n.payloadHash,
-              confidence: n.confidence as any,
+              confidence: n.confidence,
               confidenceComposite: n.confidence.compositeScore,
               confidenceLevel: n.confidence.level,
               validUntilUnixMs: n.freshness.validUntilUnixMs,
               isStale: n.freshness.isStale,
-              provenance: {},
+              provenance: makeTestProvenance(),
               receivedAtUnixMs: 1002
             }));
             const results = await normRepo.insertMany(inserts);
@@ -658,24 +701,24 @@ describe("ingestRawObservation", () => {
               signalClass: "deterministic" as const,
               evidenceFamily: "clmm_state" as const,
               payloadHash: "hash",
-              confidence: { compositeScore: 0.9, level: "high" },
+              confidence: makeTestConfidence(),
               freshness: { isStale: false, validUntilUnixMs: 2000 }
             })),
           insertNormalized: async (normals) => {
             const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
               rawObservationId: 1,
               source: TEST_SOURCE,
-              observationKind: n.observationKind as any,
+              observationKind: n.observationKind,
               signalClass: n.signalClass,
               evidenceFamily: n.evidenceFamily,
               payload: {},
               payloadHash: n.payloadHash,
-              confidence: n.confidence as any,
+              confidence: n.confidence,
               confidenceComposite: n.confidence.compositeScore,
               confidenceLevel: n.confidence.level,
               validUntilUnixMs: n.freshness.validUntilUnixMs,
               isStale: n.freshness.isStale,
-              provenance: {},
+              provenance: makeTestProvenance(),
               receivedAtUnixMs: 1002
             }));
             const results = await normRepo.insertMany(inserts);
@@ -704,24 +747,24 @@ describe("ingestRawObservation", () => {
                 signalClass: "deterministic" as const,
                 evidenceFamily: "clmm_state" as const,
                 payloadHash: "hash",
-                confidence: { compositeScore: 0.9, level: "high" },
+                confidence: makeTestConfidence(),
                 freshness: { isStale: false, validUntilUnixMs: 2000 }
               })),
             insertNormalized: async (normals) => {
               const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
                 rawObservationId: 1,
                 source: TEST_SOURCE,
-                observationKind: n.observationKind as any,
+                observationKind: n.observationKind,
                 signalClass: n.signalClass,
                 evidenceFamily: n.evidenceFamily,
                 payload: {},
                 payloadHash: n.payloadHash,
-                confidence: n.confidence as any,
+                confidence: n.confidence,
                 confidenceComposite: n.confidence.compositeScore,
                 confidenceLevel: n.confidence.level,
                 validUntilUnixMs: n.freshness.validUntilUnixMs,
                 isStale: n.freshness.isStale,
-                provenance: {},
+                provenance: makeTestProvenance(),
                 receivedAtUnixMs: 1002
               }));
               const results = await normRepo.insertMany(inserts);
@@ -768,24 +811,24 @@ describe("ingestRawObservation", () => {
                 signalClass: "deterministic" as const,
                 evidenceFamily: "clmm_state" as const,
                 payloadHash: "hash",
-                confidence: { compositeScore: 0.9, level: "high" },
+                confidence: makeTestConfidence(),
                 freshness: { isStale: false, validUntilUnixMs: 2000 }
               })),
             insertNormalized: async (normals) => {
               const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
                 rawObservationId: 1,
                 source: TEST_SOURCE,
-                observationKind: n.observationKind as any,
+                observationKind: n.observationKind,
                 signalClass: n.signalClass,
                 evidenceFamily: n.evidenceFamily,
                 payload: {},
                 payloadHash: n.payloadHash,
-                confidence: n.confidence as any,
+                confidence: n.confidence,
                 confidenceComposite: n.confidence.compositeScore,
                 confidenceLevel: n.confidence.level,
                 validUntilUnixMs: n.freshness.validUntilUnixMs,
                 isStale: n.freshness.isStale,
-                provenance: {},
+                provenance: makeTestProvenance(),
                 receivedAtUnixMs: 1002
               }));
               const results = await normRepo.insertMany(inserts);
@@ -827,24 +870,24 @@ describe("ingestRawObservation", () => {
               signalClass: "deterministic" as const,
               evidenceFamily: "clmm_state" as const,
               payloadHash: "hash",
-              confidence: { compositeScore: 0.9, level: "high" },
+              confidence: makeTestConfidence(),
               freshness: { isStale: false, validUntilUnixMs: 2000 }
             })),
           insertNormalized: async (normals) => {
             const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
               rawObservationId: 1,
               source: TEST_SOURCE,
-              observationKind: n.observationKind as any,
+              observationKind: n.observationKind,
               signalClass: n.signalClass,
               evidenceFamily: n.evidenceFamily,
               payload: {},
               payloadHash: n.payloadHash,
-              confidence: n.confidence as any,
+              confidence: n.confidence,
               confidenceComposite: n.confidence.compositeScore,
               confidenceLevel: n.confidence.level,
               validUntilUnixMs: n.freshness.validUntilUnixMs,
               isStale: n.freshness.isStale,
-              provenance: {},
+              provenance: makeTestProvenance(),
               receivedAtUnixMs: 1002
             }));
             const results = await normRepo.insertMany(inserts);
@@ -880,24 +923,24 @@ describe("ingestRawObservation", () => {
                 signalClass: "deterministic" as const,
                 evidenceFamily: "clmm_state" as const,
                 payloadHash: "hash",
-                confidence: { compositeScore: 0.9, level: "high" },
+                confidence: makeTestConfidence(),
                 freshness: { isStale: false, validUntilUnixMs: 2000 }
               })),
             insertNormalized: async (normals) => {
               const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
                 rawObservationId: 1,
                 source: TEST_SOURCE,
-                observationKind: n.observationKind as any,
+                observationKind: n.observationKind,
                 signalClass: n.signalClass,
                 evidenceFamily: n.evidenceFamily,
                 payload: {},
                 payloadHash: n.payloadHash,
-                confidence: n.confidence as any,
+                confidence: n.confidence,
                 confidenceComposite: n.confidence.compositeScore,
                 confidenceLevel: n.confidence.level,
                 validUntilUnixMs: n.freshness.validUntilUnixMs,
                 isStale: n.freshness.isStale,
-                provenance: {},
+                provenance: makeTestProvenance(),
                 receivedAtUnixMs: 1002
               }));
               const results = await normRepo.insertMany(inserts);
@@ -932,24 +975,24 @@ describe("ingestRawObservation", () => {
               signalClass: "deterministic" as const,
               evidenceFamily: "clmm_state" as const,
               payloadHash: "hash",
-              confidence: { compositeScore: 0.9, level: "high" },
+              confidence: makeTestConfidence(),
               freshness: { isStale: false, validUntilUnixMs: 2000 }
             })),
           insertNormalized: async (normals) => {
             const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
               rawObservationId: 1,
               source: TEST_SOURCE,
-              observationKind: n.observationKind as any,
+              observationKind: n.observationKind,
               signalClass: n.signalClass,
               evidenceFamily: n.evidenceFamily,
               payload: {},
               payloadHash: n.payloadHash,
-              confidence: n.confidence as any,
+              confidence: n.confidence,
               confidenceComposite: n.confidence.compositeScore,
               confidenceLevel: n.confidence.level,
               validUntilUnixMs: n.freshness.validUntilUnixMs,
               isStale: n.freshness.isStale,
-              provenance: {},
+              provenance: makeTestProvenance(),
               receivedAtUnixMs: 1002
             }));
             const results = await normRepo.insertMany(inserts);

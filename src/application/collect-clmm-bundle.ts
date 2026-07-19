@@ -130,8 +130,7 @@ export async function collectClmmBundle(
     const result = await ingestRawObservation<
       ClmmBundle,
       ReturnType<typeof normalizeClmmBundle>[number],
-      Awaited<ReturnType<typeof enrichClmmCandidates>>[number],
-      ReturnType<NormalizedObservationRepo["insertMany"]>[number]
+      Awaited<ReturnType<typeof enrichClmmCandidates>>[number]
     >(ingestDeps, {
       source: SOURCE,
       sourceObservationKey,

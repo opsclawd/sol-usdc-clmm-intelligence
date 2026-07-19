@@ -37,15 +37,15 @@ export interface IngestRawObservationInput<TAccepted, TCandidate, TEnriched> {
   sourceRequestMeta?: unknown;
   receivedAtUnixMs: number;
   validatePayload: (canonical: string) => { accepted: TAccepted };
-  buildCandidates: (accepted: TAccepted, rawRow: RawObservationRow) => TCandidate[];
+  buildCandidates: (accepted: TAccepted, rawRow: RawObservationRow) => readonly TCandidate[];
   enrichCandidates: (
-    candidates: TCandidate[],
+    candidates: readonly TCandidate[],
     rawRow: RawObservationRow,
     runId: string | null
-  ) => Promise<TEnriched[]>;
+  ) => Promise<readonly TEnriched[]>;
   insertNormalized: (
-    enriched: TEnriched[],
-    candidates: TCandidate[],
+    enriched: readonly TEnriched[],
+    candidates: readonly TCandidate[],
     rawRow: RawObservationRow
   ) => Promise<number>;
   writeCompatibilityOutput?: (accepted: TAccepted, rawRow: RawObservationRow) => Promise<void>;
