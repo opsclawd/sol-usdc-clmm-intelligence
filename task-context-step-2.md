@@ -1,6 +1,6 @@
 # Task Context: Task 2
 
-Title: Canonicalize accepted JSON and derive source identity
+Title: Define source-independent price contracts and taxonomy rules
 
 ## Workspace & Scope Constraints
 
@@ -10,73 +10,68 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-22
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-23
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-22
-Start Commit: 354e656925912cc7e58de7220277b1694b69286d
+Branch: ai/issue-23
+Start Commit: 6a3197f1ad619c2594d8a693577cd6c67b3689f1
 
 ## Task Requirements
 
 **Files:**
 
-- Modify: `src/domain/content-hash.ts`
-- Modify: `tests/domain/content-hash.test.ts`
-- Create: `src/domain/clmm-bundle/identity.ts`
-- Modify: `src/domain/clmm-bundle/index.ts`
-- Create: `tests/domain/clmm-bundle/identity.test.ts`
+- Modify: `src/contracts/taxonomy.ts`
+- Create: `src/contracts/normalized-price-observation.ts`
+- Modify: `src/contracts/index.ts`
+- Modify: `src/domain/taxonomy/registry.ts`
+- Modify: `src/domain/taxonomy/confidence.ts`
+- Modify: `src/domain/taxonomy/validation.ts`
+- Modify: `src/domain/clmm-bundle/enrich.ts`
+- Modify: `tests/domain/taxonomy/registry.test.ts`
+- Modify: `tests/domain/taxonomy/confidence.test.ts`
+- Modify: `tests/domain/taxonomy/validation.test.ts`
+- Modify: `tests/domain/taxonomy/freshness.test.ts`
+- Modify: `tests/domain/taxonomy/provenance.test.ts`
+- Modify: `tests/domain/clmm-bundle/enrich.test.ts`
+- Modify: `tests/helpers/taxonomy-fixtures.ts`
 
-**Behavioral invariants to test first:**
+**Exported API changes:** Replace the inactive `price_quote` observation kind with `oracle_price` and `executable_quote`; add `pyth-hermes` and `jupiter-quote` sources; remove `ObservationKindEntry.source`; add `oracle_confidence_wide` and `high_price_impact` confidence reasons; export `OraclePricePayloadV1`, `ExecutableQuotePayloadV1`, `PriceObservationWarning`, and `PriceNormalizedCandidate`. Extend `computeConfidence` with an optional final `additionalReasons: readonly ConfidenceReason[] = []` parameter so direct-source reasons are included and deduplicated without overloading completeness semantics.
 
-- `canonical payload hash is the SHA-256 of the returned canonical string` prevents storage/hash serializer drift.
-- `canonical JSON sorts object keys recursively and preserves array order` defines deterministic content semantics.
-- `canonical JSON rejects undefined sparse arrays NaN Infinity and unsupported JSON values` prevents lossy acceptance.
-- `source observation key is stable for the same version wallet pair pool and observed time` defines replay identity.
-- `source observation key changes when wallet pool pair observation time or identity version changes` prevents unrelated observations from collapsing.
-
-- [ ] **Step 1: Extend the existing hash tests and add identity tests before implementation.** Keep the existing `canonicalHash` compatibility coverage and assert exact canonical strings as well as 64-character lowercase hashes.
-- [ ] **Step 2: Run `pnpm vitest run tests/domain/content-hash.test.ts tests/domain/clmm-bundle/identity.test.ts`; expect missing exports and invalid-value cases to fail.**
-- [ ] **Step 3: Replace the private serializer with one strict exported operation while retaining `canonicalHash`:**
-
-```ts
-export interface CanonicalPayload {
-  payloadCanonical: string;
-  payloadHash: string;
-}
-
-export async function canonicalizePayload(payload: unknown): Promise<CanonicalPayload>;
-export async function canonicalHash(payload: unknown): Promise<string>;
-```
-
-`canonicalHash` must delegate to `canonicalizePayload`. Reject values that JSON cannot represent exactly rather than silently dropping/coercing them.
-
-- [ ] **Step 4: Implement `deriveClmmSourceObservationKey` over the canonical identity tuple `{ identityVersion: 1, walletId, pair, poolId, observedAtUnixMs }`; return only its SHA-256 hash.** Keep the raw tuple out of indexed storage.
-- [ ] **Step 5: Export the identity helper and rerun the two focused test files, then lint/format only the five scoped files.** Run `pnpm exec eslint src/domain/content-hash.ts src/domain/clmm-bundle/identity.ts src/domain/clmm-bundle/index.ts tests/domain/content-hash.test.ts tests/domain/clmm-bundle/identity.test.ts --max-warnings 0` and the matching `pnpm exec prettier --check ...` paths.
-- [ ] **Step 6: Commit:** `git add src/domain/content-hash.ts src/domain/clmm-bundle/identity.ts src/domain/clmm-bundle/index.ts tests/domain/content-hash.test.ts tests/domain/clmm-bundle/identity.test.ts && git commit -m "feat(clmm): define canonical payload identity"`.
+- [ ] **Step 1: Write taxonomy tests first.** Update only the observation-registry describe blocks in `tests/domain/taxonomy/registry.test.ts` with `registers source-independent price kinds with exclude-on-stale policies`, asserting Pyth 60-second/Jupiter 30-second windows, allowed provenance sources, active schema v1, and absence of singular `source`. Add confidence tests named `degrades source quality without conflating provider uncertainty with completeness` for explicit source-reliability factors and reasons. Update parser, generic freshness/provenance fixtures, and CLMM enrichment tests to use the new kinds/sources while proving CLMM completeness remains keyed only by `ClmmNormalizedCandidate["kind"]`.
+- [ ] **Step 2: Run the focused tests and confirm failures.** Run `pnpm exec vitest run tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/taxonomy/freshness.test.ts tests/domain/taxonomy/provenance.test.ts tests/domain/clmm-bundle/enrich.test.ts`; expect type/runtime failures for missing kinds, sources, reason codes, parser values, and price contracts.
+- [ ] **Step 3: Add exact normalized contracts.** Store provider integer inputs as strings and define decimal strings for oracle price/confidence/bounds/ratio and quote implied price. Include pair, assets/mints/decimals, observed/source time basis, slot, exact probe/slippage/threshold, route summary, `routeAvailable: true`, and warning arrays; omit unavailable optional values rather than replacing them with zero.
+- [ ] **Step 4: Implement registry, parser, confidence, and CLMM typing changes.** Remove every observation entry's singular `source`, rely on `allowedSourceRefs`, use 60,000 ms and 30,000 ms exclude policies, and let callers supply the deterministic source-quality factor and matching reason without changing completeness. Update `oracle_divergence`'s future provenance allowance to `pyth-hermes` and `jupiter-quote` without implementing the feature. Update runtime parser sets, and narrow the CLMM completeness table from all `ObservationKind` values to only CLMM candidate kinds so provider-specific logic stays out of that module.
+- [ ] **Step 5: Verify this task.** Run `pnpm exec vitest run tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/taxonomy/freshness.test.ts tests/domain/taxonomy/provenance.test.ts tests/domain/clmm-bundle/enrich.test.ts` and `pnpm exec eslint src/contracts/taxonomy.ts src/contracts/normalized-price-observation.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/confidence.ts src/domain/taxonomy/validation.ts src/domain/clmm-bundle/enrich.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/taxonomy/freshness.test.ts tests/domain/taxonomy/provenance.test.ts tests/domain/clmm-bundle/enrich.test.ts tests/helpers/taxonomy-fixtures.ts`; expect all selected checks to pass.
+- [ ] **Step 6: Commit.** Run `git add src/contracts/taxonomy.ts src/contracts/normalized-price-observation.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/confidence.ts src/domain/taxonomy/validation.ts src/domain/clmm-bundle/enrich.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/taxonomy/freshness.test.ts tests/domain/taxonomy/provenance.test.ts tests/domain/clmm-bundle/enrich.test.ts tests/helpers/taxonomy-fixtures.ts && git commit -m "feat: define price observation taxonomy"`.
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/domain/content-hash.ts
-- tests/domain/content-hash.test.ts
-- src/domain/clmm-bundle/identity.ts
-- src/domain/clmm-bundle/index.ts
-- tests/domain/clmm-bundle/identity.test.ts
+- src/contracts/taxonomy.ts
+- src/contracts/normalized-price-observation.ts
+- src/contracts/index.ts
+- src/domain/taxonomy/registry.ts
+- src/domain/taxonomy/confidence.ts
+- src/domain/taxonomy/validation.ts
+- src/domain/clmm-bundle/enrich.ts
+- tests/domain/taxonomy/registry.test.ts
+- tests/domain/taxonomy/confidence.test.ts
+- tests/domain/taxonomy/validation.test.ts
+- tests/domain/taxonomy/freshness.test.ts
+- tests/domain/taxonomy/provenance.test.ts
+- tests/domain/clmm-bundle/enrich.test.ts
+- tests/helpers/taxonomy-fixtures.ts
 
 ## Validation Commands
 
 ```bash
-pnpm vitest run tests/domain/content-hash.test.ts tests/domain/clmm-bundle/identity.test.ts
-pnpm exec eslint src/domain/content-hash.ts src/domain/clmm-bundle/identity.ts src/domain/clmm-bundle/index.ts tests/domain/content-hash.test.ts tests/domain/clmm-bundle/identity.test.ts --max-warnings 0
-pnpm exec prettier --check src/domain/content-hash.ts src/domain/clmm-bundle/identity.ts src/domain/clmm-bundle/index.ts tests/domain/content-hash.test.ts tests/domain/clmm-bundle/identity.test.ts
+pnpm exec vitest run tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/taxonomy/freshness.test.ts tests/domain/taxonomy/provenance.test.ts tests/domain/clmm-bundle/enrich.test.ts
+pnpm exec eslint src/contracts/taxonomy.ts src/contracts/normalized-price-observation.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/confidence.ts src/domain/taxonomy/validation.ts src/domain/clmm-bundle/enrich.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/taxonomy/freshness.test.ts tests/domain/taxonomy/provenance.test.ts tests/domain/clmm-bundle/enrich.test.ts tests/helpers/taxonomy-fixtures.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **canonical hash coupling**: The stored payload hash is SHA-256 of exactly the canonical string returned by the same operation. (Test: `canonical payload hash is the SHA-256 of the returned canonical string`)
-- **canonical ordering**: Object keys sort recursively while array order remains unchanged. (Test: `canonical JSON sorts object keys recursively and preserves array order`)
-- **strict JSON domain**: Unsupported or lossy JSON values are rejected instead of dropped or coerced. (Test: `canonical JSON rejects undefined sparse arrays NaN Infinity and unsupported JSON values`)
-- **source identity stability**: The versioned wallet, pair, pool, and observed-time tuple deterministically identifies one source observation. (Test: `source observation key is stable for the same version wallet pair pool and observed time`)
-- **source identity sensitivity**: Changing any identity component changes the source observation key. (Test: `source observation key changes when wallet pool pair observation time or identity version changes`)
+- **price freshness policy**: Oracle observations use a 60-second publish-time window and executable quotes use a 30-second receipt-time window, both excluding stale evidence. (Test: `registers source-independent price kinds with exclude-on-stale policies`)
+- **source quality is independent from completeness**: Wide oracle confidence or high quote impact changes source reliability and reason codes without changing field completeness. (Test: `degrades source quality without conflating provider uncertainty with completeness`)

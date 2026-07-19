@@ -22,7 +22,7 @@ export interface OraclePricePayloadV1 {
     readonly ageMs: number;
   };
   readonly observedSource: {
-    readonly source: "pyth-hermes" | "jupiter-quote";
+    readonly source: "pyth-hermes" | "jupiter-price" | "jupiter-price-v3";
     readonly observedAtUnixMs: number;
     readonly fetchedAtUnixMs: number;
     readonly slot: number;
@@ -54,7 +54,7 @@ export interface ExecutableQuotePayloadV1 {
     readonly fetchedAtUnixMs: number;
   };
   readonly observedSource: {
-    readonly source: "pyth-hermes" | "jupiter-quote";
+    readonly source: "jupiter-quote";
     readonly observedAtUnixMs: number;
     readonly slot: number;
   };
