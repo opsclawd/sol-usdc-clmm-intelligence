@@ -52,8 +52,18 @@ export interface EnrichedClmmObservation {
 
 export const COMPLETENESS_WEIGHTING_VERSION = "clmm-bundle-completeness-v1" as const;
 
+export const CLMM_COMPLETENESS_KINDS = [
+  "pool_state",
+  "position_state",
+  "fee_metrics",
+  "trigger_event",
+  "data_quality"
+] as const;
+
+type ClmmCompletenessKind = (typeof CLMM_COMPLETENESS_KINDS)[number];
+
 export const ENRICHED_CLMM_OBSERVATION_KIND_COMPLETENESS_FIELDS: Record<
-  ObservationKind,
+  ClmmCompletenessKind,
   readonly string[]
 > = {
   pool_state: ["currentPrice", "sqrtPrice", "tickCurrentIndex", "feeRate", "poolLiquidity"],
@@ -65,7 +75,6 @@ export const ENRICHED_CLMM_OBSERVATION_KIND_COMPLETENESS_FIELDS: Record<
     "positionLiquidity",
     "poolLiquidity"
   ],
-  price_quote: ["price", "priceLabel", "quotedAt"],
   fee_metrics: [
     "feeOwedA",
     "feeOwedB",
@@ -73,13 +82,15 @@ export const ENRICHED_CLMM_OBSERVATION_KIND_COMPLETENESS_FIELDS: Record<
     "unclaimedFeesUsd",
     "unclaimedRewardsUsd"
   ],
-  volume_metrics: ["volume24h", "volume7d", "volume30d"],
   trigger_event: ["triggerId", "positionId", "breachDirection", "triggeredAt"],
   data_quality: ["warnings", "isPartial", "missingSources"]
 };
 
 function computeDataCompleteness(kind: ObservationKind, payload: ClmmNormalizedCandidate): number {
-  const fields = ENRICHED_CLMM_OBSERVATION_KIND_COMPLETENESS_FIELDS[kind];
+  if (!CLMM_COMPLETENESS_KINDS.includes(kind as ClmmCompletenessKind)) {
+    return 1;
+  }
+  const fields = ENRICHED_CLMM_OBSERVATION_KIND_COMPLETENESS_FIELDS[kind as ClmmCompletenessKind];
   if (!fields || fields.length === 0) return 1;
 
   let presentCount = 0;

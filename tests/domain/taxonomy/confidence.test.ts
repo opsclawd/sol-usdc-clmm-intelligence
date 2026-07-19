@@ -291,4 +291,54 @@ describe("computeConfidence", () => {
     const result = computeConfidence(components, policy, "v1");
     expect(result.compositeScore).toBeCloseTo(0.3 * 0.8 + 0.2 * 0.7 + 0.2 * 0.6 + 0.3 * 0.9, 10);
   });
+
+  it("degrades source quality without conflating provider uncertainty with completeness", () => {
+    const components = {
+      sourceReliability: 0.2,
+      dataCompleteness: 1.0,
+      derivationConfidence: 1.0,
+      llmConfidence: null as number | null
+    };
+    const policy = {
+      weights: {
+        sourceReliability: 0.4,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    };
+    const result = computeConfidence(components, policy, "v1");
+    expect(result.components.dataCompleteness).toBe(1.0);
+    expect(result.components.sourceReliability).toBe(0.2);
+    expect(result.reasons).toContain("source_reliability_low");
+  });
+
+  it("accepts additionalReasons and deduplicates without changing completeness semantics", () => {
+    const components = {
+      sourceReliability: 0.8,
+      dataCompleteness: 0.9,
+      derivationConfidence: 0.7,
+      llmConfidence: null as number | null
+    };
+    const policy = {
+      weights: {
+        sourceReliability: 0.4,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    };
+    const additionalReasons: import("../../../src/contracts/taxonomy.js").ConfidenceReason[] = [
+      "oracle_confidence_wide",
+      "high_price_impact"
+    ];
+    const result = computeConfidence(components, policy, "v1", undefined, additionalReasons);
+    expect(result.reasons).toContain("oracle_confidence_wide");
+    expect(result.reasons).toContain("high_price_impact");
+    expect(result.components.dataCompleteness).toBe(0.9);
+  });
 });

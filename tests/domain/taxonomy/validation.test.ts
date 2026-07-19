@@ -14,7 +14,8 @@ import {
 describe("parseObservationKind", () => {
   it("returns typed value for valid kinds", () => {
     expect(parseObservationKind("pool_state")).toBe("pool_state");
-    expect(parseObservationKind("price_quote")).toBe("price_quote");
+    expect(parseObservationKind("oracle_price")).toBe("oracle_price");
+    expect(parseObservationKind("executable_quote")).toBe("executable_quote");
   });
 
   it("throws TaxonomyValidationError for unknown kind", () => {

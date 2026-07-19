@@ -164,7 +164,7 @@ describe("validateProvenance", () => {
       requireRunId: false,
       allowedSourceRefs: ["jupiter-price-v3" as const]
     };
-    const result = validateProvenance(baseProvenance, requirements, "price_quote");
+    const result = validateProvenance(baseProvenance, requirements, "oracle_price");
     expect(result).toMatchObject({ valid: false });
     if (!result.valid) {
       expect(result.reasons).toContain("disallowed_source");

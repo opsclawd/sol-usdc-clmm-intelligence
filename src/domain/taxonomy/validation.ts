@@ -12,7 +12,8 @@ import type {
 const OBSERVATION_KINDS = new Set<ObservationKind>([
   "pool_state",
   "position_state",
-  "price_quote",
+  "oracle_price",
+  "executable_quote",
   "fee_metrics",
   "volume_metrics",
   "trigger_event",
@@ -31,7 +32,9 @@ const SOURCES = new Set<Source>([
   "jupiter-price",
   "jupiter-price-v3",
   "coingecko",
-  "defillama"
+  "defillama",
+  "pyth-hermes",
+  "jupiter-quote"
 ]);
 
 const SIGNAL_CLASSES = new Set<SignalClass>(["deterministic", "probabilistic", "contextual"]);

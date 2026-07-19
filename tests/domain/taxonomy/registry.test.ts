@@ -3,8 +3,7 @@ import type {
   ObservationKind,
   FeatureKind,
   EvidenceFamily,
-  SignalClass,
-  Source
+  SignalClass
 } from "../../../src/contracts/taxonomy.js";
 import {
   observationKindRegistry,
@@ -27,19 +26,12 @@ const VALID_EVIDENCE_FAMILIES: EvidenceFamily[] = [
 
 const VALID_SIGNAL_CLASSES: SignalClass[] = ["deterministic", "probabilistic", "contextual"];
 
-const VALID_SOURCES: Source[] = [
-  "clmm-v2-bundle",
-  "jupiter-price",
-  "jupiter-price-v3",
-  "coingecko",
-  "defillama"
-];
-
 describe("observationKindRegistry", () => {
   const observationKinds: ObservationKind[] = [
     "pool_state",
     "position_state",
-    "price_quote",
+    "oracle_price",
+    "executable_quote",
     "fee_metrics",
     "volume_metrics",
     "trigger_event",
@@ -70,9 +62,9 @@ describe("observationKindRegistry", () => {
     }
   });
 
-  it("every entry has a valid source", () => {
+  it("no entry has a singular source field (source-independent)", () => {
     for (const kind of observationKinds) {
-      expect(VALID_SOURCES).toContain(observationKindRegistry[kind].source);
+      expect(observationKindRegistry[kind]).not.toHaveProperty("source");
     }
   });
 
@@ -166,10 +158,9 @@ describe("trigger_event and data_quality are deterministic execution_safety kind
   const triggerEntry = getObservationKindEntry("trigger_event");
   const dataQualityEntry = getObservationKindEntry("data_quality");
 
-  it("trigger_event is deterministic execution_safety from clmm-v2-bundle", () => {
+  it("trigger_event is deterministic execution_safety", () => {
     expect(triggerEntry.signalClass).toBe("deterministic");
     expect(triggerEntry.evidenceFamily).toBe("execution_safety");
-    expect(triggerEntry.source).toBe("clmm-v2-bundle");
   });
 
   it("trigger_event has 60-second max age, 5-second skew, exclude stale behavior", () => {
@@ -178,10 +169,9 @@ describe("trigger_event and data_quality are deterministic execution_safety kind
     expect(triggerEntry.freshnessPolicy.staleBehavior).toBe("exclude");
   });
 
-  it("data_quality is deterministic execution_safety from clmm-v2-bundle", () => {
+  it("data_quality is deterministic execution_safety", () => {
     expect(dataQualityEntry.signalClass).toBe("deterministic");
     expect(dataQualityEntry.evidenceFamily).toBe("execution_safety");
-    expect(dataQualityEntry.source).toBe("clmm-v2-bundle");
   });
 
   it("data_quality has 60-second max age, 5-second skew, exclude stale behavior", () => {
@@ -203,5 +193,56 @@ describe("trigger_event and data_quality are deterministic execution_safety kind
   it("both allow direct provenance with clmm-v2-bundle source", () => {
     expect(triggerEntry.provenanceRequirements.allowedSourceRefs).toContain("clmm-v2-bundle");
     expect(dataQualityEntry.provenanceRequirements.allowedSourceRefs).toContain("clmm-v2-bundle");
+  });
+});
+
+describe("registers source-independent price kinds with exclude-on-stale policies", () => {
+  const oraclePriceEntry = getObservationKindEntry("oracle_price");
+  const executableQuoteEntry = getObservationKindEntry("executable_quote");
+
+  it("oracle_price is deterministic price_quality", () => {
+    expect(oraclePriceEntry.signalClass).toBe("deterministic");
+    expect(oraclePriceEntry.evidenceFamily).toBe("price_quality");
+  });
+
+  it("oracle_price has 60-second publish-time window with exclude stale behavior", () => {
+    expect(oraclePriceEntry.freshnessPolicy.maxObservedAgeMs).toBe(60_000);
+    expect(oraclePriceEntry.freshnessPolicy.clockSkewToleranceMs).toBe(5_000);
+    expect(oraclePriceEntry.freshnessPolicy.staleBehavior).toBe("exclude");
+  });
+
+  it("executable_quote is deterministic price_quality", () => {
+    expect(executableQuoteEntry.signalClass).toBe("deterministic");
+    expect(executableQuoteEntry.evidenceFamily).toBe("price_quality");
+  });
+
+  it("executable_quote has 30-second receipt-time window with exclude stale behavior", () => {
+    expect(executableQuoteEntry.freshnessPolicy.maxObservedAgeMs).toBe(30_000);
+    expect(executableQuoteEntry.freshnessPolicy.clockSkewToleranceMs).toBe(5_000);
+    expect(executableQuoteEntry.freshnessPolicy.staleBehavior).toBe("exclude");
+  });
+
+  it("both use schema version 1 and are active", () => {
+    expect(oraclePriceEntry.schemaVersion).toBe(1);
+    expect(executableQuoteEntry.schemaVersion).toBe(1);
+    expect(oraclePriceEntry.active).toBe(true);
+    expect(executableQuoteEntry.active).toBe(true);
+  });
+
+  it("both have no singular source field (source-independent)", () => {
+    expect(oraclePriceEntry).not.toHaveProperty("source");
+    expect(executableQuoteEntry).not.toHaveProperty("source");
+  });
+
+  it("oracle_price allows pyth-hermes and jupiter-quote as provenance sources", () => {
+    expect(oraclePriceEntry.provenanceRequirements.allowedSourceRefs).toContain("pyth-hermes");
+    expect(oraclePriceEntry.provenanceRequirements.allowedSourceRefs).toContain("jupiter-quote");
+  });
+
+  it("executable_quote allows pyth-hermes and jupiter-quote as provenance sources", () => {
+    expect(executableQuoteEntry.provenanceRequirements.allowedSourceRefs).toContain("pyth-hermes");
+    expect(executableQuoteEntry.provenanceRequirements.allowedSourceRefs).toContain(
+      "jupiter-quote"
+    );
   });
 });
