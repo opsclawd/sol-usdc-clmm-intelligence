@@ -1,4 +1,4 @@
-import { eq, and, gte, or } from "drizzle-orm";
+import { eq, and, gte, or, asc, desc } from "drizzle-orm";
 import { normalizedObservations } from "../../db/schema/normalized-observations.js";
 import type {
   NormalizedObservationRepo,
@@ -199,7 +199,8 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
           eq(normalizedObservations.observationKind, observationKind),
           gte(normalizedObservations.receivedAtUnixMs, sinceUnixMs)
         )
-      );
+      )
+      .orderBy(asc(normalizedObservations.receivedAtUnixMs));
     return rows.map(toPortRow);
   }
 
@@ -218,5 +219,24 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
         )
       );
     return rows.map(toPortRow);
+  }
+
+  async findLatestByKind(
+    source: Source,
+    observationKind: ObservationKind
+  ): Promise<NormalizedObservationRow | null> {
+    const rows = await this.db
+      .select()
+      .from(normalizedObservations)
+      .where(
+        and(
+          eq(normalizedObservations.source, source),
+          eq(normalizedObservations.observationKind, observationKind)
+        )
+      )
+      .orderBy(desc(normalizedObservations.receivedAtUnixMs))
+      .limit(1);
+    const row = rows[0];
+    return row ? toPortRow(row) : null;
   }
 }

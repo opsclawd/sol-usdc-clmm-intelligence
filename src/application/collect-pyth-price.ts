@@ -119,13 +119,6 @@ function mapHttpError(err: unknown): PriceSourceResult {
       case "invalid_json":
         return { status: "malformed", summary: err.message } as MalformedResult;
       case "http_status":
-        if (!err.retryable) {
-          return {
-            status: "unavailable",
-            summary: err.message,
-            httpStatus: err.status
-          } as UnavailableResult;
-        }
         return {
           status: "unavailable",
           summary: err.message,
@@ -160,6 +153,7 @@ export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<Pric
 
   let envelope: PythHermesEnvelope;
   let acceptResult: AcceptPythEnvelopeResult;
+  let firstCandidate: ReturnType<typeof normalizePythPrice> | undefined;
 
   try {
     const requestOptions = {
@@ -222,6 +216,7 @@ export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<Pric
       },
       buildCandidates: (accepted) => {
         const normalized = normalizePythPrice(accepted, feedId, fetchedAtUnixMs);
+        firstCandidate = normalized;
         return [normalized];
       },
       enrichCandidates: async (candidates, rawRow) => {
@@ -281,7 +276,9 @@ export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<Pric
       }
     });
 
-    const firstCandidate = normalizePythPrice(envelope, feedId, fetchedAtUnixMs);
+    if (!firstCandidate) {
+      firstCandidate = normalizePythPrice(envelope, feedId, fetchedAtUnixMs);
+    }
 
     const warnings = firstCandidate.warnings;
     const hasWideConfidence = warnings.includes("wide_confidence_interval");
@@ -289,13 +286,10 @@ export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<Pric
     let freshness: Freshness;
     let confidenceLevel: ConfidenceLevel;
 
-    const lookbackWindowMs = 5 * 60 * 1000;
-    const normalizedRows = await normalizedObservationRepo.findBySource(
+    const latestNormalized = await normalizedObservationRepo.findLatestByKind(
       SOURCE,
-      "oracle_price",
-      receivedAtUnixMs - lookbackWindowMs
+      "oracle_price"
     );
-    const latestNormalized = normalizedRows[normalizedRows.length - 1];
 
     if (latestNormalized) {
       freshness = {

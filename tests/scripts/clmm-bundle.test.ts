@@ -47,7 +47,8 @@ function createMockNormalizedObservationRepo(): NormalizedObservationRepo {
     insert: vi.fn(),
     insertMany: vi.fn(),
     findBySource: vi.fn(),
-    findFreshByKind: vi.fn()
+    findFreshByKind: vi.fn(),
+    findLatestByKind: vi.fn()
   };
 }
 
