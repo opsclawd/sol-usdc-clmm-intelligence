@@ -94,7 +94,9 @@ export async function collectClmmBundle(
   const url = `${normalizedBase}${path}`;
 
   const response = await http.getJson<Record<string, unknown>>(url, {
-    "x-insights-api-key": apiKey
+    headers: {
+      "x-insights-api-key": apiKey
+    }
   });
 
   const bundle = validateEnvelope(response);
