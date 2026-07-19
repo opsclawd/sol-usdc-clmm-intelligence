@@ -5,8 +5,10 @@ import { DrizzleObservationRepo } from "../../../src/adapters/node/drizzle-obser
 import { createDb } from "../../../src/db/db.js";
 import { canonicalHash } from "../../../src/domain/content-hash.js";
 import type { Db } from "../../../src/db/db.js";
+import type { Source } from "../../../src/contracts/taxonomy.js";
 
 const TEST_DB_URL = process.env.TEST_DATABASE_URL;
+const EXTRA_SOURCES: Source[] = ["pyth-hermes", "jupiter-quote"];
 
 describe("DrizzleObservationRepo integration", () => {
   if (!TEST_DB_URL) {
@@ -205,7 +207,7 @@ describe("DrizzleObservationRepo integration", () => {
           fetchedAtUnixMs: 1001,
           payloadHash: hash,
           payloadCanonical: '{"concurrent":"test"}',
-          receivedAtUnixMs: 1002
+          receivedAtUnixMs: 2002
         })
       ]);
 
@@ -213,6 +215,78 @@ describe("DrizzleObservationRepo integration", () => {
       expect(outcomes).toContain("inserted");
       expect(outcomes).toContain("identical_replay");
       expect(first.row.id).toBe(second.row.id);
+    });
+  });
+
+  describe.each(EXTRA_SOURCES)("source-specific behavior for %s", (source) => {
+    beforeEach(async () => {
+      await db.delete(rawObservations).where(eq(rawObservations.source, source));
+    });
+
+    it("concurrent identical inserts classify as identical_replay", async () => {
+      const key = `${source}-concurrent-identical-${Date.now()}`;
+      const hash = await canonicalHash({ source, data: "identical" });
+
+      const [first, second] = await Promise.all([
+        repo.insertOrClassify({
+          source,
+          sourceObservationKey: key,
+          observedAtUnixMs: 1000,
+          fetchedAtUnixMs: 1001,
+          payloadHash: hash,
+          payloadCanonical: JSON.stringify({ source, data: "identical" }),
+          receivedAtUnixMs: 1002
+        }),
+        repo.insertOrClassify({
+          source,
+          sourceObservationKey: key,
+          observedAtUnixMs: 1000,
+          fetchedAtUnixMs: 1001,
+          payloadHash: hash,
+          payloadCanonical: JSON.stringify({ source, data: "identical" }),
+          receivedAtUnixMs: 2002
+        })
+      ]);
+
+      const outcomes = [first.outcome, second.outcome];
+      expect(outcomes).toContain("inserted");
+      expect(outcomes).toContain("identical_replay");
+      expect(first.row.id).toBe(second.row.id);
+    });
+
+    it("changed content at same identity classifies as conflict", async () => {
+      const key = `${source}-conflict-${Date.now()}`;
+      const hash1 = await canonicalHash({ source, data: "v1" });
+      const hash2 = await canonicalHash({ source, data: "v2" });
+
+      await repo.insertOrClassify({
+        source,
+        sourceObservationKey: key,
+        observedAtUnixMs: 1000,
+        fetchedAtUnixMs: 1001,
+        payloadHash: hash1,
+        payloadCanonical: JSON.stringify({ source, data: "v1" }),
+        receivedAtUnixMs: 1002
+      });
+
+      const conflict = await repo.insertOrClassify({
+        source,
+        sourceObservationKey: key,
+        observedAtUnixMs: 2000,
+        fetchedAtUnixMs: 2001,
+        payloadHash: hash2,
+        payloadCanonical: JSON.stringify({ source, data: "v2" }),
+        receivedAtUnixMs: 2002
+      });
+
+      expect(conflict.outcome).toBe("conflict");
+      expect(conflict.row.payloadHash).toBe(hash1);
+      expect(
+        (conflict as { outcome: "conflict"; incomingPayloadHash: string }).incomingPayloadHash
+      ).toBe(hash2);
+
+      const stillStored = await repo.findByIdentity(source, key);
+      expect(stillStored!.payloadHash).toBe(hash1);
     });
   });
 });
