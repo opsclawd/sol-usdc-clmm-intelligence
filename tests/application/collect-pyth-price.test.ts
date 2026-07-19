@@ -5,11 +5,11 @@ import {
   makePythHermesPriceUpdate,
   makePythHermesParsedPrice,
   SOL_USD_FEED_ID
-} from "../fixtures/pyth-price-update.ts";
+} from "../fixtures/pyth-price-update.js";
 import { FakeHttp, FakeJsonStore, FakeEnv, FakeClock } from "../fakes/index.js";
-import { FakeObservationRepo } from "../fakes/fake-observation-repo.ts";
-import { FakeNormalizedObservationRepo } from "../fakes/fake-normalized-observation-repo.ts";
-import type { RawObservationRow } from "../../src/ports/observation-repo.ts";
+import { FakeObservationRepo } from "../fakes/fake-observation-repo.js";
+import { FakeNormalizedObservationRepo } from "../fakes/fake-normalized-observation-repo.js";
+import type { PriceSourceResult } from "../../src/application/price-source-result.js";
 
 const PYTH_HERMES_BASE_URL = "https://hermes.pyth.network";
 const PYTH_API_KEY = "test-api-key-12345";
@@ -106,7 +106,7 @@ describe("collectPythPrice", () => {
       expect(httpCall?.options?.maxAttempts).toBe(2);
 
       const rawRepo = deps.rawObservationRepo as FakeObservationRepo;
-      const allRows = Array.from(rawRepo.store.values()) as RawObservationRow[];
+      const allRows = await rawRepo.findBySource("pyth-hermes", 0);
       const lastRow = allRows[allRows.length - 1];
 
       if (lastRow?.sourceRequestMeta) {
@@ -196,10 +196,15 @@ describe("collectPythPrice", () => {
       if (result.status !== "accepted") return;
 
       const normalized = deps.normalizedObservationRepo as FakeNormalizedObservationRepo;
-      const allRows = Array.from(normalized.store) as RawObservationRow[];
+      const allRows = await normalized.findBySource("pyth-hermes", "oracle_price", 0);
       const normRow = allRows[allRows.length - 1];
 
-      expect(normRow.payload.observedSource.observedAtUnixMs).toBe(nowSeconds * 1000);
+      if (!normRow) {
+        throw new Error("No normalized row found");
+      }
+
+      const payload = normRow.payload as { observedSource: { observedAtUnixMs: number } };
+      expect(payload.observedSource.observedAtUnixMs).toBe(nowSeconds * 1000);
     });
   });
 
@@ -219,7 +224,9 @@ describe("collectPythPrice", () => {
       expect(result2.status).toBe("identical_replay");
       if (result2.status !== "identical_replay") return;
 
-      expect(result2.rawObservationId).toBe(result1.rawObservationId);
+      expect((result2 as { rawObservationId: number }).rawObservationId).toBe(
+        (result1 as { rawObservationId: number }).rawObservationId
+      );
     });
 
     it("returns conflict when same identity has different payload", async () => {
@@ -369,13 +376,23 @@ describe("collectPythPrice", () => {
         rawObservationId: 1,
         normalizedCount: 1,
         warnings: [] as string[],
-        freshness: { isStale: false },
+        freshness: {
+          isStale: false,
+          validUntilUnixMs: 0,
+          derivedAt: 0,
+          policyKind: "oracle_price" as const,
+          reasons: []
+        },
         confidenceLevel: "high" as const
       };
-      expect(typeof PriceSourceResult.safeSummary(acceptedResult)).toBe("string");
+      expect(typeof PriceSourceResult.safeSummary(acceptedResult as PriceSourceResult)).toBe(
+        "string"
+      );
 
       const timeoutResult = { status: "timeout" as const, summary: "Request timed out" };
-      expect(typeof PriceSourceResult.safeSummary(timeoutResult)).toBe("string");
+      expect(typeof PriceSourceResult.safeSummary(timeoutResult as PriceSourceResult)).toBe(
+        "string"
+      );
       expect(timeoutResult.summary.toLowerCase()).not.toContain("secret");
 
       const identicalResult = {
@@ -383,34 +400,58 @@ describe("collectPythPrice", () => {
         rawObservationId: 1,
         normalizedCount: 1,
         warnings: [] as string[],
-        freshness: { isStale: false },
+        freshness: {
+          isStale: false,
+          validUntilUnixMs: 0,
+          derivedAt: 0,
+          policyKind: "oracle_price" as const,
+          reasons: []
+        },
         confidenceLevel: "high" as const
       };
-      expect(typeof PriceSourceResult.safeSummary(identicalResult)).toBe("string");
+      expect(typeof PriceSourceResult.safeSummary(identicalResult as PriceSourceResult)).toBe(
+        "string"
+      );
 
       const staleResult = {
         status: "stale" as const,
         rawObservationId: 1,
         normalizedCount: 1,
         warnings: [] as string[],
-        freshness: { isStale: true, reasons: ["expired_past_max_observed_age"] },
+        freshness: {
+          isStale: true,
+          validUntilUnixMs: 0,
+          derivedAt: 0,
+          policyKind: "oracle_price" as const,
+          reasons: ["expired_past_max_observed_age"] as const
+        },
         confidenceLevel: "medium" as const
       };
-      expect(typeof PriceSourceResult.safeSummary(staleResult)).toBe("string");
+      expect(typeof PriceSourceResult.safeSummary(staleResult as PriceSourceResult)).toBe("string");
 
       const degradedResult = {
         status: "degraded" as const,
         rawObservationId: 1,
         normalizedCount: 1,
         warnings: ["wide_confidence_interval"] as string[],
-        freshness: { isStale: false },
+        freshness: {
+          isStale: false,
+          validUntilUnixMs: 0,
+          derivedAt: 0,
+          policyKind: "oracle_price" as const,
+          reasons: []
+        },
         confidenceLevel: "medium" as const,
         reason: "wide_confidence_interval"
       };
-      expect(typeof PriceSourceResult.safeSummary(degradedResult)).toBe("string");
+      expect(typeof PriceSourceResult.safeSummary(degradedResult as PriceSourceResult)).toBe(
+        "string"
+      );
 
       const failedResult = { status: "failed" as const, summary: "Unknown error" };
-      expect(typeof PriceSourceResult.safeSummary(failedResult)).toBe("string");
+      expect(typeof PriceSourceResult.safeSummary(failedResult as PriceSourceResult)).toBe(
+        "string"
+      );
     });
   });
 });
