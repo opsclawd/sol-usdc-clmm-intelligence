@@ -92,6 +92,19 @@ describe("Pyth Oracle Price Processing", () => {
       expect(result.envelope).toEqual(envelope);
     });
 
+    it("finds the configured feed when it is not the first entry", async () => {
+      const { acceptPythEnvelope } = await import("../../../src/domain/price-observation/pyth.js");
+      const otherFeedId = "0x0000000000000000000000000000000000000000000000000000000000000000";
+      const envelope = makePythHermesEnvelope({
+        parsed: [
+          makePythHermesPriceUpdate({ id: otherFeedId }),
+          makePythHermesPriceUpdate({ id: SOL_USD_FEED_ID })
+        ]
+      });
+      const result = acceptPythEnvelope(envelope, SOL_USD_FEED_ID);
+      expect(result.priceUpdate.id).toBe(SOL_USD_FEED_ID);
+    });
+
     it("retains extra envelope fields", async () => {
       const { acceptPythEnvelope } = await import("../../../src/domain/price-observation/pyth.js");
       const envelope = makePythHermesEnvelopeWithExtraFields();
@@ -248,6 +261,34 @@ describe("Pyth Oracle Price Processing", () => {
       });
       const result = normalizePythPrice(envelope, SOL_USD_FEED_ID, Date.now());
       expect(result.warnings).not.toContain("oracle_confidence_wide");
+    });
+
+    it("computes ageMs from the difference between fetchedAtUnixMs and observedAtUnixMs", async () => {
+      const { normalizePythPrice } = await import("../../../src/domain/price-observation/pyth.js");
+      const envelope = makePythHermesEnvelope({
+        parsed: [
+          makePythHermesPriceUpdate({
+            price: makePythHermesParsedPrice({ timestamp: 1710000000 })
+          })
+        ]
+      });
+      const fetchedAtUnixMs = 1710000000 * 1000 + 4200;
+      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID, fetchedAtUnixMs);
+      expect(result.priceData.ageMs).toBe(4200);
+    });
+
+    it("clamps ageMs to zero when fetchedAtUnixMs precedes observedAtUnixMs", async () => {
+      const { normalizePythPrice } = await import("../../../src/domain/price-observation/pyth.js");
+      const envelope = makePythHermesEnvelope({
+        parsed: [
+          makePythHermesPriceUpdate({
+            price: makePythHermesParsedPrice({ timestamp: 1710000000 })
+          })
+        ]
+      });
+      const fetchedAtUnixMs = 1710000000 * 1000 - 5000;
+      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID, fetchedAtUnixMs);
+      expect(result.priceData.ageMs).toBe(0);
     });
   });
 

@@ -65,13 +65,9 @@ export function acceptPythEnvelope(
     throw new Error(`Invalid Pyth envelope: ${parsed.error.issues[0]?.message ?? "unknown error"}`);
   }
 
-  const priceUpdate = parsed.data.parsed[0];
+  const priceUpdate = parsed.data.parsed.find((update) => update.id === configuredFeedId);
   if (!priceUpdate) {
-    throw new Error("No parsed price update found");
-  }
-
-  if (priceUpdate.id !== configuredFeedId) {
-    throw new Error(`Feed mismatch: expected ${configuredFeedId}, got ${priceUpdate.id}`);
+    throw new Error(`Feed mismatch: expected ${configuredFeedId}, no matching feed in envelope`);
   }
 
   return {
@@ -131,6 +127,7 @@ export function normalizePythPrice(
   }
 
   const observedAtUnixMs = priceUpdate.price.timestamp * 1000;
+  const ageMs = Math.max(0, fetchedAtUnixMs - observedAtUnixMs);
 
   return {
     kind: "oracle_price",
@@ -141,7 +138,7 @@ export function normalizePythPrice(
       price: priceDecimal,
       confidence: confidenceDecimal,
       status: priceUpdate.price.status === "unknown" ? "trading" : priceUpdate.price.status,
-      ageMs: 0
+      ageMs
     },
     observedSource: {
       source: "pyth-hermes",
