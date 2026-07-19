@@ -48,6 +48,8 @@ import type {
   ConflictResult
 } from "./price-source-result.js";
 
+import type { CollectionRunContext } from "./create-collection-run-context.js";
+
 export interface CollectJupiterQuoteDeps {
   http: HttpClient;
   jsonStore: JsonStore;
@@ -62,15 +64,6 @@ const SCHEMA_VERSION = 1;
 const DEFAULT_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_ATTEMPTS = 2;
 export const PRICE_SNAPSHOT_PATH = "data/latest-price-snapshot.json";
-
-function parseClockNow(clock: Clock): number {
-  const now = clock.now();
-  const parsed = Date.parse(now);
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`Invalid clock value: ${now}`);
-  }
-  return parsed;
-}
 
 function extractHost(baseUrl: string): string {
   try {
@@ -107,7 +100,8 @@ function mapHttpError(err: unknown): PriceSourceResult {
 }
 
 export async function collectJupiterQuote(
-  deps: CollectJupiterQuoteDeps
+  deps: CollectJupiterQuoteDeps,
+  context: CollectionRunContext
 ): Promise<PriceSourceResult> {
   const { http, jsonStore, env, clock, rawObservationRepo, normalizedObservationRepo } = deps;
 
@@ -117,7 +111,7 @@ export async function collectJupiterQuote(
   const solMint = env.get("SOL_MINT", "So11111111111111111111111111111111111111112");
   const usdcMint = env.get("USDC_MINT", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
-  const pipelineRunId = env.getOptional("INTELLIGENCE_PIPELINE_RUN_ID") ?? null;
+  const pipelineRunId = context.runId;
   const codeVersion = env.getOptional("INTELLIGENCE_CODE_VERSION") ?? "development";
 
   const host = extractHost(baseUrl);
@@ -176,7 +170,7 @@ export async function collectJupiterQuote(
     return mapHttpError(err);
   }
 
-  const receivedAtUnixMs = parseClockNow(clock);
+  const receivedAtUnixMs = context.startedAtUnixMs;
   const { payloadCanonical, payloadHash } = await canonicalizePayload(quote);
 
   const sourceObservationKey = await deriveJupiterSourceObservationKey({

@@ -1,20 +1,21 @@
 import { createNodeRuntime, type NodeRuntime } from "../../src/adapters/node/composition-root.js";
 import { clmmBundleJob } from "../../src/jobs/clmm-bundle-job.js";
-import type { CollectClmmBundleDeps } from "../../src/application/collect-clmm-bundle.js";
 import type { CollectClmmBundleResult } from "../../src/application/collect-clmm-bundle.js";
+import type { ClmmBundleJobDeps } from "../../src/jobs/clmm-bundle-job.js";
 
 export async function runClmmBundleCollector(
   runtime: NodeRuntime
 ): Promise<CollectClmmBundleResult> {
   const { connection, rawObservationRepo, normalizedObservationRepo } =
     await runtime.getPersistence();
-  const deps: CollectClmmBundleDeps = {
+  const deps: ClmmBundleJobDeps = {
     http: runtime.http,
     jsonStore: runtime.jsonStore,
     env: runtime.env,
     clock: runtime.clock,
     rawObservationRepo,
-    normalizedObservationRepo
+    normalizedObservationRepo,
+    runIdFactory: runtime.runIdFactory
   };
   let collectionError: unknown;
   let result: CollectClmmBundleResult | undefined;

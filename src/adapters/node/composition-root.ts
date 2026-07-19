@@ -13,6 +13,8 @@ import type { CommandRunner } from "../../ports/command-runner.js";
 import type { DbConnection } from "../../ports/db.js";
 import type { RawObservationRepo } from "../../ports/observation-repo.js";
 import type { NormalizedObservationRepo } from "../../ports/normalized-observation-repo.js";
+import type { RunIdFactory } from "../../ports/run-id.js";
+import { UuidRunIdFactory } from "./uuid-run-id-factory.js";
 
 export interface Persistence {
   connection: DbConnection;
@@ -27,6 +29,7 @@ export interface NodeRuntime {
   env: EnvReader;
   clock: Clock;
   commandRunner: CommandRunner;
+  runIdFactory: RunIdFactory;
   getDb(): Promise<DbConnection>;
   getPersistence(): Promise<Persistence>;
 }
@@ -34,6 +37,7 @@ export interface NodeRuntime {
 export function createNodeRuntime(): NodeRuntime {
   // Resolves environment variables including JUPITER_API_BASE, JUPITER_API_KEY, PYTH_HERMES_BASE_URL, and PYTH_API_KEY
   const env = new ProcessEnvReader();
+  const runIdFactory = new UuidRunIdFactory();
   let dbPromise: Promise<DbConnection> | undefined;
   let persistencePromise: Promise<Persistence> | undefined;
 
@@ -44,6 +48,8 @@ export function createNodeRuntime(): NodeRuntime {
     env,
     clock: new SystemClock(),
     commandRunner: new SpawnCommandRunner(),
+    runIdFactory,
+
     async getDb() {
       if (!dbPromise) {
         const { DrizzlePgAdapter } = await import("./drizzle-pg.js");

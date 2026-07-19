@@ -22,6 +22,11 @@ function createDeps() {
   };
 }
 
+const VALID_CONTEXT = Object.freeze({
+  runId: "run-123",
+  startedAtUnixMs: 1778416200000 // 2026-05-10T12:30:00.000Z
+});
+
 describe("collectJupiterPrice (compatibility wrapper)", () => {
   it("delegates to collectJupiterQuote and writes compatibility snapshot", async () => {
     const deps = createDeps();
@@ -29,7 +34,7 @@ describe("collectJupiterPrice (compatibility wrapper)", () => {
     const url = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
     deps.http.setResponse(url, { body: quote });
 
-    await collectJupiterPrice(deps);
+    await collectJupiterPrice(deps, VALID_CONTEXT);
 
     expect(deps.jsonStore.writes[0]).toEqual({
       path: "data/latest-price-snapshot.json",
@@ -50,7 +55,7 @@ describe("collectJupiterPrice (compatibility wrapper)", () => {
     const url = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
     deps.http.setResponse(url, { body: quote });
 
-    await collectJupiterPrice(deps);
+    await collectJupiterPrice(deps, VALID_CONTEXT);
     expect(deps.http.calls[0]?.url).toBe(url);
   });
 
@@ -59,7 +64,7 @@ describe("collectJupiterPrice (compatibility wrapper)", () => {
     const url = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
     deps.http.setResponse(url, { body: { invalid: "response" } });
 
-    const result = await collectJupiterPrice(deps);
+    const result = await collectJupiterPrice(deps, VALID_CONTEXT);
     expect(result.status).toBe("malformed");
   });
 });

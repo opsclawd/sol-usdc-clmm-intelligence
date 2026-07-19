@@ -31,7 +31,8 @@ export async function runCollector(): Promise<void> {
     env: runtime.env,
     clock: runtime.clock,
     rawObservationRepo: persistence.rawObservationRepo,
-    normalizedObservationRepo: persistence.normalizedObservationRepo
+    normalizedObservationRepo: persistence.normalizedObservationRepo,
+    runIdFactory: runtime.runIdFactory
   });
 
   // Prints the structured result (JSON) safely without leaking secrets

@@ -49,6 +49,8 @@ import type {
   ConflictResult
 } from "./price-source-result.js";
 
+import type { CollectionRunContext } from "./create-collection-run-context.js";
+
 export interface CollectPythPriceDeps {
   http: HttpClient;
   jsonStore: JsonStore;
@@ -70,15 +72,6 @@ const SOURCE = "pyth-hermes" as const;
 const SCHEMA_VERSION = 1;
 const DEFAULT_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_ATTEMPTS = 2;
-
-function parseClockNow(clock: Clock): number {
-  const now = clock.now();
-  const parsed = Date.parse(now);
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`Invalid clock value: ${now}`);
-  }
-  return parsed;
-}
 
 function buildPythUrl(baseUrl: string, feedId: string): string {
   const normalizedBase = baseUrl.replace(/\/$/, "");
@@ -134,13 +127,16 @@ function mapHttpError(err: unknown): PriceSourceResult {
   return { status: "failed", summary: String(err) };
 }
 
-export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<PriceSourceResult> {
-  const { http, jsonStore, env, clock, rawObservationRepo, normalizedObservationRepo } = deps;
+export async function collectPythPrice(
+  deps: CollectPythPriceDeps,
+  context: CollectionRunContext
+): Promise<PriceSourceResult> {
+  const { http, jsonStore, env, rawObservationRepo, normalizedObservationRepo } = deps;
 
   const baseUrl = env.get("PYTH_HERMES_BASE_URL");
   const apiKey = env.getOptional("PYTH_API_KEY");
   const feedId = env.get("PYTH_SOL_USD_FEED_ID");
-  const pipelineRunId = env.getOptional("INTELLIGENCE_PIPELINE_RUN_ID") ?? null;
+  const pipelineRunId = context.runId;
   const codeVersion = env.getOptional("INTELLIGENCE_CODE_VERSION") ?? "development";
 
   const url = buildPythUrl(baseUrl, feedId);
@@ -174,7 +170,7 @@ export async function collectPythPrice(deps: CollectPythPriceDeps): Promise<Pric
     return mapHttpError(err);
   }
 
-  const receivedAtUnixMs = parseClockNow(clock);
+  const receivedAtUnixMs = context.startedAtUnixMs;
   const { payloadCanonical, payloadHash } = await canonicalizePayload(envelope);
 
   const sourceObservationKey = await derivePythSourceObservationKey({

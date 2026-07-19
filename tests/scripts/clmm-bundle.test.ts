@@ -188,6 +188,7 @@ describe("clmm-bundle collector lifecycle", () => {
         env,
         clock,
         commandRunner: createMockCommandRunner(),
+        runIdFactory: { nextRunId: () => "run-123" },
         getDb: vi.fn(),
         getPersistence: vi.fn().mockResolvedValue(persistence)
       };
@@ -227,6 +228,7 @@ describe("clmm-bundle collector lifecycle", () => {
         env,
         clock,
         commandRunner: createMockCommandRunner(),
+        runIdFactory: { nextRunId: () => "run-123" },
         getDb: vi.fn(),
         getPersistence: vi.fn().mockResolvedValue(persistence)
       };
@@ -268,6 +270,7 @@ describe("clmm-bundle collector lifecycle", () => {
         env,
         clock,
         commandRunner: createMockCommandRunner(),
+        runIdFactory: { nextRunId: () => "run-123" },
         getDb: vi.fn(),
         getPersistence: vi.fn().mockResolvedValue(persistence)
       };
@@ -378,7 +381,8 @@ describe("clmmBundleJob result type", () => {
       env,
       clock,
       rawObservationRepo,
-      normalizedObservationRepo
+      normalizedObservationRepo,
+      runIdFactory: { nextRunId: () => "run-123" }
     });
 
     const result = await job();

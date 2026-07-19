@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { collectPriceObservations } from "../../src/application/collect-price-observations.js";
+import type { AcceptedResult } from "../../src/application/price-source-result.js";
 import { HttpRequestError } from "../../src/ports/http.js";
 import { FakeHttp, FakeJsonStore, FakeEnv, FakeClock } from "../fakes/index.js";
 import { FakeObservationRepo } from "../fakes/fake-observation-repo.js";
@@ -57,7 +58,42 @@ function makeRecentPythEnvelope(overrides?: { timestampSecs?: number }) {
   });
 }
 
+const VALID_CONTEXT = Object.freeze({
+  runId: "run-123",
+  startedAtUnixMs: new Date(FIXED_CLOCK_TIME).getTime()
+});
+
 describe("collectPriceObservations", () => {
+  it("passes explicit immutable context without leaf environment rereads", async () => {
+    // Assert both leaves receive the same object
+    const deps = createDeps();
+    const pythUrl = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
+    const jupUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+
+    deps.http.setResponse(pythUrl, { body: makeRecentPythEnvelope() });
+    deps.http.setResponse(jupUrl, { body: makeJupiterQuote() });
+
+    // Mock env to reject run ID reads
+    deps.env.getOptional = (name) => {
+      if (name === "INTELLIGENCE_PIPELINE_RUN_ID")
+        throw new Error("Should not read run id from env");
+      return undefined;
+    };
+
+    const result = await collectPriceObservations(deps, VALID_CONTEXT);
+    expect(result.pyth.status).toBe("accepted");
+    expect(result.jupiter.status).toBe("accepted");
+
+    const pythRow = await deps.rawObservationRepo.findById(
+      (result.pyth as AcceptedResult).rawObservationId!
+    );
+    const jupRow = await deps.rawObservationRepo.findById(
+      (result.jupiter as AcceptedResult).rawObservationId!
+    );
+    expect(pythRow?.sourceRequestMeta).toEqual(expect.objectContaining({ runId: "run-123" }));
+    expect(jupRow?.sourceRequestMeta).toEqual(expect.objectContaining({ runId: "run-123" }));
+  });
+
   it("starts both independent source pipelines before awaiting either result", async () => {
     const deps = createDeps();
 
@@ -77,7 +113,7 @@ describe("collectPriceObservations", () => {
       body: makeJupiterQuote()
     });
 
-    const runPromise = collectPriceObservations(deps);
+    const runPromise = collectPriceObservations(deps, VALID_CONTEXT);
 
     // Let microtasks run so that the async operations start and make their HTTP calls
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -107,7 +143,7 @@ describe("collectPriceObservations", () => {
       )
     });
 
-    const result = await collectPriceObservations(deps);
+    const result = await collectPriceObservations(deps, VALID_CONTEXT);
 
     expect(result.pyth.status).toBe("accepted");
     expect(result.jupiter.status).toBe("unavailable");
@@ -129,7 +165,7 @@ describe("collectPriceObservations", () => {
     });
     deps.http.setResponse(jupUrl, { body: makeJupiterQuote() });
 
-    const result = await collectPriceObservations(deps);
+    const result = await collectPriceObservations(deps, VALID_CONTEXT);
 
     expect(result.pyth.status).toBe("stale");
     expect(result.jupiter.status).toBe("accepted");
@@ -160,7 +196,7 @@ describe("collectPriceObservations", () => {
         )
       });
 
-      const result = await collectPriceObservations(deps);
+      const result = await collectPriceObservations(deps, VALID_CONTEXT);
       expect(result.usableSourceCount).toBe(0);
       expect(result.shouldFailCommand).toBe(true);
     }
@@ -175,7 +211,7 @@ describe("collectPriceObservations", () => {
     deps.http.setResponse(pythUrl, { body: makeRecentPythEnvelope() });
     deps.http.setResponse(jupUrl, { body: makeJupiterQuote() });
 
-    const result = await collectPriceObservations(deps);
+    const result = await collectPriceObservations(deps, VALID_CONTEXT);
 
     expect(result.pyth.status).toBe("accepted");
     expect(result.jupiter.status).toBe("accepted");
@@ -184,7 +220,7 @@ describe("collectPriceObservations", () => {
     expect(result.shouldFailCommand).toBe(false);
     expect(result.warnings).toEqual([]);
 
-    const resultReplay = await collectPriceObservations(deps);
+    const resultReplay = await collectPriceObservations(deps, VALID_CONTEXT);
     expect(resultReplay.pyth.status).toBe("identical_replay");
     expect(resultReplay.jupiter.status).toBe("identical_replay");
     expect(resultReplay.usableSourceCount).toBe(2);
@@ -207,7 +243,7 @@ describe("collectPriceObservations", () => {
         false
       )
     });
-    const resultFail = await collectPriceObservations(depsFail);
+    const resultFail = await collectPriceObservations(depsFail, VALID_CONTEXT);
     expect(resultFail.pyth).not.toHaveProperty("rawObservationId");
     expect(resultFail.pyth).not.toHaveProperty("normalizedCount");
     expect(resultFail.jupiter).not.toHaveProperty("rawObservationId");

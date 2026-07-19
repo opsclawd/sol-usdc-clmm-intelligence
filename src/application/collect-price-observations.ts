@@ -30,17 +30,20 @@ function isUsable(result: PriceSourceResult): boolean {
   return result.status === "accepted" || result.status === "identical_replay";
 }
 
+import type { CollectionRunContext } from "./create-collection-run-context.js";
+
 export async function collectPriceObservations(
-  deps: CollectPriceObservationsDeps
+  deps: CollectPriceObservationsDeps,
+  context: CollectionRunContext
 ): Promise<CollectPriceObservationsResult> {
   const fullDeps = deps as CollectPythPriceDeps & CollectJupiterQuoteDeps;
 
   // Starts both independent source pipelines before awaiting either result
-  const pythPromise = collectPythPrice(fullDeps).catch((err): PriceSourceResult => {
+  const pythPromise = collectPythPrice(fullDeps, context).catch((err): PriceSourceResult => {
     return { status: "failed", summary: err instanceof Error ? err.message : String(err) };
   });
 
-  const jupiterPromise = collectJupiterQuote(fullDeps).catch((err): PriceSourceResult => {
+  const jupiterPromise = collectJupiterQuote(fullDeps, context).catch((err): PriceSourceResult => {
     return { status: "failed", summary: err instanceof Error ? err.message : String(err) };
   });
 

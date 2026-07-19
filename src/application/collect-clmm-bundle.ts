@@ -19,6 +19,8 @@ import {
   type IngestRawObservationDeps
 } from "./ingest-raw-observation.js";
 
+import type { CollectionRunContext } from "./create-collection-run-context.js";
+
 export interface CollectClmmBundleDeps {
   http: HttpClient;
   jsonStore: JsonStore;
@@ -68,25 +70,17 @@ interface RedactedRequestMeta {
   intelligencePipelineRunId: string | null;
 }
 
-function parseClockNow(clock: Clock): number {
-  const now = clock.now();
-  const parsed = Date.parse(now);
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`Invalid clock value: ${now}`);
-  }
-  return parsed;
-}
-
 export async function collectClmmBundle(
-  deps: CollectClmmBundleDeps
+  deps: CollectClmmBundleDeps,
+  context: CollectionRunContext
 ): Promise<CollectClmmBundleResult> {
-  const { http, jsonStore, env, clock, rawObservationRepo, normalizedObservationRepo } = deps;
+  const { http, jsonStore, env, rawObservationRepo, normalizedObservationRepo } = deps;
 
   const base = env.get("CLMM_DATA_API_BASE");
   const apiKey = env.get("CLMM_INSIGHTS_API_KEY");
   const walletId = env.get("WALLET_PUBLIC_KEY");
   const codeVersion = env.getOptional("INTELLIGENCE_CODE_VERSION") ?? "development";
-  const pipelineRunId = env.getOptional("INTELLIGENCE_PIPELINE_RUN_ID") ?? null;
+  const pipelineRunId = context.runId;
 
   const normalizedBase = base.replace(/\/$/, "");
   const path = `/insights/sol-usdc/bundle/${walletId}`;
@@ -100,7 +94,7 @@ export async function collectClmmBundle(
 
   const bundle = validateEnvelope(response);
 
-  const receivedAtUnixMs = parseClockNow(clock);
+  const receivedAtUnixMs = context.startedAtUnixMs;
   const { payloadCanonical, payloadHash } = await canonicalizePayload(bundle);
 
   const walletHash = await hashWalletPublicKey(walletId);
