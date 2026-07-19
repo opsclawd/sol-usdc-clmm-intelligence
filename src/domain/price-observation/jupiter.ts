@@ -262,13 +262,13 @@ export function normalizeJupiterQuote(
       price: priceDecimal,
       slippageBps: acceptedQuote.slippageBps,
       thresholdBps: 50,
-      exactProbe: acceptedQuote.swapMode.toLowerCase() as "exactIn" | "exactOut",
-      receivedAtUnixMs: Date.now(),
+      exactProbe: acceptedQuote.swapMode === "ExactIn" ? "exactIn" : "exactOut",
+      receivedAtUnixMs: fetchedAtUnixMs,
       fetchedAtUnixMs
     },
     observedSource: {
       source: "jupiter-quote",
-      observedAtUnixMs: Date.now(),
+      observedAtUnixMs: fetchedAtUnixMs,
       slot: acceptedQuote.contextSlot
     },
     routeSummary,
