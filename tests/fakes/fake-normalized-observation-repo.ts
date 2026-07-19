@@ -77,12 +77,14 @@ export class FakeNormalizedObservationRepo implements NormalizedObservationRepo 
     observationKind: ObservationKind,
     sinceUnixMs: number
   ): Promise<NormalizedObservationRow[]> {
-    return this.store.filter(
-      (r) =>
-        r.source === source &&
-        r.observationKind === observationKind &&
-        r.receivedAtUnixMs >= sinceUnixMs
-    );
+    return this.store
+      .filter(
+        (r) =>
+          r.source === source &&
+          r.observationKind === observationKind &&
+          r.receivedAtUnixMs >= sinceUnixMs
+      )
+      .sort((a, b) => a.receivedAtUnixMs - b.receivedAtUnixMs);
   }
 
   async findFreshByKind(
@@ -92,5 +94,17 @@ export class FakeNormalizedObservationRepo implements NormalizedObservationRepo 
     return this.store.filter(
       (r) => r.source === source && r.observationKind === observationKind && !r.isStale
     );
+  }
+
+  async findLatestByKind(
+    source: Source,
+    observationKind: ObservationKind
+  ): Promise<NormalizedObservationRow | null> {
+    const matches = this.store.filter(
+      (r) => r.source === source && r.observationKind === observationKind
+    );
+    if (matches.length === 0) return null;
+    matches.sort((a, b) => b.receivedAtUnixMs - a.receivedAtUnixMs);
+    return matches[0] || null;
   }
 }

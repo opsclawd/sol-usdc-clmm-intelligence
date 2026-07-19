@@ -37,7 +37,7 @@ describe("computeFreshness", () => {
   it("uses validForMs when provided", () => {
     const policy = { ...basePolicy, validForMs: 30_000 };
     const nowMs = baseTimestamps.fetchedAtUnixMs + 31_000;
-    const result = computeFreshness(baseTimestamps, policy, nowMs, "price_quote");
+    const result = computeFreshness(baseTimestamps, policy, nowMs, "executable_quote");
     expect(result.isStale).toBe(true);
     expect(result.reasons).toContain("expired_past_valid_for");
   });

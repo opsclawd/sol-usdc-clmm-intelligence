@@ -31,7 +31,8 @@ export function computeConfidence(
   components: ConfidenceComponents,
   policy: ConfidencePolicy,
   weightingVersion: string,
-  staleDegradation?: { readonly factor: number }
+  staleDegradation?: { readonly factor: number },
+  additionalReasons: readonly ConfidenceReason[] = []
 ): Confidence {
   const { weights, thresholds, redistributeLlmWeight } = policy;
   const reasons: ConfidenceReason[] = [];
@@ -141,12 +142,14 @@ export function computeConfidence(
 
   const level: ConfidenceLevel = deriveLevel(compositeScore, thresholds);
 
+  const allReasons = [...reasons, ...additionalReasons.filter((r) => !reasons.includes(r))];
+
   return {
     components,
     compositeScore,
     level,
     weightingVersion,
-    reasons
+    reasons: allReasons
   };
 }
 

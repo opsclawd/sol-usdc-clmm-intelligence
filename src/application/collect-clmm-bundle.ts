@@ -2,11 +2,7 @@ import type { HttpClient } from "../ports/http.js";
 import type { JsonStore } from "../ports/json-store.js";
 import type { EnvReader } from "../ports/env.js";
 import type { Clock } from "../ports/clock.js";
-import type {
-  RawObservationRepo,
-  RawInsertOutcome,
-  RawObservationRow
-} from "../ports/observation-repo.js";
+import type { RawObservationRepo, RawInsertOutcome } from "../ports/observation-repo.js";
 import type { NormalizedObservationRepo } from "../ports/normalized-observation-repo.js";
 import type { Source, ParseStatus } from "../contracts/taxonomy.js";
 import { acceptClmmBundleEnvelope, acceptClmmBundle } from "../domain/clmm-bundle/validate.js";
@@ -17,6 +13,11 @@ import { canonicalizePayload } from "../domain/content-hash.js";
 import { getObservationKindEntry } from "../domain/taxonomy/registry.js";
 import type { ClmmBundle } from "../contracts/clmm-bundle.js";
 import type { ClmmNormalizedCandidate } from "../contracts/normalized-clmm-observation.js";
+import {
+  ingestRawObservation,
+  RawObservationConflictError,
+  type IngestRawObservationDeps
+} from "./ingest-raw-observation.js";
 
 export interface CollectClmmBundleDeps {
   http: HttpClient;
@@ -34,16 +35,14 @@ export interface CollectClmmBundleResult {
   parseStatus: ParseStatus;
 }
 
-export class ClmmObservationConflictError extends Error {
+export class ClmmObservationConflictError extends RawObservationConflictError {
   constructor(
-    public readonly source: Source,
-    public readonly sourceObservationKey: string,
-    public readonly existingPayloadHash: string,
-    public readonly incomingPayloadHash: string
+    source: Source,
+    sourceObservationKey: string,
+    existingPayloadHash: string,
+    incomingPayloadHash: string
   ) {
-    super(
-      `Conflict for ${source}:${sourceObservationKey}: existing hash ${existingPayloadHash} vs incoming ${incomingPayloadHash}`
-    );
+    super(source, sourceObservationKey, existingPayloadHash, incomingPayloadHash);
     this.name = "ClmmObservationConflictError";
   }
 }
@@ -81,7 +80,7 @@ function parseClockNow(clock: Clock): number {
 export async function collectClmmBundle(
   deps: CollectClmmBundleDeps
 ): Promise<CollectClmmBundleResult> {
-  const { http, jsonStore, env, clock, rawObservationRepo } = deps;
+  const { http, jsonStore, env, clock, rawObservationRepo, normalizedObservationRepo } = deps;
 
   const base = env.get("CLMM_DATA_API_BASE");
   const apiKey = env.get("CLMM_INSIGHTS_API_KEY");
@@ -94,7 +93,9 @@ export async function collectClmmBundle(
   const url = `${normalizedBase}${path}`;
 
   const response = await http.getJson<Record<string, unknown>>(url, {
-    "x-insights-api-key": apiKey
+    headers: {
+      "x-insights-api-key": apiKey
+    }
   });
 
   const bundle = validateEnvelope(response);
@@ -119,144 +120,101 @@ export async function collectClmmBundle(
     intelligencePipelineRunId: pipelineRunId
   };
 
-  const rawInsertResult = await rawObservationRepo.insertOrClassify({
-    source: SOURCE,
-    sourceObservationKey,
-    observedAtUnixMs: bundle.observedAtUnixMs,
-    fetchedAtUnixMs: receivedAtUnixMs,
-    payloadHash,
-    payloadCanonical,
-    parseStatus: "pending",
-    sourceRequestMeta: redactedMeta,
-    receivedAtUnixMs
-  });
-
-  if (rawInsertResult.outcome === "conflict") {
-    throw new ClmmObservationConflictError(
-      SOURCE,
-      sourceObservationKey,
-      rawInsertResult.row.payloadHash,
-      rawInsertResult.incomingPayloadHash
-    );
-  }
-
-  if (rawInsertResult.outcome === "identical_replay") {
-    const existingRow = rawInsertResult.row;
-
-    if (existingRow.parseStatus === "parsed") {
-      await jsonStore.writeJson(CLMM_BUNDLE_PATH, bundle);
-      return {
-        rawObservationId: existingRow.id,
-        rawOutcome: rawInsertResult,
-        normalizedCount: 0,
-        parseStatus: "parsed"
-      };
-    }
-
-    const canonicalBundle = JSON.parse(existingRow.payloadCanonical) as ClmmBundle;
-    const validatedBundle = acceptClmmBundle(canonicalBundle);
-    return await normalizeAndStore(
-      deps,
-      existingRow,
-      rawInsertResult,
-      validatedBundle,
-      bundle,
-      codeVersion,
-      pipelineRunId
-    );
-  }
-
-  return await normalizeAndStore(
-    deps,
-    rawInsertResult.row,
-    rawInsertResult,
-    bundle,
-    bundle,
-    codeVersion,
-    pipelineRunId
-  );
-}
-
-async function normalizeAndStore(
-  deps: CollectClmmBundleDeps,
-  rawRow: RawObservationRow,
-  rawOutcome: RawInsertOutcome,
-  bundle: ClmmBundle,
-  compatibilityBundle: ClmmBundle,
-  codeVersion: string,
-  pipelineRunId: string | null
-): Promise<CollectClmmBundleResult> {
-  const { rawObservationRepo, normalizedObservationRepo, jsonStore } = deps;
-
-  const receivedAtUnixMs = rawRow.receivedAtUnixMs;
-  const nowMs = receivedAtUnixMs;
-
-  let parseStatus: ParseStatus = "pending";
-  let normalizedCount = 0;
+  const ingestDeps: IngestRawObservationDeps = {
+    rawObservationRepo,
+    normalizedObservationRepo,
+    jsonStore
+  };
 
   try {
-    const candidates = normalizeClmmBundle(bundle);
-
-    const enrichmentCandidates = candidates.map((candidate) => ({
-      id: rawRow.id,
+    const result = await ingestRawObservation<
+      ClmmBundle,
+      ReturnType<typeof normalizeClmmBundle>[number],
+      Awaited<ReturnType<typeof enrichClmmCandidates>>[number]
+    >(ingestDeps, {
       source: SOURCE,
-      payloadHash: rawRow.payloadHash,
-      receivedAtUnixMs,
-      fetchedAtUnixMs: rawRow.fetchedAtUnixMs,
+      sourceObservationKey,
       observedAtUnixMs: bundle.observedAtUnixMs,
-      kind: candidate.kind,
-      payload: candidate as ClmmNormalizedCandidate
-    }));
+      fetchedAtUnixMs: receivedAtUnixMs,
+      payloadCanonical,
+      payloadHash,
+      sourceRequestMeta: redactedMeta,
+      receivedAtUnixMs,
+      validatePayload: (canonical) => {
+        const parsed = JSON.parse(canonical) as ClmmBundle;
+        return { accepted: acceptClmmBundle(parsed) };
+      },
+      buildCandidates: (accepted) => normalizeClmmBundle(accepted),
+      enrichCandidates: async (candidates, rawRow) => {
+        const receivedAtUnixMs = rawRow.receivedAtUnixMs;
+        const enrichmentCandidates = candidates.map((candidate) => ({
+          id: rawRow.id,
+          source: SOURCE,
+          payloadHash: rawRow.payloadHash,
+          receivedAtUnixMs,
+          fetchedAtUnixMs: rawRow.fetchedAtUnixMs,
+          observedAtUnixMs: rawRow.observedAtUnixMs,
+          kind: candidate.kind,
+          payload: candidate as ClmmNormalizedCandidate
+        }));
 
-    const enriched = await enrichClmmCandidates({
-      candidates: enrichmentCandidates,
-      nowMs,
-      codeVersion,
-      runId: pipelineRunId
+        return enrichClmmCandidates({
+          candidates: enrichmentCandidates,
+          nowMs: receivedAtUnixMs,
+          codeVersion,
+          runId: pipelineRunId
+        });
+      },
+      insertNormalized: async (enriched, candidates, rawRow) => {
+        const normInserts = enriched.map((e, i) => {
+          const cand = candidates[i]!;
+          const entry = getObservationKindEntry(e.kind);
+          return {
+            rawObservationId: rawRow.id,
+            source: SOURCE,
+            observationKind: cand.kind,
+            signalClass: e.signalClass,
+            evidenceFamily: e.evidenceFamily,
+            payload: cand,
+            payloadHash: e.payloadHash,
+            confidence: e.confidence,
+            confidenceComposite: e.confidence.compositeScore,
+            confidenceLevel: e.confidence.level,
+            validUntilUnixMs: e.freshness.validUntilUnixMs,
+            isStale: e.freshness.isStale,
+            staleBehavior: entry.freshnessPolicy.staleBehavior,
+            provenance: e.provenance,
+            receivedAtUnixMs: rawRow.receivedAtUnixMs
+          };
+        });
+
+        await normalizedObservationRepo.insertMany(normInserts);
+        return normInserts.length;
+      },
+      writeCompatibilityOutput: async (accepted) => {
+        await jsonStore.writeJson(CLMM_BUNDLE_PATH, accepted);
+      },
+      revalidateStoredCanonical: (canonical) => {
+        const parsed = JSON.parse(canonical) as ClmmBundle;
+        return { accepted: acceptClmmBundle(parsed) };
+      }
     });
 
-    const normInserts = enriched.map((e, i) => {
-      const cand = candidates[i]!;
-      const entry = getObservationKindEntry(e.kind);
-      return {
-        rawObservationId: rawRow.id,
-        source: SOURCE,
-        observationKind: cand.kind,
-        signalClass: e.signalClass,
-        evidenceFamily: e.evidenceFamily,
-        payload: cand,
-        payloadHash: e.payloadHash,
-        confidence: e.confidence,
-        confidenceComposite: e.confidence.compositeScore,
-        confidenceLevel: e.confidence.level,
-        validUntilUnixMs: e.freshness.validUntilUnixMs,
-        isStale: e.freshness.isStale,
-        staleBehavior: entry.freshnessPolicy.staleBehavior,
-        provenance: e.provenance,
-        receivedAtUnixMs
-      };
-    });
-
-    await normalizedObservationRepo.insertMany(normInserts);
-    normalizedCount = normInserts.length;
-    parseStatus = "parsed";
+    return {
+      rawObservationId: result.rawObservationId,
+      rawOutcome: result.rawOutcome,
+      normalizedCount: result.normalizedCount,
+      parseStatus: result.parseStatus
+    };
   } catch (err) {
-    try {
-      await rawObservationRepo.updateParseStatus(rawRow.id, "failed");
-    } catch {
-      throw err;
+    if (err instanceof RawObservationConflictError) {
+      throw new ClmmObservationConflictError(
+        err.source,
+        err.sourceObservationKey,
+        err.existingPayloadHash,
+        err.incomingPayloadHash
+      );
     }
     throw err;
   }
-
-  await rawObservationRepo.updateParseStatus(rawRow.id, parseStatus);
-
-  await jsonStore.writeJson(CLMM_BUNDLE_PATH, compatibilityBundle);
-
-  return {
-    rawObservationId: rawRow.id,
-    rawOutcome,
-    normalizedCount,
-    parseStatus
-  };
 }

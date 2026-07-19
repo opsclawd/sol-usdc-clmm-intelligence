@@ -24,7 +24,6 @@ export const observationKindRegistry = {
     kind: "pool_state",
     evidenceFamily: "clmm_state",
     signalClass: "deterministic",
-    source: "clmm-v2-bundle",
     freshnessPolicy: {
       maxObservedAgeMs: 60_000,
       maxFetchLagMs: null,
@@ -53,7 +52,6 @@ export const observationKindRegistry = {
     kind: "position_state",
     evidenceFamily: "clmm_state",
     signalClass: "deterministic",
-    source: "clmm-v2-bundle",
     freshnessPolicy: {
       maxObservedAgeMs: 60_000,
       maxFetchLagMs: null,
@@ -78,17 +76,16 @@ export const observationKindRegistry = {
     active: true,
     schemaVersion: 1
   },
-  price_quote: {
-    kind: "price_quote",
+  oracle_price: {
+    kind: "oracle_price",
     evidenceFamily: "price_quality",
     signalClass: "deterministic",
-    source: "jupiter-price-v3",
     freshnessPolicy: {
-      maxObservedAgeMs: 30_000,
+      maxObservedAgeMs: 60_000,
       maxFetchLagMs: null,
       validForMs: null,
       clockSkewToleranceMs: 5_000,
-      staleBehavior: "degrade_confidence"
+      staleBehavior: "exclude"
     },
     confidencePolicy: {
       weights: {
@@ -102,7 +99,35 @@ export const observationKindRegistry = {
     },
     provenanceRequirements: {
       ...DEFAULT_PROVENANCE_REQUIREMENTS,
-      allowedSourceRefs: ["jupiter-price-v3", "jupiter-price"]
+      allowedSourceRefs: ["pyth-hermes", "jupiter-price", "jupiter-price-v3"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  executable_quote: {
+    kind: "executable_quote",
+    evidenceFamily: "price_quality",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 30_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "exclude"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.5,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.2,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      ...DEFAULT_PROVENANCE_REQUIREMENTS,
+      allowedSourceRefs: ["jupiter-quote"]
     },
     active: true,
     schemaVersion: 1
@@ -111,7 +136,6 @@ export const observationKindRegistry = {
     kind: "fee_metrics",
     evidenceFamily: "clmm_economics",
     signalClass: "deterministic",
-    source: "clmm-v2-bundle",
     freshnessPolicy: {
       maxObservedAgeMs: 300_000,
       maxFetchLagMs: null,
@@ -140,7 +164,6 @@ export const observationKindRegistry = {
     kind: "volume_metrics",
     evidenceFamily: "clmm_economics",
     signalClass: "deterministic",
-    source: "clmm-v2-bundle",
     freshnessPolicy: {
       maxObservedAgeMs: 300_000,
       maxFetchLagMs: null,
@@ -169,7 +192,6 @@ export const observationKindRegistry = {
     kind: "trigger_event",
     evidenceFamily: "execution_safety",
     signalClass: "deterministic",
-    source: "clmm-v2-bundle",
     freshnessPolicy: {
       maxObservedAgeMs: 60_000,
       maxFetchLagMs: null,
@@ -198,7 +220,6 @@ export const observationKindRegistry = {
     kind: "data_quality",
     evidenceFamily: "execution_safety",
     signalClass: "deterministic",
-    source: "clmm-v2-bundle",
     freshnessPolicy: {
       maxObservedAgeMs: 60_000,
       maxFetchLagMs: null,
@@ -287,7 +308,7 @@ export const featureKindRegistry = {
       requireProcessRef: true,
       requireCodeVersion: true,
       requireRunId: false,
-      allowedSourceRefs: ["jupiter-price-v3", "coingecko"]
+      allowedSourceRefs: ["pyth-hermes", "jupiter-quote", "jupiter-price-v3", "coingecko"]
     },
     active: true,
     schemaVersion: 1

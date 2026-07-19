@@ -1,97 +1,133 @@
-# feat: persist and normalize clmm-v2 SOL/USDC bundle observations
+# feat: ingest and normalize Pyth and Jupiter SOL/USDC price observations
 
 ## Summary
 
-Wire the existing clmm-v2 SOL/USDC bundle collector into the durable intelligence persistence pipeline so raw LP/pool/alert facts are captured before normalization and converted into source-independent normalized observations.
+Add durable Pyth and Jupiter source ingestion for SOL/USDC price-quality evidence. Persist each accepted source response before normalization, then produce source-independent oracle and executable-quote observations with freshness, confidence, provenance, and explicit partial-failure semantics.
 
-This is the first PR-sized child of #7. It covers only the existing clmm-v2 bundle source; it does not add Pyth, Jupiter, Orca public statistics, derived features, research briefs, or publishing.
+This is a PR-sized child of #7. It covers only Pyth and Jupiter price observations; it does not add Orca public pool statistics, derived features, evidence-bundle assembly, research briefs, or publishing.
 
 ## Why
 
-The repository already consumes the read-only clmm-v2 bundle and already has raw/normalized persistence infrastructure, but the collector currently writes a latest JSON artifact rather than establishing the durable raw → normalized observation path needed by downstream deterministic feature derivation.
+The deterministic MVP needs two independently sourced price views:
 
-clmm-v2 remains the operational authority for live wallet, position, alert, and execution facts. This repository stores an append-only observational copy for analysis and lineage only.
+- a canonical SOL/USD oracle observation with its confidence interval;
+- a DEX/executable-route observation that can be compared with the oracle.
+
+The existing Jupiter collector is not sufficient as a durable evidence source because downstream features require raw retention, normalized contracts, time-bounded freshness, and exact provenance. Pyth confidence data is also required so the system can distinguish a reliable oracle value from a wide-confidence observation.
+
+## Required sources
+
+### Pyth or canonical equivalent
+
+Collect at minimum:
+
+- SOL/USD price;
+- confidence interval/width;
+- source publish time;
+- source/feed identity;
+- any source status needed to determine whether the observation is valid or stale.
+
+Pyth is the preferred implementation unless the repository already has an explicitly approved canonical equivalent. Do not silently substitute a generic token-price API without recording the design decision.
+
+### Jupiter
+
+Collect an executable SOL/USDC quote or equivalent route observation suitable for deterministic price comparison. Record at minimum:
+
+- input/output mint identities;
+- exact input amount used for the probe quote;
+- quoted output amount;
+- implied SOL/USDC price;
+- price impact or route metadata when provided;
+- quote/context slot or source timestamp when provided;
+- route availability warnings.
+
+The quote amount must be deterministic and documented. This adapter supplies generic market evidence only; it is not authority for a user-specific execution transaction.
 
 ## Required behavior
 
-For each successful collection:
+For each source independently:
 
-1. Fetch and validate the clmm-v2 SOL/USDC bundle.
-2. Persist the exact accepted source payload in `raw_observations` before attempting normalization.
-3. Compute and store the canonical payload hash and source identity needed for idempotency.
-4. Normalize the relevant pool, position, range, fee/reward, alert, and data-quality facts into the common taxonomy.
-5. Preserve lineage from every normalized observation to its raw observation.
-6. Represent unavailable values explicitly; do not coerce missing data to zero.
-7. Allow raw capture to survive a later normalization failure so the source payload remains auditable and replayable.
+1. Perform the source request with explicit timeout behavior.
+2. Validate the transport envelope and required source fields.
+3. Persist the exact accepted payload in `raw_observations` before normalization.
+4. Normalize the accepted payload into the common taxonomy.
+5. Preserve lineage from normalized observations to raw payloads.
+6. Apply source-specific freshness and confidence rules from the taxonomy.
+7. Make repeated identical observations idempotent.
+8. Surface malformed, unavailable, stale, or partial source results explicitly.
 
-## Normalized fact scope
+The collection use case must support partial success:
 
-At minimum normalize the bundle facts needed for the deterministic MVP path:
+- Pyth success + Jupiter failure persists Pyth evidence and records Jupiter as unavailable.
+- Jupiter success + Pyth failure persists Jupiter evidence and records Pyth as unavailable.
+- One source failure must not fabricate the other source or roll back already accepted raw data.
 
-- pool identity and SOL/USDC pair identity;
-- current pool tick and current price;
-- tick spacing, fee rate, and pool liquidity;
-- position identity, lower tick, upper tick, current tick, and position liquidity;
-- position range state;
-- unclaimed token fees and rewards, including valuation fields when supplied;
-- actionable-trigger presence and trigger/qualification context when supplied;
-- bundle/source freshness and data-quality warnings.
+## Normalized observation scope
 
-Use existing taxonomy kinds where they fit. Extend the taxonomy only when necessary and keep any additions source-independent rather than named after clmm-v2 DTOs.
+At minimum produce normalized facts equivalent to:
 
-## Idempotency semantics
+- oracle SOL/USD price;
+- oracle confidence interval/width;
+- oracle publish/as-of time;
+- Jupiter SOL/USDC executable quote;
+- Jupiter implied SOL/USDC price;
+- route availability and relevant generic route warnings.
 
-- Re-collecting the same source observation with an identical canonical payload must not create unnecessary duplicate raw or normalized records.
-- The idempotency key and canonical hash behavior must be deterministic and documented.
-- If the same source observation identity is received with different content, fail or record the conflict explicitly rather than silently overwriting prior evidence.
+Use source-independent observation names. Source identity belongs in provenance, not in the semantic observation kind.
+
+## Idempotency and conflicts
+
+- Identical replays must not create unnecessary duplicate raw or normalized records.
+- Canonical hashing and source observation identity must be deterministic and documented.
+- Conflicting content for the same source observation identity must be detected rather than silently overwritten.
 
 ## Scope
 
 In scope:
 
-- application use case changes for clmm-v2 collection;
-- raw-observation persistence;
-- normalized-observation mapping and persistence;
-- canonical hashing/idempotency behavior;
-- replayable normalization boundary;
-- partial/unavailable-data warnings;
-- fixtures, unit tests, integration/adapter tests, and docs/runbook updates.
+- Pyth HTTP/RPC adapter or approved canonical-oracle adapter;
+- Jupiter executable-quote adapter;
+- application collection use cases;
+- raw and normalized persistence;
+- timeout/retry behavior appropriate for collection;
+- provenance, freshness, and confidence mapping;
+- partial-source result aggregation;
+- fixtures, tests, config, and operator documentation.
 
 Out of scope:
 
-- Pyth or Jupiter ingestion;
-- Orca public volume/fees/TVL ingestion;
+- Orca volume, fee, TVL, or liquidity statistics;
 - Solana network-health ingestion;
-- deterministic derived features;
+- user-specific swap preparation or execution quoting;
+- deterministic derived-feature calculations;
 - evidence-bundle assembly;
-- research briefs or LLM use;
-- Regime Engine publishing;
-- final policy synthesis or execution authority.
+- LLM use, policy synthesis, or app display.
 
 ## Guardrails
 
-- Raw payload persistence precedes normalization.
-- No recommendation or final-policy fields are synthesized here.
-- No wallet-specific chain reads are duplicated when clmm-v2 already owns and supplies the fact.
-- Missing data is `null`/unavailable plus warning metadata, never a fabricated zero.
-- The existing read-only character of the clmm-v2 bundle integration remains unchanged.
+- Raw payloads are persisted before normalization.
+- Numerical comparison features are not calculated in this issue.
+- Jupiter observations remain generic research evidence and cannot override clmm-v2 execution slippage, balance, or transaction-safety checks.
+- Missing values remain unavailable with warning metadata; they are never represented as zero.
+- Retry behavior must be bounded and must not create duplicate observations.
 
 ## Acceptance criteria
 
-- [ ] A successful clmm-v2 collection persists the accepted source payload in `raw_observations` before normalization runs.
-- [ ] Normalized pool, position, range, fee/reward, alert, and data-quality observations are persisted using the common taxonomy.
-- [ ] Every normalized record contains lineage to the originating raw observation.
-- [ ] Replaying an identical observation is idempotent and does not create unnecessary duplicates.
-- [ ] A conflicting replay is detected and handled deterministically.
-- [ ] Missing optional facts remain explicitly unavailable and are not converted to zero.
-- [ ] A normalization failure does not erase or roll back an already accepted raw observation.
-- [ ] Tests cover success, identical replay, conflicting replay, malformed bundle, partial bundle data, and normalization failure after raw persistence.
-- [ ] Documentation identifies clmm-v2 as the source of truth for live position/execution state and intelligence as an observational history only.
+- [ ] Pyth/canonical-oracle responses are persisted raw and normalized with price, confidence, source time, freshness, and provenance.
+- [ ] Jupiter executable-quote responses are persisted raw and normalized with exact probe amount, output amount, implied price, route context, freshness, and provenance.
+- [ ] Raw persistence occurs before normalization for both sources.
+- [ ] Identical replays are idempotent and conflicting replays are handled deterministically.
+- [ ] Pyth-only and Jupiter-only partial-success scenarios preserve accepted evidence and emit explicit warnings for the failed source.
+- [ ] Timeout, malformed response, stale oracle, unavailable route, and source failure cases are covered by tests.
+- [ ] No derived oracle/DEX divergence feature is implemented in this issue.
+- [ ] Documentation states that Jupiter route evidence is generic context, not user-specific execution authority.
 
 ## Parent
 
 Child of #7.
 
-## Dependencies
+## Blocked by
 
-The foundational work from #4, #5, and #6 must be present on the target branch before execution.
+- #22
+
+The implementation should reuse the raw-before-normalized persistence and idempotency patterns established by #22 rather than creating a second ingestion architecture.

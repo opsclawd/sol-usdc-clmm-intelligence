@@ -1,56 +1,65 @@
 import { describe, expect, it } from "vitest";
 import { collectJupiterPrice } from "../../src/application/collect-jupiter-price.js";
+import { makeJupiterQuote, SOL_MINT, USDC_MINT } from "../fixtures/jupiter-quote.js";
 import { FakeHttp, FakeJsonStore, FakeEnv, FakeClock } from "../fakes/index.js";
+import { FakeObservationRepo } from "../fakes/fake-observation-repo.js";
+import { FakeNormalizedObservationRepo } from "../fakes/fake-normalized-observation-repo.js";
 
-const SOL_MINT = "So11111111111111111111111111111111111111112";
+const JUPITER_API_BASE = "https://api.jup.ag/swap/v6";
 
-describe("collectJupiterPrice", () => {
-  it("writes data/latest-price-snapshot.json with usdPrice, source, and clock timestamp", async () => {
-    const http = new FakeHttp();
-    const url = `https://lite-api.jup.ag/price/v3?ids=${encodeURIComponent(SOL_MINT)}`;
-    http.setResponse(url, {
-      body: { [SOL_MINT]: { usdPrice: 175.42, blockId: 1, decimals: 9, priceChange24h: 0.5 } }
-    });
-    const jsonStore = new FakeJsonStore();
-    const env = new FakeEnv({ SOL_MINT });
-    const clock = new FakeClock("2026-05-10T12:30:00.000Z");
+function createDeps() {
+  return {
+    http: new FakeHttp(),
+    jsonStore: new FakeJsonStore(),
+    env: new FakeEnv({
+      JUPITER_API_BASE,
+      SOL_MINT,
+      USDC_MINT
+    }),
+    clock: new FakeClock("2026-05-10T12:30:00.000Z"),
+    rawObservationRepo: new FakeObservationRepo(),
+    normalizedObservationRepo: new FakeNormalizedObservationRepo()
+  };
+}
 
-    await collectJupiterPrice({ http, jsonStore, env, clock });
+describe("collectJupiterPrice (compatibility wrapper)", () => {
+  it("delegates to collectJupiterQuote and writes compatibility snapshot", async () => {
+    const deps = createDeps();
+    const quote = makeJupiterQuote();
+    const url = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+    deps.http.setResponse(url, { body: quote });
 
-    expect(jsonStore.writes[0]).toEqual({
+    await collectJupiterPrice(deps);
+
+    expect(deps.jsonStore.writes[0]).toEqual({
       path: "data/latest-price-snapshot.json",
       value: expect.objectContaining({
         pair: "SOL/USDC",
         timestamp: "2026-05-10T12:30:00.000Z",
-        source: "jupiter-price-v3",
-        priceUsd: 175.42,
+        source: "jupiter-quote",
+        priceUsd: 175,
         confidence: "high"
       })
     });
   });
 
-  it("uses default mint when SOL_MINT env is unset", async () => {
-    const http = new FakeHttp();
-    const url = `https://lite-api.jup.ag/price/v3?ids=${encodeURIComponent(SOL_MINT)}`;
-    http.setResponse(url, { body: { [SOL_MINT]: { usdPrice: 1 } } });
-    const jsonStore = new FakeJsonStore();
-    const env = new FakeEnv({});
-    const clock = new FakeClock("2026-05-10T12:30:00.000Z");
+  it("uses default mints when SOL_MINT is unset", async () => {
+    const deps = createDeps();
+    deps.env = new FakeEnv({ JUPITER_API_BASE });
+    const quote = makeJupiterQuote();
+    const url = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+    deps.http.setResponse(url, { body: quote });
 
-    await collectJupiterPrice({ http, jsonStore, env, clock });
-    expect(http.calls[0]?.url).toBe(url);
+    await collectJupiterPrice(deps);
+    expect(deps.http.calls[0]?.url).toBe(url);
   });
 
-  it("throws when usdPrice is missing in the response", async () => {
-    const http = new FakeHttp();
-    const url = `https://lite-api.jup.ag/price/v3?ids=${encodeURIComponent(SOL_MINT)}`;
-    http.setResponse(url, { body: { [SOL_MINT]: {} } });
-    const jsonStore = new FakeJsonStore();
-    const env = new FakeEnv({ SOL_MINT });
-    const clock = new FakeClock("2026-05-10T12:30:00.000Z");
+  it("rejects when quote schema is invalid", async () => {
+    const deps = createDeps();
+    const url = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+    deps.http.setResponse(url, { body: { invalid: "response" } });
 
-    await expect(collectJupiterPrice({ http, jsonStore, env, clock })).rejects.toThrow(
-      "Jupiter response did not include usdPrice for SOL"
-    );
+    const result = await collectJupiterPrice(deps);
+    expect(result.status).toBe("malformed");
   });
 });

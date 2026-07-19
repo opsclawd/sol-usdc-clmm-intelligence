@@ -18,7 +18,7 @@ export async function collectCoingecko(deps: CollectCoingeckoDeps): Promise<void
   const { http, jsonStore, env, clock } = deps;
   const apiKey = env.getOptional("COINGECKO_API_KEY");
   const raw = apiKey
-    ? await http.getJson<unknown>(URL, { "x-cg-demo-api-key": apiKey })
+    ? await http.getJson<unknown>(URL, { headers: { "x-cg-demo-api-key": apiKey } })
     : await http.getJson<unknown>(URL);
   await jsonStore.writeJson(COINGECKO_OUTPUT_PATH, {
     timestamp: clock.now(),

@@ -57,4 +57,8 @@ export interface NormalizedObservationRepo {
     source: Source,
     observationKind: ObservationKind
   ): Promise<NormalizedObservationRow[]>;
+  findLatestByKind(
+    source: Source,
+    observationKind: ObservationKind
+  ): Promise<NormalizedObservationRow | null>;
 }

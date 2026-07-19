@@ -45,6 +45,40 @@ openclaw cron run <jobId>
 openclaw cron runs --id <jobId> --limit 20
 ```
 
+## Configuration & Credentials
+
+Durable price telemetry collection requires the following credentials and environment variables to be configured in `.env` (configured via `.env.example` as a template):
+
+- `PYTH_HERMES_BASE_URL`: Base URL for the Pyth Hermes API (defaults to `https://hermes.pyth.network`).
+- `PYTH_API_KEY`: API Key for Pyth Hermes. Optional for local development/low-frequency runs, but required in production.
+- `PYTH_SOL_USD_FEED_ID`: The price feed ID for SOL/USD (canonical feed ID `0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d`).
+- `JUPITER_API_BASE`: Base URL for Jupiter's quote API (defaults to `https://api.jup.ag`).
+- `JUPITER_API_KEY`: Optional Jupiter API Key for high-frequency or production rate-limit environments.
+
+Ensure no actual credentials, keys, or authorization tokens are logged. The CLI automatically redacts headers and keys.
+
+## Price Collector Exit Behavior
+
+When running `pnpm collect:price` or `runPriceObservationsJob` via scheduling:
+
+1. **Complete Success (Exit Code: 0)**: Both Pyth and Jupiter sources collected, normalized, and persisted successfully.
+2. **Partial Success (Exit Code: 0)**: One of the sources (e.g. Jupiter quote) failed, but the other source (e.g. Pyth Hermes) succeeded, yielding at least one usable observation. The run outputs structured warnings to notify the operator.
+3. **Conflict Failure (Exit Code: 1)**: Any database uniqueness or identity conflicts are detected (e.g., trying to write duplicate records for the same key with different payloads/hashes). The pipeline fails closed to protect data integrity.
+4. **Total Failure (Exit Code: 1)**: Both sources failed to collect (e.g. internet down, both APIs timed out). No fresh observations are persisted.
+
+## Pre-deployment Preflight Checks
+
+Before deploying any schema migrations or running taxonomy updates, check if there are any historical `price_quote` rows in the database:
+
+```sql
+SELECT COUNT(*) AS price_quote_count
+FROM intelligence.normalized_observations
+WHERE observation_kind = 'price_quote';
+```
+
+> [!STOP]
+> If `price_quote_count > 0`, abort deployment immediately. Check with the lead engineer regarding compatibility/migration policies. Do not rewrite history or overwrite kinds without approval.
+
 ## Failure modes
 
 ### Cron not firing
@@ -110,88 +144,90 @@ All SQL queries below are read-only. Do not manually mutate immutable raw eviden
 
 ### Malformed rejection (no raw row)
 
-If a bundle parse fails validation, no raw row is written. Check the collector log for field-path errors:
+If a provider payload fails validation or structure parsing, no raw row is written. Check the collector log for network or payload schema errors. You can inspect recently fetched raw records:
 
 ```sql
--- No rows expected; confirm no raw row was written for a rejected bundle
-SELECT observedAtUnixMs, sourceKey, parseState
+SELECT received_at_unix_ms, source, parse_status, payload_hash
 FROM intelligence.raw_observations
-WHERE sourceKey = $1
-ORDER BY observedAtUnixMs DESC
+WHERE source IN ('pyth-hermes', 'jupiter-quote')
+ORDER BY received_at_unix_ms DESC
 LIMIT 10;
 ```
 
-### Conflict (fail closed)
+### Uniqueness Conflict (fail closed)
 
-Source identity collisions surface as conflicts. The pipeline fails closed — no normalized row is written:
+Source identity/hash collisions surface as conflicts. The pipeline fails closed — no normalized row is written:
 
 ```sql
--- Check for conflict state in normalized observations
-SELECT observedAtUnixMs, sourceKey, status, parseState, version
+-- Check for conflict status on raw or normalized observation boundaries
+SELECT raw_observation_id, source, observation_kind, payload_hash, confidence_level
 FROM intelligence.normalized_observations
-WHERE status = 'conflict'
-ORDER BY observedAtUnixMs DESC
-LIMIT 20;
+WHERE payload_hash = $1;
 ```
 
 ### Failed/pending raw replay
 
-A raw observation may remain in `pending` if normalization failed or was interrupted:
+A raw observation remains in `pending` if normalization failed, was interrupted, or didn't proceed:
 
 ```sql
 -- Find pending raw observations that may need replay
-SELECT observedAtUnixMs, sourceKey, parseState, createdAt
+SELECT observed_at_unix_ms, source, source_observation_key, parse_status
 FROM intelligence.raw_observations
-WHERE parseState = 'pending'
-ORDER BY observedAtUnixMs DESC
-LIMIT 20;
-```
-
-### Batch rollback
-
-If a normalized batch fails mid-commit, individual normalized rows remain in their pre-commit state. Check batch integrity:
-
-```sql
--- Check normalized observations for batch integrity issues
-SELECT observedAtUnixMs, sourceKey, status, parseState, batchId
-FROM intelligence.normalized_observations
-WHERE status = 'pending'
-ORDER BY observedAtUnixMs DESC
+WHERE parse_status = 'pending'
+ORDER BY observed_at_unix_ms DESC
 LIMIT 20;
 ```
 
 ### Post-commit pending status
 
-After a successful normalized commit, the raw row's `parseState` should be `complete`. A raw row stuck in `pending` after its normalized counterpart is `complete` indicates a post-commit update was missed:
+After a successful normalized commit, the raw row's `parse_status` should be updated to `parsed`. A raw row stuck in `pending` after its normalized counterpart is complete indicates a post-commit update failed:
 
 ```sql
 -- Find raw rows stuck in pending after their normalized counterpart completed
-SELECT r.observedAtUnixMs, r.sourceKey, r.parseState AS raw_parse_state,
-       n.status AS normalized_status, n.parseState AS normalized_parse_state
+SELECT r.observed_at_unix_ms, r.source, r.parse_status AS raw_parse_status,
+       n.id AS normalized_id, n.is_stale
 FROM intelligence.raw_observations r
-JOIN intelligence.normalized_observations n
-  ON n.sourceKey = r.sourceKey AND n.observedAtUnixMs = r.observedAtUnixMs
-WHERE r.parseState = 'pending' AND n.status = 'complete'
-ORDER BY r.observedAtUnixMs DESC
+JOIN intelligence.normalized_observations n ON n.raw_observation_id = r.id
+WHERE r.parse_status = 'pending'
+ORDER BY r.observed_at_unix_ms DESC
 LIMIT 20;
+```
+
+### Freshness and Staleness Queries
+
+Check the status of observations to see which are currently marked as stale or within their freshness validity windows:
+
+```sql
+-- Check for stale vs fresh observations by source and kind
+SELECT source, observation_kind, is_stale, COUNT(*) AS cnt
+FROM intelligence.normalized_observations
+GROUP BY source, observation_kind, is_stale;
+
+-- Retrieve fresh observations only
+SELECT id, source, observation_kind, valid_until_unix_ms, received_at_unix_ms
+FROM intelligence.normalized_observations
+WHERE is_stale = false
+ORDER BY received_at_unix_ms DESC
+LIMIT 10;
 ```
 
 ### Latest-file repair
 
-The compatibility artifact at `data/latest-clmm-bundle.json` may lag after a replay. Repair by re-running the collector:
+The compatibility artifact at `data/latest-price-snapshot.json` or `data/latest-clmm-bundle.json` may lag after a replay. Repair by re-running the collector:
 
 ```bash
+pnpm collect:price
 pnpm collect:clmm-bundle
 ```
 
-This re-fetches from clmm-v2 and writes a fresh compatibility artifact. The DB remains authoritative; the file is only a compatibility fallback.
+The DB remains the source of authority; local JSON files are compatibility fallbacks only.
 
 ### Guaranteed connection close
 
 All adapter operations use try/finally to ensure connections close even on error. If a connection leak is suspected:
 
 ```sql
--- Check for unclosed connections (requires pg_stat_activity view)
+-- Check for active backend queries/connections (requires pg_stat_activity view)
 SELECT pid, state, query_start, query
 FROM pg_stat_activity
 WHERE datname = current_database()
@@ -201,34 +237,33 @@ WHERE datname = current_database()
 
 ### Diagnosing by source key
 
-To find observations for a specific wallet/pool:
+To find observations for a specific source key:
 
 ```sql
-SELECT observedAtUnixMs, sourceKey, sourceHash, parseState, createdAt
+SELECT observed_at_unix_ms, source, source_observation_key, payload_hash, parse_status
 FROM intelligence.raw_observations
-WHERE sourceKey = $1
-ORDER BY observedAtUnixMs DESC
+WHERE source_observation_key = $1
+ORDER BY observed_at_unix_ms DESC
 LIMIT 10;
 ```
 
-### Diagnosing by source hash
+### Diagnosing by payload hash
 
 To check for duplicate source content:
 
 ```sql
-SELECT sourceHash, COUNT(*) AS cnt, MIN(observedAtUnixMs), MAX(observedAtUnixMs)
+SELECT payload_hash, COUNT(*) AS cnt, MIN(observed_at_unix_ms) AS first_observed, MAX(observed_at_unix_ms) AS last_observed
 FROM intelligence.raw_observations
-WHERE sourceHash IS NOT NULL
-GROUP BY sourceHash
+GROUP BY payload_hash
 HAVING COUNT(*) > 1;
 ```
 
-### Diagnosing by parse state
+### Diagnosing by parse status
 
-To get a count of observations by parse state:
+To get a count of observations by parse status:
 
 ```sql
-SELECT parseState, COUNT(*) AS cnt, MIN(observedAtUnixMs), MAX(observedAtUnixMs)
+SELECT parse_status, COUNT(*) AS cnt, MIN(observed_at_unix_ms), MAX(observed_at_unix_ms)
 FROM intelligence.raw_observations
-GROUP BY parseState;
+GROUP BY parse_status;
 ```

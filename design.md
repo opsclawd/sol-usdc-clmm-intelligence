@@ -1,418 +1,360 @@
-# Design: Persist and Normalize clmm-v2 SOL/USDC Bundle Observations
+# Pyth and Jupiter SOL/USDC Price Observation Ingestion
 
-## Status and intent
+**Issue:** #23  
+**Status:** Design  
+**Date:** 2026-07-18  
+**Parent:** #7  
+**Blocked by:** #22 (complete on the current branch)
 
-This document designs the first PR-sized slice of INT-CORE: move the existing clmm-v2 SOL/USDC bundle collector from a latest-file-only workflow to a durable, auditable `raw_observations -> normalized_observations` workflow. It does not design derived features, research briefs, evidence publication, policy synthesis, or execution.
+## Summary
 
-The design preserves the repository's layered modular monolith and its authority boundary: clmm-v2 remains authoritative for live wallet, position, pool, alert, and execution facts. This repository stores an observational history and source-independent normalized facts for later analysis.
+Add one price-collection job that independently requests a Pyth SOL/USD oracle update and a Jupiter SOL-to-USDC executable quote. Each valid source response is validated, canonically hashed, and persisted to `raw_observations` before any normalized row is written. Source-specific normalizers then produce two source-independent price-quality facts with freshness, confidence, and provenance:
+
+- `oracle_price` for a canonical SOL/USD price and confidence interval;
+- `executable_quote` for a deterministic SOL/USDC exact-input route quote and its implied price.
+
+The two source pipelines do not share a database transaction. The job aggregates their outcomes so that either source can succeed without the other, while conflicts and total failure remain visible. This extends the raw-first/idempotent lifecycle introduced by #22 instead of retaining the existing latest-file-only Jupiter price collector as the evidence authority.
+
+No oracle/DEX comparison or policy conclusion is produced here.
 
 ## Problem and why it matters
 
-`collectClmmBundle` currently fetches `/insights/sol-usdc/bundle/:walletId`, performs partial runtime validation, and writes `data/latest-clmm-bundle.json`. That gives operators a convenient latest snapshot, but it does not provide:
+The current `collectJupiterPrice` use case calls Jupiter Price v3 and writes `data/latest-price-snapshot.json`. It does not retain raw responses in Postgres, link normalized facts to raw evidence, distinguish replays from conflicts, enforce source freshness, or expose partial-source outcomes. It is also a token-price lookup rather than an executable route quote.
 
-- immutable historical source evidence;
-- lineage from normalized facts back to their accepted source payload;
-- deterministic replay after normalizer changes or failures;
-- explicit detection of a source observation being replayed with changed content;
-- source-independent records for downstream deterministic feature derivation; or
-- durable representation of partial and unavailable data.
+The deterministic feature pipeline needs two different market views:
 
-Without this boundary, later feature calculations cannot prove which source payload produced a value, and a normalization defect can destroy the only useful copy of an observation. Raw-first persistence matters because parsing and normalization are fallible while accepted source evidence must remain auditable.
+1. an oracle value whose uncertainty and publish time are explicit; and
+2. an amount-specific DEX route value that reflects currently available liquidity.
 
-## Existing architecture and constraints
+Without durable raw payloads and exact lineage, a later divergence feature cannot be reproduced or audited. Without freshness and confidence semantics, an old oracle update or a wide Pyth interval can look equivalent to a current, tight observation. Without partial-success handling, a transient failure from one provider discards independent evidence from the other.
 
-The relevant code already provides most of the infrastructure:
+## Codebase findings that shape the design
 
-- `src/application/collect-clmm-bundle.ts` owns HTTP orchestration and validation.
-- `src/contracts/clmm-bundle.ts` defines the inbound bundle DTO.
-- `RawObservationRepo` and `NormalizedObservationRepo` abstract persistence.
-- Drizzle adapters implement idempotent inserts into the `intelligence` schema.
-- `canonicalHash` provides key-order-independent SHA-256 hashing.
-- the taxonomy registry defines `pool_state`, `position_state`, and `fee_metrics` for `clmm-v2-bundle`, plus freshness, confidence, and provenance policies.
-- `computeFreshness`, `computeConfidence`, and `validateProvenance` are pure domain functions.
-- `createNodeRuntime()` lazily creates the shared database connection.
+- #22 established the required lifecycle in `collect-clmm-bundle.ts`: validate the source envelope, canonicalize the accepted payload, derive a source observation identity, call `insertOrClassify`, normalize only after raw persistence, recover pending/failed identical replays, and reject conflicting content for the same identity.
+- `raw_observations` is uniquely keyed by `(source, source_observation_key)`. `normalized_observations` is uniquely keyed by `(raw_observation_id, observation_kind, payload_hash)`. These constraints already support this issue; no database migration is required.
+- The taxonomy currently has only `price_quote`, associates each observation registry entry with a singular `source`, and lists only Jupiter Price sources. This conflicts with the requirement that semantic kinds be source-independent and does not model an oracle confidence interval.
+- CLMM enrichment is coupled to `ClmmNormalizedCandidate` and a CLMM-only completeness table. Price observations should use the same taxonomy functions without adding Pyth and Jupiter branches to the CLMM module.
+- `HttpClient.getJson` has no timeout or typed transport failure, and `FetchHttpClient` makes one unbounded `fetch` call. The transport port must expose bounded request policy for this issue.
+- The existing `collect:price` command and `data/latest-price-snapshot.json` are documented operator interfaces. They should remain compatibility surfaces, but the database becomes authoritative.
+- Official Pyth documentation exposes parsed price, `conf`, exponent, publish time, feed ID, and slot through Hermes `/v2/updates/price/latest`. It also documents `price +/- conf` and the shared fixed-point exponent. The upgraded Hermes endpoint requires bearer authentication, so the design treats credentials as required configuration rather than depending on a temporary unauthenticated public service.
+- Jupiter's quote-only Swap v1 endpoint returns exact input/output atomic amounts, route plan, price impact, and context slot. Jupiter now marks Swap v1 as superseded by Swap v2; however, V2 endpoints also construct transactions or instructions. A read-only intelligence collector should not request transaction material merely to obtain evidence, so the quote-only endpoint is isolated behind an adapter and its deprecation is an explicit operational risk.
 
-The current infrastructure also has gaps that this issue must address:
+## Design decisions
 
-1. `raw_observations` is unique only on `(source, payload_hash)`. It can deduplicate equal content but cannot identify a conflicting replay, and it can incorrectly collapse equal payloads requested for different wallets.
-2. `normalized_observations` is unique on `(source, observation_kind, payload_hash)`. This can collapse the same normalized fact from two distinct raw observations and retain lineage only to the earlier row.
-3. raw rows have a `parse_status`, but the repository port cannot update it or load a row by ID for replay.
-4. normalized inserts are row-at-a-time. A mid-loop failure can expose a partial normalized set.
-5. only the hash function is exported; the exact canonical string used to compute that hash is not available to store.
-6. the current validator checks critical pool and position fields but not all nested fee, reward, alert, and data-quality shapes.
-7. the composition root exposes a database connection but does not construct repositories for the job.
+### 1. Use two semantic observation kinds
 
-These are focused persistence and ingestion gaps, not reasons to change the overall architecture.
+Replace the unused DB-ingestion placeholder `price_quote` with:
 
-## Design options considered
+| Kind               | Meaning                                            | Current allowed source | Freshness                                                     |
+| ------------------ | -------------------------------------------------- | ---------------------- | ------------------------------------------------------------- |
+| `oracle_price`     | Canonical base/quote oracle value with uncertainty | `pyth-hermes`          | 60 seconds from source publish time; stale behavior `exclude` |
+| `executable_quote` | Exact-input route quote for a fixed probe size     | `jupiter-quote`        | 30 seconds from receipt; stale behavior `exclude`             |
 
-### Option A: Extend the existing collector use case and repository ports (recommended)
+The names describe facts, not providers. Source identity remains in the raw row and provenance. Existing `jupiter-price` and `jupiter-price-v3` source literals may remain for historical/legacy file compatibility, but new DB rows use `jupiter-quote`.
 
-Keep one public collection command, split its internals into fetch/accept, raw persistence, pure normalization, and normalized persistence. Extend the generic repository ports with source-identity lookup/status updates and atomic batch insertion.
+`ObservationKindEntry.source` should be removed because `provenanceRequirements.allowedSourceRefs` already expresses allowed providers and supports more than one. This is a focused taxonomy correction exposed by the issue, not a new taxonomy system.
 
-Advantages:
+There is no evidence in the codebase of `price_quote` DB writes, so no data migration is proposed. Before implementation, an operator should still query production for that value; if rows exist, retain `price_quote` as an inactive compatibility kind rather than renaming historical records.
 
-- follows the current application/port/adapter structure;
-- keeps the source-specific mapping pure and independently testable;
-- makes the accepted raw row durable before any normalization work;
-- supports replay without another HTTP request; and
-- adds only capabilities that other collectors will also need.
+### 2. Share the ingestion lifecycle, not the source model
 
-Trade-off: the current collector dependency object and DB adapter wiring become larger, and a schema migration is required.
+Add a small application-level raw-first ingestion service that owns only the common state machine:
 
-### Option B: Add a clmm-specific persistence adapter
+1. receive an already transport-validated source payload and identity fields;
+2. canonicalize the complete response object;
+3. insert or classify the raw row as inserted, identical replay, or conflict;
+4. on an already-parsed identical replay, return without writing normalized duplicates;
+5. on inserted, pending, or failed rows, revalidate the stored canonical payload and invoke the source normalizer;
+6. insert normalized rows idempotently;
+7. mark the raw row `parsed`, or `failed` if normalization/enrichment fails.
 
-Create one `ClmmBundlePersistenceRepo` that inserts raw rows, normalized rows, and status updates.
+The service accepts source-specific callbacks for canonical-payload validation and normalized-row construction. It does not know Pyth fields, Jupiter routes, or CLMM bundles. The #22 collector can adopt this service as a small follow-on refactor within this issue only if behavior remains covered by its existing tests; otherwise the price pipeline should reproduce its state transitions through a price-scoped helper and leave CLMM untouched. The important invariant is one lifecycle, not an ambitious generic framework.
 
-Advantages: fewer orchestration calls and easy cross-table transactions.
+Raw persistence occurs after the response is proven to be an accepted source envelope but before decimal conversion, normalization, freshness, confidence, or provenance work. Zod validation must inspect the response without replacing it with a stripped object; the complete original JSON response is what is canonicalized and stored.
 
-Trade-offs: it couples generic evidence tables to one upstream DTO, puts normalization-adjacent behavior in an adapter, and creates a pattern that does not generalize cleanly to future sources. It also makes pure replay and mapper testing less clear.
+### 3. Keep source adapters and normalizers isolated
 
-### Option C: Store one normalized bundle record
+Create bounded modules under a price-observation domain area:
 
-Persist the raw bundle, then store a single normalized observation containing the entire bundle.
+- Pyth schema acceptance, identity derivation, fixed-point conversion, and normalization;
+- Jupiter schema acceptance, identity derivation, amount conversion, route warning extraction, and normalization;
+- direct-observation enrichment that uses the existing taxonomy freshness, confidence, hashing, and provenance functions without depending on CLMM payload types.
 
-Advantages: minimal code and straightforward idempotency.
+This keeps each unit pure and fixture-testable. The application layer owns request ordering and repositories; the Node adapter owns HTTP mechanics; the job and script remain thin composition wrappers.
 
-Trade-offs: it is not meaningfully source-independent, forces downstream features to understand the clmm-v2 DTO, prevents kind-specific freshness/confidence policies, and does not satisfy the requested fact-level normalization.
+### 4. Use exact numeric representations
 
-Option A is recommended because it uses existing abstractions while keeping source-specific parsing out of persistence adapters.
+Provider integers and atomic amounts remain strings in normalized payloads. Human-readable decimal values are computed with `BigInt`/decimal-string helpers, never binary floating-point.
 
-## Proposed architecture
+The oracle payload includes at minimum:
 
-The public entrypoint remains `pnpm collect:clmm-bundle`. Its dependencies expand to include `Clock`, `RawObservationRepo`, and `NormalizedObservationRepo`. The script obtains the database from `createNodeRuntime()`, constructs both Drizzle repositories, invokes the job, and closes the connection in a `finally` block.
+- `kind`, `schemaVersion`, `pair: "SOL/USD"`, and `observedAtUnixMs`;
+- `baseAsset: "SOL"`, `quoteAsset: "USD"`;
+- Pyth feed ID in a provider-neutral `instrumentId` field;
+- raw `price`, raw `confidence`, and exponent;
+- decimal price and confidence half-width strings;
+- decimal lower and upper confidence bounds;
+- confidence-to-price ratio in basis points;
+- source publish time and context slot when present;
+- warning codes.
 
-Internally, the work is separated into four units:
+The executable quote payload includes at minimum:
 
-1. **Bundle acceptance** validates the response envelope and complete nested bundle contract. It returns a `ClmmBundle`; it performs no I/O.
-2. **Canonicalization and raw persistence** derive the canonical payload string, content hash, and source observation key, then durably insert or recover the raw row.
-3. **Pure normalization** maps a validated `ClmmBundle` into typed, source-independent normalized fact candidates. It performs no I/O, hashing, clock access, or environment access.
-4. **Taxonomy enrichment and persistence** adds hashes, confidence, freshness, provenance, and lineage, validates those values, then inserts the whole normalized set atomically.
+- `kind`, `schemaVersion`, `pair: "SOL/USDC"`, and `observedAtUnixMs`;
+- input/output mint, symbol, decimals, and raw amounts;
+- `swapMode: "ExactIn"` and the exact probe amount;
+- implied USDC-per-SOL decimal string;
+- `otherAmountThreshold`, configured slippage basis points, price-impact string, context slot, and route plan summary;
+- `routeAvailable: true` and warning codes.
 
-The source-specific pure functions should live in a focused domain module such as `src/domain/clmm-bundle/`. Normalized payload contracts should live under `src/contracts/` so downstream feature code can consume them without importing application or adapter code. Application orchestration continues to depend only on contracts, domain functions, and ports.
+The implied quote price is normalization of exact source quantities, not a cross-source derived feature. Oracle/DEX divergence remains out of scope.
 
-### Collection data flow
+### 5. Make the quote probe deterministic
+
+Use exactly `1_000_000_000` lamports (1 SOL) as an ExactIn probe to the configured mainnet USDC mint, with:
+
+- `slippageBps=50`;
+- `restrictIntermediateTokens=true`;
+- no platform fee;
+- no user/taker address;
+- no transaction-building or execution request.
+
+One SOL is large enough to expose executable-route quality while remaining a generic market probe. The request parameters and mint identities are included in redacted `sourceRequestMeta`. API keys and headers are never persisted.
+
+### 6. Define deterministic identities and conflicts
+
+Identity payloads are versioned and canonically hashed:
+
+- Pyth: `{ identityVersion: 1, feedId, publishTimeUnixSeconds }`.
+- Jupiter: `{ identityVersion: 1, inputMint, outputMint, inAmount, swapMode, contextSlot }`.
+
+For Pyth, a different response for the same feed publication is a conflict. For Jupiter, context slot plus the complete deterministic request defines the source observation. Different route content for that identity is also a conflict rather than a silent overwrite. `contextSlot` is therefore required for accepted Jupiter responses; accepting responses without it would force receipt-time identities that cannot support meaningful replay detection.
+
+Content hashes cover the complete accepted response. Normalized hashes cover the source-independent normalized payload, including warning metadata.
+
+### 7. Model source quality separately from Pyth's confidence interval
+
+Pyth's `conf` is provider-reported market uncertainty, not the repository's aggregate `Confidence` object. Both are retained under distinct names.
+
+The taxonomy gains versioned price-quality rules:
+
+- Pyth freshness is based on `publish_time`, with a maximum observed age of 60 seconds.
+- A Pyth confidence half-width at or below 100 basis points of the absolute price passes the initial quality threshold. Above that threshold the observation is still persisted and normalized, receives `oracle_confidence_wide`, and its confidence source-quality factor is deterministically capped at `min(1, 100 / observedRatioBps)`. A zero or negative oracle price is malformed and rejected before raw acceptance.
+- Jupiter freshness is based on receipt time because the quote response supplies a slot but no wall-clock source timestamp. It is valid for 30 seconds.
+- A missing/empty route, wrong mints, changed probe input, non-ExactIn response, non-positive output, or missing context slot is not an accepted quote. High price impact (initially above 100 basis points) is accepted with `high_price_impact` and a deterministic source-quality factor using the same threshold/observed-ratio rule. Split or multi-hop routes are preserved as informational metadata, not automatically treated as invalid.
+
+These thresholds are code-owned, registry-versioned policy constants with tests, not environment knobs. They can be changed later through an explicit taxonomy decision. Completeness still measures field presence; it must not be used as a proxy for wide confidence or high price impact. The `ConfidenceReason` union should gain source-quality reasons rather than mislabeling these cases as stale.
+
+### 8. Aggregate partial outcomes explicitly
+
+`collectPriceObservations` launches both independent source use cases with `Promise.allSettled` (or equivalent). There is no transaction spanning sources and no fail-fast await ordering.
+
+The returned result contains one status per source:
+
+- `accepted` or `identical_replay`, with raw ID, normalized count, and freshness;
+- `stale` or `degraded`, with the same durable IDs and warning codes;
+- `timeout`, `unavailable`, `malformed`, `no_route`, or `conflict`, with a stable warning code and safe error summary.
+
+It also contains `isPartial`, `usableSourceCount`, and aggregate warnings. Missing values are omitted/null, never zero. A source transport or envelope failure creates no raw observation because there is no accepted payload. Its unavailability is recorded in the job result and structured logs; adding a collection-attempt table is outside this issue.
+
+Command behavior is:
+
+- both sources usable: exit successfully;
+- one source usable: exit successfully with `isPartial: true` and warnings;
+- no source usable: exit non-zero;
+- any identity conflict: preserve all independently accepted evidence but exit non-zero because a conflict is an integrity failure.
+
+A stale normalized row is durable for audit but does not count as usable. The taxonomy's `exclude` behavior ensures later fresh-evidence queries cannot silently consume it.
+
+### 9. Bound timeout and retry behavior
+
+Extend the HTTP port with request options and typed transport errors while preserving GET-only use:
+
+- 5-second timeout per attempt;
+- at most 2 attempts total;
+- retry only network errors, timeouts, HTTP 408, 429, and 5xx;
+- never retry other 4xx responses or schema/semantic validation failures.
+
+The Fetch adapter implements abort and retry classification. Tests use the fake HTTP client to assert that source collectors pass the policy and adapter tests verify retry limits. Because raw insertion happens only after an accepted response, retries cannot create raw duplicates; the database identity constraint remains the concurrency backstop.
+
+### 10. Preserve operator compatibility without preserving authority
+
+Keep `pnpm collect:price` as the operator command, but rewire it to the combined durable price job. On a successfully normalized Jupiter quote, update `data/latest-price-snapshot.json` with the quote's implied price for legacy readers. The write occurs after database normalization and is explicitly non-authoritative, matching #22's compatibility-file ordering.
+
+Pyth-only success does not overwrite the Jupiter compatibility snapshot with an oracle value. The structured command result warns that Jupiter is unavailable, so operators do not mistake an older file for current evidence. README, architecture documentation, operator runbook, `.env.example`, and `resources/sources.yaml` must state the database authority and the generic, non-execution nature of the quote.
+
+Required configuration:
+
+- `PYTH_HERMES_BASE_URL`;
+- `PYTH_API_KEY`;
+- `PYTH_SOL_USD_FEED_ID`;
+- `JUPITER_API_BASE`;
+- `JUPITER_API_KEY`;
+- existing `SOL_MINT` and `USDC_MINT`.
+
+The source request metadata records method, host/path, feed or mint identity, probe parameters, code version, and pipeline run ID. It excludes credentials, headers, wallet data, and any transaction material.
+
+## Alternatives considered
+
+### A. Shared bounded lifecycle plus source-specific modules — recommended
+
+This reuses #22's hard-won persistence semantics, keeps provider contracts isolated, and provides one place for replay/conflict/status handling. It introduces a modest abstraction, but that abstraction is constrained to the lifecycle already repeated by durable collectors.
+
+### B. Two fully independent collection use cases that copy #22
+
+This is initially faster and keeps each file self-contained. It was rejected because raw status recovery, conflict handling, parse-status transitions, and provenance construction would immediately exist in three subtly different implementations. That is precisely the second ingestion architecture the issue says to avoid.
+
+### C. A generic declarative collector framework
+
+A registry could define URLs, schemas, identity selectors, retries, normalization, and persistence for all future sources. It was rejected as too broad for a PR-sized child of #7. Pyth and Jupiter have materially different time and identity semantics, and a framework designed from only two examples would hide rather than eliminate that complexity.
+
+### D. Continue Jupiter Price v3 and add Pyth beside it
+
+This would minimize changes and preserve the current snapshot shape. It was rejected because a token-price lookup is not an amount-specific executable route, does not expose route availability or price impact, and fails the issue's core evidence requirement.
+
+## Data flow
 
 ```text
-GET clmm-v2 bundle
-  -> validate envelope and full accepted bundle contract
-  -> canonicalize accepted bundle
-  -> compute content hash and source observation key
-  -> insert/recover raw row (committed)
-       -> conflicting identity: fail explicitly
-       -> identical + parsed: skip to compatibility-file refresh
-       -> identical + pending/failed: replay normalization
-       -> new row: normalize
-  -> parse canonical raw payload and normalize to fact candidates
-  -> enrich and validate taxonomy metadata
-  -> atomically insert all normalized rows
-  -> mark raw row parsed
-  -> update latest JSON compatibility artifact
+Pyth Hermes GET --------------------> validate accepted envelope
+                                              |
+Jupiter quote-only GET ------------> validate accepted quote
+             |                                |
+             +---------- independent source pipelines ----------+
+                                                                  |
+                 canonical payload + versioned identity           |
+                                  |                               |
+                                  v                               v
+                         raw_observations                 raw_observations
+                                  |                               |
+                    source-specific normalization and direct enrichment
+                                  |                               |
+                                  v                               v
+                    oracle_price normalized row   executable_quote normalized row
+                                  \                               /
+                                   +---- aggregate source result -+
+                                                  |
+                                  optional legacy Jupiter snapshot
 ```
 
-The raw insert is deliberately not in the normalized batch transaction. A normalization or file-write failure therefore cannot erase the accepted raw payload.
+## Error and recovery semantics
 
-## Accepted raw payload and canonicalization
-
-The accepted raw payload is the validated value of the response's `bundle` field, not the HTTP envelope and not a reformatted normalized object. The wrapper contains no evidence beyond that field in the current API. Because `HttpClient.getJson` exposes parsed JSON rather than response bytes, “exact” means exact accepted JSON semantics, preserved as deterministic canonical JSON; byte-for-byte HTTP formatting cannot be preserved by the current port.
-
-Canonicalization must be a single operation that returns both:
-
-- `payloadCanonical`: recursively key-sorted JSON with array order preserved; and
-- `payloadHash`: lowercase SHA-256 of exactly that string.
-
-The existing canonical serializer should be exported or wrapped so storage and hashing cannot drift. JSON values that are not valid source JSON, such as `undefined`, `NaN`, or infinities, must be rejected rather than converted. The full runtime bundle validator runs before canonicalization.
-
-`sourceRequestMeta` stores only non-secret audit context: endpoint path or redacted URL, HTTP method, wallet identifier hash, and collector/schema version. It must never store `CLMM_INSIGHTS_API_KEY` or request headers containing it.
-
-## Source identity and idempotency
-
-Content identity and source observation identity solve different problems and must both be stored.
-
-### Content identity
-
-`payloadHash = SHA-256(payloadCanonical)` detects equal accepted content. It remains indexed for lookup but is no longer globally unique per source: two different source observations, such as two wallet requests with no returned positions, can legitimately have equal bundle content. Replay idempotency is anchored to source observation identity, not content alone.
-
-### Source observation identity
-
-Add a non-null `source_observation_key` column to `raw_observations`, with a unique constraint on `(source, source_observation_key)`. For this source, version 1 of the key is the SHA-256 hash of the canonical tuple:
-
-```json
-{
-  "identityVersion": 1,
-  "walletId": "<request wallet>",
-  "pair": "SOL/USDC",
-  "poolId": "<bundle pool id>",
-  "observedAtUnixMs": 1700000000000
-}
-```
-
-Hashing the tuple avoids placing the wallet address directly in an index while retaining deterministic equality. Including an identity version makes later identity changes explicit.
-
-The raw repository exposes an atomic insert-or-classify operation returning one of:
-
-- `inserted` with the new row;
-- `identical_replay` with the existing row when identity and content hash match; or
-- `conflict` with the existing row and incoming hash when identity matches but content differs.
-
-The Drizzle adapter owns the race-safe unique-constraint handling. Application code must not implement a check-then-insert sequence as its only guard. A conflict produces a typed, deterministic error containing the source observation key and both hashes, exits the collector non-zero, and never overwrites either payload. A separate conflict ledger is not added in this issue.
-
-### Normalized identity
-
-Change normalized uniqueness to `(raw_observation_id, observation_kind, payload_hash)`. This gives:
-
-- no duplicate rows when the same raw observation is normalized again;
-- distinct historical rows when separate raw observations happen to normalize to equal facts; and
-- correct direct lineage for every normalized row.
-
-Every multi-entity payload includes its stable entity ID (`poolId`, `positionId`, or `triggerId`), so distinct facts within one raw observation do not collide.
-
-## Replay boundary and parse status
-
-Add `findById(id)` and `updateParseStatus(id, status)` to `RawObservationRepo`. Raw evidence fields remain immutable; `parse_status` is mutable processing metadata.
-
-Normalization always starts from `payloadCanonical` loaded from the persisted raw row, even during the initial collection. This proves the replay path is the same path used in production and prevents an in-memory object from silently differing from stored evidence.
-
-State behavior is:
-
-- new raw row starts as `pending`;
-- successful atomic normalized insertion is followed by `parsed`;
-- a normalization or normalized-write error is followed by a best-effort `failed` update, then the original error is rethrown;
-- an identical replay of `parsed` skips normalization;
-- an identical replay of `pending` or `failed` retries normalization;
-- a crash after normalized commit but before `parsed` is safe because normalized insertion is idempotent.
-
-Add `insertMany(rows)` to `NormalizedObservationRepo`; the Drizzle adapter executes the batch in one database transaction. If any row fails, no normalized rows from that attempt become visible. This transaction intentionally excludes the previously committed raw row.
-
-## Normalized facts
-
-All payloads include `schemaVersion: 1`, `pair`, their entity IDs, and `observedAtUnixMs`. Optional upstream values are materialized as `null`; they are never omitted or changed to zero. Integer-liquidity and token raw amounts remain decimal strings to avoid precision loss.
-
-| Observation kind |      Cardinality | Evidence family    | Payload responsibility                                                                                                                                               |
-| ---------------- | ---------------: | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pool_state`     |   one per bundle | `clmm_state`       | pool/pair identity, current price, sqrt price, current tick, tick spacing, fee rate, pool liquidity, and price source                                                |
-| `position_state` | one per position | `clmm_state`       | wallet/position/pool identity, lower/upper/current ticks, current price, range state and distances, position/pool liquidity, and actionable-trigger presence/context |
-| `fee_metrics`    | one per position | `clmm_economics`   | token A/B unclaimed fees, reward amounts, decimals/symbol/mint, and nullable USD valuations                                                                          |
-| `trigger_event`  |    one per alert | `execution_safety` | trigger, position, direction, trigger time, and matching qualification context when present                                                                          |
-| `data_quality`   |   one per bundle | `execution_safety` | `isPartial`, warnings, missing sources, source/observation timestamps, and freshness warning context                                                                 |
-
-`trigger_event` and `data_quality` are new source-independent `ObservationKind` values. They are added to the taxonomy type, parser set, and registry with `clmm-v2-bundle` as the currently allowed source. Both are deterministic observations. `trigger_event` uses a short, exclude-on-stale policy because it describes operational state; `data_quality` uses the same validity horizon as the bundle state and is also excluded when stale. Exact durations should match the existing 60-second `pool_state`/`position_state` policy so a quality record cannot outlive the state it qualifies.
-
-The position record includes `hasActionableTrigger` even when false, so absence is explicit. Alert records are emitted only for supplied alerts; an empty alert array remains represented by the position flags and the data-quality record rather than by a fabricated “no alert” event.
-
-`volume_metrics` is not emitted because the current bundle contains no volume fields. `srLevels` remains captured in raw evidence but is not normalized in this slice: support/resistance is a separate evidence concern and normalizing the legacy embedded brief here would blur authority and confidence boundaries.
-
-### Contract validation
-
-Before raw acceptance, runtime validation covers every field consumed by identity or normalization:
-
-- all bundle, pool, position, fee, reward, alert, and data-quality container types;
-- finite numeric values for prices, ticks, rates, distances, timestamps, valuations, and decimals;
-- enum literals for pair, source, range state, price source, and breach direction;
-- decimal-string fields for raw token amounts and liquidity;
-- nullable and optional fields exactly as declared; and
-- consistency checks such as pool IDs/pair/source matching the bundle and alert position IDs referring to a supplied position.
-
-Missing optional values are accepted and normalized to `null`. Missing required values or invalid cross-record references reject the bundle before raw persistence because it was never an accepted source observation. Normalization failures after acceptance cover mapper defects, taxonomy validation failures, and database failures.
-
-## Freshness, confidence, and provenance
-
-Each candidate is enriched using its registry entry rather than hard-coded family/class/freshness values in the adapter.
-
-Freshness uses:
-
-- bundle or fact `observedAtUnixMs` as observed time;
-- the collector clock immediately after the HTTP response as fetched time;
-- the raw row's `receivedAtUnixMs` as received time; and
-- the current injected clock when computing freshness.
-
-Invalid timestamp ordering or excessive future skew fails normalization and leaves the raw row replayable.
-
-Confidence uses the existing registry policy. For direct clmm-v2 facts:
-
-- `sourceReliability = 1` because clmm-v2 is operational authority for these live facts;
-- `derivationConfidence = 1` because normalization is a direct, deterministic mapping;
-- `llmConfidence = null`; and
-- `dataCompleteness` is a deterministic per-kind ratio over a versioned list of expected fields, with required fields and explicit `false`, empty arrays, and zero values counted as present, while `null` unavailable fields count as absent.
-
-The completeness field lists and weighting version are constants covered by tests. Warnings remain in payloads and do not receive ad hoc semantic scores. `isPartial` is included as an expected quality input so a partial bundle cannot receive full completeness merely because a particular record's required fields exist.
-
-Each normalized row has both the database foreign key and taxonomy provenance. `sourceRefs` and `rawObservationRefs` contain the originating raw observation reference `{ refType: "raw_observation", id, source, payloadHash }`; `derivedFromRefs` is empty. `processRef` identifies `clmm-bundle-collector`, `collect-clmm-bundle`, optional pipeline run ID, and code version. Code version is read from an optional documented runtime value with a non-empty `development` fallback for local runs; production scheduling should supply the commit SHA. Provenance is validated against the registry before persistence.
-
-## Latest JSON artifact
-
-`data/latest-clmm-bundle.json` remains as a compatibility and operator-inspection artifact because existing documentation and OpenClaw flows refer to it. It is no longer authoritative.
-
-It is written only after raw persistence and successful normalization. Therefore:
-
-- a local file failure cannot remove database evidence;
-- a normalization failure does not advertise a partially processed bundle as latest; and
-- downstream migration away from the file can happen separately.
-
-An identical replay already marked `parsed` may refresh the file without creating database rows.
-
-## Failure handling
-
-| Failure                                             | Durable result                                                                     | Command result              |
-| --------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------- |
-| HTTP/env failure                                    | no raw row                                                                         | fail                        |
-| malformed or inconsistent bundle                    | no raw row because it was not accepted                                             | fail                        |
-| raw insert failure                                  | no guaranteed row                                                                  | fail                        |
-| identical replay                                    | existing raw and normalized rows reused                                            | succeed                     |
-| conflicting replay                                  | original raw row preserved; incoming payload not written                           | fail with explicit conflict |
-| pure normalization/taxonomy failure                 | raw row preserved and marked `failed` when possible                                | fail                        |
-| normalized batch failure                            | raw row preserved; normalized batch rolled back; raw marked `failed` when possible | fail                        |
-| parse-status update failure after normalized commit | raw and normalized rows preserved; status may remain pending                       | fail and safely retry later |
-| latest-file write failure                           | raw and normalized rows preserved                                                  | fail, with retry safe       |
-
-The use case returns a small result (`rawObservationId`, raw outcome, normalized count, parse status) for tests and operator logging instead of returning `void`.
-
-## Schema and port changes
-
-The implementation will require a generated migration that:
-
-1. adds `source_observation_key VARCHAR(64) NOT NULL` to `raw_observations`;
-2. adds unique `(source, source_observation_key)` indexing;
-3. replaces unique `(source, payload_hash)` with a non-unique lookup index on those columns;
-4. replaces `uniq_norm_obs_source_kind_hash` with uniqueness on `(raw_observation_id, observation_kind, payload_hash)`; and
-5. preserves the existing raw-to-normalized restrictive foreign key.
-
-Because existing rows may be present, the migration must backfill source observation keys deterministically before adding `NOT NULL`. For legacy rows without request wallet metadata, the backfill uses a versioned legacy identity derived from source, observed timestamp, and payload hash. Those rows remain auditable but cannot gain stronger wallet/pool identity retrospectively.
-
-Port changes are intentionally generic:
-
-- raw insert/classify by source observation key;
-- raw lookup by ID and source identity;
-- raw parse-status update; and
-- atomic normalized batch insert.
-
-Fakes must implement the same conflict and transaction-level semantics closely enough for port contract tests.
+| Failure                                                        | Durable effect                                                                 | Source outcome              |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------- |
+| Missing config, timeout, network failure, rejected HTTP status | No raw row                                                                     | unavailable/timeout         |
+| Malformed Pyth/Jupiter response                                | No raw row                                                                     | malformed/no_route          |
+| Accepted payload, raw insert fails                             | No guaranteed evidence; normalization does not run                             | failed                      |
+| Same identity and same hash, already parsed                    | Existing rows reused; no duplicate normalized row                              | identical_replay            |
+| Same identity and same hash, pending/failed                    | Stored canonical payload is revalidated and normalization retried              | accepted or failed          |
+| Same identity and different hash                               | Existing row unchanged; other source continues                                 | conflict                    |
+| Normalization/enrichment fails                                 | Raw row marked failed where possible; no fabricated normalized fact            | failed                      |
+| Normalized insert commits, raw status update fails             | Replay recovers idempotently because normalized uniqueness prevents duplicates | failed, recoverable         |
+| Compatibility-file write fails                                 | Database evidence remains authoritative; command reports failure               | failed after durable ingest |
 
 ## Testing strategy
 
-### Pure unit tests
+### Pure domain tests
 
-- complete bundle validation and each malformed nested shape;
-- canonical string/hash stability, invalid JSON values, key-order invariance, and array-order sensitivity;
-- source observation key stability and changes across wallet, pool, or observation time;
-- one pool/data-quality record plus per-position fee/position records and per-alert trigger records;
-- multiple positions without single-position assumptions;
-- optional fee/reward valuations and decimals remain `null`, including legitimate numeric zero remaining zero;
-- data-quality warnings and missing sources are preserved;
-- freshness, completeness, confidence, and provenance enrichment; and
-- raw canonical replay produces the same normalized candidates.
+- Pyth and Jupiter Zod schemas accept complete fixtures and reject wrong feed/mints, non-finite/invalid numeric strings, missing timestamps/slots, zero output, and empty routes.
+- Fixed-point and atomic-unit conversion produces exact decimal strings for positive and negative exponents without precision loss.
+- Each identity is stable under object key ordering, changes when an identity field changes, and conflicts when content changes under one identity.
+- Normalizers produce source-independent payloads and never substitute zero for missing values.
+- Freshness boundary tests cover exactly-at-limit, stale Pyth publish time, and receipt-based Jupiter validity.
+- Wide Pyth confidence and high Jupiter impact produce deterministic quality factors and warning reasons.
+- Provenance points to exactly one raw row with the correct source and process metadata.
 
-### Application tests with fakes
+### Application tests
 
-- successful order: raw insert before normalized batch before latest-file write;
-- identical parsed replay creates no additional raw or normalized rows;
-- identical failed/pending replay retries normalization;
-- conflicting identity/different content fails deterministically;
-- normalization failure leaves the raw row and marks it failed;
-- normalized batch failure exposes no partial batch;
-- empty positions and alerts still produce pool and data-quality observations;
-- malformed input creates neither raw nor normalized records; and
-- local file failure leaves durable database records intact.
+- For each source, raw insertion is observed before normalized insertion.
+- Inserted, parsed replay, failed replay, and conflicting replay follow #22 semantics.
+- Pyth-only and Jupiter-only outcomes preserve the successful source and return explicit warnings.
+- Both-source failure returns no fabricated facts and fails the job.
+- A source conflict does not roll back the other source but fails the command.
+- Stale source payloads are retained, marked stale, and excluded from `usableSourceCount`.
+- A successful Jupiter normalization updates the compatibility file only afterward; Pyth-only success does not rewrite it.
 
-### Adapter/schema tests
+### Adapter and integration tests
 
-- the raw identity unique constraint, non-unique content-hash index, and revised normalized unique constraint exist;
-- FK lineage remains restrictive;
-- concurrent-equivalent raw inserts classify as one insert plus one identical replay;
-- identity conflict returns the conflict outcome without overwrite;
-- normalized `insertMany` is atomic and replay-idempotent; and
-- parse-status updates do not mutate raw payload/hash/identity fields.
+- Fetch timeout aborts at the configured bound.
+- Retryable statuses/errors are attempted no more than twice; non-retryable statuses and malformed JSON are not retried.
+- Repository integration verifies concurrent identical insertion returns replay and differing content returns conflict for both new source literals.
+- Existing CLMM collector tests remain green if the shared lifecycle is adopted.
+- Full `pnpm verify` covers typecheck, lint, format, tests, and dependency boundaries.
 
-The repository's standard `pnpm verify` remains the completion gate: typecheck, lint, formatting, tests, and dependency boundaries.
-
-## Documentation updates
-
-README, architecture documentation, and the operator runbook should show the new authoritative flow and troubleshooting steps:
-
-```text
-clmm-v2 bundle -> accepted raw observation -> normalized observations -> latest compatibility file
-```
-
-They must state that clmm-v2 owns live state, intelligence owns only observational history, the database is required for this collector, conflicts fail closed, and failed raw rows can be replayed without refetching. Environment documentation should add the optional code-version and run-ID values and must continue to warn against storing API keys in metadata.
+Live API tests are not part of the normal test suite. Checked-in sanitized fixtures define the accepted provider contracts; an optional operator smoke command may verify credentials and endpoint drift without writing if explicitly invoked.
 
 ## Assumptions
 
-1. The response envelope continues to contain one `bundle` field and no other evidence-bearing fields that require raw retention.
-2. `observedAtUnixMs` identifies the upstream observation time and is stable for retries of the same observation.
-3. The request wallet, bundle pool ID, pair, and observation time uniquely identify one clmm-v2 SOL/USDC bundle observation.
-4. One wallet request can return zero or multiple positions; no code may assume `positions[0]` exists.
-5. The existing Postgres schema may already contain rows, so migrations require deterministic backfills.
-6. Database persistence becomes required for `collect:clmm-bundle`; latest-file-only fallback would violate raw-first durability.
-7. The current 60-second pool/position freshness horizon is the intended horizon for trigger and data-quality observations in this slice.
-8. The collector may retain the latest JSON file for compatibility, but downstream features will read normalized persistence rather than treat the file as authoritative.
-9. Runtime response bytes and headers are unavailable through the current `HttpClient`; canonical accepted JSON is sufficient audit fidelity for this issue.
-10. Conflicts may fail explicitly rather than be stored in a separate conflict table; persistent conflict-attempt auditing can be added later if operational evidence warrants it.
-11. `srLevels` is legacy contextual material, not a deterministic MVP fact owned by this ingestion slice.
-12. No issue comments add requirements; `issue-comments.md` is present but empty.
+1. Pyth Hermes is the approved canonical oracle; no generic token-price substitute is needed.
+2. Production can provide Pyth and Jupiter API keys. This is important because current official roadmaps require authenticated access.
+3. The configured Pyth feed ID is the stable mainnet `Crypto.SOL/USD` feed and is verified in operator documentation rather than silently discovered at runtime.
+4. SOL has 9 decimals and mainnet USDC has 6, but both decimals are represented explicitly in the normalized schema and validated against configured expectations.
+5. One SOL is the intended generic probe size; it is not derived from wallet balances or an intended trade.
+6. Jupiter `contextSlot` is present on accepted quote responses and is stable enough to anchor source identity. Responses without it are unavailable rather than assigned receipt-time identities.
+7. A 60-second Pyth freshness window, 30-second Jupiter window, 100-basis-point oracle confidence threshold, and 100-basis-point price-impact warning threshold are suitable initial taxonomy policies. They are versioned and can be revised explicitly.
+8. Partial success is operational success with degradation; total unavailability and identity conflicts are command failures.
+9. No external consumer currently depends on normalized `price_quote` rows. Production is checked before removing that placeholder kind.
+10. Failure-attempt history can be observed through structured job output/logging for this issue; durable attempt telemetry is a separate concern.
 
-## In scope
+## Scope
 
-- full acceptance validation of the existing clmm-v2 bundle contract;
-- canonical serialization and hashing;
-- deterministic source identity and conflicting replay detection;
-- raw-first persistence and parse-status lifecycle;
-- replay from stored canonical raw payload;
-- source-independent pool, position, fee/reward, trigger, and data-quality observations;
-- taxonomy additions required for trigger and data-quality facts;
-- freshness, confidence, provenance, and direct raw lineage;
-- schema migrations and generic repository-port/adapter changes;
-- atomic normalized batches and idempotent retries;
-- retention of the latest JSON compatibility artifact;
-- fixtures, unit/port/schema/adapter/application tests; and
-- README, architecture, and runbook updates.
+### In scope
 
-## Explicitly out of scope
+- Authenticated Pyth Hermes SOL/USD collection.
+- Authenticated Jupiter SOL/USDC exact-input quote collection.
+- Accepted-response validation and exact raw payload persistence.
+- Versioned source identities, canonical hashes, replay idempotency, and conflict detection.
+- `oracle_price` and `executable_quote` contracts, taxonomy entries, normalization, freshness, confidence/quality, and provenance.
+- Independent partial-source orchestration.
+- Bounded HTTP timeout/retry behavior.
+- Compatibility behavior for `collect:price` and `latest-price-snapshot.json`.
+- Fixtures, unit/integration tests, configuration examples, source registry, and operator documentation.
 
-- Pyth, Jupiter, Orca public-statistics, or Solana health ingestion;
-- normalizing embedded support/resistance briefs;
-- volume metrics not present in the source bundle;
-- deterministic feature calculation, including APR, divergence, volatility, or range-risk derivation;
-- evidence-bundle assembly, research briefs, LLM use, or Regime Engine publication;
-- final recommendations, PolicyInsight synthesis, risk-rule changes, or execution;
-- new wallet-specific chain reads or any transaction/signing authority;
-- a general workflow engine or generic event-sourcing framework;
-- a separate conflict-attempt table; and
-- deletion of the latest JSON artifact or migration of all existing OpenClaw consumers.
+### Explicitly out of scope
+
+- Oracle/DEX divergence or any other derived feature.
+- Orca pool volume, fees, TVL, liquidity, or public statistics.
+- Solana network health, on-chain flow, perpetuals, macro, or news ingestion.
+- Evidence-bundle assembly or publication to regime-engine.
+- Research briefs, LLM interpretation, PolicyInsight synthesis, or display.
+- User-specific sizing, slippage, swap preparation, transaction construction, signing, submission, or simulation.
+- A durable collection-attempt/audit-log table.
+- A general-purpose declarative collector framework.
+- Automatic endpoint/feed discovery or automatic migration from Jupiter v1 to v2.
 
 ## Risks and concerns
 
-### Upstream contract drift
+### Jupiter API lifecycle
 
-The current TypeScript interface and manual validator can diverge. The new complete runtime validator reduces this risk, but contract changes still require coordinated fixtures and schema-version review. Unknown extra JSON fields may remain in raw canonical evidence but should not flow into normalized payloads until deliberately mapped.
+Swap v1 is quote-only but officially superseded. Swap v2 currently couples quotes to transaction or instruction construction, which is outside this repository's authority. Keeping the endpoint behind a source adapter limits migration cost, but endpoint drift is the largest external risk. Fixtures, explicit base URL config, and an operator smoke check should make drift visible.
 
-### Identity quality
+### Pyth authentication and upgrade timing
 
-If clmm-v2 reuses `observedAtUnixMs` for materially different observations, the proposed identity will correctly surface conflicts but collection will fail until upstream semantics are clarified. Silently adding content hash to the identity would hide the conflict and is therefore rejected.
+Pyth's upgraded Hermes service requires authentication and its Core upgrade schedule is active in 2026. Hardcoding the legacy public instance would create a near-term outage. Base URL, feed ID, and key must be explicit and secrets must never enter raw request metadata.
 
-### Existing migration data
+### Taxonomy confidence terminology
 
-Legacy rows lack source observation keys and may already include normalized rows deduplicated under the old global constraint. The migration can backfill safe identities but cannot reconstruct historical normalized observations that were previously collapsed. This limitation should be documented rather than fabricating lineage.
+Pyth confidence interval, route price impact, and repository `Confidence` are different concepts. Collapsing them into one field would destroy auditability. The normalized schemas and reason codes must keep them distinct, and quality degradation must not masquerade as missing data.
 
-### Privacy and secrets
+### Source time asymmetry
 
-Raw payloads already include wallet and position identifiers. Access controls and the existing retention policy therefore matter. Request metadata must remain redacted, and source identity should hash the wallet-bearing tuple.
+Pyth supplies wall-clock publish time; Jupiter supplies a slot but no source timestamp. Jupiter freshness is therefore receipt-relative and cannot prove the route existed for the entire 30-second window. The payload must state this basis explicitly.
 
-### Partial-state visibility
+### Identity strictness
 
-Atomic normalized batch insertion prevents mid-batch visibility. A crash after batch commit but before raw status update leaves a harmless pending row; consumers should rely on normalized row validity metadata, not raw `parse_status` alone.
+Using Jupiter context slot may reveal multiple different route answers within one slot as conflicts. This is conservative and auditable, but could create operational noise if Jupiter legitimately recomputes routes within a slot. Metrics from initial operation should inform a versioned identity revision; the implementation must not silently broaden identity after deployment.
 
-### Confidence semantics
+### Existing lifecycle edge cases
 
-Mechanical completeness is not correctness. The design keeps source reliability, derivation confidence, and completeness separate and does not infer that a non-null upstream value is economically reliable. Any later quality scoring must be versioned and evidence-based.
+As in #22, normalized inserts and raw parse-status updates are separate repository operations. A status-update failure can leave normalized rows beside a pending raw row. Replay recovery and normalized uniqueness make this convergent, but it is not a single transaction. Cross-repository transactional refactoring is not required for this issue.
 
-### Latest-file dual write
+### Compatibility snapshot staleness
 
-The database and filesystem cannot share a transaction. The database is authoritative; a file-write failure may leave the compatibility file behind even though durable ingestion succeeded. Safe replay repairs the file without duplicating database evidence.
+On Pyth-only success, the old Jupiter snapshot remains on disk. Legacy readers that ignore its timestamp may misread it as current. Documentation and aggregate warnings reduce the risk, but removal of latest-file consumers should be tracked separately.
 
-### Database lifecycle
+## External references used for source-contract decisions
 
-The current runtime lazily creates a DB connection but collector scripts do not close one because they do not use it yet. New wiring must close it reliably on success and failure or scheduled runs may leak connections.
-
-## Success criteria
-
-The design is successful when every accepted clmm-v2 collection first produces one immutable, identity-checked raw row; normalization can be replayed solely from that row; all requested source-independent facts are inserted atomically with direct lineage and taxonomy metadata; equal replays are no-ops; conflicting replays fail without overwrite; null remains unavailable rather than zero; and any downstream normalization failure leaves the raw evidence intact and clearly retryable.
+- [Pyth: Fetch Price Updates](https://docs.pyth.network/price-feeds/core/fetch-price-updates)
+- [Pyth: Best Practices and fixed-point confidence intervals](https://docs.pyth.network/price-feeds/core/best-practices)
+- [Pyth: Price Feed IDs](https://docs.pyth.network/price-feeds/core/price-feeds/price-feed-ids)
+- [Jupiter: Swap v1 Get Quote](https://dev.jup.ag/docs/swap/v1/get-quote)
+- [Jupiter: Swap API overview and v2 migration](https://developers.jup.ag/docs/swap)

@@ -18,7 +18,8 @@ export type StaleBehavior = "exclude" | "degrade_confidence" | "allow_context_on
 export type ObservationKind =
   | "pool_state"
   | "position_state"
-  | "price_quote"
+  | "oracle_price"
+  | "executable_quote"
   | "fee_metrics"
   | "volume_metrics"
   | "trigger_event"
@@ -31,7 +32,9 @@ export type Source =
   | "jupiter-price"
   | "jupiter-price-v3"
   | "coingecko"
-  | "defillama";
+  | "defillama"
+  | "pyth-hermes"
+  | "jupiter-quote";
 
 export type ParseStatus = "pending" | "parsed" | "failed";
 
@@ -98,7 +101,9 @@ export type ConfidenceReason =
   | "derivation_confidence_low"
   | "stale_input_degraded"
   | "required_component_missing"
-  | "llm_confidence_required_but_null";
+  | "llm_confidence_required_but_null"
+  | "oracle_confidence_wide"
+  | "high_price_impact";
 
 export interface Confidence {
   readonly components: ConfidenceComponents;
@@ -161,7 +166,6 @@ export interface ObservationKindEntry {
   readonly kind: ObservationKind;
   readonly evidenceFamily: EvidenceFamily;
   readonly signalClass: SignalClass;
-  readonly source: Source;
   readonly freshnessPolicy: FreshnessPolicy;
   readonly confidencePolicy: ConfidencePolicy;
   readonly provenanceRequirements: ProvenanceRequirements;

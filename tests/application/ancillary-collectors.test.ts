@@ -15,7 +15,7 @@ describe("collectCoingecko", () => {
 
     await collectCoingecko({ http, jsonStore, env, clock });
 
-    expect(http.calls[0]).toEqual({ url, headers: { "x-cg-demo-api-key": "k" } });
+    expect(http.calls[0]).toEqual({ url, options: { headers: { "x-cg-demo-api-key": "k" } } });
     expect(jsonStore.writes[0]?.path).toBe("data/latest-coingecko-solana-raw.json");
   });
 
@@ -29,7 +29,7 @@ describe("collectCoingecko", () => {
     const clock = new FakeClock("2026-05-10T12:00:00.000Z");
 
     await collectCoingecko({ http, jsonStore, env, clock });
-    expect(http.calls[0]?.headers).toEqual({});
+    expect(http.calls[0]?.options).toEqual({});
   });
 });
 

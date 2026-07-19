@@ -1,0 +1,850 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { describe, expect, it } from "vitest";
+import type {
+  Source,
+  ObservationKind,
+  Confidence,
+  Provenance
+} from "../../src/contracts/taxonomy.js";
+import type { NormalizedObservationInsert } from "../../src/ports/normalized-observation-repo.js";
+import {
+  ingestRawObservation,
+  RawObservationConflictError
+} from "../../src/application/ingest-raw-observation.js";
+import { FakeObservationRepo } from "../fakes/fake-observation-repo.js";
+import { FakeNormalizedObservationRepo } from "../fakes/fake-normalized-observation-repo.js";
+import { FakeJsonStore } from "../fakes/fake-json-store.js";
+import { canonicalHash } from "../../src/domain/content-hash.js";
+
+const TEST_SOURCE: Source = "pyth-hermes";
+
+async function makeCanonicalWithHash(
+  payload: unknown
+): Promise<{ payloadCanonical: string; payloadHash: string }> {
+  const canonical = JSON.stringify(payload);
+  const hash = await canonicalHash(JSON.parse(canonical));
+  return { payloadCanonical: canonical, payloadHash: hash };
+}
+
+function makeTestConfidence(
+  level: "low" | "medium" | "high" = "high",
+  compositeScore: number = 0.9
+): Confidence {
+  return {
+    components: {
+      sourceReliability: 1,
+      dataCompleteness: 1,
+      derivationConfidence: 1,
+      llmConfidence: null
+    },
+    compositeScore,
+    level,
+    weightingVersion: "test-v1",
+    reasons: []
+  };
+}
+
+function makeTestProvenance(): Provenance {
+  return {
+    sourceRefs: [],
+    rawObservationRefs: [],
+    derivedFromRefs: [],
+    processRef: {
+      collector: "test-collector",
+      jobName: "test-job",
+      pipelineRunId: null,
+      codeVersion: "test-v1",
+      modelVersion: null
+    },
+    codeVersion: "test-v1",
+    runId: null
+  };
+}
+
+describe("ingestRawObservation", () => {
+  describe("persists raw before normalized and parsed before compatibility output", () => {
+    it("enforces durable ordering", async () => {
+      const rawRepo = new FakeObservationRepo();
+      const normRepo = new FakeNormalizedObservationRepo();
+      const jsonStore = new FakeJsonStore();
+
+      const canonicalPayload = { price: 150.5, symbol: "SOL" };
+      const { payloadCanonical, payloadHash } = await makeCanonicalWithHash(canonicalPayload);
+
+      const events: string[] = [];
+      const originalInsertOrClassify = rawRepo.insertOrClassify.bind(rawRepo);
+      rawRepo.insertOrClassify = async (row) => {
+        events.push("raw_insert");
+        return originalInsertOrClassify(row);
+      };
+
+      const originalInsertMany = normRepo.insertMany.bind(normRepo);
+      normRepo.insertMany = async (rows) => {
+        events.push("normalized_batch");
+        return originalInsertMany(rows);
+      };
+
+      const originalUpdateParseStatus = rawRepo.updateParseStatus.bind(rawRepo);
+      rawRepo.updateParseStatus = async (id, status) => {
+        events.push(`parse_status_${status}`);
+        return originalUpdateParseStatus(id, status);
+      };
+
+      const originalWriteJson = jsonStore.writeJson.bind(jsonStore);
+      jsonStore.writeJson = async (path, data) => {
+        return originalWriteJson(path, data);
+      };
+
+      await ingestRawObservation(
+        { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+        {
+          source: TEST_SOURCE,
+          sourceObservationKey: "test-key-order",
+          observedAtUnixMs: 1000,
+          fetchedAtUnixMs: 1001,
+          payloadCanonical,
+          payloadHash,
+          receivedAtUnixMs: 1002,
+          validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
+          enrichCandidates: async (candidates) =>
+            candidates.map((c) => ({
+              observationKind: c.kind,
+              signalClass: "deterministic" as const,
+              evidenceFamily: "clmm_state" as const,
+              payloadHash: "hash",
+              confidence: makeTestConfidence(),
+              freshness: { isStale: false, validUntilUnixMs: 2000 }
+            })),
+          insertNormalized: async (normals) => {
+            const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
+              rawObservationId: 1,
+              source: TEST_SOURCE,
+              observationKind: n.observationKind,
+              signalClass: n.signalClass,
+              evidenceFamily: n.evidenceFamily,
+              payload: {},
+              payloadHash: n.payloadHash,
+              confidence: n.confidence,
+              confidenceComposite: n.confidence.compositeScore,
+              confidenceLevel: n.confidence.level,
+              validUntilUnixMs: n.freshness.validUntilUnixMs,
+              isStale: n.freshness.isStale,
+              provenance: makeTestProvenance(),
+              receivedAtUnixMs: 1002
+            }));
+            const results = await normRepo.insertMany(inserts);
+            return results.length;
+          },
+          writeCompatibilityOutput: async (accepted) => {
+            events.push(`compatibility_output`);
+            await originalWriteJson("data/compatibility.json", accepted);
+          }
+        }
+      );
+
+      expect(events).toEqual([
+        "raw_insert",
+        "normalized_batch",
+        "parse_status_parsed",
+        "compatibility_output"
+      ]);
+    });
+  });
+
+  describe("reuses a parsed identical replay without duplicate normalization", () => {
+    it("skips normalization for parsed replay and writes no new normalized rows", async () => {
+      const rawRepo = new FakeObservationRepo();
+      const normRepo = new FakeNormalizedObservationRepo();
+      const jsonStore = new FakeJsonStore();
+
+      const canonicalPayload = { price: 150.5, symbol: "SOL" };
+      const { payloadCanonical, payloadHash } = await makeCanonicalWithHash(canonicalPayload);
+
+      let normalizeCount = 0;
+
+      await ingestRawObservation(
+        { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+        {
+          source: TEST_SOURCE,
+          sourceObservationKey: "test-key-reuse",
+          observedAtUnixMs: 1000,
+          fetchedAtUnixMs: 1001,
+          payloadCanonical,
+          payloadHash,
+          receivedAtUnixMs: 1002,
+          validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+          buildCandidates: (accepted) => {
+            normalizeCount++;
+            return [{ id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }];
+          },
+          enrichCandidates: async (candidates) =>
+            candidates.map((c) => ({
+              observationKind: c.kind,
+              signalClass: "deterministic" as const,
+              evidenceFamily: "clmm_state" as const,
+              payloadHash: "hash",
+              confidence: makeTestConfidence(),
+              freshness: { isStale: false, validUntilUnixMs: 2000 }
+            })),
+          insertNormalized: async (normals) => {
+            const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
+              rawObservationId: 1,
+              source: TEST_SOURCE,
+              observationKind: n.observationKind,
+              signalClass: n.signalClass,
+              evidenceFamily: n.evidenceFamily,
+              payload: {},
+              payloadHash: n.payloadHash,
+              confidence: n.confidence,
+              confidenceComposite: n.confidence.compositeScore,
+              confidenceLevel: n.confidence.level,
+              validUntilUnixMs: n.freshness.validUntilUnixMs,
+              isStale: n.freshness.isStale,
+              provenance: makeTestProvenance(),
+              receivedAtUnixMs: 1002
+            }));
+            const results = await normRepo.insertMany(inserts);
+            return results.length;
+          },
+          writeCompatibilityOutput: async () => {}
+        }
+      );
+
+      const countAfterFirst = normRepo.count;
+
+      await ingestRawObservation(
+        { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+        {
+          source: TEST_SOURCE,
+          sourceObservationKey: "test-key-reuse",
+          observedAtUnixMs: 2000,
+          fetchedAtUnixMs: 2001,
+          payloadCanonical,
+          payloadHash,
+          receivedAtUnixMs: 2002,
+          validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+          buildCandidates: (accepted) => {
+            normalizeCount++;
+            return [{ id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }];
+          },
+          enrichCandidates: async (candidates) =>
+            candidates.map((c) => ({
+              observationKind: c.kind,
+              signalClass: "deterministic" as const,
+              evidenceFamily: "clmm_state" as const,
+              payloadHash: "hash",
+              confidence: makeTestConfidence(),
+              freshness: { isStale: false, validUntilUnixMs: 2000 }
+            })),
+          insertNormalized: async (normals) => {
+            const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
+              rawObservationId: 1,
+              source: TEST_SOURCE,
+              observationKind: n.observationKind,
+              signalClass: n.signalClass,
+              evidenceFamily: n.evidenceFamily,
+              payload: {},
+              payloadHash: n.payloadHash,
+              confidence: n.confidence,
+              confidenceComposite: n.confidence.compositeScore,
+              confidenceLevel: n.confidence.level,
+              validUntilUnixMs: n.freshness.validUntilUnixMs,
+              isStale: n.freshness.isStale,
+              provenance: makeTestProvenance(),
+              receivedAtUnixMs: 1002
+            }));
+            const results = await normRepo.insertMany(inserts);
+            return results.length;
+          },
+          writeCompatibilityOutput: async () => {}
+        }
+      );
+
+      expect(normalizeCount).toBe(1);
+      expect(normRepo.count).toBe(countAfterFirst);
+    });
+  });
+
+  describe("recovers pending or failed identical replays from stored canonical payload", () => {
+    it("normalizes from payloadCanonical when parseStatus is pending", async () => {
+      const rawRepo = new FakeObservationRepo();
+      const normRepo = new FakeNormalizedObservationRepo();
+      const jsonStore = new FakeJsonStore();
+
+      const canonicalPayload = { price: 150.5, symbol: "SOL" };
+      const { payloadCanonical, payloadHash } = await makeCanonicalWithHash(canonicalPayload);
+
+      await ingestRawObservation(
+        { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+        {
+          source: TEST_SOURCE,
+          sourceObservationKey: "test-key-recover",
+          observedAtUnixMs: 1000,
+          fetchedAtUnixMs: 1001,
+          payloadCanonical,
+          payloadHash,
+          receivedAtUnixMs: 1002,
+          validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
+          enrichCandidates: async (candidates) =>
+            candidates.map((c) => ({
+              observationKind: c.kind,
+              signalClass: "deterministic" as const,
+              evidenceFamily: "clmm_state" as const,
+              payloadHash: "hash",
+              confidence: makeTestConfidence(),
+              freshness: { isStale: false, validUntilUnixMs: 2000 }
+            })),
+          insertNormalized: async (normals) => {
+            const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
+              rawObservationId: 1,
+              source: TEST_SOURCE,
+              observationKind: n.observationKind,
+              signalClass: n.signalClass,
+              evidenceFamily: n.evidenceFamily,
+              payload: {},
+              payloadHash: n.payloadHash,
+              confidence: n.confidence,
+              confidenceComposite: n.confidence.compositeScore,
+              confidenceLevel: n.confidence.level,
+              validUntilUnixMs: n.freshness.validUntilUnixMs,
+              isStale: n.freshness.isStale,
+              provenance: makeTestProvenance(),
+              receivedAtUnixMs: 1002
+            }));
+            const results = await normRepo.insertMany(inserts);
+            return results.length;
+          },
+          writeCompatibilityOutput: async () => {}
+        }
+      );
+
+      const rawRows = [...rawRepo["store"].values()];
+      await rawRepo.updateParseStatus(rawRows[0]!.id, "pending");
+
+      const normalizedCountBefore = normRepo.count;
+
+      const result2 = await ingestRawObservation(
+        { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+        {
+          source: TEST_SOURCE,
+          sourceObservationKey: "test-key-recover",
+          observedAtUnixMs: 2000,
+          fetchedAtUnixMs: 2001,
+          payloadCanonical,
+          payloadHash,
+          receivedAtUnixMs: 2002,
+          validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
+          enrichCandidates: async (candidates) =>
+            candidates.map((c) => ({
+              observationKind: c.kind,
+              signalClass: "deterministic" as const,
+              evidenceFamily: "clmm_state" as const,
+              payloadHash: "hash",
+              confidence: makeTestConfidence(),
+              freshness: { isStale: false, validUntilUnixMs: 2000 }
+            })),
+          insertNormalized: async (normals) => {
+            const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
+              rawObservationId: 1,
+              source: TEST_SOURCE,
+              observationKind: n.observationKind,
+              signalClass: n.signalClass,
+              evidenceFamily: n.evidenceFamily,
+              payload: {},
+              payloadHash: n.payloadHash,
+              confidence: n.confidence,
+              confidenceComposite: n.confidence.compositeScore,
+              confidenceLevel: n.confidence.level,
+              validUntilUnixMs: n.freshness.validUntilUnixMs,
+              isStale: n.freshness.isStale,
+              provenance: makeTestProvenance(),
+              receivedAtUnixMs: 1002
+            }));
+            const results = await normRepo.insertMany(inserts);
+            return results.length;
+          },
+          writeCompatibilityOutput: async () => {}
+        }
+      );
+
+      expect(result2.parseStatus).toBe("parsed");
+      expect(normRepo.count).toBe(normalizedCountBefore);
+
+      const updatedRawRows = [...rawRepo["store"].values()];
+      expect(updatedRawRows[0]!.parseStatus).toBe("parsed");
+    });
+
+    it("normalizes from payloadCanonical when parseStatus is failed", async () => {
+      const rawRepo = new FakeObservationRepo();
+      const normRepo = new FakeNormalizedObservationRepo();
+      const jsonStore = new FakeJsonStore();
+
+      const canonicalPayload = { price: 150.5, symbol: "SOL" };
+      const { payloadCanonical, payloadHash } = await makeCanonicalWithHash(canonicalPayload);
+
+      await ingestRawObservation(
+        { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+        {
+          source: TEST_SOURCE,
+          sourceObservationKey: "test-key-recover-failed",
+          observedAtUnixMs: 1000,
+          fetchedAtUnixMs: 1001,
+          payloadCanonical,
+          payloadHash,
+          receivedAtUnixMs: 1002,
+          validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
+          enrichCandidates: async (candidates) =>
+            candidates.map((c) => ({
+              observationKind: c.kind,
+              signalClass: "deterministic" as const,
+              evidenceFamily: "clmm_state" as const,
+              payloadHash: "hash",
+              confidence: makeTestConfidence(),
+              freshness: { isStale: false, validUntilUnixMs: 2000 }
+            })),
+          insertNormalized: async (normals) => {
+            const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
+              rawObservationId: 1,
+              source: TEST_SOURCE,
+              observationKind: n.observationKind,
+              signalClass: n.signalClass,
+              evidenceFamily: n.evidenceFamily,
+              payload: {},
+              payloadHash: n.payloadHash,
+              confidence: n.confidence,
+              confidenceComposite: n.confidence.compositeScore,
+              confidenceLevel: n.confidence.level,
+              validUntilUnixMs: n.freshness.validUntilUnixMs,
+              isStale: n.freshness.isStale,
+              provenance: makeTestProvenance(),
+              receivedAtUnixMs: 1002
+            }));
+            const results = await normRepo.insertMany(inserts);
+            return results.length;
+          },
+          writeCompatibilityOutput: async () => {}
+        }
+      );
+
+      const rawRows = [...rawRepo["store"].values()];
+      await rawRepo.updateParseStatus(rawRows[0]!.id, "failed");
+
+      const normalizedCountBefore = normRepo.count;
+
+      const result2 = await ingestRawObservation(
+        { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+        {
+          source: TEST_SOURCE,
+          sourceObservationKey: "test-key-recover-failed",
+          observedAtUnixMs: 2000,
+          fetchedAtUnixMs: 2001,
+          payloadCanonical,
+          payloadHash,
+          receivedAtUnixMs: 2002,
+          validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
+          enrichCandidates: async (candidates) =>
+            candidates.map((c) => ({
+              observationKind: c.kind,
+              signalClass: "deterministic" as const,
+              evidenceFamily: "clmm_state" as const,
+              payloadHash: "hash",
+              confidence: makeTestConfidence(),
+              freshness: { isStale: false, validUntilUnixMs: 2000 }
+            })),
+          insertNormalized: async (normals) => {
+            const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
+              rawObservationId: 1,
+              source: TEST_SOURCE,
+              observationKind: n.observationKind,
+              signalClass: n.signalClass,
+              evidenceFamily: n.evidenceFamily,
+              payload: {},
+              payloadHash: n.payloadHash,
+              confidence: n.confidence,
+              confidenceComposite: n.confidence.compositeScore,
+              confidenceLevel: n.confidence.level,
+              validUntilUnixMs: n.freshness.validUntilUnixMs,
+              isStale: n.freshness.isStale,
+              provenance: makeTestProvenance(),
+              receivedAtUnixMs: 1002
+            }));
+            const results = await normRepo.insertMany(inserts);
+            return results.length;
+          },
+          writeCompatibilityOutput: async () => {}
+        }
+      );
+
+      expect(result2.parseStatus).toBe("parsed");
+      expect(normRepo.count).toBe(normalizedCountBefore);
+
+      const updatedRawRows = [...rawRepo["store"].values()];
+      expect(updatedRawRows[0]!.parseStatus).toBe("parsed");
+    });
+  });
+
+  describe("rejects conflicting replay without overwriting the existing row", () => {
+    it("throws conflict error and leaves existing row untouched", async () => {
+      const rawRepo = new FakeObservationRepo();
+      const normRepo = new FakeNormalizedObservationRepo();
+      const jsonStore = new FakeJsonStore();
+
+      const payload1 = { price: 150.5, symbol: "SOL" };
+      const payload2 = { price: 999.9, symbol: "SOL" };
+
+      const canonical1 = JSON.stringify(payload1);
+      const hash1 = await canonicalHash(payload1);
+      const canonical2 = JSON.stringify(payload2);
+      const hash2 = await canonicalHash(payload2);
+
+      await ingestRawObservation(
+        { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+        {
+          source: TEST_SOURCE,
+          sourceObservationKey: "test-key-conflict",
+          observedAtUnixMs: 1000,
+          fetchedAtUnixMs: 1001,
+          payloadCanonical: canonical1,
+          payloadHash: hash1,
+          receivedAtUnixMs: 1002,
+          validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
+          enrichCandidates: async (candidates) =>
+            candidates.map((c) => ({
+              observationKind: c.kind,
+              signalClass: "deterministic" as const,
+              evidenceFamily: "clmm_state" as const,
+              payloadHash: "hash",
+              confidence: makeTestConfidence(),
+              freshness: { isStale: false, validUntilUnixMs: 2000 }
+            })),
+          insertNormalized: async (normals) => {
+            const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
+              rawObservationId: 1,
+              source: TEST_SOURCE,
+              observationKind: n.observationKind,
+              signalClass: n.signalClass,
+              evidenceFamily: n.evidenceFamily,
+              payload: {},
+              payloadHash: n.payloadHash,
+              confidence: n.confidence,
+              confidenceComposite: n.confidence.compositeScore,
+              confidenceLevel: n.confidence.level,
+              validUntilUnixMs: n.freshness.validUntilUnixMs,
+              isStale: n.freshness.isStale,
+              provenance: makeTestProvenance(),
+              receivedAtUnixMs: 1002
+            }));
+            const results = await normRepo.insertMany(inserts);
+            return results.length;
+          },
+          writeCompatibilityOutput: async () => {}
+        }
+      );
+
+      await expect(
+        ingestRawObservation(
+          { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+          {
+            source: TEST_SOURCE,
+            sourceObservationKey: "test-key-conflict",
+            observedAtUnixMs: 2000,
+            fetchedAtUnixMs: 2001,
+            payloadCanonical: canonical2,
+            payloadHash: hash2,
+            receivedAtUnixMs: 2002,
+            validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+            buildCandidates: (accepted) => [
+              { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+            ],
+            enrichCandidates: async (candidates) =>
+              candidates.map((c) => ({
+                observationKind: c.kind,
+                signalClass: "deterministic" as const,
+                evidenceFamily: "clmm_state" as const,
+                payloadHash: "hash",
+                confidence: makeTestConfidence(),
+                freshness: { isStale: false, validUntilUnixMs: 2000 }
+              })),
+            insertNormalized: async (normals) => {
+              const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
+                rawObservationId: 1,
+                source: TEST_SOURCE,
+                observationKind: n.observationKind,
+                signalClass: n.signalClass,
+                evidenceFamily: n.evidenceFamily,
+                payload: {},
+                payloadHash: n.payloadHash,
+                confidence: n.confidence,
+                confidenceComposite: n.confidence.compositeScore,
+                confidenceLevel: n.confidence.level,
+                validUntilUnixMs: n.freshness.validUntilUnixMs,
+                isStale: n.freshness.isStale,
+                provenance: makeTestProvenance(),
+                receivedAtUnixMs: 1002
+              }));
+              const results = await normRepo.insertMany(inserts);
+              return results.length;
+            },
+            writeCompatibilityOutput: async () => {}
+          }
+        )
+      ).rejects.toThrow(RawObservationConflictError);
+
+      const rawRows = [...rawRepo["store"].values()];
+      expect(rawRows.length).toBe(1);
+      expect(rawRows[0]!.payloadHash).toBe(hash1);
+    });
+  });
+
+  describe("marks raw failed when normalization fails and converges after a status-update failure", () => {
+    it("marks raw as failed when normalization fails", async () => {
+      const rawRepo = new FakeObservationRepo();
+      const normRepo = new FakeNormalizedObservationRepo();
+      const jsonStore = new FakeJsonStore();
+
+      const canonicalPayload = { price: 150.5, symbol: "SOL" };
+      const { payloadCanonical, payloadHash } = await makeCanonicalWithHash(canonicalPayload);
+
+      normRepo.failAtIndex = 0;
+
+      await expect(
+        ingestRawObservation(
+          { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+          {
+            source: TEST_SOURCE,
+            sourceObservationKey: "test-key-fail",
+            observedAtUnixMs: 1000,
+            fetchedAtUnixMs: 1001,
+            payloadCanonical,
+            payloadHash,
+            receivedAtUnixMs: 1002,
+            validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+            buildCandidates: (accepted) => [
+              { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+            ],
+            enrichCandidates: async (candidates) =>
+              candidates.map((c) => ({
+                observationKind: c.kind,
+                signalClass: "deterministic" as const,
+                evidenceFamily: "clmm_state" as const,
+                payloadHash: "hash",
+                confidence: makeTestConfidence(),
+                freshness: { isStale: false, validUntilUnixMs: 2000 }
+              })),
+            insertNormalized: async (normals) => {
+              const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
+                rawObservationId: 1,
+                source: TEST_SOURCE,
+                observationKind: n.observationKind,
+                signalClass: n.signalClass,
+                evidenceFamily: n.evidenceFamily,
+                payload: {},
+                payloadHash: n.payloadHash,
+                confidence: n.confidence,
+                confidenceComposite: n.confidence.compositeScore,
+                confidenceLevel: n.confidence.level,
+                validUntilUnixMs: n.freshness.validUntilUnixMs,
+                isStale: n.freshness.isStale,
+                provenance: makeTestProvenance(),
+                receivedAtUnixMs: 1002
+              }));
+              const results = await normRepo.insertMany(inserts);
+              return results.length;
+            },
+            writeCompatibilityOutput: async () => {}
+          }
+        )
+      ).rejects.toThrow();
+
+      const rawRows = [...rawRepo["store"].values()];
+      expect(rawRows.length).toBe(1);
+      expect(rawRows[0]!.parseStatus).toBe("failed");
+    });
+
+    it("converges after a status-update failure", async () => {
+      const rawRepo = new FakeObservationRepo();
+      const normRepo = new FakeNormalizedObservationRepo();
+      const jsonStore = new FakeJsonStore();
+
+      const canonicalPayload = { price: 150.5, symbol: "SOL" };
+      const { payloadCanonical, payloadHash } = await makeCanonicalWithHash(canonicalPayload);
+
+      await ingestRawObservation(
+        { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+        {
+          source: TEST_SOURCE,
+          sourceObservationKey: "test-key-status-fail",
+          observedAtUnixMs: 1000,
+          fetchedAtUnixMs: 1001,
+          payloadCanonical,
+          payloadHash,
+          receivedAtUnixMs: 1002,
+          validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
+          enrichCandidates: async (candidates) =>
+            candidates.map((c) => ({
+              observationKind: c.kind,
+              signalClass: "deterministic" as const,
+              evidenceFamily: "clmm_state" as const,
+              payloadHash: "hash",
+              confidence: makeTestConfidence(),
+              freshness: { isStale: false, validUntilUnixMs: 2000 }
+            })),
+          insertNormalized: async (normals) => {
+            const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
+              rawObservationId: 1,
+              source: TEST_SOURCE,
+              observationKind: n.observationKind,
+              signalClass: n.signalClass,
+              evidenceFamily: n.evidenceFamily,
+              payload: {},
+              payloadHash: n.payloadHash,
+              confidence: n.confidence,
+              confidenceComposite: n.confidence.compositeScore,
+              confidenceLevel: n.confidence.level,
+              validUntilUnixMs: n.freshness.validUntilUnixMs,
+              isStale: n.freshness.isStale,
+              provenance: makeTestProvenance(),
+              receivedAtUnixMs: 1002
+            }));
+            const results = await normRepo.insertMany(inserts);
+            return results.length;
+          },
+          writeCompatibilityOutput: async () => {}
+        }
+      );
+
+      const rawRows = [...rawRepo["store"].values()];
+      await rawRepo.updateParseStatus(rawRows[0]!.id, "pending");
+
+      const normalizedCountAfterFirst = normRepo.count;
+
+      rawRepo.failOnUpdateParseStatus = new Error("status update failed");
+
+      await expect(
+        ingestRawObservation(
+          { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+          {
+            source: TEST_SOURCE,
+            sourceObservationKey: "test-key-status-fail",
+            observedAtUnixMs: 2000,
+            fetchedAtUnixMs: 2001,
+            payloadCanonical,
+            payloadHash,
+            receivedAtUnixMs: 2002,
+            validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+            buildCandidates: (accepted) => [
+              { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+            ],
+            enrichCandidates: async (candidates) =>
+              candidates.map((c) => ({
+                observationKind: c.kind,
+                signalClass: "deterministic" as const,
+                evidenceFamily: "clmm_state" as const,
+                payloadHash: "hash",
+                confidence: makeTestConfidence(),
+                freshness: { isStale: false, validUntilUnixMs: 2000 }
+              })),
+            insertNormalized: async (normals) => {
+              const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
+                rawObservationId: 1,
+                source: TEST_SOURCE,
+                observationKind: n.observationKind,
+                signalClass: n.signalClass,
+                evidenceFamily: n.evidenceFamily,
+                payload: {},
+                payloadHash: n.payloadHash,
+                confidence: n.confidence,
+                confidenceComposite: n.confidence.compositeScore,
+                confidenceLevel: n.confidence.level,
+                validUntilUnixMs: n.freshness.validUntilUnixMs,
+                isStale: n.freshness.isStale,
+                provenance: makeTestProvenance(),
+                receivedAtUnixMs: 1002
+              }));
+              const results = await normRepo.insertMany(inserts);
+              return results.length;
+            },
+            writeCompatibilityOutput: async () => {}
+          }
+        )
+      ).rejects.toThrow("status update failed");
+
+      const rawRowsAfterFailure = [...rawRepo["store"].values()];
+      expect(rawRowsAfterFailure[0]!.parseStatus).toBe("pending");
+      expect(normRepo.count).toBe(normalizedCountAfterFirst);
+
+      rawRepo.failOnUpdateParseStatus = null;
+
+      const result3 = await ingestRawObservation(
+        { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+        {
+          source: TEST_SOURCE,
+          sourceObservationKey: "test-key-status-fail",
+          observedAtUnixMs: 3000,
+          fetchedAtUnixMs: 3001,
+          payloadCanonical,
+          payloadHash,
+          receivedAtUnixMs: 3002,
+          validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
+          enrichCandidates: async (candidates) =>
+            candidates.map((c) => ({
+              observationKind: c.kind,
+              signalClass: "deterministic" as const,
+              evidenceFamily: "clmm_state" as const,
+              payloadHash: "hash",
+              confidence: makeTestConfidence(),
+              freshness: { isStale: false, validUntilUnixMs: 2000 }
+            })),
+          insertNormalized: async (normals) => {
+            const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
+              rawObservationId: 1,
+              source: TEST_SOURCE,
+              observationKind: n.observationKind,
+              signalClass: n.signalClass,
+              evidenceFamily: n.evidenceFamily,
+              payload: {},
+              payloadHash: n.payloadHash,
+              confidence: n.confidence,
+              confidenceComposite: n.confidence.compositeScore,
+              confidenceLevel: n.confidence.level,
+              validUntilUnixMs: n.freshness.validUntilUnixMs,
+              isStale: n.freshness.isStale,
+              provenance: makeTestProvenance(),
+              receivedAtUnixMs: 1002
+            }));
+            const results = await normRepo.insertMany(inserts);
+            return results.length;
+          },
+          writeCompatibilityOutput: async () => {}
+        }
+      );
+
+      expect(result3.parseStatus).toBe("parsed");
+      expect(normRepo.count).toBe(normalizedCountAfterFirst);
+    });
+  });
+});
