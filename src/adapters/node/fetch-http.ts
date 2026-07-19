@@ -44,10 +44,11 @@ export class FetchHttpClient implements HttpClient {
       let response: Response | null = null;
       let responseOk = false;
       try {
-        response = await this.fetchFn(url, {
-          headers: options?.headers,
-          signal: controller.signal
-        });
+        const fetchOptions: RequestInit = { signal: controller.signal };
+        if (options?.headers) {
+          fetchOptions.headers = options.headers;
+        }
+        response = await this.fetchFn(url, fetchOptions);
         responseOk = response.ok;
 
         if (!response.ok) {
