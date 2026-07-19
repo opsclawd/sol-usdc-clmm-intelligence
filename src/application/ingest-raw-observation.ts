@@ -107,7 +107,8 @@ export async function ingestRawObservation<TAccepted, TCandidate, TEnriched>(
 
     if (existingRow.parseStatus === "parsed") {
       if (writeCompatibilityOutput) {
-        const { accepted } = validatePayload(existingRow.payloadCanonical);
+        const revalidator = revalidateStoredCanonical ?? validatePayload;
+        const { accepted } = revalidator(existingRow.payloadCanonical);
         await writeCompatibilityOutput(accepted, existingRow);
       }
       return {
@@ -118,49 +119,64 @@ export async function ingestRawObservation<TAccepted, TCandidate, TEnriched>(
       };
     }
 
-    const revalidator = revalidateStoredCanonical ?? validatePayload;
-    const { accepted } = revalidator(existingRow.payloadCanonical);
-    const candidates = buildCandidates(accepted, existingRow);
+    let replayParseStatus: ParseStatus = "pending";
+    try {
+      const revalidator = revalidateStoredCanonical ?? validatePayload;
+      const { accepted } = revalidator(existingRow.payloadCanonical);
+      const candidates = buildCandidates(accepted, existingRow);
 
-    const runId: string | null = null;
-    const enriched = await enrichCandidates(candidates, existingRow, runId);
-    const normalizedCount = await insertNormalized(enriched, candidates, existingRow);
+      const runId: string | null = null;
+      const enriched = await enrichCandidates(candidates, existingRow, runId);
+      const normalizedCount = await insertNormalized(enriched, candidates, existingRow);
 
-    const parseStatus: ParseStatus = "parsed";
-    await rawObservationRepo.updateParseStatus(existingRow.id, parseStatus);
+      replayParseStatus = "parsed";
+      await rawObservationRepo.updateParseStatus(existingRow.id, replayParseStatus);
 
-    if (writeCompatibilityOutput) {
-      await writeCompatibilityOutput(accepted, existingRow);
+      if (writeCompatibilityOutput) {
+        await writeCompatibilityOutput(accepted, existingRow);
+      }
+
+      return {
+        rawObservationId: existingRow.id,
+        rawOutcome: rawInsertResult,
+        normalizedCount,
+        parseStatus: replayParseStatus
+      };
+    } catch (err) {
+      try {
+        await rawObservationRepo.updateParseStatus(existingRow.id, "failed");
+      } catch {
+        // Ignore status update failure - original error takes precedence
+      }
+      throw err;
     }
-
-    return {
-      rawObservationId: existingRow.id,
-      rawOutcome: rawInsertResult,
-      normalizedCount,
-      parseStatus
-    };
   }
 
   const rawRow = rawInsertResult.row;
-  const { accepted } = validatePayload(payloadCanonical);
-  const candidates = buildCandidates(accepted, rawRow);
-
   let parseStatus: ParseStatus = "pending";
   let normalizedCount = 0;
+  let accepted: TAccepted | undefined;
 
   try {
+    const result = validatePayload(payloadCanonical);
+    accepted = result.accepted;
+    const candidates = buildCandidates(accepted, rawRow);
     const runId: string | null = null;
     const enriched = await enrichCandidates(candidates, rawRow, runId);
     normalizedCount = await insertNormalized(enriched, candidates, rawRow);
     parseStatus = "parsed";
   } catch (err) {
-    await rawObservationRepo.updateParseStatus(rawRow.id, "failed");
+    try {
+      await rawObservationRepo.updateParseStatus(rawRow.id, "failed");
+    } catch {
+      // Ignore status update failure - original error takes precedence
+    }
     throw err;
   }
 
   await rawObservationRepo.updateParseStatus(rawRow.id, parseStatus);
 
-  if (writeCompatibilityOutput) {
+  if (writeCompatibilityOutput && accepted !== undefined) {
     await writeCompatibilityOutput(accepted, rawRow);
   }
 

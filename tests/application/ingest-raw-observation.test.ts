@@ -2,200 +2,19 @@
 import { describe, expect, it } from "vitest";
 import type {
   Source,
-  ParseStatus,
   ObservationKind,
-  SignalClass,
-  EvidenceFamily,
   Confidence,
   Provenance
 } from "../../src/contracts/taxonomy.js";
-import type {
-  RawObservationRepo,
-  RawInsertOutcome,
-  RawObservationRow
-} from "../../src/ports/observation-repo.js";
-import type {
-  NormalizedObservationRepo,
-  NormalizedObservationInsert
-} from "../../src/ports/normalized-observation-repo.js";
-import type { JsonStore } from "../../src/ports/json-store.js";
+import type { NormalizedObservationInsert } from "../../src/ports/normalized-observation-repo.js";
+import {
+  ingestRawObservation,
+  RawObservationConflictError
+} from "../../src/application/ingest-raw-observation.js";
 import { FakeObservationRepo } from "../fakes/fake-observation-repo.js";
 import { FakeNormalizedObservationRepo } from "../fakes/fake-normalized-observation-repo.js";
 import { FakeJsonStore } from "../fakes/fake-json-store.js";
 import { canonicalHash } from "../../src/domain/content-hash.js";
-
-export class RawObservationConflictError extends Error {
-  constructor(
-    public readonly source: Source,
-    public readonly sourceObservationKey: string,
-    public readonly existingPayloadHash: string,
-    public readonly incomingPayloadHash: string
-  ) {
-    super(
-      `Conflict for ${source}:${sourceObservationKey}: existing hash ${existingPayloadHash} vs incoming ${incomingPayloadHash}`
-    );
-    this.name = "RawObservationConflictError";
-  }
-}
-
-interface TestCandidate {
-  id: number;
-  kind: ObservationKind;
-  payload: unknown;
-}
-
-interface TestNormalized {
-  observationKind: ObservationKind;
-  signalClass: SignalClass;
-  evidenceFamily: EvidenceFamily;
-  payloadHash: string;
-  confidence: Confidence;
-  freshness: { isStale: boolean; validUntilUnixMs: number };
-}
-
-interface IngestRawObservationInput {
-  source: Source;
-  sourceObservationKey: string;
-  observedAtUnixMs: number;
-  fetchedAtUnixMs: number;
-  payloadCanonical: string;
-  payloadHash: string;
-  sourceRequestMeta?: unknown;
-  receivedAtUnixMs: number;
-  validatePayload: (canonical: string) => { accepted: unknown };
-  buildCandidates: (accepted: unknown, rawRow: RawObservationRow) => TestCandidate[];
-  enrichCandidates: (
-    candidates: TestCandidate[],
-    rawRow: RawObservationRow
-  ) => Promise<TestNormalized[]>;
-  insertNormalized: (normals: TestNormalized[], rawRow: RawObservationRow) => Promise<number>;
-  writeCompatibilityOutput?: (accepted: unknown, rawRow: RawObservationRow) => Promise<void>;
-  revalidateStoredCanonical?: (canonical: string) => { accepted: unknown };
-}
-
-async function ingestRawObservation(
-  deps: {
-    rawObservationRepo: RawObservationRepo;
-    normalizedObservationRepo: NormalizedObservationRepo;
-    jsonStore: JsonStore;
-  },
-  input: IngestRawObservationInput
-): Promise<{
-  rawObservationId: number;
-  rawOutcome: RawInsertOutcome;
-  normalizedCount: number;
-  parseStatus: ParseStatus;
-}> {
-  const { rawObservationRepo } = deps;
-  const {
-    source,
-    sourceObservationKey,
-    observedAtUnixMs,
-    fetchedAtUnixMs,
-    payloadCanonical,
-    payloadHash,
-    sourceRequestMeta,
-    receivedAtUnixMs,
-    validatePayload,
-    buildCandidates,
-    enrichCandidates,
-    insertNormalized,
-    writeCompatibilityOutput,
-    revalidateStoredCanonical
-  } = input;
-
-  const rawInsertResult = await rawObservationRepo.insertOrClassify({
-    source,
-    sourceObservationKey,
-    observedAtUnixMs,
-    fetchedAtUnixMs,
-    payloadHash,
-    payloadCanonical,
-    parseStatus: "pending",
-    sourceRequestMeta,
-    receivedAtUnixMs
-  });
-
-  if (rawInsertResult.outcome === "conflict") {
-    throw new RawObservationConflictError(
-      source,
-      sourceObservationKey,
-      rawInsertResult.row.payloadHash,
-      rawInsertResult.incomingPayloadHash
-    );
-  }
-
-  if (rawInsertResult.outcome === "identical_replay") {
-    const existingRow = rawInsertResult.row;
-
-    if (existingRow.parseStatus === "parsed") {
-      const { accepted } = validatePayload(existingRow.payloadCanonical);
-      if (writeCompatibilityOutput) {
-        await writeCompatibilityOutput(accepted, existingRow);
-      }
-      return {
-        rawObservationId: existingRow.id,
-        rawOutcome: rawInsertResult,
-        normalizedCount: 0,
-        parseStatus: "parsed"
-      };
-    }
-
-    const revalidator = revalidateStoredCanonical ?? validatePayload;
-    const { accepted } = revalidator(existingRow.payloadCanonical);
-    const candidates = buildCandidates(accepted, existingRow);
-
-    const normalized = await enrichCandidates(candidates, existingRow);
-    const normalizedCount = await insertNormalized(normalized, existingRow);
-
-    const parseStatus: ParseStatus = "parsed";
-    await rawObservationRepo.updateParseStatus(existingRow.id, parseStatus);
-
-    if (writeCompatibilityOutput) {
-      await writeCompatibilityOutput(accepted, existingRow);
-    }
-
-    return {
-      rawObservationId: existingRow.id,
-      rawOutcome: rawInsertResult,
-      normalizedCount,
-      parseStatus
-    };
-  }
-
-  const rawRow = rawInsertResult.row;
-  const { accepted } = validatePayload(payloadCanonical);
-  const candidates = buildCandidates(accepted, rawRow);
-
-  let parseStatus: ParseStatus = "pending";
-  let normalizedCount = 0;
-
-  try {
-    const normalized = await enrichCandidates(candidates, rawRow);
-    normalizedCount = await insertNormalized(normalized, rawRow);
-    parseStatus = "parsed";
-  } catch (err) {
-    try {
-      await rawObservationRepo.updateParseStatus(rawRow.id, "failed");
-    } catch {
-      throw err;
-    }
-    throw err;
-  }
-
-  await rawObservationRepo.updateParseStatus(rawRow.id, parseStatus);
-
-  if (writeCompatibilityOutput) {
-    await writeCompatibilityOutput(accepted, rawRow);
-  }
-
-  return {
-    rawObservationId: rawRow.id,
-    rawOutcome: rawInsertResult,
-    normalizedCount,
-    parseStatus
-  };
-}
 
 const TEST_SOURCE: Source = "pyth-hermes";
 
@@ -287,7 +106,9 @@ describe("ingestRawObservation", () => {
           payloadHash,
           receivedAtUnixMs: 1002,
           validatePayload: (c) => ({ accepted: JSON.parse(c) }),
-          buildCandidates: (accepted) => [{ id: 1, kind: "oracle_price", payload: accepted }],
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
           enrichCandidates: async (candidates) =>
             candidates.map((c) => ({
               observationKind: c.kind,
@@ -357,7 +178,7 @@ describe("ingestRawObservation", () => {
           validatePayload: (c) => ({ accepted: JSON.parse(c) }),
           buildCandidates: (accepted) => {
             normalizeCount++;
-            return [{ id: 1, kind: "oracle_price", payload: accepted }];
+            return [{ id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }];
           },
           enrichCandidates: async (candidates) =>
             candidates.map((c) => ({
@@ -407,7 +228,7 @@ describe("ingestRawObservation", () => {
           validatePayload: (c) => ({ accepted: JSON.parse(c) }),
           buildCandidates: (accepted) => {
             normalizeCount++;
-            return [{ id: 1, kind: "oracle_price", payload: accepted }];
+            return [{ id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }];
           },
           enrichCandidates: async (candidates) =>
             candidates.map((c) => ({
@@ -467,7 +288,9 @@ describe("ingestRawObservation", () => {
           payloadHash,
           receivedAtUnixMs: 1002,
           validatePayload: (c) => ({ accepted: JSON.parse(c) }),
-          buildCandidates: (accepted) => [{ id: 1, kind: "oracle_price", payload: accepted }],
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
           enrichCandidates: async (candidates) =>
             candidates.map((c) => ({
               observationKind: c.kind,
@@ -517,7 +340,9 @@ describe("ingestRawObservation", () => {
           payloadHash,
           receivedAtUnixMs: 2002,
           validatePayload: (c) => ({ accepted: JSON.parse(c) }),
-          buildCandidates: (accepted) => [{ id: 1, kind: "oracle_price", payload: accepted }],
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
           enrichCandidates: async (candidates) =>
             candidates.map((c) => ({
               observationKind: c.kind,
@@ -577,7 +402,9 @@ describe("ingestRawObservation", () => {
           payloadHash,
           receivedAtUnixMs: 1002,
           validatePayload: (c) => ({ accepted: JSON.parse(c) }),
-          buildCandidates: (accepted) => [{ id: 1, kind: "oracle_price", payload: accepted }],
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
           enrichCandidates: async (candidates) =>
             candidates.map((c) => ({
               observationKind: c.kind,
@@ -627,7 +454,9 @@ describe("ingestRawObservation", () => {
           payloadHash,
           receivedAtUnixMs: 2002,
           validatePayload: (c) => ({ accepted: JSON.parse(c) }),
-          buildCandidates: (accepted) => [{ id: 1, kind: "oracle_price", payload: accepted }],
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
           enrichCandidates: async (candidates) =>
             candidates.map((c) => ({
               observationKind: c.kind,
@@ -694,7 +523,9 @@ describe("ingestRawObservation", () => {
           payloadHash: hash1,
           receivedAtUnixMs: 1002,
           validatePayload: (c) => ({ accepted: JSON.parse(c) }),
-          buildCandidates: (accepted) => [{ id: 1, kind: "oracle_price", payload: accepted }],
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
           enrichCandidates: async (candidates) =>
             candidates.map((c) => ({
               observationKind: c.kind,
@@ -740,7 +571,9 @@ describe("ingestRawObservation", () => {
             payloadHash: hash2,
             receivedAtUnixMs: 2002,
             validatePayload: (c) => ({ accepted: JSON.parse(c) }),
-            buildCandidates: (accepted) => [{ id: 1, kind: "oracle_price", payload: accepted }],
+            buildCandidates: (accepted) => [
+              { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+            ],
             enrichCandidates: async (candidates) =>
               candidates.map((c) => ({
                 observationKind: c.kind,
@@ -804,7 +637,9 @@ describe("ingestRawObservation", () => {
             payloadHash,
             receivedAtUnixMs: 1002,
             validatePayload: (c) => ({ accepted: JSON.parse(c) }),
-            buildCandidates: (accepted) => [{ id: 1, kind: "oracle_price", payload: accepted }],
+            buildCandidates: (accepted) => [
+              { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+            ],
             enrichCandidates: async (candidates) =>
               candidates.map((c) => ({
                 observationKind: c.kind,
@@ -863,7 +698,9 @@ describe("ingestRawObservation", () => {
           payloadHash,
           receivedAtUnixMs: 1002,
           validatePayload: (c) => ({ accepted: JSON.parse(c) }),
-          buildCandidates: (accepted) => [{ id: 1, kind: "oracle_price", payload: accepted }],
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
           enrichCandidates: async (candidates) =>
             candidates.map((c) => ({
               observationKind: c.kind,
@@ -916,7 +753,9 @@ describe("ingestRawObservation", () => {
             payloadHash,
             receivedAtUnixMs: 2002,
             validatePayload: (c) => ({ accepted: JSON.parse(c) }),
-            buildCandidates: (accepted) => [{ id: 1, kind: "oracle_price", payload: accepted }],
+            buildCandidates: (accepted) => [
+              { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+            ],
             enrichCandidates: async (candidates) =>
               candidates.map((c) => ({
                 observationKind: c.kind,
@@ -968,7 +807,9 @@ describe("ingestRawObservation", () => {
           payloadHash,
           receivedAtUnixMs: 3002,
           validatePayload: (c) => ({ accepted: JSON.parse(c) }),
-          buildCandidates: (accepted) => [{ id: 1, kind: "oracle_price", payload: accepted }],
+          buildCandidates: (accepted) => [
+            { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+          ],
           enrichCandidates: async (candidates) =>
             candidates.map((c) => ({
               observationKind: c.kind,
