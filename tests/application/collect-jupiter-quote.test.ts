@@ -6,6 +6,7 @@ import { FakeObservationRepo } from "../fakes/fake-observation-repo.js";
 import { FakeNormalizedObservationRepo } from "../fakes/fake-normalized-observation-repo.js";
 import { collectJupiterQuote } from "../../src/application/collect-jupiter-quote.js";
 import type { DegradedResult } from "../../src/application/price-source-result.js";
+import { mapSourceError } from "../../src/application/source-outcome.js";
 
 const JUPITER_API_BASE = "https://api.jup.ag/swap/v6";
 const JUPITER_API_KEY = "test-jup-key-12345";
@@ -131,8 +132,13 @@ describe("collectJupiterQuote", () => {
       deps.http.setResponse(expectedUrl, { body: quote });
       deps.jsonStore.writeError = new Error("Disk full");
 
-      // Should throw or handle write failure but NOT undo raw or normalized database evidence
-      await expect(collectJupiterQuote(deps, VALID_CONTEXT)).rejects.toThrow("Disk full");
+      let errorThrown: unknown;
+      try {
+        await collectJupiterQuote(deps, VALID_CONTEXT);
+      } catch (err) {
+        errorThrown = err;
+      }
+      expect(errorThrown).toBeDefined();
 
       const rawRows = deps.rawObservationRepo as FakeObservationRepo;
       const allRows = await rawRows.findBySource("jupiter-quote", 0);
@@ -142,6 +148,13 @@ describe("collectJupiterQuote", () => {
       const normRows = deps.normalizedObservationRepo as FakeNormalizedObservationRepo;
       const allNorm = await normRows.findBySource("jupiter-quote", "executable_quote", 0);
       expect(allNorm.length).toBe(1);
+
+      const mapped = mapSourceError("jupiter", "jupiter-quote", errorThrown);
+      expect(mapped.status).toBe("failed");
+      expect(mapped.hasUsableEvidence).toBe(true);
+      expect(mapped.rawObservationId).toBe(allRows[0]?.id);
+      expect(mapped.normalizedCount).toBe(1);
+      expect(mapped.diagnostic).toContain("Disk full");
     });
   });
 

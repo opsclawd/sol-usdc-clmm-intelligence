@@ -3,6 +3,7 @@ import {
   collectClmmBundle,
   ClmmObservationConflictError
 } from "../../src/application/collect-clmm-bundle.js";
+import { mapSourceError } from "../../src/application/source-outcome.js";
 import { FakeHttp, FakeJsonStore, FakeEnv, FakeClock } from "../fakes/index.js";
 import { FakeObservationRepo } from "../fakes/fake-observation-repo.js";
 import { FakeNormalizedObservationRepo } from "../fakes/fake-normalized-observation-repo.js";
@@ -362,8 +363,9 @@ describe("collectClmmBundle", () => {
         }
       );
 
-      await expect(
-        collectClmmBundle(
+      let errorThrown: unknown;
+      try {
+        await collectClmmBundle(
           {
             http,
             jsonStore,
@@ -373,12 +375,22 @@ describe("collectClmmBundle", () => {
             normalizedObservationRepo
           },
           VALID_CONTEXT
-        )
-      ).rejects.toThrow("disk full");
+        );
+      } catch (err) {
+        errorThrown = err;
+      }
+      expect(errorThrown).toBeDefined();
 
       const rawRows = [...rawObservationRepo["store"].values()];
       expect(rawRows[0]!.parseStatus).toBe("parsed");
       expect(normalizedObservationRepo.count).toBeGreaterThan(0);
+
+      const mapped = mapSourceError("clmm-v2", "clmm-v2-bundle", errorThrown);
+      expect(mapped.status).toBe("failed");
+      expect(mapped.hasUsableEvidence).toBe(true);
+      expect(mapped.rawObservationId).toBe(rawRows[0]!.id);
+      expect(mapped.normalizedCount).toBe(0);
+      expect(mapped.diagnostic).toContain("disk full");
 
       jsonStore.writeError = null;
       await collectClmmBundle(
