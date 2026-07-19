@@ -1,7 +1,9 @@
 import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
 import { runPriceObservationsJob } from "../../src/jobs/price-observations-job.js";
 
-function redactSecrets(text: string): string {
+const SECRET_KEY_PATTERN = /(api[_-]?key|bearer|token|auth|secret)/i;
+
+function redactSecretMentions(text: string): string {
   return text
     .replace(/api[_-]?key/gi, "[REDACTED]")
     .replace(/bearer/gi, "[REDACTED]")
@@ -10,9 +12,12 @@ function redactSecrets(text: string): string {
     .replace(/secret/gi, "[REDACTED]");
 }
 
-function secretRedactingReplacer(_key: string, value: unknown): unknown {
+function secretRedactingReplacer(key: string, value: unknown): unknown {
+  if (SECRET_KEY_PATTERN.test(key)) {
+    return "[REDACTED]";
+  }
   if (typeof value === "string") {
-    return redactSecrets(value);
+    return redactSecretMentions(value);
   }
   return value;
 }
