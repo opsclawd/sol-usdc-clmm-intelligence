@@ -100,7 +100,8 @@ export interface NormalizePythPriceResult extends OraclePricePayloadV1 {}
 
 export function normalizePythPrice(
   envelope: PythHermesEnvelope,
-  configuredFeedId: string
+  configuredFeedId: string,
+  fetchedAtUnixMs: number
 ): NormalizePythPriceResult {
   const { priceUpdate } = acceptPythEnvelope(envelope, configuredFeedId);
 
@@ -130,7 +131,6 @@ export function normalizePythPrice(
   }
 
   const observedAtUnixMs = priceUpdate.price.timestamp * 1000;
-  const fetchedAtUnixMs = Date.now();
 
   return {
     kind: "oracle_price",

@@ -11,8 +11,8 @@ function finiteNumber(): z.ZodType<number> {
 }
 
 function positiveFiniteNumber(): z.ZodType<number> {
-  return z.number().refine((n) => Number.isFinite(n) && n > 0, {
-    message: "must be a positive finite number"
+  return z.number().refine((n) => Number.isFinite(n) && n >= 0, {
+    message: "must be a non-negative finite number"
   });
 }
 

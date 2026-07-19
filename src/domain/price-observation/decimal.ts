@@ -57,16 +57,12 @@ export function computeConfidenceRatioBps(confidenceAtomic: string, priceAtomic:
   const price = BigInt(priceAtomic);
 
   const ratio = (confidence * BigInt(10000)) / price;
-  const integerPart = ratio / BigInt(10000);
-  const fractionalPart = ratio % BigInt(10000);
 
-  if (fractionalPart === BigInt(0)) {
-    return String(integerPart);
+  if (ratio === BigInt(0)) {
+    return "0";
   }
 
-  const fracStr = String(fractionalPart).padStart(4, "0");
-  const trimmedFrac = fracStr.replace(/0+$/, "");
-  return String(integerPart) + "." + trimmedFrac;
+  return String(ratio);
 }
 
 export function isValidIntegerString(value: string): boolean {

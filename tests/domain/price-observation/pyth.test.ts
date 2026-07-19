@@ -166,7 +166,7 @@ describe("Pyth Oracle Price Processing", () => {
           })
         ]
       });
-      expect(() => normalizePythPrice(envelope, SOL_USD_FEED_ID)).toThrow();
+      expect(() => normalizePythPrice(envelope, SOL_USD_FEED_ID, Date.now())).toThrow();
     });
 
     it("rejects negative price", async () => {
@@ -178,7 +178,7 @@ describe("Pyth Oracle Price Processing", () => {
           })
         ]
       });
-      expect(() => normalizePythPrice(envelope, SOL_USD_FEED_ID)).toThrow();
+      expect(() => normalizePythPrice(envelope, SOL_USD_FEED_ID, Date.now())).toThrow();
     });
 
     it("emits exact decimal bounds", async () => {
@@ -194,7 +194,7 @@ describe("Pyth Oracle Price Processing", () => {
           })
         ]
       });
-      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID);
+      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID, Date.now());
       expect(result.bounds.lowerBound).toBe("1.73500000");
       expect(result.bounds.upperBound).toBe("1.76500000");
     });
@@ -212,8 +212,8 @@ describe("Pyth Oracle Price Processing", () => {
           })
         ]
       });
-      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID);
-      expect(result.confidenceRatio).toBe("0.01");
+      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID, Date.now());
+      expect(result.confidenceRatio).toBe("100");
     });
 
     it("adds wide_confidence_interval warning when ratio exceeds 100 bps", async () => {
@@ -229,7 +229,7 @@ describe("Pyth Oracle Price Processing", () => {
           })
         ]
       });
-      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID);
+      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID, Date.now());
       expect(result.warnings).toContain("wide_confidence_interval");
     });
 
@@ -246,7 +246,7 @@ describe("Pyth Oracle Price Processing", () => {
           })
         ]
       });
-      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID);
+      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID, Date.now());
       expect(result.warnings).not.toContain("oracle_confidence_wide");
     });
   });
@@ -265,7 +265,7 @@ describe("Pyth Oracle Price Processing", () => {
           })
         ]
       });
-      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID);
+      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID, Date.now());
       expect(result.priceData.price).toBe("175.0");
       expect(result.priceData.confidence).toBe("15.0");
     });
@@ -283,7 +283,7 @@ describe("Pyth Oracle Price Processing", () => {
           })
         ]
       });
-      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID);
+      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID, Date.now());
       expect(result.priceData.price).toBe("1.75000000");
       expect(result.priceData.confidence).toBe("0.01500000");
     });
@@ -301,7 +301,7 @@ describe("Pyth Oracle Price Processing", () => {
           })
         ]
       });
-      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID);
+      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID, Date.now());
       expect(result.priceData.price).toBe("1.7500000000");
       expect(result.priceData.confidence).toBe("0.0150000000");
     });
@@ -319,7 +319,7 @@ describe("Pyth Oracle Price Processing", () => {
           })
         ]
       });
-      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID);
+      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID, Date.now());
       expect(result.bounds.lowerBound).toBe("1.73500000");
       expect(result.bounds.upperBound).toBe("1.76500000");
     });
@@ -337,11 +337,9 @@ describe("Pyth Oracle Price Processing", () => {
           })
         ]
       });
-      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID);
+      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID, Date.now());
       const ratio = (BigInt("1234567") * BigInt("10000")) / BigInt("123456789");
-      expect(result.confidenceRatio).toBe(
-        String(ratio / BigInt("10000")) + "." + String(ratio % BigInt("10000")).padStart(4, "0")
-      );
+      expect(result.confidenceRatio).toBe(String(ratio));
     });
 
     it("handles atomic integer strings without precision loss", async () => {
@@ -357,7 +355,7 @@ describe("Pyth Oracle Price Processing", () => {
           })
         ]
       });
-      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID);
+      const result = normalizePythPrice(envelope, SOL_USD_FEED_ID, Date.now());
       expect(result.priceData.price).toBe("0.9999999999");
       expect(result.priceData.confidence).toBe("0.0099999999");
     });
@@ -402,8 +400,8 @@ describe("Pyth Oracle Price Processing", () => {
           })
         ]
       });
-      const result1 = normalizePythPrice(envelope1, SOL_USD_FEED_ID);
-      const result2 = normalizePythPrice(envelope2, SOL_USD_FEED_ID);
+      const result1 = normalizePythPrice(envelope1, SOL_USD_FEED_ID, Date.now());
+      const result2 = normalizePythPrice(envelope2, SOL_USD_FEED_ID, Date.now());
       expect(result1.priceData.price).not.toBe(result2.priceData.price);
     });
 
@@ -431,8 +429,8 @@ describe("Pyth Oracle Price Processing", () => {
           })
         ]
       });
-      const result1 = normalizePythPrice(envelope1, SOL_USD_FEED_ID);
-      const result2 = normalizePythPrice(envelope2, SOL_USD_FEED_ID);
+      const result1 = normalizePythPrice(envelope1, SOL_USD_FEED_ID, Date.now());
+      const result2 = normalizePythPrice(envelope2, SOL_USD_FEED_ID, Date.now());
       expect(result1.priceData.confidence).not.toBe(result2.priceData.confidence);
       expect(result1.bounds.lowerBound).not.toBe(result2.bounds.lowerBound);
       expect(result1.bounds.upperBound).not.toBe(result2.bounds.upperBound);
