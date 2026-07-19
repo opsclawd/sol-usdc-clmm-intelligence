@@ -6,11 +6,10 @@
 pnpm install
 cp .env.example .env
 pnpm typecheck
-pnpm collect:price
-pnpm collect:clmm-bundle
+pnpm collect:core
 ```
 
-If `pnpm collect:clmm-bundle` fails, your clmm-v2 insight endpoint is not ready, `CLMM_DATA_API_BASE` is wrong, or `CLMM_INSIGHTS_API_KEY` is missing.
+If `pnpm collect:core` fails, check the configuration or credentials of the failing core sources. Legacy standalone commands (`pnpm collect:price` and `pnpm collect:clmm-bundle`) remain supported.
 
 ## Register OpenClaw jobs
 
@@ -47,24 +46,35 @@ openclaw cron runs --id <jobId> --limit 20
 
 ## Configuration & Credentials
 
-Durable price telemetry collection requires the following credentials and environment variables to be configured in `.env` (configured via `.env.example` as a template):
+Durable core telemetry collection requires the following credentials and environment variables to be configured in `.env` (configured via `.env.example` as a template):
 
+- `CLMM_DATA_API_BASE`: Base URL for `clmm-v2` backend (default `http://localhost:3001`).
+- `CLMM_INSIGHTS_API_KEY`: API key for backend access.
+- `WALLET_PUBLIC_KEY`: Solana wallet public key under observation.
 - `PYTH_HERMES_BASE_URL`: Base URL for the Pyth Hermes API (defaults to `https://hermes.pyth.network`).
 - `PYTH_API_KEY`: API Key for Pyth Hermes. Optional for local development/low-frequency runs, but required in production.
 - `PYTH_SOL_USD_FEED_ID`: The price feed ID for SOL/USD (canonical feed ID `0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d`).
 - `JUPITER_API_BASE`: Base URL for Jupiter's quote API (defaults to `https://api.jup.ag`).
 - `JUPITER_API_KEY`: Optional Jupiter API Key for high-frequency or production rate-limit environments.
+- `ORCA_API_BASE`: Base URL for Orca's public statistics API (defaults to `https://api.orca.so/v2/solana`).
+- `ORCA_SOL_USDC_WHIRLPOOL` / `WHIRLPOOL_ADDRESS`: The Orca whirlpool pool address (e.g. `HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw`).
 
 Ensure no actual credentials, keys, or authorization tokens are logged. The CLI automatically redacts headers and keys.
 
-## Price Collector Exit Behavior
+## Core Collector Exit Behavior
 
-When running `pnpm collect:price` or `runPriceObservationsJob` via scheduling:
+When running `pnpm collect:core` or `runCoreCollectionJob` via scheduling:
 
-1. **Complete Success (Exit Code: 0)**: Both Pyth and Jupiter sources collected, normalized, and persisted successfully.
-2. **Partial Success (Exit Code: 0)**: One of the sources (e.g. Jupiter quote) failed, but the other source (e.g. Pyth Hermes) succeeded, yielding at least one usable observation. The run outputs structured warnings to notify the operator.
-3. **Conflict Failure (Exit Code: 1)**: Any database uniqueness or identity conflicts are detected (e.g., trying to write duplicate records for the same key with different payloads/hashes). The pipeline fails closed to protect data integrity.
-4. **Total Failure (Exit Code: 1)**: Both sources failed to collect (e.g. internet down, both APIs timed out). No fresh observations are persisted.
+1. **Complete Success (COMPLETE, Exit Code: 0)**: All core sources (CLMM, Pyth, Jupiter, Orca) collected, normalized, and persisted successfully (or replayed identically).
+2. **Partial Success (PARTIAL, Exit Code: 0)**: At least one source succeeded yielding a usable observation, but some other sources failed or degraded. Structured warnings are output, but no rollback of already committed sibling evidence occurs.
+3. **Unavailable (UNAVAILABLE, Exit Code: 1)**: All sources are unavailable (e.g. rate-limiting HTTP 429s, API timeouts, or service outages).
+4. **Failure (FAILED, Exit Code: 1)**: Total failure with zero usable evidence, or any database uniqueness/identity conflict (replay conflict). The pipeline fails closed to protect data integrity.
+
+### 429/Outage Troubleshooting
+
+1. Check endpoint rate-limits (unauthenticated endpoints like Jupiter and Orca may return 429). Configure `JUPITER_API_KEY` or wait for the rate limit window to reset.
+2. Confirm Pyth Hermes endpoint status and check if subscription credentials/API key are required.
+3. Check `clmm-v2` status and verify BFF API keys are correct.
 
 ## Pre-deployment Preflight Checks
 

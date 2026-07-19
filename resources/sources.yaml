@@ -57,6 +57,22 @@ sources:
       - Jupiter API Key is required for high rate-limits in production.
       - Output amount is quote-relative. Freshness is 30 seconds receipt-relative (no wall-clock source timestamp).
 
+  - name: orca-public-api
+    priority: high
+    type: public-api
+    env: ORCA_API_BASE
+    poolEnv: ORCA_SOL_USDC_WHIRLPOOL
+    endpoint: /public/pool?address=:poolAddress&stats=24h
+    purpose:
+      - pool_statistics
+    policy:
+      timeoutMs: 5000
+      maxAttempts: 2
+    limitations:
+      - Unauthenticated and rate-limited behavior on public endpoints.
+      - 24-hour rolling statistics window for volume and fees.
+      - Dependent on Orca public API availability.
+
   - name: defillama-solana
     priority: high
     type: public-api
@@ -84,6 +100,8 @@ sources:
       - network_upgrades
       - outage_or_degradation_risk
       - ecosystem_catalysts
+    limitations:
+      - Deferred Gap: Solana network-health/status ingestion is identified as a backlog gap after the deterministic vertical slice. It is not part of the core source count and is deferred for future implementation.
 
   - name: helius-research
     priority: medium

@@ -95,40 +95,48 @@ clmm-v2 /insights/sol-usdc/bundle/:walletId
      advisory output / operator review
 ```
 
-## Durable price data flow (Pyth & Jupiter)
+## Durable Core Data Flow (Four-Source Core Set)
 
-The price telemetry pipeline collects observations from two independent sources before normalizing them. Both sources are collected in a raw-first flow and persisted to Postgres before normalization:
+The core data ingestion pipeline collects observations from a four-source raw-first core set before normalizing them. All sources are collected in a raw-first flow and persisted to Postgres before normalization. The four core sources are:
 
-- **Pyth Hermes**: Authenticated oracle feed. Produces `oracle_price` observations.
-- **Jupiter Quote**: Public quote-only API (used as a 50 bps slippage probe). Produces `executable_quote` observations.
+- **clmm-v2-insights** (CLMM Bundle): BFF API. Produces raw LP, positions, and alert facts.
+- **pyth-hermes** (Pyth Oracle): Authenticated oracle feed. Produces `oracle_price` observations.
+- **jupiter-quote** (Jupiter Quote): Public quote API. Produces `executable_quote` observations.
+- **orca-public-api** (Orca Stats): Public pool stats API. Produces `pool_statistics` observations.
 
 ```text
-        Pyth Hermes API              Jupiter Quote API
-               |                             |
-               +--------------+--------------+
-                              v
-             raw_observations (append-only)
-                              |
-                              v
-           normalized_observations (immutable)
-                              |
-            +-----------------+-----------------+
-            v                                   v
-      derived_features             data/latest-price-snapshot.json
- (e.g. divergence check,            (Compatibility snapshot fallback)
-  future oracle/DEX feature)                    |
-                                                v
-                                  OpenClaw routine + memory
-                                                |
-                                                v
-                                    Advisory review / Operator
+  CLMM Bundle      Pyth Hermes      Jupiter Quote      Orca Stats
+       |                |                 |                 |
+       +----------------+--------+--------+-----------------+
+                                 v
+                  raw_observations (append-only)
+                                 |
+                                 v
+               normalized_observations (immutable)
+                                 |
+               +-----------------+-----------------+
+               v                                   v
+         derived_features             Compatibility Snapshots
+      (divergence, fee APR)          (e.g., latest-clmm-bundle.json,
+                                      latest-price-snapshot.json)
 ```
 
 Key Architectural Invariants:
 
-1. **Postgres Authority**: The database tables (`raw_observations` and `normalized_observations`) are the absolute authority. The local JSON file `data/latest-price-snapshot.json` is a legacy compatibility snapshot ONLY and must never be treated as the source of truth.
-2. **Compatibility Staleness Caveat**: If Pyth collection succeeds but Jupiter quote collection fails, the job succeeds partially but the compatibility snapshot `data/latest-price-snapshot.json` remains stale (it is NOT overwritten with oracle-only price data). Structured warnings are raised, and the operator must check the DB for current facts.
-3. **No Execution/Transaction Authority**: Jupiter quotes are used solely as generic market price evidence. This repository does not construct Solana instructions, sign transactions, or execute swaps.
-4. **Source-Independent Kinds**: Ingestion normalizes raw inputs into generic `oracle_price` and `executable_quote` kinds defined in the signal taxonomy.
-5. **No Derivative Features Yet**: Advanced feature derivation (e.g., oracle/DEX divergence) is out-of-scope for the current implementation.
-6. **Operator Handoff**: `pnpm collect:price` remains the canonical CLI/operator interface for gathering price telemetry.
+1. **Postgres Authority**: The database tables (`raw_observations` and `normalized_observations`) are the absolute authority. Local JSON compatibility snapshots are fallbacks only.
+2. **One Explicit Run Context**: A single execution context (containing a unique `runId`) correlates all leaf operations within a single run. Leaf operations must never re-read the environment or regenerate their own `runId`.
+3. **Independent Persistence**: Sibling source collectors execute concurrently and persist their raw observations and normalized rows independently.
+4. **No Aggregate Transaction/Retry**: There are no cross-source database transactions or coordinator-level retries. A failure in one source does not roll back already committed evidence from sibling sources.
+5. **Fixed Status Truth Table**: The overall command run status is mapped via a pure reducer truth table based on individual source outcomes:
+   - **COMPLETE**: All sources succeed or replay identically.
+   - **PARTIAL**: At least one source succeeds (usable) while others fail or degrade.
+   - **UNAVAILABLE**: All sources are unavailable (e.g., due to rate-limiting 429s or outages).
+   - **FAILED**: Any validation conflict, DB integrity issue, or total failure with zero usable evidence.
+6. **Orca pool_statistics Metrics**:
+   - `tvlUsdc`: Orca's current pool TVL mark.
+   - `volume24hUsdc`: Rolling traded notional.
+   - `fees24hUsdc`: Rolling total swap fees.
+     These metrics are decimal strings denominated in USDC. They are not raw liquidity, wallet fees, LP-only revenue, APR, or guaranteed fiat USD.
+7. **Solana Network-Health Deferment**: Solana network-health/status ingestion is identified as a separate backlog gap after the deterministic vertical slice. It is excluded from the core source count, and issue #24 completion does not depend on it.
+8. **No Execution Authority**: The pipeline collects evidence and advises only. It does not construct instructions, sign transactions, or execute swaps.
+9. **Operator Handoff**: `pnpm collect:core` is the canonical CLI/operator interface for gathering all four core telemetry sources. Legacy commands remain supported for backwards compatibility.
