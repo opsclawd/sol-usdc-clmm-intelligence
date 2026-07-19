@@ -5,11 +5,10 @@ export const MSOL_MINT = "mSoLzYCxHdDgdzmojag2KnE2dJ7RQfPpmZctD6Z2J6b";
 export interface JupiterQuoteRoutePlan {
   swapMode: "ExactIn" | "ExactOut";
   swapInfo: {
-    wallets: Array<{
-      publicKey: string;
-      source: string;
-      destination: string;
-    }>;
+    ammKey: string;
+    label: string;
+    inputMint: string;
+    outputMint: string;
   };
   intermediateTokens: string[];
   percent: number;
@@ -94,13 +93,10 @@ export function makeJupiterQuote(overrides?: Partial<JupiterQuote>): JupiterQuot
       {
         swapMode: "ExactIn",
         swapInfo: {
-          wallets: [
-            {
-              publicKey: SOL_MINT,
-              source: SOL_MINT,
-              destination: USDC_MINT
-            }
-          ]
+          ammKey: SOL_MINT,
+          label: "SOL-USDC",
+          inputMint: SOL_MINT,
+          outputMint: USDC_MINT
         },
         intermediateTokens: [],
         percent: 100
@@ -156,13 +152,10 @@ export function makeJupiterMultiHopQuote(): JupiterQuote {
       {
         swapMode: "ExactIn",
         swapInfo: {
-          wallets: [
-            {
-              publicKey: SOL_MINT,
-              source: SOL_MINT,
-              destination: MSOL_MINT
-            }
-          ]
+          ammKey: SOL_MINT,
+          label: "SOL-mSOL",
+          inputMint: SOL_MINT,
+          outputMint: MSOL_MINT
         },
         intermediateTokens: [],
         percent: 100
@@ -170,13 +163,10 @@ export function makeJupiterMultiHopQuote(): JupiterQuote {
       {
         swapMode: "ExactIn",
         swapInfo: {
-          wallets: [
-            {
-              publicKey: "mSoLeMN5玉",
-              source: MSOL_MINT,
-              destination: USDC_MINT
-            }
-          ]
+          ammKey: "mSoLeMN5玉",
+          label: "mSOL-USDC",
+          inputMint: MSOL_MINT,
+          outputMint: USDC_MINT
         },
         intermediateTokens: [],
         percent: 100

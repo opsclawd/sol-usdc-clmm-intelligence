@@ -14,13 +14,14 @@ const SOL_USD_ASSETS = {
 } as const;
 
 const JupiterQuoteSwapInfoSchema = z.object({
-  wallets: z.array(
-    z.object({
-      publicKey: z.string(),
-      source: z.string(),
-      destination: z.string()
-    })
-  )
+  ammKey: z.string(),
+  label: z.string(),
+  inputMint: z.string(),
+  outputMint: z.string(),
+  inAmount: z.string().optional(),
+  outAmount: z.string().optional(),
+  feeAmount: z.string().optional(),
+  feeMint: z.string().optional()
 });
 
 const JupiterQuoteRoutePlanSchema = z.object({
@@ -33,7 +34,9 @@ const JupiterQuoteRoutePlanSchema = z.object({
 const JupiterQuoteRouteSummarySchema = z.object({
   inAmount: z.string(),
   outAmount: z.string(),
-  priceImpactPct: z.string(),
+  priceImpactPct: z
+    .string()
+    .regex(/^-?[0-9]+\.?[0-9]*$/, { message: "priceImpactPct must be a valid decimal string" }),
   marketInfos: z.record(z.unknown()),
   amount: z.string(),
   swapMode: z.enum(["ExactIn", "ExactOut"]),
@@ -60,10 +63,12 @@ const JupiterQuoteSchema = z
     inputMint: z.string(),
     inAmount: z
       .string()
+      .max(50, { message: "inAmount string too long" })
       .refine(isValidIntegerString, { message: "inAmount must be a valid integer string" }),
     outputMint: z.string(),
     outAmount: z
       .string()
+      .max(50, { message: "outAmount string too long" })
       .refine(isValidIntegerString, { message: "outAmount must be a valid integer string" }),
     otherAmounts: z.array(
       z.object({
@@ -215,14 +220,12 @@ export function normalizeJupiterQuote(
 
   const priceImpactRatio = parsePriceImpactToBasisPoints(acceptedQuote.priceImpactPct);
 
-  const hops = acceptedQuote.routePlan.flatMap((plan) =>
-    plan.swapInfo.wallets.map((wallet) => ({
-      pool: wallet.publicKey,
-      inputMint: wallet.source,
-      outputMint: wallet.destination,
-      protocol: "jupiter"
-    }))
-  );
+  const hops = acceptedQuote.routePlan.map((plan) => ({
+    pool: plan.swapInfo.ammKey,
+    inputMint: plan.swapInfo.inputMint,
+    outputMint: plan.swapInfo.outputMint,
+    protocol: "jupiter" as const
+  }));
 
   const routeSummary =
     hops.length > 0
