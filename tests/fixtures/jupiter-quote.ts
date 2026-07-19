@@ -1,13 +1,16 @@
 export const SOL_MINT = "So11111111111111111111111111111111111111112";
 export const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+export const MSOL_MINT = "mSoLzYCxHdDgdzmojag2KnE2dJ7RQfPpmZctD6Z2J6b";
 
 export interface JupiterQuoteRoutePlan {
   swapMode: "ExactIn" | "ExactOut";
-  wallets: Array<{
-    publicKey: string;
-    source: string;
-    destination: string;
-  }>;
+  swapInfo: {
+    wallets: Array<{
+      publicKey: string;
+      source: string;
+      destination: string;
+    }>;
+  };
   intermediateTokens: string[];
   percent: number;
 }
@@ -25,7 +28,7 @@ export interface JupiterQuoteRouteSummary {
   inAmount: string;
   outAmount: string;
   priceImpactPct: string;
-  marketInies: Record<string, unknown>;
+  marketInfos: Record<string, unknown>;
   amount: string;
   swapMode: "ExactIn" | "ExactOut";
   slippageBps: number;
@@ -63,15 +66,6 @@ export interface JupiterQuote {
   } | null;
   priceImpactPctList: string[];
   trustlessBootstrapMode: boolean;
-  directRoutes: unknown[];
-  splitting: Array<{
-    sourceAmount: string;
-    distributions: Array<{
-      idx: number;
-      amount: string;
-      swapMode: "ExactIn" | "ExactOut";
-    }>;
-  }>;
   remainderAmount: string;
   virtualTokenReserves: Record<string, unknown>;
   lastUpdatedSlot: number;
@@ -81,17 +75,6 @@ export interface JupiterQuote {
   highPriceImpact: boolean;
   routeSummary: JupiterQuoteRouteSummary;
   additionalTransferFeeAmount: string;
-  fees: {
-    totalFeeAndDevPercent: number;
-    devFee: {
-      amount: string;
-      mint: string;
-    };
-    totalFees: {
-      amount: string;
-      uiAmount: string;
-    };
-  };
   restrictIntermediateTokens: boolean;
   bridgeUsed: boolean;
   pubkey: string;
@@ -110,13 +93,15 @@ export function makeJupiterQuote(overrides?: Partial<JupiterQuote>): JupiterQuot
     routePlan: [
       {
         swapMode: "ExactIn",
-        wallets: [
-          {
-            publicKey: SOL_MINT,
-            source: "SOL",
-            destination: "USDC"
-          }
-        ],
+        swapInfo: {
+          wallets: [
+            {
+              publicKey: SOL_MINT,
+              source: SOL_MINT,
+              destination: USDC_MINT
+            }
+          ]
+        },
         intermediateTokens: [],
         percent: 100
       }
@@ -126,8 +111,6 @@ export function makeJupiterQuote(overrides?: Partial<JupiterQuote>): JupiterQuot
     platformFee: null,
     priceImpactPctList: ["0.015"],
     trustlessBootstrapMode: false,
-    directRoutes: [],
-    splitting: [],
     remainderAmount: "0",
     virtualTokenReserves: {},
     lastUpdatedSlot: 123456789,
@@ -139,7 +122,7 @@ export function makeJupiterQuote(overrides?: Partial<JupiterQuote>): JupiterQuot
       inAmount: "1000000000",
       outAmount: "175000000",
       priceImpactPct: "0.015",
-      marketInies: {},
+      marketInfos: {},
       amount: "1000000000",
       swapMode: "ExactIn",
       slippageBps: 50,
@@ -149,17 +132,6 @@ export function makeJupiterQuote(overrides?: Partial<JupiterQuote>): JupiterQuot
       jupiterQuoteVersion: "6.0"
     },
     additionalTransferFeeAmount: "0",
-    fees: {
-      totalFeeAndDevPercent: 0,
-      devFee: {
-        amount: "0",
-        mint: SOL_MINT
-      },
-      totalFees: {
-        amount: "0",
-        uiAmount: "0"
-      }
-    },
     restrictIntermediateTokens: true,
     bridgeUsed: false,
     pubkey: "QuotePubkey123",
@@ -183,25 +155,29 @@ export function makeJupiterMultiHopQuote(): JupiterQuote {
     routePlan: [
       {
         swapMode: "ExactIn",
-        wallets: [
-          {
-            publicKey: SOL_MINT,
-            source: "SOL",
-            destination: "mSOL"
-          }
-        ],
+        swapInfo: {
+          wallets: [
+            {
+              publicKey: SOL_MINT,
+              source: SOL_MINT,
+              destination: MSOL_MINT
+            }
+          ]
+        },
         intermediateTokens: [],
         percent: 100
       },
       {
         swapMode: "ExactIn",
-        wallets: [
-          {
-            publicKey: "mSoLeMN5玉",
-            source: "mSOL",
-            destination: "USDC"
-          }
-        ],
+        swapInfo: {
+          wallets: [
+            {
+              publicKey: "mSoLeMN5玉",
+              source: MSOL_MINT,
+              destination: USDC_MINT
+            }
+          ]
+        },
         intermediateTokens: [],
         percent: 100
       }

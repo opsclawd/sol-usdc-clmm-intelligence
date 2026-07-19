@@ -13,15 +13,19 @@ const SOL_USD_ASSETS = {
   quoteDecimals: 6
 } as const;
 
-const JupiterQuoteRoutePlanSchema = z.object({
-  swapMode: z.enum(["ExactIn", "ExactOut"]),
+const JupiterQuoteSwapInfoSchema = z.object({
   wallets: z.array(
     z.object({
       publicKey: z.string(),
       source: z.string(),
       destination: z.string()
     })
-  ),
+  )
+});
+
+const JupiterQuoteRoutePlanSchema = z.object({
+  swapMode: z.enum(["ExactIn", "ExactOut"]),
+  swapInfo: JupiterQuoteSwapInfoSchema,
   intermediateTokens: z.array(z.string()),
   percent: z.number()
 });
@@ -30,7 +34,7 @@ const JupiterQuoteRouteSummarySchema = z.object({
   inAmount: z.string(),
   outAmount: z.string(),
   priceImpactPct: z.string(),
-  marketInies: z.record(z.unknown()),
+  marketInfos: z.record(z.unknown()),
   amount: z.string(),
   swapMode: z.enum(["ExactIn", "ExactOut"]),
   slippageBps: z.number(),
@@ -69,7 +73,9 @@ const JupiterQuoteSchema = z
     ),
     swapMode: z.enum(["ExactIn", "ExactOut"]),
     slippageBps: z.number(),
-    priceImpactPct: z.string(),
+    priceImpactPct: z
+      .string()
+      .regex(/^-?[0-9]+\.?[0-9]*$/, { message: "priceImpactPct must be a valid decimal string" }),
     routePlan: z.array(JupiterQuoteRoutePlanSchema).min(1),
     contextSlot: z.number(),
     timeTaken: z.number(),
@@ -81,19 +87,6 @@ const JupiterQuoteSchema = z
       .nullable(),
     priceImpactPctList: z.array(z.string()),
     trustlessBootstrapMode: z.boolean(),
-    directRoutes: z.array(z.unknown()),
-    splitting: z.array(
-      z.object({
-        sourceAmount: z.string(),
-        distributions: z.array(
-          z.object({
-            idx: z.number(),
-            amount: z.string(),
-            swapMode: z.enum(["ExactIn", "ExactOut"])
-          })
-        )
-      })
-    ),
     remainderAmount: z.string(),
     virtualTokenReserves: z.record(z.unknown()),
     lastUpdatedSlot: z.number(),
@@ -103,17 +96,6 @@ const JupiterQuoteSchema = z
     highPriceImpact: z.boolean(),
     routeSummary: JupiterQuoteRouteSummarySchema,
     additionalTransferFeeAmount: z.string(),
-    fees: z.object({
-      totalFeeAndDevPercent: z.number(),
-      devFee: z.object({
-        amount: z.string(),
-        mint: z.string()
-      }),
-      totalFees: z.object({
-        amount: z.string(),
-        uiAmount: z.string()
-      })
-    }),
     restrictIntermediateTokens: z.boolean(),
     bridgeUsed: z.boolean(),
     pubkey: z.string()
@@ -234,10 +216,10 @@ export function normalizeJupiterQuote(
   const priceImpactRatio = parsePriceImpactToBasisPoints(acceptedQuote.priceImpactPct);
 
   const hops = acceptedQuote.routePlan.flatMap((plan) =>
-    plan.wallets.map((wallet) => ({
+    plan.swapInfo.wallets.map((wallet) => ({
       pool: wallet.publicKey,
-      inputMint: wallet.source === "SOL" ? SOL_USD_ASSETS.baseMint : wallet.source,
-      outputMint: wallet.destination === "USDC" ? SOL_USD_ASSETS.quoteMint : wallet.destination,
+      inputMint: wallet.source,
+      outputMint: wallet.destination,
       protocol: "jupiter"
     }))
   );
