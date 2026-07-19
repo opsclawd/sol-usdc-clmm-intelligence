@@ -1,25 +1,16 @@
 export function atomicToDecimalString(atomicValue: string, exponent: number): string {
   const value = BigInt(atomicValue);
   const isNegative = value < 0n;
-  const absExponent = Math.abs(exponent);
 
   if (exponent >= 0) {
     const multiplier = 10n ** BigInt(exponent);
     const scaledValue = value * multiplier;
-    const integerPart = scaledValue / 1n;
-    const fractionalPart = scaledValue % 1n;
-    if (fractionalPart === 0n) {
-      const intStr = String(integerPart);
-      const signPrefix = isNegative && integerPart === 0n ? "-" : "";
-      return signPrefix + intStr + ".0";
-    }
-    const fractionalAbs = fractionalPart < 0n ? -fractionalPart : fractionalPart;
-    const fractionalStr = String(fractionalAbs).padStart(1, "0");
-    const intStr = String(integerPart);
-    const signPrefix = isNegative && integerPart === 0n ? "-" : "";
-    return signPrefix + intStr + "." + fractionalStr;
+    const intStr = String(scaledValue);
+    const signPrefix = isNegative && scaledValue === 0n ? "-" : "";
+    return signPrefix + intStr + ".0";
   }
 
+  const absExponent = Math.abs(exponent);
   const divisor = 10n ** BigInt(absExponent);
   const integerPart = value / divisor;
   const fractionalPart = value % divisor;
@@ -44,30 +35,13 @@ export function computeConfidenceBounds(
 ): { lowerBound: string; upperBound: string } {
   const price = BigInt(priceAtomic);
   const confidence = BigInt(confidenceAtomic);
-  const absExponent = Math.abs(exponent);
-  const divisor = 10n ** BigInt(absExponent);
 
   const lowerPrice = price - confidence;
   const upperPrice = price + confidence;
 
-  const scale = 1n;
-
-  const lowerInteger = (lowerPrice * scale) / divisor;
-  const upperInteger = (upperPrice * scale) / divisor;
-
-  const lowerDecimal = (lowerPrice * scale) % divisor;
-  const upperDecimal = (upperPrice * scale) % divisor;
-
-  const formatDecimal = (intPart: bigint, fracPart: bigint, fracDigits: number): string => {
-    const intStr = String(intPart);
-    const fracAbs = fracPart < 0n ? -fracPart : fracPart;
-    const fracStr = String(fracAbs).padStart(fracDigits, "0");
-    return intStr + "." + fracStr;
-  };
-
   return {
-    lowerBound: formatDecimal(lowerInteger, lowerDecimal, absExponent),
-    upperBound: formatDecimal(upperInteger, upperDecimal, absExponent)
+    lowerBound: atomicToDecimalString(lowerPrice.toString(), exponent),
+    upperBound: atomicToDecimalString(upperPrice.toString(), exponent)
   };
 }
 
