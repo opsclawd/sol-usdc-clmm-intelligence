@@ -1,17 +1,23 @@
 export function atomicToDecimalString(atomicValue: string, exponent: number): string {
   const value = BigInt(atomicValue);
+  const isNegative = value < 0n;
   const absExponent = Math.abs(exponent);
 
   if (exponent >= 0) {
-    const divisor = 10n ** BigInt(exponent);
-    const integerPart = value / divisor;
-    const fractionalPart = value % divisor;
+    const multiplier = 10n ** BigInt(exponent);
+    const scaledValue = value * multiplier;
+    const integerPart = scaledValue / 1n;
+    const fractionalPart = scaledValue % 1n;
     if (fractionalPart === 0n) {
-      return String(integerPart) + ".0";
+      const intStr = String(integerPart);
+      const signPrefix = isNegative && integerPart === 0n ? "-" : "";
+      return signPrefix + intStr + ".0";
     }
     const fractionalAbs = fractionalPart < 0n ? -fractionalPart : fractionalPart;
-    const fractionalStr = String(fractionalAbs).padStart(exponent, "0");
-    return String(integerPart) + "." + fractionalStr;
+    const fractionalStr = String(fractionalAbs).padStart(1, "0");
+    const intStr = String(integerPart);
+    const signPrefix = isNegative && integerPart === 0n ? "-" : "";
+    return signPrefix + intStr + "." + fractionalStr;
   }
 
   const divisor = 10n ** BigInt(absExponent);
@@ -19,12 +25,16 @@ export function atomicToDecimalString(atomicValue: string, exponent: number): st
   const fractionalPart = value % divisor;
 
   if (fractionalPart === 0n) {
-    return String(integerPart) + ".0";
+    const intStr = String(integerPart);
+    const signPrefix = isNegative && integerPart === 0n ? "-" : "";
+    return signPrefix + intStr + ".0";
   }
 
   const fractionalAbs = fractionalPart < 0n ? -fractionalPart : fractionalPart;
   const fractionalStr = String(fractionalAbs).padStart(absExponent, "0");
-  return String(integerPart) + "." + fractionalStr;
+  const intStr = String(integerPart);
+  const signPrefix = isNegative && integerPart === 0n ? "-" : "";
+  return signPrefix + intStr + "." + fractionalStr;
 }
 
 export function computeConfidenceBounds(
