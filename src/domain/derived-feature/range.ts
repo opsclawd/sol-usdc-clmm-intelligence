@@ -17,7 +17,7 @@ export type RangeClassification =
 
 function parsePriceLabel(label: string): number | null {
   const result = parseDecimal(label);
-  if (result === "invalid_decimal") {
+  if (typeof result === "string") {
     return null;
   }
   const num = roundToSafeInteger(result);
@@ -127,8 +127,8 @@ export function calculateRangeLocation(position: PositionStatePayloadV1): Featur
     { numerator: BigInt(currentOffset), denominator: 1n },
     { numerator: BigInt(rangeSpan), denominator: 1n }
   );
-  if (rationalLocation === "division_by_zero") {
-    return makeUnavailable(["division by zero in range location calculation"]);
+  if (typeof rationalLocation === "string") {
+    return makeUnavailable(["numeric failure in range location calculation"]);
   }
 
   const scaledLocation = multiply(rationalLocation, { numerator: 1_000_000n, denominator: 1n });
@@ -182,8 +182,8 @@ export function calculateDistanceToLower(position: PositionStatePayloadV1): Feat
     { numerator: BigInt(lowerPrice), denominator: 1n }
   );
   const rationalDistance = divide(offset, { numerator: BigInt(currentPrice), denominator: 1n });
-  if (rationalDistance === "division_by_zero") {
-    return makeUnavailable(["division by zero in distance-to-lower calculation"]);
+  if (typeof rationalDistance === "string") {
+    return makeUnavailable(["numeric failure in distance-to-lower calculation"]);
   }
 
   const scaledDistance = multiply(rationalDistance, { numerator: 10_000n, denominator: 1n });
@@ -235,8 +235,8 @@ export function calculateDistanceToUpper(position: PositionStatePayloadV1): Feat
     { numerator: BigInt(currentPrice), denominator: 1n }
   );
   const rationalDistance = divide(offset, { numerator: BigInt(currentPrice), denominator: 1n });
-  if (rationalDistance === "division_by_zero") {
-    return makeUnavailable(["division by zero in distance-to-upper calculation"]);
+  if (typeof rationalDistance === "string") {
+    return makeUnavailable(["numeric failure in distance-to-upper calculation"]);
   }
 
   const scaledDistance = multiply(rationalDistance, { numerator: 10_000n, denominator: 1n });
