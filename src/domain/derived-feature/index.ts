@@ -19,3 +19,11 @@ export {
   type SourceKindFilter,
   SELECTION_VERSION
 } from "./select.js";
+
+export {
+  assembleDerivedFeature,
+  type AssembleFeatureInput,
+  type AssembleDerivedFeatureOptions,
+  type FeatureCalculation,
+  type AssembledFeature
+} from "./assemble.js";
