@@ -26,3 +26,8 @@ export type {
 export type { EvidenceBundleRepo, EvidenceBundleRow, EvidenceBundleInsert } from "./bundle-repo.js";
 export type { ResearchBriefRepo, ResearchBriefRow, ResearchBriefInsert } from "./brief-repo.js";
 export type { RunIdFactory } from "./run-id.js";
+export type {
+  EvidenceBundleContract,
+  CanonicalEvidenceBundle,
+  EvidenceBundleContractError
+} from "./evidence-bundle-contract.js";

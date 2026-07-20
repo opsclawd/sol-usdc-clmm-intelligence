@@ -1,0 +1,94 @@
+{
+  "repository": "opsclawd/regime-engine",
+  "commit": "ff821935acf7d7ce2844b9d667bea0bcc6f98ce8",
+  "schemaPath": "contracts/evidence-bundle/v1/evidence-bundle.schema.json",
+  "schemaVersion": "evidence-bundle.v1",
+  "copiedAt": "2026-07-20T19:14:48.000Z",
+  "assets": [
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/evidence-bundle.schema.json",
+      "localPath": "schema.json",
+      "sha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/hash-vectors.json",
+      "localPath": "hash-vectors.json",
+      "sha256": "8fed9dea0d48906a3efeea1247a4cfced929db7bc2d9e1a4ef6a7761667e4ac6"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/valid/deterministic-only.json",
+      "localPath": "fixtures/valid/deterministic-only.json",
+      "sha256": "53cc1f2d01b06c211b205762f33e97307c75ee4d5e616865f8123916d0dbbc80"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/valid/contextual.json",
+      "localPath": "fixtures/valid/contextual.json",
+      "sha256": "0df8df78dc20c63c372465f3c6b40fba341f1241f1cb2b3b15cfa420492ec75b"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/invalid/duplicate-lineage.json",
+      "localPath": "fixtures/invalid/duplicate-lineage.json",
+      "sha256": "af40ff4806e5477151de3c498e66763fab1838d6dfaa5631cd498dc896bd82c5"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/invalid/empty-context-no-warning.json",
+      "localPath": "fixtures/invalid/empty-context-no-warning.json",
+      "sha256": "4a83e3b7a40d15b1e33f6c1f8c895ee18041c84d39cd9bd326b18a7d162ef81f"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/invalid/malformed-contextual-family.json",
+      "localPath": "fixtures/invalid/malformed-contextual-family.json",
+      "sha256": "59df6c8e4ecab36ef086a94f395ca460daf0f4802c4d7f7513d32cc6782d136d"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/invalid/noncanonical-timestamp.json",
+      "localPath": "fixtures/invalid/noncanonical-timestamp.json",
+      "sha256": "9b052e38d454c9726aa34335ec33f6c2f390d290086294207d53aca177bfa6ea"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/invalid/null-brief-available-coverage.json",
+      "localPath": "fixtures/invalid/null-brief-available-coverage.json",
+      "sha256": "0dc84c38df30d5b344e5e4e8d353d175aff0b5363b8fb1f400945307d6603fd9"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/invalid/out-of-range-number.json",
+      "localPath": "fixtures/invalid/out-of-range-number.json",
+      "sha256": "3ea905415abd3271bcfc15914a2b966d693c1d65f1a70dadf5ab1954edb8a43a"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/invalid/reversed-lifecycle.json",
+      "localPath": "fixtures/invalid/reversed-lifecycle.json",
+      "sha256": "3ee192e6ec4d6cc330ba75312fac2b23a9a1934f17ad46a584fc4db5146a6e9e"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/invalid/status-value-mismatch.json",
+      "localPath": "fixtures/invalid/status-value-mismatch.json",
+      "sha256": "7cae980dbb8c8c8113abc4d4dc98fd2fd439ec22b32a6df52907dfddcb1c18a5"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/invalid/unknown-field.json",
+      "localPath": "fixtures/invalid/unknown-field.json",
+      "sha256": "b367a9b1029db95bf2c431bc29cd9bf9e26e9de4d507f0344eac5db20268cc19"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/invalid/unresolved-brief-evidence.json",
+      "localPath": "fixtures/invalid/unresolved-brief-evidence.json",
+      "sha256": "e9c1ddd6dd68246cebaaf754da315d269e639d365fc842406fdd6124d8447788"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/invalid/unresolved-lineage.json",
+      "localPath": "fixtures/invalid/unresolved-lineage.json",
+      "sha256": "a41938b0fd90c0e90074ba374845396e8bc96b10a5f5218656edad407a707149"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/invalid/unsupported-unit.json",
+      "localPath": "fixtures/invalid/unsupported-unit.json",
+      "sha256": "c32e7ebdc161f21efd997382d0194fb1324764cf46c6aedcba661514c57cb352"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/invalid/wrong-schema-version.json",
+      "localPath": "fixtures/invalid/wrong-schema-version.json",
+      "sha256": "ca43108f5dd35ced450b1e792fce69e63fdfa6a4b8a70f53a368d3f5ca09ff49"
+    }
+  ]
+}
