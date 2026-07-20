@@ -1,8 +1,17 @@
 import type { Clock } from "../ports/clock.js";
 import type { NormalizedObservationRepo } from "../ports/normalized-observation-repo.js";
-import type { DerivedFeatureRepo, DerivedFeatureInsert } from "../ports/feature-repo.js";
+import type {
+  DerivedFeatureRepo,
+  DerivedFeatureInsert,
+  DerivedFeatureRow as PortDerivedFeatureRow
+} from "../ports/feature-repo.js";
 import type { NormalizedObservationRow } from "../contracts/index.js";
-import type { FeatureKind, Confidence } from "../contracts/taxonomy.js";
+import type {
+  FeatureKind,
+  Confidence,
+  SignalClass,
+  EvidenceFamily
+} from "../contracts/taxonomy.js";
 import type { DerivedFeatureV1, FeatureStatus } from "../contracts/derived-feature.js";
 import type { PositionStatePayloadV1 } from "../contracts/normalized-clmm-observation.js";
 import type {
@@ -62,8 +71,8 @@ export interface DeriveMvpFeaturesResult {
 interface DerivedFeatureRow {
   id: number;
   featureKind: FeatureKind;
-  signalClass: "deterministic";
-  evidenceFamily: "clmm_state";
+  signalClass: SignalClass;
+  evidenceFamily: EvidenceFamily;
   value: number | null;
   structuredPayload: unknown;
   asOfUnixMs: number;
@@ -216,7 +225,7 @@ async function checkExistingFeature(
   featureRepo: DerivedFeatureRepo,
   featureKind: FeatureKind,
   derivationKey: string
-): Promise<DerivedFeatureRow | undefined> {
+): Promise<PortDerivedFeatureRow | undefined> {
   return featureRepo.findByDerivationKey(featureKind, derivationKey);
 }
 
@@ -678,7 +687,7 @@ async function deriveOracleConfidenceWidth(
 }
 
 async function deriveRealizedVolatility(
-  priceRows: NormalizedObservationRow[],
+  priceRows: readonly NormalizedObservationRow[],
   rejectedRows: NormalizedObservationRow[],
   evaluationAsOfUnixMs: number,
   runId: string,
@@ -1268,21 +1277,30 @@ export async function deriveMvpFeatures(
     try {
       const payloadReasons =
         (insert.structuredPayload as { reasons?: readonly string[] })?.reasons ?? [];
+      const confidence = insert.confidence ?? buildDefaultConfidence();
+      const expiresAt =
+        insert.validUntilUnixMs != null ? insert.validUntilUnixMs : evaluationAsOfUnixMs;
       const asDerivedFeatureV1: DerivedFeatureV1 = {
         schemaVersion: 1,
         featureKind: insert.featureKind,
         status: insert.status,
-        value: insert.value,
+        value: insert.value ?? null,
         unit: insert.unit,
-        pair: insert.pair ?? PAIR,
+        pair: PAIR,
         poolId: insert.poolId ?? null,
         positionId: insert.positionId ?? null,
         asOfUnixMs: insert.asOfUnixMs,
-        expiresAtUnixMs: insert.validUntilUnixMs ?? evaluationAsOfUnixMs,
-        confidence: insert.confidence ?? buildDefaultConfidence(),
+        expiresAtUnixMs: expiresAt,
+        confidence: {
+          components: { ...confidence.components },
+          compositeScore: confidence.compositeScore,
+          level: confidence.level,
+          weightingVersion: confidence.weightingVersion,
+          reasons: [...confidence.reasons]
+        },
         freshness: {
           isStale: insert.isStale ?? false,
-          validUntilUnixMs: insert.validUntilUnixMs ?? evaluationAsOfUnixMs,
+          validUntilUnixMs: expiresAt,
           derivedAt: insert.asOfUnixMs,
           policyKind: insert.featureKind,
           reasons: []
@@ -1292,7 +1310,7 @@ export async function deriveMvpFeatures(
         provenance: insert.provenance as DerivedFeatureV1["provenance"],
         warnings: [],
         reasons: [...payloadReasons].sort(),
-        calculatorVersion: insert.calculatorVersion,
+        calculatorVersion: insert.calculatorVersion ?? "1.0.0",
         selectionVersion: insert.selectionVersion ?? SELECTION_VERSION,
         calculationMetadata: insert.structuredPayload as Record<string, unknown>
       };

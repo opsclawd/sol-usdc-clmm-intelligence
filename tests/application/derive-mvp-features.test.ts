@@ -409,7 +409,7 @@ describe("deriveMvpFeatures", () => {
           };
           return [positionRow];
         }
-      };
+      } as unknown as FakeNormalizedObservationRepo;
 
       const brokenDeps: DeriveMvpFeaturesDeps = {
         ...deps,
@@ -506,7 +506,7 @@ describe("deriveMvpFeatures", () => {
   describe("persisted inputs only", () => {
     it("loads bounded candidates without source calls", async () => {
       let listCandidatesCalled = false;
-      const trackingRepo = {
+      const trackingRepo: FakeNormalizedObservationRepo = {
         ...normalizedObservationRepo,
         listCandidates: async () => {
           listCandidatesCalled = true;
@@ -520,7 +520,7 @@ describe("deriveMvpFeatures", () => {
             receivedAtOrAfterUnixMs: EVAL_MS - 3_600_000 - 300_000
           });
         }
-      };
+      } as unknown as FakeNormalizedObservationRepo;
 
       seedObservation(
         trackingRepo,
