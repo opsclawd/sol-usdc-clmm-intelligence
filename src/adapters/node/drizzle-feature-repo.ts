@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, or, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, or, inArray, desc } from "drizzle-orm";
 import { derivedFeatures } from "../../db/schema/derived-features.js";
 import type {
   DerivedFeatureRepo,
@@ -240,7 +240,11 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
           lte(derivedFeatures.receivedAtUnixMs, query.receivedAtOrBeforeUnixMs)
         )
       )
-      .orderBy(derivedFeatures.asOfUnixMs, derivedFeatures.receivedAtUnixMs, derivedFeatures.id);
+      .orderBy(
+        desc(derivedFeatures.asOfUnixMs),
+        desc(derivedFeatures.receivedAtUnixMs),
+        desc(derivedFeatures.id)
+      );
 
     return rows.map(toPortRow);
   }

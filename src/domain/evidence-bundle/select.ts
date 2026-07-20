@@ -190,49 +190,55 @@ function selectSlot(
   }
 
   if (eligible.length === 0) {
-    const hasFutureOrExpired = candidates.some(
+    const scopedCandidates = candidates.filter((c) => {
+      if (scope.poolId !== null && c.poolId !== scope.poolId) return false;
+      if (scope.positionId !== null && c.positionId !== scope.positionId) return false;
+      return true;
+    });
+
+    const hasFutureOrExpired = scopedCandidates.some(
       (c) =>
         (c.validUntilUnixMs !== null && c.validUntilUnixMs <= evaluationTimeUnixMs) ||
         c.asOfUnixMs > evaluationTimeUnixMs
     );
 
     if (hasFutureOrExpired) {
-      const expiredOrFutureIds = candidates
-        .filter(
-          (c) =>
-            (c.validUntilUnixMs !== null && c.validUntilUnixMs <= evaluationTimeUnixMs) ||
-            c.asOfUnixMs > evaluationTimeUnixMs
-        )
-        .map((c) => c.id);
+      const matching = scopedCandidates.filter(
+        (c) =>
+          (c.validUntilUnixMs !== null && c.validUntilUnixMs <= evaluationTimeUnixMs) ||
+          c.asOfUnixMs > evaluationTimeUnixMs
+      );
+      sortCandidatesForSelection(matching);
 
       return {
         slot: {
           featureKind,
           outcome: "expired_only",
-          rowId: expiredOrFutureIds[0]!
+          rowId: matching[0]!.id
         },
-        rejectedIds: expiredOrFutureIds,
+        rejectedIds,
         warnings,
         reasons
       };
     }
 
-    const hasUnsupportedVersion = candidates.some((c) =>
+    const hasUnsupportedVersion = scopedCandidates.some((c) =>
       checkVersionMismatch(c, expectedCalculatorVersion)
     );
 
     if (hasUnsupportedVersion) {
-      const unsupportedIds = candidates
-        .filter((c) => checkVersionMismatch(c, expectedCalculatorVersion))
-        .map((c) => c.id);
+      const matching = scopedCandidates.filter((c) =>
+        checkVersionMismatch(c, expectedCalculatorVersion)
+      );
+      sortCandidatesForSelection(matching);
 
       return {
         slot: {
           featureKind,
           outcome: "unsupported_version_only",
-          rowId: unsupportedIds[0]!
+          rowId: matching[0]!.id
         },
-        rejectedIds: unsupportedIds,
+        rejectedIds,
         warnings,
         reasons
       };
