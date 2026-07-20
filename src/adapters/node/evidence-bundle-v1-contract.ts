@@ -88,6 +88,7 @@ function canonicalizeValue(value: unknown): string {
   if (typeof value === "object") {
     const obj = value as Record<string, unknown>;
     const entries = Object.keys(obj)
+      .filter((k) => obj[k] !== undefined)
       .sort()
       .map((k) => JSON.stringify(k) + ":" + canonicalizeValue(obj[k]));
     return "{" + entries.join(",") + "}";
@@ -248,7 +249,7 @@ export function createEvidenceBundleContract(): EvidenceBundleContract {
         (!families.newsRegulatory || families.newsRegulatory.length === 0);
 
       const warningCodes = new Set(payload.assessment.warnings.map((w) => w.code));
-      if (isContextEmpty && payload.researchBrief === null) {
+      if (isContextEmpty) {
         if (!warningCodes.has("CONTEXTUAL_EVIDENCE_UNAVAILABLE")) {
           errors.push({
             message: "Missing CONTEXTUAL_EVIDENCE_UNAVAILABLE warning",

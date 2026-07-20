@@ -26,13 +26,14 @@ async function main(): Promise<void> {
   const schemaContent = await readFile(SCHEMA_PATH, "utf-8");
   const schemaSha256 = computeSha256(schemaContent);
 
-  const tsDeclaration = execSync(`npx --yes json-schema-to-typescript@15.0.4 "${SCHEMA_PATH}"`, {
-    encoding: "utf-8"
-  });
+  const tsDeclaration = execSync(
+    `npx --yes json-schema-to-typescript@15.0.4 "${SCHEMA_PATH}" --style.printWidth=100`,
+    { encoding: "utf-8" }
+  );
 
   const cliBannerRegex =
     /\/\* eslint-disable \*\/\n\s*\/\*\*\n\s*\*\s*This file was automatically generated[\s\S]*?\*\/\n/;
-  const tsDeclarationWithoutBanner = tsDeclaration.replace(cliBannerRegex, "");
+  const tsDeclarationWithoutBanner = tsDeclaration.replace(cliBannerRegex, "").replace(/^\n+/, "");
 
   const output = `export const SCHEMA_SHA256 = "${schemaSha256}";
 
