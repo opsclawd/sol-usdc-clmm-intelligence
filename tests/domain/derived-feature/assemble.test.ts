@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { ProvenanceRef } from "../../../src/contracts/taxonomy.js";
-import type { NormalizedObservationRow } from "../../../src/ports/normalized-observation-repo.js";
+import type { NormalizedObservationRow } from "../../../src/contracts/index.js";
 import {
   makeAssembleInput,
   makeNormalizedRow,

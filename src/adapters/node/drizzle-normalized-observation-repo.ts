@@ -3,7 +3,6 @@ import { normalizedObservations } from "../../db/schema/normalized-observations.
 import type {
   NormalizedObservationRepo,
   NormalizedObservationInsert,
-  NormalizedObservationRow,
   NormalizedObservationCandidateQuery
 } from "../../ports/normalized-observation-repo.js";
 import type {
@@ -11,8 +10,9 @@ import type {
   ObservationKind,
   SignalClass,
   EvidenceFamily,
-  StaleBehavior
-} from "../../contracts/taxonomy.js";
+  StaleBehavior,
+  NormalizedObservationRow
+} from "../../contracts/index.js";
 import type { Db } from "../../db/db.js";
 
 function toPortRow(row: typeof normalizedObservations.$inferSelect): NormalizedObservationRow {

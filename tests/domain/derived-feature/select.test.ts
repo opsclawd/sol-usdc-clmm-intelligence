@@ -13,7 +13,7 @@ import {
   selectWithExpiryCheck,
   SELECTION_VERSION
 } from "../../../src/domain/derived-feature/select.js";
-import type { NormalizedObservationRow } from "../../../src/ports/normalized-observation-repo.js";
+import type { NormalizedObservationRow } from "../../../src/contracts/index.js";
 
 const DEFAULT_CONFIDENCE: Confidence = {
   components: {

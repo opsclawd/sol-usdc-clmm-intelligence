@@ -1,5 +1,4 @@
-import type { Source, ObservationKind } from "../../contracts/taxonomy.js";
-import type { NormalizedObservationRow } from "../../ports/normalized-observation-repo.js";
+import type { Source, ObservationKind, NormalizedObservationRow } from "../../contracts/index.js";
 
 export const SELECTION_VERSION = "mvp-feature-selection/v1";
 

@@ -12,7 +12,7 @@ export class FakeFeatureRepo implements DerivedFeatureRepo {
 
   async insert(row: DerivedFeatureInsert): Promise<DerivedFeatureRow> {
     const existing = this.store.find(
-      (r) => r.featureKind === row.featureKind && r.payloadHash === row.payloadHash
+      (r) => r.featureKind === row.featureKind && r.derivationKey === row.derivationKey
     );
     if (existing) return existing;
     const result: DerivedFeatureRow = {
@@ -21,7 +21,7 @@ export class FakeFeatureRepo implements DerivedFeatureRepo {
       signalClass: row.signalClass,
       evidenceFamily: row.evidenceFamily,
       value: row.value ?? null,
-      structuredPayload: row.structuredPayload ?? null,
+      structuredPayload: row.structuredPayload,
       asOfUnixMs: row.asOfUnixMs,
       confidence: row.confidence ?? DEFAULT_CONFIDENCE,
       confidenceComposite: row.confidenceComposite ?? null,
@@ -31,17 +31,29 @@ export class FakeFeatureRepo implements DerivedFeatureRepo {
       staleBehavior: row.staleBehavior ?? null,
       provenance: row.provenance ?? DEFAULT_PROVENANCE,
       payloadHash: row.payloadHash,
-      receivedAtUnixMs: row.receivedAtUnixMs
+      receivedAtUnixMs: row.receivedAtUnixMs,
+      status: row.status,
+      unit: row.unit,
+      pair: row.pair ?? "SOL/USDC",
+      calculatorVersion: row.calculatorVersion ?? "1.0",
+      selectionVersion: row.selectionVersion ?? "1.0",
+      inputObservationIds: row.inputObservationIds ?? [],
+      rejectedObservationIds: row.rejectedObservationIds ?? [],
+      derivationKey: row.derivationKey,
+      poolId: row.poolId ?? null,
+      positionId: row.positionId ?? null
     };
     this.store.push(result);
     return result;
   }
 
-  async findByHash(
+  async findByDerivationKey(
     featureKind: FeatureKind,
-    payloadHash: string
+    derivationKey: string
   ): Promise<DerivedFeatureRow | undefined> {
-    return this.store.find((r) => r.featureKind === featureKind && r.payloadHash === payloadHash);
+    return this.store.find(
+      (r) => r.featureKind === featureKind && r.derivationKey === derivationKey
+    );
   }
 
   async findByKind(featureKind: FeatureKind, sinceUnixMs: number): Promise<DerivedFeatureRow[]> {

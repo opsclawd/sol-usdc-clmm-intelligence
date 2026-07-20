@@ -8,7 +8,10 @@ const FEATURE_INSERT = {
   evidenceFamily: "clmm_state" as const,
   confidence: DEFAULT_CONFIDENCE,
   provenance: DEFAULT_PROVENANCE,
-  derivationKey: "test-derivation-key"
+  derivationKey: "test-derivation-key",
+  structuredPayload: {},
+  status: "AVAILABLE" as const,
+  unit: "PPM" as const
 };
 
 describe("DerivedFeatureRepo contract", () => {
@@ -34,14 +37,16 @@ describe("DerivedFeatureRepo contract", () => {
       value: 0.15,
       asOfUnixMs: 500,
       payloadHash: "hash1",
-      receivedAtUnixMs: 501
+      receivedAtUnixMs: 501,
+      derivationKey: "key1"
     });
     await repo.insert({
       ...FEATURE_INSERT,
       value: 0.2,
       asOfUnixMs: 1000,
       payloadHash: "hash2",
-      receivedAtUnixMs: 1001
+      receivedAtUnixMs: 1001,
+      derivationKey: "key2"
     });
 
     const found = await repo.findByKind("range_location", 800);
@@ -49,40 +54,43 @@ describe("DerivedFeatureRepo contract", () => {
     expect(found[0]!.value).toBe(0.2);
   });
 
-  it("insert is idempotent by featureKind + payloadHash", async () => {
+  it("insert is idempotent by featureKind + derivationKey", async () => {
     const repo = new FakeFeatureRepo();
     const first = await repo.insert({
       ...FEATURE_INSERT,
       value: 0.15,
       asOfUnixMs: 1000,
       payloadHash: "dup1",
-      receivedAtUnixMs: 1001
+      receivedAtUnixMs: 1001,
+      derivationKey: "dup-key"
     });
     const second = await repo.insert({
       ...FEATURE_INSERT,
       value: 0.15,
       asOfUnixMs: 1000,
       payloadHash: "dup1",
-      receivedAtUnixMs: 1001
+      receivedAtUnixMs: 1001,
+      derivationKey: "dup-key"
     });
     expect(second.id).toBe(first.id);
     const all = await repo.findByKind("range_location", 0);
     expect(all).toHaveLength(1);
   });
 
-  it("findByHash returns existing row", async () => {
+  it("findByDerivationKey returns existing row", async () => {
     const repo = new FakeFeatureRepo();
     const inserted = await repo.insert({
       ...FEATURE_INSERT,
       value: 0.15,
       asOfUnixMs: 1000,
       payloadHash: "findme",
-      receivedAtUnixMs: 1001
+      receivedAtUnixMs: 1001,
+      derivationKey: "findme-key"
     });
-    const found = await repo.findByHash("range_location", "findme");
+    const found = await repo.findByDerivationKey("range_location", "findme-key");
     expect(found).toBeDefined();
     expect(found!.id).toBe(inserted.id);
-    const notFound = await repo.findByHash("range_location", "nope");
+    const notFound = await repo.findByDerivationKey("range_location", "nope");
     expect(notFound).toBeUndefined();
   });
 });

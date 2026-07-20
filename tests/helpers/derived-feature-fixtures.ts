@@ -11,7 +11,7 @@ import type {
   FreshnessReason,
   ConfidenceReason
 } from "../../src/contracts/taxonomy.js";
-import type { NormalizedObservationRow } from "../../src/ports/normalized-observation-repo.js";
+import type { NormalizedObservationRow } from "../../src/contracts/index.js";
 import type { FeatureStatus, DerivedFeatureV1 } from "../../src/contracts/derived-feature.js";
 import type { AssembleFeatureInput } from "../../src/domain/derived-feature/assemble.js";
 import { SELECTION_VERSION } from "../../src/domain/derived-feature/select.js";

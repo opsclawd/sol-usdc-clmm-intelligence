@@ -30,7 +30,17 @@ function toPortRow(row: typeof derivedFeatures.$inferSelect): DerivedFeatureRow 
     staleBehavior: row.staleBehavior as StaleBehavior | null,
     provenance: row.provenance as unknown as DerivedFeatureRow["provenance"],
     payloadHash: row.payloadHash,
-    receivedAtUnixMs: row.receivedAtUnixMs
+    receivedAtUnixMs: row.receivedAtUnixMs,
+    status: row.status as "AVAILABLE" | "PARTIAL" | "UNAVAILABLE",
+    unit: row.unit as "BPS" | "PPM",
+    pair: row.pair,
+    calculatorVersion: row.calculatorVersion,
+    selectionVersion: row.selectionVersion,
+    inputObservationIds: row.inputObservationIds,
+    rejectedObservationIds: row.rejectedObservationIds,
+    derivationKey: row.derivationKey,
+    poolId: row.poolId,
+    positionId: row.positionId
   };
 }
 
@@ -45,7 +55,7 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
         signalClass: row.signalClass,
         evidenceFamily: row.evidenceFamily,
         value: row.value ?? null,
-        structuredPayload: row.structuredPayload ?? null,
+        structuredPayload: row.structuredPayload,
         asOfUnixMs: row.asOfUnixMs,
         confidence: row.confidence as unknown,
         confidenceComposite:
@@ -61,8 +71,8 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
         provenance: row.provenance as unknown,
         payloadHash: row.payloadHash,
         receivedAtUnixMs: row.receivedAtUnixMs,
-        status: row.status ?? "AVAILABLE",
-        unit: row.unit ?? "PPM",
+        status: row.status,
+        unit: row.unit,
         pair: row.pair ?? "SOL/USDC",
         calculatorVersion: row.calculatorVersion ?? "1.0",
         selectionVersion: row.selectionVersion ?? "1.0",
@@ -77,13 +87,13 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
       })
       .returning();
     if (result) return toPortRow(result);
-    const existing = await this.findByHash(row.featureKind, row.payloadHash);
+    const existing = await this.findByDerivationKey(row.featureKind, row.derivationKey);
     return existing!;
   }
 
-  async findByHash(
+  async findByDerivationKey(
     featureKind: FeatureKind,
-    payloadHash: string
+    derivationKey: string
   ): Promise<DerivedFeatureRow | undefined> {
     const [result] = await this.db
       .select()
@@ -91,7 +101,7 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
       .where(
         and(
           eq(derivedFeatures.featureKind, featureKind),
-          eq(derivedFeatures.payloadHash, payloadHash)
+          eq(derivedFeatures.derivationKey, derivationKey)
         )
       )
       .limit(1);

@@ -5,27 +5,9 @@ import type {
   EvidenceFamily,
   Confidence,
   StaleBehavior,
-  Provenance
-} from "../contracts/taxonomy.js";
-
-export interface NormalizedObservationRow {
-  id: number;
-  rawObservationId: number;
-  source: Source;
-  observationKind: ObservationKind;
-  signalClass: SignalClass;
-  evidenceFamily: EvidenceFamily;
-  payload: unknown;
-  payloadHash: string;
-  confidence: Confidence;
-  confidenceComposite: number | null;
-  confidenceLevel: string | null;
-  validUntilUnixMs: number | null;
-  isStale: boolean;
-  staleBehavior: StaleBehavior | null;
-  provenance: Provenance;
-  receivedAtUnixMs: number;
-}
+  Provenance,
+  NormalizedObservationRow
+} from "../contracts/index.js";
 
 export interface NormalizedObservationCandidateQuery {
   readonly sourceKinds: readonly {

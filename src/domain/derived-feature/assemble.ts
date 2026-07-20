@@ -2,10 +2,11 @@ import type {
   FeatureKind,
   ProvenanceRef,
   Confidence,
-  ConfidenceReason
-} from "../../contracts/taxonomy.js";
-import type { NormalizedObservationRow } from "../../ports/normalized-observation-repo.js";
-import type { DerivedFeatureV1, FeatureStatus } from "../../contracts/derived-feature.js";
+  ConfidenceReason,
+  NormalizedObservationRow,
+  DerivedFeatureV1,
+  FeatureStatus
+} from "../../contracts/index.js";
 import { canonicalHash } from "../content-hash.js";
 
 export interface FeatureCalculation {

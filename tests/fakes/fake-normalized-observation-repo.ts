@@ -1,10 +1,13 @@
 import type {
   NormalizedObservationRepo,
-  NormalizedObservationRow,
   NormalizedObservationInsert,
   NormalizedObservationCandidateQuery
 } from "../../src/ports/normalized-observation-repo.js";
-import type { Source, ObservationKind } from "../../src/contracts/taxonomy.js";
+import type {
+  Source,
+  ObservationKind,
+  NormalizedObservationRow
+} from "../../src/contracts/index.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 
 export class FakeNormalizedObservationRepo implements NormalizedObservationRepo {
