@@ -14,6 +14,8 @@ export interface EvidenceBundleRow {
   expiresAtUnixMs: number;
   payload: unknown;
   payloadHash: string;
+  payloadCanonical: string;
+  idempotencyKey: string;
   taxonomySummary: TaxonomySummary | null;
   dominantSignalClass: SignalClass;
   confidence: Confidence;
@@ -34,6 +36,8 @@ export interface EvidenceBundleInsert {
   expiresAtUnixMs: number;
   payload: unknown;
   payloadHash: string;
+  payloadCanonical: string;
+  idempotencyKey: string;
   taxonomySummary?: TaxonomySummary | null;
   dominantSignalClass?: SignalClass;
   confidence: Confidence;

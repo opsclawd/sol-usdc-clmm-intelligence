@@ -18,6 +18,8 @@ describe("EvidenceBundleRepo contract", () => {
       expiresAtUnixMs: 2000,
       payload: { pair: "SOL/USDC" },
       payloadHash: "hash-bundle-1",
+      payloadCanonical: "canonical-1",
+      idempotencyKey: "idem-1",
       receivedAtUnixMs: 1001
     });
 
@@ -35,6 +37,8 @@ describe("EvidenceBundleRepo contract", () => {
       expiresAtUnixMs: 2000,
       payload: { pair: "SOL/USDC", v: 1 },
       payloadHash: "hash-1",
+      payloadCanonical: "canonical-1",
+      idempotencyKey: "idem-1",
       receivedAtUnixMs: 1001
     });
     await repo.insert({
@@ -45,6 +49,8 @@ describe("EvidenceBundleRepo contract", () => {
       expiresAtUnixMs: 2500,
       payload: { pair: "SOL/USDC", v: 2 },
       payloadHash: "hash-2",
+      payloadCanonical: "canonical-2",
+      idempotencyKey: "idem-2",
       receivedAtUnixMs: 1501
     });
 

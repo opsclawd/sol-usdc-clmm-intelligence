@@ -37,19 +37,17 @@ describe("evidenceBundles schema", () => {
     });
 
     it("payloadCanonical is NOT NULL", () => {
-      const col = (evidenceBundles as Record<string, unknown>)["payloadCanonical"] as Record<
-        string,
-        unknown
-      >;
+      const col = (evidenceBundles as unknown as Record<string, unknown>)[
+        "payloadCanonical"
+      ] as Record<string, unknown>;
       expect(col).toBeDefined();
       expect(col["notNull"]).toBe(true);
     });
 
     it("idempotencyKey is NOT NULL", () => {
-      const col = (evidenceBundles as Record<string, unknown>)["idempotencyKey"] as Record<
-        string,
-        unknown
-      >;
+      const col = (evidenceBundles as unknown as Record<string, unknown>)[
+        "idempotencyKey"
+      ] as Record<string, unknown>;
       expect(col).toBeDefined();
       expect(col["notNull"]).toBe(true);
     });

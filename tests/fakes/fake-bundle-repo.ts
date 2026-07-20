@@ -22,6 +22,8 @@ export class FakeBundleRepo implements EvidenceBundleRepo {
       expiresAtUnixMs: row.expiresAtUnixMs,
       payload: row.payload,
       payloadHash: row.payloadHash,
+      payloadCanonical: row.payloadCanonical,
+      idempotencyKey: row.idempotencyKey,
       taxonomySummary: row.taxonomySummary ?? null,
       dominantSignalClass: row.dominantSignalClass ?? "deterministic",
       confidence: row.confidence ?? DEFAULT_CONFIDENCE,

@@ -17,6 +17,8 @@ function toPortRow(row: typeof evidenceBundles.$inferSelect): EvidenceBundleRow 
     expiresAtUnixMs: row.expiresAtUnixMs,
     payload: row.payload,
     payloadHash: row.payloadHash,
+    payloadCanonical: row.payloadCanonical,
+    idempotencyKey: row.idempotencyKey,
     taxonomySummary: row.taxonomySummary as EvidenceBundleRow["taxonomySummary"],
     dominantSignalClass: row.dominantSignalClass as SignalClass,
     confidence: row.confidence as unknown as EvidenceBundleRow["confidence"],
@@ -44,6 +46,8 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
         expiresAtUnixMs: row.expiresAtUnixMs,
         payload: row.payload,
         payloadHash: row.payloadHash,
+        payloadCanonical: row.payloadCanonical,
+        idempotencyKey: row.idempotencyKey,
         taxonomySummary: row.taxonomySummary ?? null,
         dominantSignalClass: row.dominantSignalClass ?? "deterministic",
         confidence: row.confidence as unknown,
@@ -61,7 +65,13 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
         version: row.version ?? 1,
         receivedAtUnixMs: row.receivedAtUnixMs
       })
-      .onConflictDoNothing({ target: [evidenceBundles.pair, evidenceBundles.payloadHash] })
+      .onConflictDoNothing({
+        target: [
+          evidenceBundles.schemaVersion,
+          evidenceBundles.pair,
+          evidenceBundles.idempotencyKey
+        ]
+      })
       .returning();
     if (result) return toPortRow(result);
     const [existing] = await this.db
