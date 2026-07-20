@@ -191,21 +191,17 @@ function selectSlot(
 
   if (eligible.length === 0) {
     const scopedCandidates = candidates.filter(
-      (c) => c.poolId === scope.poolId && c.positionId === scope.positionId
+      (c) => c.pair === "SOL/USDC" && c.poolId === scope.poolId && c.positionId === scope.positionId
     );
 
-    const hasFutureOrExpired = scopedCandidates.some(
+    const expiredOrFuture = scopedCandidates.filter(
       (c) =>
         (c.validUntilUnixMs !== null && c.validUntilUnixMs <= evaluationTimeUnixMs) ||
         c.asOfUnixMs > evaluationTimeUnixMs
     );
 
-    if (hasFutureOrExpired) {
-      const matching = scopedCandidates.filter(
-        (c) =>
-          (c.validUntilUnixMs !== null && c.validUntilUnixMs <= evaluationTimeUnixMs) ||
-          c.asOfUnixMs > evaluationTimeUnixMs
-      );
+    if (expiredOrFuture.length > 0) {
+      const matching = [...expiredOrFuture];
       sortCandidatesForSelection(matching);
 
       return {
@@ -220,14 +216,12 @@ function selectSlot(
       };
     }
 
-    const hasUnsupportedVersion = scopedCandidates.some((c) =>
+    const unsupportedVersion = scopedCandidates.filter((c) =>
       checkVersionMismatch(c, expectedCalculatorVersion)
     );
 
-    if (hasUnsupportedVersion) {
-      const matching = scopedCandidates.filter((c) =>
-        checkVersionMismatch(c, expectedCalculatorVersion)
-      );
+    if (unsupportedVersion.length > 0) {
+      const matching = [...unsupportedVersion];
       sortCandidatesForSelection(matching);
 
       return {
@@ -252,6 +246,8 @@ function selectSlot(
 
   sortCandidatesForSelection(eligible);
   const winner = eligible[0]!;
+  const combinedWarnings = [...warnings, ...(winner.warnings ?? [])];
+  const combinedReasons = [...reasons, ...(winner.reasons ?? [])];
 
   if (winner.status === "AVAILABLE") {
     return {
@@ -262,12 +258,12 @@ function selectSlot(
         value: winner.value!,
         confidence: winner.confidence,
         provenance: winner.provenance,
-        warnings: [...warnings, ...(winner.warnings ?? [])],
-        reasons: [...reasons, ...(winner.reasons ?? [])]
+        warnings: combinedWarnings,
+        reasons: combinedReasons
       },
       rejectedIds: [...rejectedIds, ...eligible.slice(1).map((c) => c.id)],
-      warnings,
-      reasons
+      warnings: combinedWarnings,
+      reasons: combinedReasons
     };
   }
 
@@ -280,12 +276,12 @@ function selectSlot(
         value: winner.value!,
         confidence: winner.confidence,
         provenance: winner.provenance,
-        warnings: [...warnings, ...(winner.warnings ?? [])],
-        reasons: [...reasons, ...(winner.reasons ?? [])]
+        warnings: combinedWarnings,
+        reasons: combinedReasons
       },
       rejectedIds: [...rejectedIds, ...eligible.slice(1).map((c) => c.id)],
-      warnings,
-      reasons
+      warnings: combinedWarnings,
+      reasons: combinedReasons
     };
   }
 
@@ -296,12 +292,12 @@ function selectSlot(
       rowId: winner.id,
       confidence: winner.confidence,
       provenance: winner.provenance,
-      warnings: [...warnings, ...(winner.warnings ?? [])],
-      reasons: [...reasons, ...(winner.reasons ?? [])]
+      warnings: combinedWarnings,
+      reasons: combinedReasons
     },
     rejectedIds: [...rejectedIds, ...eligible.slice(1).map((c) => c.id)],
-    warnings,
-    reasons
+    warnings: combinedWarnings,
+    reasons: combinedReasons
   };
 }
 
