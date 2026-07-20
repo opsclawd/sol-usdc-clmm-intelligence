@@ -1,6 +1,10 @@
 import { MVP_FEATURE_KINDS } from "../../contracts/derived-feature.js";
-import type { FeatureKind, Confidence, Provenance } from "../../contracts/taxonomy.js";
-import type { DerivedFeatureRow } from "../../ports/feature-repo.js";
+import type {
+  FeatureKind,
+  Confidence,
+  Provenance,
+  DerivedFeatureRow
+} from "../../contracts/index.js";
 
 export const EVIDENCE_BUNDLE_SELECTION_VERSION = "mvp-evidence-bundle-selection/v1";
 

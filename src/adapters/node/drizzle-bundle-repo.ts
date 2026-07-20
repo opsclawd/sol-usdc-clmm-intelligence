@@ -78,7 +78,11 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
       .select()
       .from(evidenceBundles)
       .where(
-        and(eq(evidenceBundles.pair, row.pair), eq(evidenceBundles.payloadHash, row.payloadHash))
+        and(
+          eq(evidenceBundles.schemaVersion, row.schemaVersion),
+          eq(evidenceBundles.pair, row.pair),
+          eq(evidenceBundles.idempotencyKey, row.idempotencyKey)
+        )
       )
       .limit(1);
     return toPortRow(existing!);
