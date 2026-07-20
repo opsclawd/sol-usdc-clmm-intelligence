@@ -1,6 +1,6 @@
 # Task Context: Task 4
 
-Title: Create run contexts and migrate every existing leaf caller atomically
+Title: Assemble confidence freshness lineage and derivation identity
 
 ## Workspace & Scope Constraints
 
@@ -10,104 +10,87 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-24
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-25
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-24
-Start Commit: f7a18d04ef7d634a88ba3e8a3a6eec1ad65ab581
+Branch: ai/issue-25
+Start Commit: 72198d814d2ef33860d879741b7b7acc3b54e679
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/ports/run-id.ts`
-- Modify: `src/ports/index.ts`
-- Create: `src/adapters/node/uuid-run-id-factory.ts`
-- Modify: `src/adapters/node/composition-root.ts`
-- Create: `tests/fakes/fake-run-id-factory.ts`
-- Modify: `tests/fakes/index.ts`
-- Create: `src/application/create-collection-run-context.ts`
-- Create: `tests/application/create-collection-run-context.test.ts`
-- Modify: `src/application/collect-clmm-bundle.ts`
-- Modify: `src/application/collect-pyth-price.ts`
-- Modify: `src/application/collect-jupiter-quote.ts`
-- Modify: `src/application/collect-price-observations.ts`
-- Modify: `src/application/collect-jupiter-price.ts`
-- Modify: `src/jobs/clmm-bundle-job.ts`
-- Modify: `src/jobs/price-observations-job.ts`
-- Modify: `scripts/collectors/clmm-bundle.ts`
-- Modify: `scripts/collectors/jupiter-price.ts`
-- Modify: `tests/application/collect-clmm-bundle.test.ts`
-- Modify: `tests/application/collect-pyth-price.test.ts`
-- Modify: `tests/application/collect-jupiter-quote.test.ts`
-- Modify: `tests/application/collect-price-observations.test.ts`
-- Modify: `tests/application/collect-jupiter-price.test.ts`
-- Modify: `tests/scripts/clmm-bundle.test.ts`
-- Modify: `tests/scripts/price-observations.test.ts`
+- Create: `src/domain/derived-feature/assemble.ts`
+- Modify: `src/domain/derived-feature/index.ts`
+- Create: `tests/helpers/derived-feature-fixtures.ts`
+- Create: `tests/domain/derived-feature/assemble.test.ts`
 
-**Exported API changes:** Add `RunIdFactory.nextRunId(): string`, add `NodeRuntime.runIdFactory`, add `createCollectionRunContext`, make `collectClmmBundle`, `collectPythPrice`, `collectJupiterQuote`, and `collectPriceObservations` require `CollectionRunContext` as their second parameter. Every current caller and test is updated in this same task so the automatic workspace typecheck gate remains green.
+**Behavioral invariants (write these tests first):**
 
-- [ ] **Step 1: Write context-creation tests first.** Add `uses the operator run id or generates one once at the job boundary`, covering a non-empty `INTELLIGENCE_PIPELINE_RUN_ID`, blank-as-unset behavior, exactly one factory call, a finite parsed clock value, and rejection of an invalid clock.
-- [ ] **Step 2: Update leaf and aggregate tests first.** Supply a frozen `{ runId: "run-123", startedAtUnixMs: ... }` to every direct leaf call; name and assert `passes explicit immutable context without leaf environment rereads`. In the existing price aggregate concurrency case, assert both leaves receive the same object. Scope the 509-line CLMM test edit to its setup/helper and provenance assertions rather than rewriting unrelated lifecycle cases.
-- [ ] **Step 3: Run the focused tests and confirm signature failures.** Run `pnpm exec vitest run tests/application/create-collection-run-context.test.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-pyth-price.test.ts tests/application/collect-jupiter-quote.test.ts tests/application/collect-price-observations.test.ts tests/application/collect-jupiter-price.test.ts tests/scripts/clmm-bundle.test.ts tests/scripts/price-observations.test.ts`; expect failures until the new port, adapter, signatures, and job wiring are implemented.
-- [ ] **Step 4: Add the port and all implementations in this same task.** Define:
+- `derived confidence never exceeds the weakest selected input`: use component-wise minima, apply registry weights and partial factor, then cap the composite at the lowest input composite.
+- `unavailable confidence has zero derivation confidence`: missing input produces low confidence with `required_component_missing` and never fabricates high confidence.
+- `feature expiry is the minimum selected input expiry`: available/partial freshness uses the earliest input validity; unavailable expires at evaluation time.
+- `lineage contains every outcome-determining selected or rejected row`: normalized refs are ID-sorted and raw/source refs are flattened, de-duplicated, and sorted.
+- `derivation identity changes only when its canonical identity fields change`: schema/kind/scope/versions/selected IDs/outcome-determining rejected IDs/reasons determine `derivationKey`; complete result content separately determines `payloadHash`.
+
+- [ ] **Step 1: Add failing fixture-driven tests** for confidence caps, partial degradation, missing-input confidence, expiry, empty/no-input provenance, rejected-row lineage, canonical sorting, and hash stability.
+
+- [ ] **Step 2: Implement assembly helpers** that accept explicit `evaluationAsOfUnixMs`, `runId`, and `codeVersion`; never read a clock or environment directly.
 
 ```ts
-export interface RunIdFactory {
-  nextRunId(): string;
+export interface FeatureCalculation {
+  readonly status: FeatureStatus;
+  readonly value: number | null;
+  readonly warnings: readonly string[];
+  readonly reasons: readonly string[];
+  readonly metadata: Readonly<Record<string, unknown>>;
 }
+
+export interface AssembledFeature {
+  readonly result: DerivedFeatureV1;
+  readonly derivationKey: string;
+  readonly payloadHash: string;
+}
+
+export function assembleDerivedFeature(input: AssembleFeatureInput): AssembledFeature;
 ```
 
-Implement `UuidRunIdFactory` with `randomUUID()`, a deterministic queue-backed fake, export both through their indexes, and expose one factory instance on `NodeRuntime`. `createCollectionRunContext` reads the operator value once, treats whitespace-only as unset, otherwise generates once, parses `clock.now()` once, validates a non-empty run ID and finite timestamp, and returns `Object.freeze({ runId, startedAtUnixMs })`.
+Use the existing canonical content hashing utility, explicit process ref `{ collector: "deterministic-feature-derivation", jobName: "derive-mvp-features", pipelineRunId, codeVersion, modelVersion: null }`, and status-aware provenance checks before returning.
 
-- [ ] **Step 5: Migrate all existing leaf signatures and provenance.** Remove `INTELLIGENCE_PIPELINE_RUN_ID` reads from the three leaf use cases and use `context.runId` for request metadata/enrichment. Make `collectPriceObservations(deps, context)` pass that context to both price leaves. Update the CLMM and price jobs to create a context at their standalone job boundary using `env`, `clock`, and `runIdFactory`; update both scripts and all tests/callers in the file list in the same commit.
-- [ ] **Step 6: Verify this task.** Run the focused Vitest command from Step 3, `pnpm exec eslint src/ports/run-id.ts src/ports/index.ts src/adapters/node/uuid-run-id-factory.ts src/adapters/node/composition-root.ts tests/fakes/fake-run-id-factory.ts tests/fakes/index.ts src/application/create-collection-run-context.ts tests/application/create-collection-run-context.test.ts src/application/collect-clmm-bundle.ts src/application/collect-pyth-price.ts src/application/collect-jupiter-quote.ts src/application/collect-price-observations.ts src/application/collect-jupiter-price.ts src/jobs/clmm-bundle-job.ts src/jobs/price-observations-job.ts scripts/collectors/clmm-bundle.ts scripts/collectors/jupiter-price.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-pyth-price.test.ts tests/application/collect-jupiter-quote.test.ts tests/application/collect-price-observations.test.ts tests/application/collect-jupiter-price.test.ts tests/scripts/clmm-bundle.test.ts tests/scripts/price-observations.test.ts --max-warnings 0`, and `pnpm exec prettier --check src/ports/run-id.ts src/ports/index.ts src/adapters/node/uuid-run-id-factory.ts src/adapters/node/composition-root.ts tests/fakes/fake-run-id-factory.ts tests/fakes/index.ts src/application/create-collection-run-context.ts tests/application/create-collection-run-context.test.ts src/application/collect-clmm-bundle.ts src/application/collect-pyth-price.ts src/application/collect-jupiter-quote.ts src/application/collect-price-observations.ts src/application/collect-jupiter-price.ts src/jobs/clmm-bundle-job.ts src/jobs/price-observations-job.ts scripts/collectors/clmm-bundle.ts scripts/collectors/jupiter-price.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-pyth-price.test.ts tests/application/collect-jupiter-quote.test.ts tests/application/collect-price-observations.test.ts tests/application/collect-jupiter-price.test.ts tests/scripts/clmm-bundle.test.ts tests/scripts/price-observations.test.ts`.
-- [ ] **Step 7: Commit.** Run `git add src/ports/run-id.ts src/ports/index.ts src/adapters/node/uuid-run-id-factory.ts src/adapters/node/composition-root.ts tests/fakes/fake-run-id-factory.ts tests/fakes/index.ts src/application/create-collection-run-context.ts tests/application/create-collection-run-context.test.ts src/application/collect-clmm-bundle.ts src/application/collect-pyth-price.ts src/application/collect-jupiter-quote.ts src/application/collect-price-observations.ts src/application/collect-jupiter-price.ts src/jobs/clmm-bundle-job.ts src/jobs/price-observations-job.ts scripts/collectors/clmm-bundle.ts scripts/collectors/jupiter-price.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-pyth-price.test.ts tests/application/collect-jupiter-quote.test.ts tests/application/collect-price-observations.test.ts tests/application/collect-jupiter-price.test.ts tests/scripts/clmm-bundle.test.ts tests/scripts/price-observations.test.ts && git commit -m "feat: pass explicit collection run contexts"`.
+- [ ] **Step 3: Export assembly types/functions and run focused checks.**
 
-**Task invariants:**
+**Validation commands:**
 
-- `single boundary identity creation` — test case `uses the operator run id or generates one once at the job boundary`.
-- `explicit leaf correlation` — test case `passes explicit immutable context without leaf environment rereads`.
+```bash
+pnpm exec vitest run tests/domain/derived-feature/assemble.test.ts
+pnpm exec eslint src/domain/derived-feature/assemble.ts src/domain/derived-feature/index.ts tests/helpers/derived-feature-fixtures.ts tests/domain/derived-feature/assemble.test.ts --max-warnings 0
+pnpm exec prettier --check src/domain/derived-feature/assemble.ts src/domain/derived-feature/index.ts tests/helpers/derived-feature-fixtures.ts tests/domain/derived-feature/assemble.test.ts
+```
+
+**Commit:** `feat: assemble auditable feature envelopes`
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/ports/run-id.ts
-- src/ports/index.ts
-- src/adapters/node/uuid-run-id-factory.ts
-- src/adapters/node/composition-root.ts
-- tests/fakes/fake-run-id-factory.ts
-- tests/fakes/index.ts
-- src/application/create-collection-run-context.ts
-- tests/application/create-collection-run-context.test.ts
-- src/application/collect-clmm-bundle.ts
-- src/application/collect-pyth-price.ts
-- src/application/collect-jupiter-quote.ts
-- src/application/collect-price-observations.ts
-- src/application/collect-jupiter-price.ts
-- src/jobs/clmm-bundle-job.ts
-- src/jobs/price-observations-job.ts
-- scripts/collectors/clmm-bundle.ts
-- scripts/collectors/jupiter-price.ts
-- tests/application/collect-clmm-bundle.test.ts
-- tests/application/collect-pyth-price.test.ts
-- tests/application/collect-jupiter-quote.test.ts
-- tests/application/collect-price-observations.test.ts
-- tests/application/collect-jupiter-price.test.ts
-- tests/scripts/clmm-bundle.test.ts
-- tests/scripts/price-observations.test.ts
+- src/domain/derived-feature/assemble.ts
+- src/domain/derived-feature/index.ts
+- tests/helpers/derived-feature-fixtures.ts
+- tests/domain/derived-feature/assemble.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/application/create-collection-run-context.test.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-pyth-price.test.ts tests/application/collect-jupiter-quote.test.ts tests/application/collect-price-observations.test.ts tests/application/collect-jupiter-price.test.ts tests/scripts/clmm-bundle.test.ts tests/scripts/price-observations.test.ts
-pnpm exec eslint src/ports/run-id.ts src/ports/index.ts src/adapters/node/uuid-run-id-factory.ts src/adapters/node/composition-root.ts tests/fakes/fake-run-id-factory.ts tests/fakes/index.ts src/application/create-collection-run-context.ts tests/application/create-collection-run-context.test.ts src/application/collect-clmm-bundle.ts src/application/collect-pyth-price.ts src/application/collect-jupiter-quote.ts src/application/collect-price-observations.ts src/application/collect-jupiter-price.ts src/jobs/clmm-bundle-job.ts src/jobs/price-observations-job.ts scripts/collectors/clmm-bundle.ts scripts/collectors/jupiter-price.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-pyth-price.test.ts tests/application/collect-jupiter-quote.test.ts tests/application/collect-price-observations.test.ts tests/application/collect-jupiter-price.test.ts tests/scripts/clmm-bundle.test.ts tests/scripts/price-observations.test.ts --max-warnings 0
-pnpm exec prettier --check src/ports/run-id.ts src/ports/index.ts src/adapters/node/uuid-run-id-factory.ts src/adapters/node/composition-root.ts tests/fakes/fake-run-id-factory.ts tests/fakes/index.ts src/application/create-collection-run-context.ts tests/application/create-collection-run-context.test.ts src/application/collect-clmm-bundle.ts src/application/collect-pyth-price.ts src/application/collect-jupiter-quote.ts src/application/collect-price-observations.ts src/application/collect-jupiter-price.ts src/jobs/clmm-bundle-job.ts src/jobs/price-observations-job.ts scripts/collectors/clmm-bundle.ts scripts/collectors/jupiter-price.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-pyth-price.test.ts tests/application/collect-jupiter-quote.test.ts tests/application/collect-price-observations.test.ts tests/application/collect-jupiter-price.test.ts tests/scripts/clmm-bundle.test.ts tests/scripts/price-observations.test.ts
+pnpm exec vitest run tests/domain/derived-feature/assemble.test.ts
+pnpm exec eslint src/domain/derived-feature/assemble.ts src/domain/derived-feature/index.ts tests/helpers/derived-feature-fixtures.ts tests/domain/derived-feature/assemble.test.ts --max-warnings 0
+pnpm exec prettier --check src/domain/derived-feature/assemble.ts src/domain/derived-feature/index.ts tests/helpers/derived-feature-fixtures.ts tests/domain/derived-feature/assemble.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **single boundary identity creation**: A non-empty operator run ID wins; otherwise exactly one generated ID and one parsed start time form the immutable context. (Test: `uses the operator run id or generates one once at the job boundary`)
-- **explicit leaf correlation**: Leaves use the supplied context for provenance and do not re-read the run ID from environment state. (Test: `passes explicit immutable context without leaf environment rereads`)
+- **weakest-input confidence cap**: A feature composite cannot exceed the lowest selected input composite after policy and partial degradation. (Test: `derived confidence never exceeds the weakest selected input`)
+- **unavailable confidence**: Unavailable results use zero derivation confidence, low level, and a required-component reason. (Test: `unavailable confidence has zero derivation confidence`)
+- **minimum expiry**: Available and partial expiry is the earliest selected validity while unavailable expiry is evaluation time. (Test: `feature expiry is the minimum selected input expiry`)
+- **complete outcome lineage**: Every selected or outcome-determining rejected normalized row contributes sorted normalized, raw, and source lineage. (Test: `lineage contains every outcome-determining selected or rejected row`)
+- **canonical derivation identity**: Only the documented identity fields affect derivationKey while complete result content affects payloadHash. (Test: `derivation identity changes only when its canonical identity fields change`)

@@ -72,19 +72,61 @@ export interface AssembleDerivedFeatureOptions {
   readonly codeVersion: string;
 }
 
-function computeLowestInputComposite(selectedRows: readonly NormalizedObservationRow[]): number {
+function computeComponentWiseMinima(selectedRows: readonly NormalizedObservationRow[]): {
+  sourceReliability: number;
+  dataCompleteness: number;
+  derivationConfidence: number;
+  llmConfidence: number | null;
+} {
   if (selectedRows.length === 0) {
-    return 1;
+    return {
+      sourceReliability: 1,
+      dataCompleteness: 1,
+      derivationConfidence: 1,
+      llmConfidence: null
+    };
   }
-  let lowest = Infinity;
+  let minSourceReliability = Infinity;
+  let minDataCompleteness = Infinity;
+  let minDerivationConfidence = Infinity;
+  let minLlmConfidence: number | null = null;
+
   for (const row of selectedRows) {
-    const composite = row.confidence?.compositeScore ?? 1;
-    if (composite < lowest) {
-      lowest = composite;
+    const components = row.confidence?.components;
+    if (components) {
+      if (components.sourceReliability < minSourceReliability) {
+        minSourceReliability = components.sourceReliability;
+      }
+      if (components.dataCompleteness < minDataCompleteness) {
+        minDataCompleteness = components.dataCompleteness;
+      }
+      if (components.derivationConfidence < minDerivationConfidence) {
+        minDerivationConfidence = components.derivationConfidence;
+      }
+      if (components.llmConfidence !== null) {
+        if (minLlmConfidence === null || components.llmConfidence < minLlmConfidence) {
+          minLlmConfidence = components.llmConfidence;
+        }
+      }
     }
   }
-  return lowest === Infinity ? 1 : lowest;
+
+  return {
+    sourceReliability: minSourceReliability === Infinity ? 1 : minSourceReliability,
+    dataCompleteness: minDataCompleteness === Infinity ? 1 : minDataCompleteness,
+    derivationConfidence: minDerivationConfidence === Infinity ? 1 : minDerivationConfidence,
+    llmConfidence: minLlmConfidence
+  };
 }
+
+const DEFAULT_CONFIDENCE_WEIGHTS = {
+  sourceReliability: 0.4,
+  dataCompleteness: 0.3,
+  derivationConfidence: 0.3,
+  llmConfidence: 0.0
+};
+
+const PARTIAL_DEGRADATION_FACTOR = 0.9;
 
 function computeMinimumExpiry(
   selectedRows: readonly NormalizedObservationRow[],
@@ -132,11 +174,18 @@ function buildLineage(
     }
 
     if (!rawRefMap.has(row.rawObservationId)) {
+      let payloadHash = `raw-hash-${row.rawObservationId}`;
+      const rawRef = row.provenance.rawObservationRefs.find(
+        (ref) => ref.id === row.rawObservationId
+      );
+      if (rawRef) {
+        payloadHash = rawRef.payloadHash;
+      }
       rawRefMap.set(row.rawObservationId, {
         refType: "raw_observation",
         id: row.rawObservationId,
         source: row.source,
-        payloadHash: `raw-hash-${row.rawObservationId}`
+        payloadHash
       });
     }
   }
@@ -150,7 +199,12 @@ function buildLineage(
 function buildConfidence(
   status: FeatureStatus,
   inputConfidence: Confidence,
-  lowestInputComposite: number
+  componentMinima: {
+    sourceReliability: number;
+    dataCompleteness: number;
+    derivationConfidence: number;
+    llmConfidence: number | null;
+  }
 ): Confidence {
   if (status === "UNAVAILABLE") {
     const components = {
@@ -171,19 +225,51 @@ function buildConfidence(
     };
   }
 
-  const components = { ...inputConfidence.components };
-  const rawComposite =
-    components.sourceReliability * 0.4 +
-    components.dataCompleteness * 0.3 +
-    components.derivationConfidence * 0.3;
+  const effectiveWeights = { ...DEFAULT_CONFIDENCE_WEIGHTS };
 
-  const cappedComposite = Math.min(rawComposite, lowestInputComposite);
+  if (componentMinima.llmConfidence === null) {
+    if (effectiveWeights.llmConfidence > 0) {
+      const remainingTotal =
+        effectiveWeights.sourceReliability +
+        effectiveWeights.dataCompleteness +
+        effectiveWeights.derivationConfidence;
+      if (remainingTotal > 0) {
+        const scale = 1 / (1 - effectiveWeights.llmConfidence);
+        effectiveWeights.sourceReliability *= scale;
+        effectiveWeights.dataCompleteness *= scale;
+        effectiveWeights.derivationConfidence *= scale;
+        effectiveWeights.llmConfidence = 0;
+      }
+    }
+  }
+
+  let rawComposite =
+    componentMinima.sourceReliability * effectiveWeights.sourceReliability +
+    componentMinima.dataCompleteness * effectiveWeights.dataCompleteness +
+    componentMinima.derivationConfidence * effectiveWeights.derivationConfidence;
+
+  if (componentMinima.llmConfidence !== null && effectiveWeights.llmConfidence > 0) {
+    rawComposite += componentMinima.llmConfidence * effectiveWeights.llmConfidence;
+  } else {
+    const nonZeroDenom =
+      effectiveWeights.sourceReliability +
+      effectiveWeights.dataCompleteness +
+      effectiveWeights.derivationConfidence;
+    if (nonZeroDenom > 0) {
+      rawComposite = rawComposite / nonZeroDenom;
+    }
+  }
+
+  if (status === "PARTIAL") {
+    rawComposite = rawComposite * PARTIAL_DEGRADATION_FACTOR;
+  }
+
   const level: Confidence["level"] =
-    cappedComposite >= 0.7 ? "high" : cappedComposite < 0.4 ? "low" : "medium";
+    rawComposite >= 0.7 ? "high" : rawComposite < 0.4 ? "low" : "medium";
 
   return {
-    components,
-    compositeScore: cappedComposite,
+    components: { ...inputConfidence.components },
+    compositeScore: rawComposite,
     level,
     weightingVersion: inputConfidence.weightingVersion,
     reasons: [...inputConfidence.reasons]
@@ -224,11 +310,23 @@ export async function assembleDerivedFeature(
 ): Promise<AssembledFeature> {
   const { input, selectedRows, rejectedRows, evaluationAsOfUnixMs, runId, codeVersion } = options;
 
-  const lowestInputComposite = computeLowestInputComposite(selectedRows);
+  if (input.status === "AVAILABLE" || input.status === "PARTIAL") {
+    if (selectedRows.length === 0) {
+      throw new Error(`Cannot assemble ${input.status} feature with no selectedRows`);
+    }
+    const selectedIds = new Set(selectedRows.map((r) => r.id));
+    for (const id of input.inputObservationIds) {
+      if (!selectedIds.has(id)) {
+        throw new Error(`inputObservationIds contains ${id} which is not in selectedRows`);
+      }
+    }
+  }
+
+  const componentMinima = computeComponentWiseMinima(selectedRows);
   const expiresAtUnixMs = computeMinimumExpiry(selectedRows, input.status, evaluationAsOfUnixMs);
   const lineage = buildLineage(selectedRows, rejectedRows);
 
-  const confidence = buildConfidence(input.status, input.confidence, lowestInputComposite);
+  const confidence = buildConfidence(input.status, input.confidence, componentMinima);
 
   const processRef = {
     collector: "deterministic-feature-derivation",
