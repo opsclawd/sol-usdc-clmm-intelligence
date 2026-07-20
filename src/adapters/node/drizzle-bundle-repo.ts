@@ -85,7 +85,10 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
         )
       )
       .limit(1);
-    return toPortRow(existing!);
+    if (!existing) {
+      throw new Error("Failed to insert or find existing bundle on conflict");
+    }
+    return toPortRow(existing);
   }
 
   async findByPair(pair: string, sinceUnixMs: number): Promise<EvidenceBundleRow[]> {

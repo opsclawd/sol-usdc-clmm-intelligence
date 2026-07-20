@@ -18,7 +18,7 @@ export const evidenceBundles = intelligence.table(
   "evidence_bundles",
   {
     id: serial("id").primaryKey(),
-    schemaVersion: varchar("schema_version", { length: 16 }).notNull(),
+    schemaVersion: varchar("schema_version", { length: 32 }).notNull(),
     pair: varchar("pair", { length: 32 }).notNull(),
     asOfUnixMs: bigint("as_of_unix_ms", { mode: "number" }).notNull(),
     expiresAtUnixMs: bigint("expires_at_unix_ms", { mode: "number" }).notNull(),
