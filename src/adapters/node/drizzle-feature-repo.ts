@@ -60,10 +60,20 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
         staleBehavior: row.staleBehavior ?? null,
         provenance: row.provenance as unknown,
         payloadHash: row.payloadHash,
-        receivedAtUnixMs: row.receivedAtUnixMs
+        receivedAtUnixMs: row.receivedAtUnixMs,
+        status: row.status ?? "AVAILABLE",
+        unit: row.unit ?? "PPM",
+        pair: row.pair ?? "SOL/USDC",
+        calculatorVersion: row.calculatorVersion ?? "1.0",
+        selectionVersion: row.selectionVersion ?? "1.0",
+        inputObservationIds: row.inputObservationIds ?? [],
+        rejectedObservationIds: row.rejectedObservationIds ?? [],
+        derivationKey: row.derivationKey,
+        poolId: row.poolId ?? null,
+        positionId: row.positionId ?? null
       })
       .onConflictDoNothing({
-        target: [derivedFeatures.featureKind, derivedFeatures.payloadHash]
+        target: [derivedFeatures.featureKind, derivedFeatures.derivationKey]
       })
       .returning();
     if (result) return toPortRow(result);

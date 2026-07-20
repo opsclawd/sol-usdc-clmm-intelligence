@@ -7,7 +7,8 @@ const FEATURE_INSERT = {
   signalClass: "deterministic" as const,
   evidenceFamily: "clmm_state" as const,
   confidence: DEFAULT_CONFIDENCE,
-  provenance: DEFAULT_PROVENANCE
+  provenance: DEFAULT_PROVENANCE,
+  derivationKey: "test-derivation-key"
 };
 
 describe("DerivedFeatureRepo contract", () => {

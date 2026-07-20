@@ -41,7 +41,7 @@ describe("derivedFeatures schema", () => {
 describe("derivedFeatures behavioral invariants", () => {
   describe("database status and value constraints exclude fake availability", () => {
     it("status column is NOT NULL", () => {
-      const statusCol = (derivedFeatures as Record<string, unknown>)["status"];
+      const statusCol = (derivedFeatures as unknown as Record<string, unknown>)["status"];
       expect(statusCol).toBeDefined();
     });
 
@@ -51,41 +51,47 @@ describe("derivedFeatures behavioral invariants", () => {
     });
 
     it("value is nullable (database-level constraint enforces AVAILABILITY logic)", () => {
-      const valueCol = (derivedFeatures as Record<string, unknown>)["value"];
+      const valueCol = (derivedFeatures as unknown as Record<string, unknown>)["value"];
       expect(valueCol).toBeDefined();
     });
   });
 
   describe("database unit kind and scope checks mirror the contract", () => {
     it("unit column is NOT NULL with BPS/PPM values", () => {
-      const unitCol = (derivedFeatures as Record<string, unknown>)["unit"];
+      const unitCol = (derivedFeatures as unknown as Record<string, unknown>)["unit"];
       expect(unitCol).toBeDefined();
     });
 
     it("pool_id is nullable", () => {
-      const poolIdCol = (derivedFeatures as Record<string, unknown>)["poolId"];
+      const poolIdCol = (derivedFeatures as unknown as Record<string, unknown>)["poolId"];
       expect(poolIdCol).toBeDefined();
     });
 
     it("position_id is nullable", () => {
-      const positionIdCol = (derivedFeatures as Record<string, unknown>)["positionId"];
+      const positionIdCol = (derivedFeatures as unknown as Record<string, unknown>)["positionId"];
       expect(positionIdCol).toBeDefined();
     });
 
     it("input_observation_ids is integer array NOT NULL", () => {
-      const inputCol = (derivedFeatures as Record<string, unknown>)["inputObservationIds"];
+      const inputCol = (derivedFeatures as unknown as Record<string, unknown>)[
+        "inputObservationIds"
+      ];
       expect(inputCol).toBeDefined();
     });
 
     it("rejected_observation_ids is integer array NOT NULL", () => {
-      const rejectedCol = (derivedFeatures as Record<string, unknown>)["rejectedObservationIds"];
+      const rejectedCol = (derivedFeatures as unknown as Record<string, unknown>)[
+        "rejectedObservationIds"
+      ];
       expect(rejectedCol).toBeDefined();
     });
   });
 
   describe("database replay identity is feature kind plus derivation key", () => {
     it("derivation_key column is NOT NULL", () => {
-      const derivationKeyCol = (derivedFeatures as Record<string, unknown>)["derivationKey"];
+      const derivationKeyCol = (derivedFeatures as unknown as Record<string, unknown>)[
+        "derivationKey"
+      ];
       expect(derivationKeyCol).toBeDefined();
     });
 
@@ -98,7 +104,9 @@ describe("derivedFeatures behavioral invariants", () => {
 
   describe("structured payload is NOT NULL", () => {
     it("structuredPayload is NOT NULL after migration", () => {
-      const payloadCol = (derivedFeatures as Record<string, unknown>)["structuredPayload"];
+      const payloadCol = (derivedFeatures as unknown as Record<string, unknown>)[
+        "structuredPayload"
+      ];
       expect(payloadCol).toBeDefined();
     });
   });

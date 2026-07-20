@@ -42,6 +42,16 @@ export interface DerivedFeatureInsert {
   provenance: Provenance;
   payloadHash: string;
   receivedAtUnixMs: number;
+  status?: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
+  unit?: "BPS" | "PPM";
+  pair?: string;
+  calculatorVersion?: string;
+  selectionVersion?: string;
+  inputObservationIds?: number[];
+  rejectedObservationIds?: number[];
+  derivationKey: string;
+  poolId?: string | null;
+  positionId?: string | null;
 }
 
 export interface DerivedFeatureRepo {
