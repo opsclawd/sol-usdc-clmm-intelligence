@@ -1,6 +1,5 @@
 import type { FeatureKind, ProvenanceRef } from "../../contracts/taxonomy.js";
-import type { DerivedFeatureRow } from "../../ports/feature-repo.js";
-import type { NormalizedObservationRow } from "../../ports/normalized-observation-repo.js";
+import type { DerivedFeatureRow, NormalizedObservationRow } from "../../ports/index.js";
 import type { RawObservationRow } from "../../ports/observation-repo.js";
 import { acceptClmmBundle } from "../clmm-bundle/validate.js";
 import type { BundleSelectionRequest } from "./select.js";

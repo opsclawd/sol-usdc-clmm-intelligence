@@ -7,8 +7,7 @@ import type {
   Provenance,
   ProvenanceRef
 } from "../../../src/contracts/taxonomy.js";
-import type { DerivedFeatureRow } from "../../../src/ports/feature-repo.js";
-import type { NormalizedObservationRow } from "../../../src/ports/normalized-observation-repo.js";
+import type { DerivedFeatureRow, NormalizedObservationRow } from "../../../src/ports/index.js";
 import type { RawObservationRow } from "../../../src/ports/observation-repo.js";
 import { verifyEvidenceLineage } from "../../../src/domain/evidence-bundle/lineage.js";
 
