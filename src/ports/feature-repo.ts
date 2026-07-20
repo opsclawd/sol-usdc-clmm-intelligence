@@ -66,6 +66,7 @@ export interface DerivedFeatureInsert {
 
 export interface DerivedFeatureRepo {
   insert(row: DerivedFeatureInsert): Promise<DerivedFeatureRow>;
+  insertMany(rows: readonly DerivedFeatureInsert[]): Promise<DerivedFeatureRow[]>;
   findByDerivationKey(
     featureKind: FeatureKind,
     derivationKey: string
