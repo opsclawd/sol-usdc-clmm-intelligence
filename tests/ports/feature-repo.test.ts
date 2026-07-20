@@ -542,7 +542,7 @@ describe("DerivedFeatureRepo listBundleCandidates", () => {
     expect(candidates[0]!.receivedAtUnixMs).toBe(1500);
   });
 
-  it("returns results sorted by asOfUnixMs, receivedAtUnixMs, id ascending", async () => {
+  it("returns results sorted by asOfUnixMs, receivedAtUnixMs, id descending", async () => {
     const repo = new FakeFeatureRepo();
 
     await repo.insert(
@@ -593,9 +593,9 @@ describe("DerivedFeatureRepo listBundleCandidates", () => {
     });
 
     expect(candidates).toHaveLength(3);
-    expect(candidates[0]!.id).toBe(1);
+    expect(candidates[0]!.id).toBe(2);
     expect(candidates[1]!.id).toBe(3);
-    expect(candidates[2]!.id).toBe(2);
+    expect(candidates[2]!.id).toBe(1);
   });
 
   it("filters out non-SOL/USDC pairs", async () => {

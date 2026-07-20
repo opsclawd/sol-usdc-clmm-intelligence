@@ -801,7 +801,7 @@ describe("selectEvidenceFeatureSlots", () => {
 
       const result = selectEvidenceFeatureSlots(request);
 
-      expect(result.rejectedIds).toEqual([3, 5, 7]);
+      expect(result.rejectedIds).toEqual([3, 5]);
     });
 
     it("rejection warnings are sorted and de-duplicated", () => {

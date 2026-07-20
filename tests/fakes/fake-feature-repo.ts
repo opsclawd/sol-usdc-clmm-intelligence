@@ -96,10 +96,10 @@ export class FakeFeatureRepo implements DerivedFeatureRepo {
           r.receivedAtUnixMs <= query.receivedAtOrBeforeUnixMs
       )
       .sort((a, b) => {
-        if (a.asOfUnixMs !== b.asOfUnixMs) return a.asOfUnixMs - b.asOfUnixMs;
-        if (a.receivedAtUnixMs !== b.receivedAtUnixMs)
-          return a.receivedAtUnixMs - b.receivedAtUnixMs;
-        return a.id - b.id;
+        if (b.asOfUnixMs !== a.asOfUnixMs) return b.asOfUnixMs - a.asOfUnixMs;
+        if (b.receivedAtUnixMs !== a.receivedAtUnixMs)
+          return b.receivedAtUnixMs - a.receivedAtUnixMs;
+        return b.id - a.id;
       });
 
     return result;

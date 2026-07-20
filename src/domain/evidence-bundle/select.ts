@@ -190,11 +190,9 @@ function selectSlot(
   }
 
   if (eligible.length === 0) {
-    const scopedCandidates = candidates.filter((c) => {
-      if (scope.poolId !== null && c.poolId !== scope.poolId) return false;
-      if (scope.positionId !== null && c.positionId !== scope.positionId) return false;
-      return true;
-    });
+    const scopedCandidates = candidates.filter(
+      (c) => c.poolId === scope.poolId && c.positionId === scope.positionId
+    );
 
     const hasFutureOrExpired = scopedCandidates.some(
       (c) =>
@@ -216,7 +214,7 @@ function selectSlot(
           outcome: "expired_only",
           rowId: matching[0]!.id
         },
-        rejectedIds,
+        rejectedIds: rejectedIds.filter((id) => id !== matching[0]!.id),
         warnings,
         reasons
       };
@@ -238,7 +236,7 @@ function selectSlot(
           outcome: "unsupported_version_only",
           rowId: matching[0]!.id
         },
-        rejectedIds,
+        rejectedIds: rejectedIds.filter((id) => id !== matching[0]!.id),
         warnings,
         reasons
       };
