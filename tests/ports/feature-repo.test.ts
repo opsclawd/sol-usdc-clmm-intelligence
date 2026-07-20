@@ -2,16 +2,27 @@ import { describe, it, expect } from "vitest";
 import { FakeFeatureRepo } from "../../tests/fakes/fake-feature-repo.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 
-const FEATURE_INSERT = {
-  featureKind: "range_location" as const,
-  signalClass: "deterministic" as const,
-  evidenceFamily: "clmm_state" as const,
+const FEATURE_INSERT: {
+  featureKind: "range_location";
+  signalClass: "deterministic";
+  evidenceFamily: "clmm_state";
+  confidence: typeof DEFAULT_CONFIDENCE;
+  provenance: typeof DEFAULT_PROVENANCE;
+  derivationKey: string;
+  structuredPayload: unknown;
+  status: "AVAILABLE";
+  unit: "PPM";
+  value?: number | null;
+} = {
+  featureKind: "range_location",
+  signalClass: "deterministic",
+  evidenceFamily: "clmm_state",
   confidence: DEFAULT_CONFIDENCE,
   provenance: DEFAULT_PROVENANCE,
   derivationKey: "test-derivation-key",
   structuredPayload: {},
-  status: "AVAILABLE" as const,
-  unit: "PPM" as const
+  status: "AVAILABLE",
+  unit: "PPM"
 };
 
 function makeInsert(
