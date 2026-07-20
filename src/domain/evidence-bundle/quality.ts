@@ -218,7 +218,7 @@ export function classifyEvidenceBundleQuality(input: EvidenceQualityInput): Evid
       };
     }
 
-    const warnings = normalizeWarnings(slot.warnings ?? []);
+    const warnings = normalizeWarnings("warnings" in slot ? slot.warnings : []);
 
     return {
       featureKind,

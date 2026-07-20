@@ -39,19 +39,6 @@ type FeatureFamily =
   | "liquidity"
   | "risk";
 
-function mapOutcomeToStatus(outcome: SelectedFeatureSlot["outcome"]): "available" | "unavailable" {
-  switch (outcome) {
-    case "selected_available":
-    case "selected_partial":
-      return "available";
-    case "selected_unavailable":
-    case "missing":
-    case "expired_only":
-    case "unsupported_version_only":
-      return "unavailable";
-  }
-}
-
 function mapFeatureKindToFamily(featureKind: string): FeatureFamily {
   switch (featureKind) {
     case "range_location":
@@ -89,57 +76,107 @@ function normalizeWarnings(warnings: readonly string[]): string[] {
   return [...new Set(warnings)].sort();
 }
 
+function getWarningsFromSlot(slot: SelectedFeatureSlot): readonly string[] {
+  if ("warnings" in slot) {
+    return slot.warnings;
+  }
+  return [];
+}
+
+function getRowIdFromSlot(slot: SelectedFeatureSlot): number {
+  if ("rowId" in slot) {
+    return slot.rowId;
+  }
+  return 0;
+}
+
+function getProvenanceFromSlot(slot: SelectedFeatureSlot) {
+  if ("provenance" in slot) {
+    return slot.provenance;
+  }
+  return null;
+}
+
 function buildDeterministicFeature(
   slot: SelectedFeatureSlot,
   featureKind: string
 ): DeterministicFeature {
   const family = mapFeatureKindToFamily(featureKind);
   const featureKindType = mapFeatureKindToKind(featureKind);
-  const status = mapOutcomeToStatus(slot.outcome);
-  const normalizedWarnings = normalizeWarnings(slot.warnings ?? []);
+  const rowId = getRowIdFromSlot(slot);
+  const warnings = getWarningsFromSlot(slot);
+  const provenance = getProvenanceFromSlot(slot);
 
-  const baseFeature = {
-    featureId:
-      `feat-${featureKind}-${slot.rowId ?? 0}` as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
-    family: family as DeterministicFeature extends { family: infer F } ? F : never,
-    featureKind: featureKindType as DeterministicFeature extends { featureKind: infer K }
-      ? K
-      : never,
-    calculator: {
-      name: "mvp-calculator" as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
-      version: "1.0" as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128
-    },
-    inputLineage: [`row-${slot.rowId ?? 0}`] as [
-      import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
-      ...import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
-    ]
-  };
-
-  if (status === "available") {
-    const value = hasValue(slot) ? slot.value : 0;
-    const confidenceBps = getConfidenceBps(slot);
-    const freshUntil =
-      slot.outcome === "selected_available" || slot.outcome === "selected_partial"
-        ? String(slot.provenance?.processRef?.collector ?? "50000003600000")
-        : "0";
-
-    return {
-      ...baseFeature,
-      status: "available" as const,
-      value,
-      unit: "percent" as const,
-      observedAt: String(slot.provenance?.processRef?.collector ?? slot.rowId ?? 0),
-      freshUntil,
-      confidenceBps,
-      warnings: normalizedWarnings.slice(0, 16) as DeterministicFeature extends {
-        warnings: infer W;
-      }
-        ? W
-        : never
+  if (slot.outcome === "missing") {
+    const result = {
+      featureId: `feat-${featureKind}-missing`,
+      family,
+      featureKind: featureKindType,
+      status: "unavailable" as const,
+      value: null,
+      unit: null,
+      observedAt: null,
+      freshUntil: null,
+      confidenceBps: 0,
+      calculator: {
+        name: "mvp-calculator",
+        version: "1.0"
+      },
+      inputLineage: ["missing"] as [string, ...string[]],
+      warnings: ["missing_slot"] as [string, ...string[]]
     };
+    return result as DeterministicFeature;
   }
 
-  return {
+  const normalizedWarnings = normalizeWarnings([...warnings]);
+  const baseFeature = {
+    featureId: `feat-${featureKind}-${rowId}`,
+    family,
+    featureKind: featureKindType,
+    calculator: {
+      name: "mvp-calculator",
+      version: "1.0"
+    },
+    inputLineage: [`row-${rowId}`] as [string, ...string[]]
+  };
+
+  if (slot.outcome === "selected_available" || slot.outcome === "selected_partial") {
+    const result = {
+      ...baseFeature,
+      status: "available" as const,
+      value: slot.value,
+      unit: "percent" as const,
+      observedAt: String(provenance?.processRef?.collector ?? rowId),
+      freshUntil: String(provenance?.processRef?.collector ?? "50000003600000"),
+      confidenceBps: slot.confidence.compositeScore,
+      warnings: normalizedWarnings.slice(0, 16) as [string, ...string[]]
+    };
+    return result as DeterministicFeature;
+  }
+
+  if (slot.outcome === "selected_unavailable") {
+    const unavailableWarnings: [string, ...string[]] =
+      normalizedWarnings.length > 0
+        ? (normalizedWarnings.slice(0, 16) as [string, ...string[]])
+        : (["unavailable"] as [string, ...string[]]);
+    const result = {
+      ...baseFeature,
+      status: "unavailable" as const,
+      value: null,
+      unit: null,
+      observedAt: null,
+      freshUntil: null,
+      confidenceBps: 0,
+      warnings: unavailableWarnings
+    };
+    return result as DeterministicFeature;
+  }
+
+  const expiredWarnings: [string, ...string[]] =
+    normalizedWarnings.length > 0
+      ? (normalizedWarnings.slice(0, 16) as [string, ...string[]])
+      : (["slot_unavailable"] as [string, ...string[]]);
+  const result = {
     ...baseFeature,
     status: "unavailable" as const,
     value: null,
@@ -147,50 +184,9 @@ function buildDeterministicFeature(
     observedAt: null,
     freshUntil: null,
     confidenceBps: 0,
-    warnings:
-      normalizedWarnings.length > 0
-        ? (normalizedWarnings.slice(0, 16) as DeterministicFeature extends { warnings: infer W }
-            ? W
-            : never)
-        : (["unavailable"] as DeterministicFeature extends { warnings: infer W } ? W : never)
+    warnings: expiredWarnings
   };
-}
-
-function hasValue(slot: SelectedFeatureSlot): slot is SelectedAvailableSlot | SelectedPartialSlot {
-  return slot.outcome === "selected_available" || slot.outcome === "selected_partial";
-}
-
-interface SelectedAvailableSlot {
-  readonly featureKind: string;
-  readonly outcome: "selected_available";
-  readonly rowId: number;
-  readonly value: number;
-  readonly confidence: import("../../contracts/taxonomy.js").Confidence;
-  readonly provenance: import("../../contracts/taxonomy.js").Provenance;
-  readonly warnings: readonly string[];
-  readonly reasons: readonly string[];
-}
-
-interface SelectedPartialSlot {
-  readonly featureKind: string;
-  readonly outcome: "selected_partial";
-  readonly rowId: number;
-  readonly value: number;
-  readonly confidence: import("../../contracts/taxonomy.js").Confidence;
-  readonly provenance: import("../../contracts/taxonomy.js").Provenance;
-  readonly warnings: readonly string[];
-  readonly reasons: readonly string[];
-}
-
-function getConfidenceBps(slot: SelectedFeatureSlot): number {
-  if (
-    slot.outcome === "missing" ||
-    slot.outcome === "expired_only" ||
-    slot.outcome === "unsupported_version_only"
-  ) {
-    return 0;
-  }
-  return slot.confidence.compositeScore;
+  return result as DeterministicFeature;
 }
 
 function buildEmptyContextualEvidence(): ContextualEvidence {

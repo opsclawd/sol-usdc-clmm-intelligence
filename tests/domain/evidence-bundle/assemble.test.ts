@@ -313,7 +313,7 @@ describe("assembleEvidenceBundleCandidate", () => {
       expect(feature).toHaveProperty("calculator");
       expect(feature).toHaveProperty("inputLineage");
       expect(feature).toHaveProperty("warnings");
-      expect((feature as Record<string, unknown>).localExtraField).toBeUndefined();
+      expect((feature as unknown as Record<string, unknown>).localExtraField).toBeUndefined();
     });
   });
 
@@ -439,9 +439,9 @@ describe("assembleEvidenceBundleCandidate", () => {
         makeAssembleInput(slots, makeQuality(), makeLineage())
       );
 
-      expect((result as Record<string, unknown>).payloadHash).toBeUndefined();
-      expect((result as Record<string, unknown>).payloadCanonical).toBeUndefined();
-      expect((result as Record<string, unknown>).idempotencyKey).toBeUndefined();
+      expect((result as unknown as Record<string, unknown>).payloadHash).toBeUndefined();
+      expect((result as unknown as Record<string, unknown>).payloadCanonical).toBeUndefined();
+      expect((result as unknown as Record<string, unknown>).idempotencyKey).toBeUndefined();
     });
 
     it("deterministicFeatures have no payloadHash recursively", () => {
@@ -464,7 +464,7 @@ describe("assembleEvidenceBundleCandidate", () => {
       );
 
       result.deterministicFeatures.forEach((feature) => {
-        expect((feature as Record<string, unknown>).payloadHash).toBeUndefined();
+        expect((feature as unknown as Record<string, unknown>).payloadHash).toBeUndefined();
       });
     });
   });
@@ -502,12 +502,18 @@ describe("assembleEvidenceBundleCandidate", () => {
 
     it("assessment.warnings match quality warnings", () => {
       const slots = makeSlotsAllAvailable([]);
-      const quality = makeQuality();
-      quality.warnings.push({
-        code: "test_warning",
-        message: "Test warning",
-        affectedFamilies: ["clmm_state"]
-      });
+      const baseQuality = makeQuality();
+      const quality: EvidenceBundleQuality = {
+        ...baseQuality,
+        warnings: [
+          ...baseQuality.warnings,
+          {
+            code: "test_warning",
+            message: "Test warning",
+            affectedFamilies: ["clmm_state"]
+          }
+        ]
+      };
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, makeLineage())
       );

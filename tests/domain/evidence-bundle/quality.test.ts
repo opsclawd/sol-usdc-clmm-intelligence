@@ -415,7 +415,7 @@ describe("classifyEvidenceBundleQuality", () => {
 
       const result = classifyEvidenceBundleQuality(input);
 
-      expect((result as Record<string, unknown>).payloadHash).toBeUndefined();
+      expect((result as unknown as Record<string, unknown>).payloadHash).toBeUndefined();
     });
 
     it("slot quality summaries contain no recursive payload hash", () => {
@@ -425,7 +425,7 @@ describe("classifyEvidenceBundleQuality", () => {
       const result = classifyEvidenceBundleQuality(input);
 
       result.slotQualitySummaries.forEach((slot) => {
-        expect((slot as Record<string, unknown>).payloadHash).toBeUndefined();
+        expect((slot as unknown as Record<string, unknown>).payloadHash).toBeUndefined();
       });
     });
   });
