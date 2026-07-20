@@ -8,10 +8,11 @@ import {
   canonicalizePayload
 } from "../fixtures/evidence-bundle.js";
 import type { EvidenceBundleV1 } from "../../src/contracts/generated/evidence-bundle-v1.js";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
+import { tmpdir } from "node:os";
 
 describe("EvidenceBundleV1 Contract", () => {
   let contract: ReturnType<typeof createEvidenceBundleContract>;
@@ -284,12 +285,10 @@ describe("EvidenceBundleV1 Contract", () => {
       const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
       const checkedInPath = join(repoRoot, "src/contracts/generated/evidence-bundle-v1.ts");
 
-      execSync("pnpm contract:evidence-bundle:generate", { cwd: repoRoot });
+      const tempDir = mkdtempSync(join(tmpdir(), "evidence-bundle-gen-"));
+      execSync(`pnpm contract:evidence-bundle:generate "${tempDir}"`, { cwd: repoRoot });
 
-      const regenerated = readFileSync(
-        join(repoRoot, "src/contracts/generated/evidence-bundle-v1.ts"),
-        "utf-8"
-      );
+      const regenerated = readFileSync(join(tempDir, "evidence-bundle-v1.ts"), "utf-8");
       const checkedIn = readFileSync(checkedInPath, "utf-8");
 
       expect(regenerated).toBe(checkedIn);

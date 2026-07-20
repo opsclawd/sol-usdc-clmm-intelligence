@@ -7,14 +7,22 @@ import { execSync } from "node:child_process";
 const SCHEMA_PATH = fileURLToPath(
   new URL("../schemas/regime-engine/evidence-bundle.v1/schema.json", import.meta.url)
 );
-const OUTPUT_DIR = fileURLToPath(new URL("../src/contracts/generated", import.meta.url));
-const OUTPUT_FILE = join(OUTPUT_DIR, "evidence-bundle-v1.ts");
+const DEFAULT_OUTPUT_DIR = fileURLToPath(new URL("../src/contracts/generated", import.meta.url));
+const OUTPUT_FILENAME = "evidence-bundle-v1.ts";
+
+function getOutputPaths(outputDir?: string): { outputDir: string; outputFile: string } {
+  const outDir = outputDir ?? DEFAULT_OUTPUT_DIR;
+  return { outputDir: outDir, outputFile: join(outDir, OUTPUT_FILENAME) };
+}
 
 function computeSha256(content: string): string {
   return createHash("sha256").update(content, "utf-8").digest("hex");
 }
 
 async function main(): Promise<void> {
+  const outputDirArg = process.argv[2];
+  const { outputDir, outputFile } = getOutputPaths(outputDirArg);
+
   const schemaContent = await readFile(SCHEMA_PATH, "utf-8");
   const schemaSha256 = computeSha256(schemaContent);
 
@@ -37,10 +45,10 @@ async function main(): Promise<void> {
 
 ${tsDeclarationWithoutBanner}`;
 
-  await mkdir(OUTPUT_DIR, { recursive: true });
-  await writeFile(OUTPUT_FILE, output, "utf-8");
+  await mkdir(outputDir, { recursive: true });
+  await writeFile(outputFile, output, "utf-8");
 
-  console.log(`Generated ${OUTPUT_FILE}`);
+  console.log(`Generated ${outputFile}`);
   console.log(`Schema SHA256: ${schemaSha256}`);
 }
 
