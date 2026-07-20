@@ -116,6 +116,9 @@ export function calculateRangeLocation(position: PositionStatePayloadV1): Featur
   if (compare(upperPriceRational, lowerPriceRational) <= 0) {
     return makeUnavailable(["upperPrice must be greater than lowerPrice"]);
   }
+  if (compare(currentPriceRational, { numerator: 0n, denominator: 1n }) <= 0) {
+    return makeUnavailable(["invalid currentPrice"]);
+  }
 
   const classificationResult = classifyRangePosition(
     currentPriceRational,
@@ -180,6 +183,9 @@ export function calculateDistanceToLower(position: PositionStatePayloadV1): Feat
   if (compare(upperPrice, lowerPrice) <= 0) {
     return makeUnavailable(["upperPrice must be greater than lowerPrice"]);
   }
+  if (compare(currentPrice, { numerator: 0n, denominator: 1n }) <= 0) {
+    return makeUnavailable(["invalid currentPrice"]);
+  }
 
   const classificationResult = classifyRangePosition(
     currentPrice,
@@ -239,6 +245,9 @@ export function calculateDistanceToUpper(position: PositionStatePayloadV1): Feat
   }
   if (compare(upperPrice, lowerPrice) <= 0) {
     return makeUnavailable(["upperPrice must be greater than lowerPrice"]);
+  }
+  if (compare(currentPrice, { numerator: 0n, denominator: 1n }) <= 0) {
+    return makeUnavailable(["invalid currentPrice"]);
   }
 
   const classificationResult = classifyRangePosition(
