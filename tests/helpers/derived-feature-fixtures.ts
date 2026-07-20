@@ -7,10 +7,13 @@ import type {
   Confidence,
   Freshness,
   FeatureKind,
-  ConfidenceComponents
+  ConfidenceComponents,
+  FreshnessReason,
+  ConfidenceReason
 } from "../../src/contracts/taxonomy.js";
 import type { NormalizedObservationRow } from "../../src/ports/normalized-observation-repo.js";
 import type { FeatureStatus, DerivedFeatureV1 } from "../../src/contracts/derived-feature.js";
+import type { AssembleFeatureInput } from "../../src/domain/derived-feature/assemble.js";
 import { SELECTION_VERSION } from "../../src/domain/derived-feature/select.js";
 
 export const DEFAULT_CONFIDENCE: Confidence = {
@@ -64,7 +67,7 @@ export function makeConfidence(components: ConfidenceInput, weightingVersion = "
     compositeScore,
     level,
     weightingVersion,
-    reasons: []
+    reasons: [] as readonly ConfidenceReason[]
   };
 }
 
@@ -73,14 +76,14 @@ export function makeFreshness(
   validUntilUnixMs: number,
   derivedAt: number,
   policyKind: FeatureKind = "range_location",
-  reasons: string[] = []
+  reasons: readonly string[] = []
 ): Freshness {
   return {
     isStale,
     validUntilUnixMs,
     derivedAt,
     policyKind,
-    reasons
+    reasons: [...reasons] as readonly FreshnessReason[]
   };
 }
 
@@ -110,28 +113,6 @@ export function makeNormalizedRow(
     provenance: overrides.provenance ?? DEFAULT_PROVENANCE,
     receivedAtUnixMs: overrides.receivedAtUnixMs
   };
-}
-
-export interface AssembleFeatureInput {
-  featureKind: FeatureKind;
-  status: FeatureStatus;
-  value: number | null;
-  unit: "BPS" | "PPM";
-  pair?: "SOL/USDC";
-  poolId: string | null;
-  positionId: string | null;
-  asOfUnixMs: number;
-  expiresAtUnixMs: number;
-  confidence: Confidence;
-  freshness: Freshness;
-  inputObservationIds: readonly number[];
-  rejectedObservationIds: readonly number[];
-  provenance: Provenance;
-  warnings: readonly string[];
-  reasons: readonly string[];
-  calculatorVersion: string;
-  selectionVersion?: string;
-  calculationMetadata?: Readonly<Record<string, unknown>>;
 }
 
 export function makeAssembleInput(
@@ -174,13 +155,73 @@ export function buildDerivedFeatureV1(overrides: Partial<DerivedFeatureV1> = {})
     positionId: "pos456",
     asOfUnixMs: 1000000000000,
     expiresAtUnixMs: 1000000060000,
-    confidence: DEFAULT_CONFIDENCE,
-    freshness: makeFreshness(false, 1000000060000, 1000000000000),
+    confidence: {
+      components: {
+        sourceReliability: 1,
+        dataCompleteness: 1,
+        derivationConfidence: 1,
+        llmConfidence: null
+      },
+      compositeScore: 1,
+      level: "high",
+      weightingVersion: "v1",
+      reasons: [] as string[]
+    },
+    freshness: {
+      isStale: false,
+      validUntilUnixMs: 1000000060000,
+      derivedAt: 1000000000000,
+      policyKind: "range_location",
+      reasons: [] as string[]
+    },
     inputObservationIds: [1, 2, 3],
-    rejectedObservationIds: [],
-    provenance: DEFAULT_PROVENANCE,
-    warnings: [],
-    reasons: [],
+    rejectedObservationIds: [] as number[],
+    provenance: {
+      sourceRefs: [] as Array<{
+        id: number;
+        source: string;
+        payloadHash: string;
+        refType:
+          | "raw_observation"
+          | "normalized_observation"
+          | "derived_feature"
+          | "evidence_bundle"
+          | "research_brief";
+      }>,
+      rawObservationRefs: [] as Array<{
+        id: number;
+        source: string;
+        payloadHash: string;
+        refType:
+          | "raw_observation"
+          | "normalized_observation"
+          | "derived_feature"
+          | "evidence_bundle"
+          | "research_brief";
+      }>,
+      derivedFromRefs: [] as Array<{
+        id: number;
+        source: string;
+        payloadHash: string;
+        refType:
+          | "raw_observation"
+          | "normalized_observation"
+          | "derived_feature"
+          | "evidence_bundle"
+          | "research_brief";
+      }>,
+      processRef: {
+        collector: "deterministic-feature-derivation",
+        jobName: "derive-mvp-features",
+        pipelineRunId: null,
+        codeVersion: null,
+        modelVersion: null
+      },
+      codeVersion: "test-v1",
+      runId: null
+    },
+    warnings: [] as string[],
+    reasons: [] as string[],
     calculatorVersion: "1.0.0",
     selectionVersion: SELECTION_VERSION,
     calculationMetadata: {}

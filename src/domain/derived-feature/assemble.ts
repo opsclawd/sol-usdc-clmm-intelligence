@@ -249,17 +249,31 @@ export async function assembleDerivedFeature(
     positionId: input.positionId,
     asOfUnixMs: input.asOfUnixMs,
     expiresAtUnixMs,
-    confidence,
+    confidence: {
+      components: {
+        sourceReliability: confidence.components.sourceReliability,
+        dataCompleteness: confidence.components.dataCompleteness,
+        derivationConfidence: confidence.components.derivationConfidence,
+        llmConfidence: confidence.components.llmConfidence
+      },
+      compositeScore: confidence.compositeScore,
+      level: confidence.level,
+      weightingVersion: confidence.weightingVersion,
+      reasons: [...confidence.reasons]
+    },
     freshness: {
-      ...input.freshness,
-      validUntilUnixMs: expiresAtUnixMs
+      isStale: input.freshness.isStale,
+      validUntilUnixMs: expiresAtUnixMs,
+      derivedAt: input.freshness.derivedAt,
+      policyKind: input.freshness.policyKind,
+      reasons: [...input.freshness.reasons]
     },
     inputObservationIds: [...input.inputObservationIds].sort((a, b) => a - b),
     rejectedObservationIds: [...input.rejectedObservationIds].sort((a, b) => a - b),
     provenance: {
-      sourceRefs: lineage.sourceRefs,
-      rawObservationRefs: lineage.rawObservationRefs,
-      derivedFromRefs: input.provenance.derivedFromRefs,
+      sourceRefs: [...lineage.sourceRefs],
+      rawObservationRefs: [...lineage.rawObservationRefs],
+      derivedFromRefs: [...input.provenance.derivedFromRefs],
       processRef,
       codeVersion,
       runId
