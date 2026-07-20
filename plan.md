@@ -1,678 +1,514 @@
 <!-- plan-review-required -->
 
-# Deterministic MVP SOL/USDC Evidence Feature Tranche Implementation Plan
+# Deterministic EvidenceBundle v1 Assembly and Persistence Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Derive and persist exactly seven auditable, versioned SOL/USDC features from bounded normalized observations, including deterministic selection, explicit availability states, conservative confidence/freshness, complete lineage, and replay-safe persistence.
+**Goal:** Assemble one strict, deterministic-only `evidence-bundle.v1` for an explicit SOL/USDC wallet/position/Whirlpool run context from persisted derived features and their verified lineage, validate and canonicalize it with the pinned Regime Engine contract, and persist it with exact-replay and immutable-conflict semantics.
 
-**Architecture:** Add a `DerivedFeatureV1` contract in `src/contracts`, pure arithmetic/selectors/calculators under `src/domain/derived-feature`, and one application use case that performs bounded candidate reads, validates all results, and transactionally persists the tranche. Extend the normalized-observation and derived-feature repository ports only in tasks that also update every adapter and fake; expose the use case through a thin job and collector script without making external source calls or policy decisions.
+**Architecture:** Vendor the exact Regime Engine schema and fixtures behind a version-specific contract port, while keeping feature selection, lineage verification, quality classification, and payload assembly pure and deterministic under `src/domain/evidence-bundle`. The application use case performs bounded repository reads, invokes those pure stages, validates before any write, and delegates one irreversible insert-or-classify operation to the Drizzle bundle adapter. A thin job and script bind explicit run inputs; there is no publisher, network retry loop, LLM call, policy synthesis, or execution authority.
 
-**Tech Stack:** TypeScript 5.7, Zod, Vitest, Drizzle ORM, PostgreSQL, pnpm, dependency-cruiser.
+**Tech Stack:** TypeScript 5.7, Zod, the JSON Schema draft validator and canonicalization implementation mandated by the pinned Regime Engine contract, Vitest, Drizzle ORM, PostgreSQL, pnpm, and dependency-cruiser.
 
 ---
 
-**Goal details**
+**Hard prerequisite and current blocker**
 
-- Implement canonical feature kinds `range_location`, `distance_to_lower`, `distance_to_upper`, `oracle_dex_divergence`, `oracle_confidence_width`, `realized_volatility_1h`, and `volume_liquidity_ratio_24h`.
-- Persist `AVAILABLE`, `PARTIAL`, and `UNAVAILABLE` results without fake zero values.
-- Make selection, calculation, rounding, confidence, freshness, provenance, and idempotency reproducible from stored inputs and version identifiers.
+The current `issue.md` still contains placeholders for the Regime Engine commit SHA, schema path, schema SHA-256, and valid fixture path, and supplies no canonical invalid, canonicalization, hash, or idempotency fixture paths. Do not start Task 1 until the issue records all of those values from merged `opsclawd/regime-engine#58`. The implementer must use the pinned files as the sole authority and must not infer fields, optional-section representations, quality formulas, canonical JSON rules, hash rules, or logical identity fields from `design.md` or this plan.
+
+Before implementation, record the upstream repository, merged commit, source paths, schema version `evidence-bundle.v1`, and SHA-256 for every copied asset. Confirm that the pinned valid fixtures include a deterministic-only bundle with empty/unavailable contextual evidence and an absent research brief. If they do not, stop and request an upstream contract revision.
+
+**Goals**
+
+- Select exactly one deterministic snapshot for the seven existing MVP feature kinds using explicit pair, pool, position, accepted-calculator-version, evaluation-time, and run-context inputs.
+- Preserve missing, partial, unavailable, expired, future, wrong-scope, and unsupported-version outcomes as explicit deterministic slot states and warnings; never synthesize zero.
+- Verify raw → normalized → derived lineage, including the wallet/position/pool relationship in the lineage-linked clmm-v2 raw bundle.
+- Produce the exact canonical payload text and SHA-256 required by Regime Engine, and persist those exact bytes alongside inspectable JSONB.
+- Return `inserted`, `identical_replay`, or `conflict` deterministically without overwriting immutable evidence.
+- Keep changed inputs, run identity, calculator/selection versions, and schema versions historically auditable.
 
 **Non-goals**
 
-- No new source collectors, HTTP calls, evidence-bundle publication, research briefs, LLM calculations, PolicyInsight synthesis, recommendations, or transaction/execution behavior.
-- No deferred #8 metrics: fee APR/yield, inventory skew, fee capture, fee-to-volatility, rebalance cost, breach probability, wick/breakout/volume confirmation, liquidity cliffs, route risk, flows, perps, funding, liquidations, news, or support/resistance.
-- No general feature DSL, plugin framework, JSON-scope indexes, or automatic discovery of position identities.
+- No HTTP publication, endpoint/auth configuration, retries, backoff, or publish-attempt rows.
+- No contextual collectors, contextual inference, LLM research brief generation, or model calls.
+- No Regime Engine selection/scoring, market regime classification, `PolicyInsight`, recommendation, or risk-policy changes.
+- No new feature formulas, generic multi-pair bundle framework, UI behavior, wallet signing, transaction construction, swaps, or liquidity movement.
+- No fallback local schema, local canonicalization convention, or intelligence-specific aggregate score when the upstream contract is silent.
 
 **Affected files (repository-relative)**
 
-- Contracts/taxonomy: `src/contracts/derived-feature.ts`, `src/contracts/index.ts`, `src/contracts/taxonomy.ts`, `src/domain/taxonomy/registry.ts`, `src/domain/taxonomy/validation.ts`.
-- Pure feature domain: `src/domain/derived-feature/index.ts`, `src/domain/derived-feature/decimal.ts`, `src/domain/derived-feature/select.ts`, `src/domain/derived-feature/assemble.ts`, `src/domain/derived-feature/range.ts`, `src/domain/derived-feature/market.ts`, `src/domain/derived-feature/volatility.ts`.
-- Ports/adapters: `src/ports/normalized-observation-repo.ts`, `src/ports/feature-repo.ts`, `src/adapters/node/drizzle-normalized-observation-repo.ts`, `src/adapters/node/drizzle-feature-repo.ts`, `src/adapters/node/composition-root.ts`, `tests/fakes/fake-normalized-observation-repo.ts`, `tests/fakes/fake-feature-repo.ts`.
-- Persistence: `src/db/schema/derived-features.ts`, `drizzle/0002_derived_feature_tranche.sql`, `drizzle/meta/_journal.json`, `drizzle/meta/0002_snapshot.json`.
-- Orchestration/entrypoint: `src/application/derive-mvp-features.ts`, `src/jobs/derive-mvp-features-job.ts`, `src/jobs/index.ts`, `scripts/collectors/derive-mvp-features.ts`, `package.json`, `.env.example`.
-- Tests/fixtures: `tests/helpers/derived-feature-fixtures.ts`, `tests/domain/derived-feature/contract.test.ts`, `tests/domain/derived-feature/decimal.test.ts`, `tests/domain/derived-feature/select.test.ts`, `tests/domain/derived-feature/assemble.test.ts`, `tests/domain/derived-feature/range.test.ts`, `tests/domain/derived-feature/market.test.ts`, `tests/domain/derived-feature/volatility.test.ts`, `tests/domain/taxonomy/registry.test.ts`, `tests/domain/taxonomy/validation.test.ts`, `tests/ports/normalized-observation-repo.test.ts`, `tests/ports/feature-repo.test.ts`, `tests/db/schema/derived-features.test.ts`, `tests/db/migrations/derived-feature-tranche.test.ts`, `tests/application/derive-mvp-features.test.ts`, `tests/scripts/derive-mvp-features.test.ts`.
-- Documentation: `README.md`, `docs/architecture.md`, `docs/operator-runbook.md`.
+- Contract assets and validation: `schemas/regime-engine/evidence-bundle.v1/schema.json`, `schemas/regime-engine/evidence-bundle.v1/provenance.json`, the exact pinned files under `schemas/regime-engine/evidence-bundle.v1/fixtures/`, `src/contracts/generated/evidence-bundle-v1.ts`, `src/contracts/evidence-bundle.ts`, `src/contracts/index.ts`, `src/ports/evidence-bundle-contract.ts`, `src/ports/index.ts`, `src/adapters/node/evidence-bundle-v1-contract.ts`, `tests/contracts/evidence-bundle-v1-contract.test.ts`, `tests/fixtures/evidence-bundle.ts`, `package.json`, `pnpm-lock.yaml`.
+- Selection: `src/ports/feature-repo.ts`, `src/adapters/node/drizzle-feature-repo.ts`, `tests/fakes/fake-feature-repo.ts`, `src/domain/evidence-bundle/select.ts`, `src/domain/evidence-bundle/index.ts`, `tests/ports/feature-repo.test.ts`, `tests/domain/evidence-bundle/select.test.ts`.
+- Lineage reads and verification: `src/ports/normalized-observation-repo.ts`, `src/adapters/node/drizzle-normalized-observation-repo.ts`, `tests/fakes/fake-normalized-observation-repo.ts`, `tests/ports/normalized-observation-repo.test.ts`, `src/ports/observation-repo.ts`, `src/adapters/node/drizzle-observation-repo.ts`, `tests/fakes/fake-observation-repo.ts`, `tests/ports/observation-repo.test.ts`, `src/domain/evidence-bundle/lineage.ts`, `tests/domain/evidence-bundle/lineage.test.ts`.
+- Quality and assembly: `src/domain/evidence-bundle/quality.ts`, `src/domain/evidence-bundle/assemble.ts`, `src/domain/evidence-bundle/index.ts`, `tests/domain/evidence-bundle/quality.test.ts`, `tests/domain/evidence-bundle/assemble.test.ts`.
+- Persistence: `src/db/schema/evidence-bundles.ts`, `drizzle/0003_evidence_bundle_v1.sql`, `drizzle/meta/0003_snapshot.json`, `drizzle/meta/_journal.json`, `tests/db/schema/evidence-bundles.test.ts`, `tests/db/migrations/evidence-bundle-v1.test.ts`, `src/ports/bundle-repo.ts`, `src/adapters/node/drizzle-bundle-repo.ts`, `tests/fakes/fake-bundle-repo.ts`, `tests/ports/bundle-repo.test.ts`, `tests/adapters/node/drizzle-bundle-repo.integration.test.ts`.
+- Orchestration and operator surface: `src/application/assemble-evidence-bundle.ts`, `tests/application/assemble-evidence-bundle.test.ts`, `src/adapters/node/composition-root.ts`, `src/jobs/assemble-evidence-bundle-job.ts`, `src/jobs/index.ts`, `scripts/collectors/assemble-evidence-bundle.ts`, `tests/scripts/assemble-evidence-bundle.test.ts`, `package.json`, `README.md`, `docs/architecture.md`, `docs/operator-runbook.md`.
 
 **Global implementation rules**
 
-- Write every named invariant test before its implementation, run it to observe the expected failure, implement only enough behavior to pass, then run the task-scoped validation commands.
-- After each task, the implement loop also runs the automatic workspace gate `pnpm -r typecheck`; do not defer a required interface implementation to a later task.
-- Use semantic timestamps from payloads for selection and `receivedAtUnixMs` only for coarse reads/tie-breaking. Treat `validUntilUnixMs <= evaluationAsOfUnixMs` as expired.
-- Sort/de-duplicate IDs, warning codes, reason codes, and provenance refs before hashing or persistence.
-- Commit each task separately with the commit message given in that task.
+- Write every named invariant test first, run it and observe the expected failure, then add the minimum implementation and rerun the task-scoped checks.
+- After each task, the implementation loop automatically runs `pnpm -r typecheck`; every port/interface task below therefore updates all implementations and fakes in that same task.
+- Use only explicit request times. The use case and domain must not read the clock, environment, or generate a run ID.
+- Sort and de-duplicate every contract-defined set/list before assembly. Do not sort arrays whose order is semantically mandated by the pinned fixtures.
+- Compare expiration dynamically at assembly time using the upstream boundary rule; do not trust persisted `isStale` as the current-time decision.
+- Validate the complete candidate before calling `EvidenceBundleRepo.insertOrClassify`.
+- Commit each numbered task independently using the commit message shown in that task.
 
-## Task 1: Define the seven feature kinds and validated result contract
+## Task 1: Pin the EvidenceBundle v1 contract and implement contract conformance
 
 **Files:**
 
-- Create: `src/contracts/derived-feature.ts`
-- Modify: `src/contracts/taxonomy.ts`
+- Create: `schemas/regime-engine/evidence-bundle.v1/schema.json`
+- Create: `schemas/regime-engine/evidence-bundle.v1/provenance.json`
+- Create: exact upstream assets under `schemas/regime-engine/evidence-bundle.v1/fixtures/`
+- Create: `src/contracts/generated/evidence-bundle-v1.ts`
+- Create: `src/contracts/evidence-bundle.ts`
 - Modify: `src/contracts/index.ts`
-- Modify: `src/domain/taxonomy/registry.ts`
-- Modify: `src/domain/taxonomy/validation.ts`
-- Create: `tests/domain/derived-feature/contract.test.ts`
-- Modify: `tests/domain/taxonomy/registry.test.ts`
-- Modify: `tests/domain/taxonomy/validation.test.ts`
-- Modify: `tests/ports/feature-repo.test.ts`
-- Modify: `tests/db/schema/derived-features.test.ts`
+- Create: `src/ports/evidence-bundle-contract.ts`
+- Modify: `src/ports/index.ts`
+- Create: `src/adapters/node/evidence-bundle-v1-contract.ts`
+- Create: `tests/contracts/evidence-bundle-v1-contract.test.ts`
+- Create: `tests/fixtures/evidence-bundle.ts`
+- Modify: `package.json`
+- Modify: `pnpm-lock.yaml`
 
-**Behavioral invariants (write these tests first):**
+**Behavioral invariants (write these exact tests first):**
 
-- `accepts an AVAILABLE feature only with a finite safe-integer value`: `AVAILABLE` requires a non-null finite safe integer; `UNAVAILABLE` requires `null`; `PARTIAL` requires a non-null finite safe integer.
-- `enforces the canonical unit for every feature kind`: range location and volume/liquidity use `PPM`; the other five kinds use `BPS`.
-- `enforces feature scope identity by kind`: position features require both `poolId` and `positionId`; pool ratio requires `poolId` and no `positionId`; pair features require neither position identity.
-- `rejects unsorted duplicate observation ids and reason codes`: selected/rejected IDs and warning/reason arrays are strictly sorted and unique.
-- `accepts unavailable no-input provenance only with a stable reason`: ref-free provenance is allowed only for `UNAVAILABLE` with at least one reason; available/partial rows must satisfy registry ref minima.
-- `rejects removed placeholder feature kinds`: `fee_apr`, `oracle_divergence`, `volatility_24h`, and `liquidity_depth` no longer parse.
-- `tests/ports/feature-repo.test.ts and tests/db/schema/derived-features.test.ts reference the seven canonical kinds`: both test files must be updated in Task 1 to use `range_location`, `distance_to_lower`, `distance_to_upper`, `oracle_dex_divergence`, `oracle_confidence_width`, `realized_volatility_1h`, and `volume_liquidity_ratio_24h`; they must not reference the removed placeholder kinds or defer type fixes to Tasks 8 or 9.
+- `rejects contract assets whose bytes do not match the provenance manifest`: recompute SHA-256 for the schema and every fixture and fail before compiling the schema if any digest differs.
+- `accepts every pinned canonical valid fixture`: every upstream valid fixture passes the declared JSON Schema draft without local exceptions.
+- `rejects every pinned canonical invalid fixture`: every upstream invalid fixture fails validation for the upstream-defined reason/category.
+- `accepts deterministic-only evidence with empty context and no research brief`: the canonical deterministic-only fixture validates without inventing contextual or LLM evidence.
+- `canonicalizes and hashes byte-for-byte like Regime Engine`: canonical text and SHA-256 exactly match the pinned golden outputs, including nested key order, arrays, Unicode, integers, and any decimal cases present upstream.
+- `derives the canonical idempotency identity exactly like Regime Engine`: fixture identity fields yield the pinned key and excluded payload fields do not alter it.
+- `rejects unsupported schema versions before canonicalization`: any value other than the pinned `evidence-bundle.v1` version returns a typed contract error.
 
-- [ ] **Step 1: Add failing contract and taxonomy tests.** Assert the exact seven-member set, registry families/source allowlists/freshness policies, kind-to-unit/scope rules, status/value rules, timestamps, schema version, version strings, confidence/freshness, sorted identities, metadata, and status-aware provenance. Also update `tests/ports/feature-repo.test.ts` and `tests/db/schema/derived-features.test.ts` to reference only the seven canonical feature kinds; this update must happen in Task 1, not deferred to Tasks 8 or 9, to keep `pnpm -r typecheck` green after each task.
-
-- [ ] **Step 2: Define and export the result contract.** Use a Zod-backed runtime parser with the following public shape; keep warnings/reasons as stable snake-case strings and metadata JSON-compatible.
-
-```ts
-export const MVP_FEATURE_KINDS = [
-  "range_location",
-  "distance_to_lower",
-  "distance_to_upper",
-  "oracle_dex_divergence",
-  "oracle_confidence_width",
-  "realized_volatility_1h",
-  "volume_liquidity_ratio_24h"
-] as const;
-
-export type FeatureStatus = "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
-export type FeatureUnit = "BPS" | "PPM";
-
-export interface DerivedFeatureV1 {
-  readonly schemaVersion: 1;
-  readonly featureKind: FeatureKind;
-  readonly status: FeatureStatus;
-  readonly value: number | null;
-  readonly unit: FeatureUnit;
-  readonly pair: "SOL/USDC";
-  readonly poolId: string | null;
-  readonly positionId: string | null;
-  readonly asOfUnixMs: number;
-  readonly expiresAtUnixMs: number;
-  readonly confidence: Confidence;
-  readonly freshness: Freshness;
-  readonly inputObservationIds: readonly number[];
-  readonly rejectedObservationIds: readonly number[];
-  readonly provenance: Provenance;
-  readonly warnings: readonly string[];
-  readonly reasons: readonly string[];
-  readonly calculatorVersion: string;
-  readonly selectionVersion: string;
-  readonly calculationMetadata: Readonly<Record<string, unknown>>;
-}
-
-export function parseDerivedFeatureV1(value: unknown): DerivedFeatureV1;
-```
-
-- [ ] **Step 3: Replace placeholder taxonomy entries.** Change `FeatureKind` to the seven canonical strings and make `featureKindRegistry` exhaustive. Use `clmm_state` for the three range features, `price_quality` for divergence/confidence/volatility, and `clmm_economics` for the volume ratio; all remain deterministic and active. Allow only clmm-v2, Pyth+Jupiter, Pyth, or Orca sources as required by each formula.
-
-- [ ] **Step 4: Run task-scoped tests and static checks.** Expected: all three test files pass, and lint/format report no issues.
-
-**Validation commands:**
-
-```bash
-pnpm exec vitest run tests/domain/derived-feature/contract.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts tests/ports/feature-repo.test.ts tests/db/schema/derived-features.test.ts
-pnpm exec eslint src/contracts/derived-feature.ts src/contracts/index.ts src/contracts/taxonomy.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/domain/derived-feature/contract.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts tests/ports/feature-repo.test.ts tests/db/schema/derived-features.test.ts --max-warnings 0
-pnpm exec prettier --check src/contracts/derived-feature.ts src/contracts/index.ts src/contracts/taxonomy.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/domain/derived-feature/contract.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts tests/ports/feature-repo.test.ts tests/db/schema/derived-features.test.ts
-```
-
-**Commit:** `feat: define deterministic feature result contract`
-
-## Task 2: Add exact decimal and rational arithmetic
-
-**Files:**
-
-- Create: `src/domain/derived-feature/decimal.ts`
-- Create: `src/domain/derived-feature/index.ts`
-- Create: `tests/domain/derived-feature/decimal.test.ts`
-
-**Behavioral invariants (write these tests first):**
-
-- `parses plain signed decimals without binary floating-point conversion`: accept integer/fractional forms and normalize trailing zeroes using `bigint` coefficient/scale.
-- `rejects empty exponent and non-finite decimal syntax`: reject whitespace-only, exponent notation, `NaN`, and infinities.
-- `rounds rational ties away from zero`: `1/2` becomes `1`, `-1/2` becomes `-1`, and non-ties round to the nearest integer.
-- `rejects zero divisors and unsafe integer outputs`: division by zero and results outside `Number.MIN_SAFE_INTEGER..Number.MAX_SAFE_INTEGER` return typed numeric failure codes.
-- `rounds only after the complete scaled formula`: golden BPS/PPM cases near half-way boundaries match exact rational expectations.
-
-- [ ] **Step 1: Write the failing arithmetic tests**, including positive/negative signs, different scales, tie cases, zero divisor, and safe-integer overflow.
-
-- [ ] **Step 2: Implement a pure rational representation and operations.** Do not reuse `src/domain/price-observation/decimal.ts`, which is a looser normalizer; use exact `bigint` math.
+- [ ] **Step 1: Verify the contract gate.** Read the completed pin block in `issue.md`; verify the merged commit, exact paths, schema version, hashes, fixture coverage, license/repository policy, and deterministic-only semantics. Abort without modifying source files if any item is absent, ambiguous, mutable, or incompatible.
+- [ ] **Step 2: Copy the exact upstream bytes and write provenance.** Preserve fixture bytes verbatim. In `provenance.json`, record `repository`, `commit`, `schemaPath`, `schemaVersion`, `copiedAt`, and an `assets` array of `{ sourcePath, localPath, sha256 }`. Do not normalize copied JSON before hashing.
+- [ ] **Step 3: Generate the checked-in TypeScript type.** Generate `EvidenceBundleV1` from the pinned schema using a deterministic package script; the generated file must include its schema hash in a header and must not contain hand-edited fields. Add a drift check that regenerates to a temporary path and compares the result.
+- [ ] **Step 4: Define the narrow contract port and typed errors.** Export `EvidenceBundleContract`, `CanonicalEvidenceBundle`, and `EvidenceBundleContractError`. The operation accepts `unknown`, validates it, returns the schema-typed payload plus exact canonical text/hash/idempotency key, and never selects evidence or calculates quality.
 
 ```ts
-export interface Rational {
-  readonly numerator: bigint;
-  readonly denominator: bigint;
-}
-
-export type NumericFailure = "invalid_decimal" | "division_by_zero" | "numeric_overflow";
-
-export function parseDecimal(value: string): Rational;
-export function subtract(left: Rational, right: Rational): Rational;
-export function multiply(left: Rational, right: Rational): Rational;
-export function divide(left: Rational, right: Rational): Rational;
-export function compare(left: Rational, right: Rational): -1 | 0 | 1;
-export function roundToSafeInteger(value: Rational): number;
-```
-
-- [ ] **Step 3: Export the helpers from the feature-domain barrel** and run the focused checks.
-
-**Validation commands:**
-
-```bash
-pnpm exec vitest run tests/domain/derived-feature/decimal.test.ts
-pnpm exec eslint src/domain/derived-feature/decimal.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/decimal.test.ts --max-warnings 0
-pnpm exec prettier --check src/domain/derived-feature/decimal.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/decimal.test.ts
-```
-
-**Commit:** `feat: add exact feature arithmetic`
-
-## Task 3: Add bounded candidate reads and pure deterministic selectors
-
-**Files:**
-
-- Modify: `src/ports/normalized-observation-repo.ts`
-- Modify: `src/adapters/node/drizzle-normalized-observation-repo.ts`
-- Modify: `tests/fakes/fake-normalized-observation-repo.ts`
-- Create: `src/domain/derived-feature/select.ts`
-- Modify: `src/domain/derived-feature/index.ts`
-- Create: `tests/domain/derived-feature/select.test.ts`
-- Modify: `tests/ports/normalized-observation-repo.test.ts`
-
-**Behavioral invariants (write these tests first):**
-
-- `candidate reads filter source kind and inclusive receipt lower bound`: the port performs only coarse indexed filtering and returns `(receivedAtUnixMs, id)` ascending.
-- `selects the latest exact-scope valid row with deterministic tie breaks`: compare semantic time, provider slot when present, receipt time, then normalized ID.
-- `rejects a persisted-fresh row that expired by evaluation time`: `isStale === false` never overrides `validUntilUnixMs <= evaluationAsOfUnixMs`.
-- `records malformed wrong-source and wrong-scope candidates deterministically`: rejected IDs and reasons are stable regardless of database input order.
-- `deduplicates volatility timestamps by slot receipt and id`: select the highest slot, then receipt time, then ID, sort timestamps ascending, and retain discarded IDs.
-- `accepts historical volatility samples while requiring a fresh anchor`: samples inside the one-hour window may be expired at evaluation time; the latest anchor may not be.
-
-- [ ] **Step 1: Add failing port and selector tests.** Cover pair/pool/position matching, source allowlists, malformed payloads, dynamic expiry, semantic tie breaks, out-of-order series, inclusive lookback, and duplicate timestamps.
-
-- [ ] **Step 2: Add one bounded query method and update every implementation in the same step.** This is an exported port change and must remain atomic across the port, Drizzle adapter, and fake.
-
-```ts
-export interface NormalizedObservationCandidateQuery {
-  readonly sourceKinds: readonly {
-    readonly source: Source;
-    readonly observationKind: ObservationKind;
-  }[];
-  readonly receivedAtOrAfterUnixMs: number;
-}
-
-export interface NormalizedObservationRepo {
-  // existing methods remain
-  listCandidates(query: NormalizedObservationCandidateQuery): Promise<NormalizedObservationRow[]>;
-}
-```
-
-The Drizzle implementation must build an `OR` over source/kind pairs plus the receipt lower bound and order by receipt then ID. The fake must mirror those semantics exactly.
-
-- [ ] **Step 3: Implement pure payload narrowing and selectors.** Return selected rows and structured rejected candidates; do not import ports, DB, environment, clock, or adapters.
-
-```ts
-export interface CandidateRejection {
-  readonly observationId: number;
-  readonly reason: string;
-}
-
-export interface Selection<T> {
-  readonly selected: readonly T[];
-  readonly rejected: readonly CandidateRejection[];
-}
-
-export const SELECTION_VERSION = "mvp-feature-selection/v1";
-```
-
-- [ ] **Step 4: Run the selector/port checks.** Expected: stable results for all permutations of the same candidates.
-
-**Validation commands:**
-
-```bash
-pnpm exec vitest run tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts
-pnpm exec eslint src/ports/normalized-observation-repo.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts src/domain/derived-feature/select.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts --max-warnings 0
-pnpm exec prettier --check src/ports/normalized-observation-repo.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts src/domain/derived-feature/select.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts
-```
-
-**Commit:** `feat: select bounded feature inputs deterministically`
-
-## Task 4: Assemble confidence freshness lineage and derivation identity
-
-**Files:**
-
-- Create: `src/domain/derived-feature/assemble.ts`
-- Modify: `src/domain/derived-feature/index.ts`
-- Create: `tests/helpers/derived-feature-fixtures.ts`
-- Create: `tests/domain/derived-feature/assemble.test.ts`
-
-**Behavioral invariants (write these tests first):**
-
-- `derived confidence never exceeds the weakest selected input`: use component-wise minima, apply registry weights and partial factor, then cap the composite at the lowest input composite.
-- `unavailable confidence has zero derivation confidence`: missing input produces low confidence with `required_component_missing` and never fabricates high confidence.
-- `feature expiry is the minimum selected input expiry`: available/partial freshness uses the earliest input validity; unavailable expires at evaluation time.
-- `lineage contains every outcome-determining selected or rejected row`: normalized refs are ID-sorted and raw/source refs are flattened, de-duplicated, and sorted.
-- `derivation identity changes only when its canonical identity fields change`: schema/kind/scope/versions/selected IDs/outcome-determining rejected IDs/reasons determine `derivationKey`; complete result content separately determines `payloadHash`.
-
-- [ ] **Step 1: Add failing fixture-driven tests** for confidence caps, partial degradation, missing-input confidence, expiry, empty/no-input provenance, rejected-row lineage, canonical sorting, and hash stability.
-
-- [ ] **Step 2: Implement assembly helpers** that accept explicit `evaluationAsOfUnixMs`, `runId`, and `codeVersion`; never read a clock or environment directly.
-
-```ts
-export interface FeatureCalculation {
-  readonly status: FeatureStatus;
-  readonly value: number | null;
-  readonly warnings: readonly string[];
-  readonly reasons: readonly string[];
-  readonly metadata: Readonly<Record<string, unknown>>;
-}
-
-export interface AssembledFeature {
-  readonly result: DerivedFeatureV1;
-  readonly derivationKey: string;
+export interface CanonicalEvidenceBundle {
+  readonly payload: EvidenceBundleV1;
+  readonly payloadCanonical: string;
   readonly payloadHash: string;
+  readonly idempotencyKey: string;
+  readonly schemaVersion: "evidence-bundle.v1";
 }
 
-export function assembleDerivedFeature(input: AssembleFeatureInput): AssembledFeature;
+export interface EvidenceBundleContract {
+  validateCanonicalizeAndHash(candidate: unknown): Promise<CanonicalEvidenceBundle>;
+}
 ```
 
-Use the existing canonical content hashing utility, explicit process ref `{ collector: "deterministic-feature-derivation", jobName: "derive-mvp-features", pipelineRunId, codeVersion, modelVersion: null }`, and status-aware provenance checks before returning.
-
-- [ ] **Step 3: Export assembly types/functions and run focused checks.**
+- [ ] **Step 5: Implement the Node contract adapter.** Compile the exact declared JSON Schema draft, reject unsupported formats/keywords rather than silently ignoring them, use the upstream-mandated canonicalization and identity algorithm, and hash the UTF-8 bytes of the returned canonical string. Reuse `src/domain/content-hash.ts` only if the golden fixtures prove exact equivalence; otherwise leave that existing helper unchanged and use the mandated algorithm solely in this adapter.
+- [ ] **Step 6: Run focused conformance checks.** Expected: asset hashes, valid/invalid fixtures, deterministic-only fixture, canonical bytes, payload hashes, identity keys, generated-type drift, lint, and formatting all pass.
 
 **Validation commands:**
 
 ```bash
-pnpm exec vitest run tests/domain/derived-feature/assemble.test.ts
-pnpm exec eslint src/domain/derived-feature/assemble.ts src/domain/derived-feature/index.ts tests/helpers/derived-feature-fixtures.ts tests/domain/derived-feature/assemble.test.ts --max-warnings 0
-pnpm exec prettier --check src/domain/derived-feature/assemble.ts src/domain/derived-feature/index.ts tests/helpers/derived-feature-fixtures.ts tests/domain/derived-feature/assemble.test.ts
+pnpm exec vitest run tests/contracts/evidence-bundle-v1-contract.test.ts
+pnpm exec eslint src/contracts/generated/evidence-bundle-v1.ts src/contracts/evidence-bundle.ts src/contracts/index.ts src/ports/evidence-bundle-contract.ts src/ports/index.ts src/adapters/node/evidence-bundle-v1-contract.ts tests/contracts/evidence-bundle-v1-contract.test.ts tests/fixtures/evidence-bundle.ts --max-warnings 0
+pnpm exec prettier --check schemas/regime-engine/evidence-bundle.v1 src/contracts/generated/evidence-bundle-v1.ts src/contracts/evidence-bundle.ts src/contracts/index.ts src/ports/evidence-bundle-contract.ts src/ports/index.ts src/adapters/node/evidence-bundle-v1-contract.ts tests/contracts/evidence-bundle-v1-contract.test.ts tests/fixtures/evidence-bundle.ts package.json pnpm-lock.yaml
+pnpm run contract:evidence-bundle:check
 ```
 
-**Commit:** `feat: assemble auditable feature envelopes`
+**Commit:** `feat: pin evidence bundle v1 contract`
 
-## Task 5: Implement the three position-range calculators
-
-**Files:**
-
-- Create: `src/domain/derived-feature/range.ts`
-- Modify: `src/domain/derived-feature/index.ts`
-- Create: `tests/domain/derived-feature/range.test.ts`
-
-**Behavioral invariants (write these tests first):**
-
-- `classifies and clamps range location without hiding market state`: below is `0 PPM`, in-range is exact, above is `1_000_000 PPM`, with boundary/classification metadata.
-- `preserves signed distance outside the position range`: distance-to-lower is negative below lower; distance-to-upper is negative above upper.
-- `rejects invalid prices ranges and contradictory range state`: nonpositive prices, `upper <= lower`, malformed labels, or source `rangeState` disagreement produce `UNAVAILABLE` and `null`.
-- `applies nearest integer ties away from zero after the full formula`: all three golden fixtures have exact integer BPS/PPM values.
-
-- [ ] **Step 1: Add failing golden tests** for below/in/above, exact boundaries, signed distances, decimal rounding ties, zero-width range, malformed/nonpositive prices, and contradictory source classification.
-
-- [ ] **Step 2: Implement the pure calculators** against `PositionStatePayloadV1`, returning `FeatureCalculation` and the fixed versions below.
-
-```ts
-export const RANGE_CALCULATOR_VERSIONS = {
-  range_location: "range-location/v1",
-  distance_to_lower: "distance-to-lower/v1",
-  distance_to_upper: "distance-to-upper/v1"
-} as const;
-
-// location = clamp((current - lower) / (upper - lower), 0, 1) * 1_000_000
-// lower distance = ((current - lower) / current) * 10_000
-// upper distance = ((upper - current) / current) * 10_000
-```
-
-Emit exactly one classification value among `below_range_clamped`, `in_range`, `above_range_clamped`, `at_lower_boundary`, and `at_upper_boundary`; boundary clamping remains `AVAILABLE` when all inputs are sound.
-
-- [ ] **Step 3: Run task-scoped checks.**
-
-**Validation commands:**
-
-```bash
-pnpm exec vitest run tests/domain/derived-feature/range.test.ts
-pnpm exec eslint src/domain/derived-feature/range.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/range.test.ts --max-warnings 0
-pnpm exec prettier --check src/domain/derived-feature/range.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/range.test.ts
-```
-
-**Commit:** `feat: calculate position range features`
-
-## Task 6: Implement oracle and pool market calculators
-
-**Files:**
-
-- Create: `src/domain/derived-feature/market.ts`
-- Modify: `src/domain/derived-feature/index.ts`
-- Create: `tests/domain/derived-feature/market.test.ts`
-
-**Behavioral invariants (write these tests first):**
-
-- `calculates absolute oracle DEX divergence only from Pyth and executable Jupiter quote`: valid inputs at no more than 30 seconds skew return BPS; pool price is never a substitute.
-- `makes divergence unavailable for missing route stale input or excessive skew`: each defect returns `UNAVAILABLE`, `null`, and a stable reason.
-- `retains a partial divergence value for nonfatal input quality`: wide Pyth confidence or a nonfatal Jupiter quality warning yields `PARTIAL` with the numeric value.
-- `measures wide oracle confidence as partial rather than missing`: width is `confidence / price * 10_000`; halted/auction, negative confidence, or nonpositive price is unavailable.
-- `accepts zero volume only with positive TVL`: zero volume yields available zero; missing volume/TVL or nonpositive TVL yields unavailable null; provider warning with both operands yields partial.
-
-- [ ] **Step 1: Add failing golden tests** for exact divergence, exact confidence width, exact volume ratio, rounding ties, stale oracle, unavailable route, wide confidence, skew, legitimate zero volume, missing liquidity, and zero/negative liquidity.
-
-- [ ] **Step 2: Implement the three pure calculators** with no source fallback and fixed versions.
-
-```ts
-export const MARKET_CALCULATOR_VERSIONS = {
-  oracle_dex_divergence: "oracle-dex-divergence/v1",
-  oracle_confidence_width: "oracle-confidence-width/v1",
-  volume_liquidity_ratio_24h: "volume-liquidity-ratio-24h/v1"
-} as const;
-
-// divergence = abs(dex - oracle) / oracle * 10_000 BPS
-// confidence width = confidence / oracle * 10_000 BPS
-// volume/liquidity = volume24hUsdc / tvlUsdc * 1_000_000 PPM
-```
-
-- [ ] **Step 3: Run task-scoped checks.**
-
-**Validation commands:**
-
-```bash
-pnpm exec vitest run tests/domain/derived-feature/market.test.ts
-pnpm exec eslint src/domain/derived-feature/market.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/market.test.ts --max-warnings 0
-pnpm exec prettier --check src/domain/derived-feature/market.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/market.test.ts
-```
-
-**Commit:** `feat: calculate oracle and pool market features`
-
-## Task 7: Implement one-hour realized volatility
-
-**Files:**
-
-- Create: `src/domain/derived-feature/volatility.ts`
-- Modify: `src/domain/derived-feature/index.ts`
-- Create: `tests/domain/derived-feature/volatility.test.ts`
-
-**Behavioral invariants (write these tests first):**
-
-- `computes nonannualized one hour realized volatility from ordered log returns`: use `sqrt(sum(log(p[i]/p[i-1])^2)) * 10_000`, no mean subtraction or time scaling.
-- `uses the inclusive one-hour window and deterministic duplicate winner`: `[anchor - 3_600_000, anchor]`, minimum 10 distinct samples, highest slot/receipt/ID per duplicate timestamp.
-- `is unavailable below minimum coverage`: fewer than 10 samples or less than 45 minutes first-to-last returns exact coverage reason and null.
-- `is unavailable when any adjacent gap exceeds ten minutes`: exactly 10 minutes passes; greater than 10 minutes fails.
-- `is unavailable for nonpositive or nonfinite price math`: conversion/log failures never persist `NaN` or infinity.
-
-- [ ] **Step 1: Add failing tests** using a hand-computed golden series plus inclusive boundary, insufficient count, insufficient span, exact/over maximum gap, duplicates, out-of-order input, and invalid prices.
-
-- [ ] **Step 2: Implement the pure calculator.** Validate exact decimal strings as positive before converting to finite numbers for `Math.log`; round only the final nonnegative BPS result and record sample count, first/last timestamp, max gap, and discarded duplicate IDs.
-
-```ts
-export const REALIZED_VOLATILITY_1H_VERSION = "realized-volatility-1h/v1";
-export const VOLATILITY_WINDOW_MS = 3_600_000;
-export const VOLATILITY_MIN_SAMPLES = 10;
-export const VOLATILITY_MIN_SPAN_MS = 2_700_000;
-export const VOLATILITY_MAX_GAP_MS = 600_000;
-```
-
-- [ ] **Step 3: Run task-scoped checks.**
-
-**Validation commands:**
-
-```bash
-pnpm exec vitest run tests/domain/derived-feature/volatility.test.ts
-pnpm exec eslint src/domain/derived-feature/volatility.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/volatility.test.ts --max-warnings 0
-pnpm exec prettier --check src/domain/derived-feature/volatility.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/volatility.test.ts
-```
-
-**Commit:** `feat: calculate one hour realized volatility`
-
-## Task 8: Migrate and constrain derived-feature storage
-
-**Files:**
-
-- Modify: `src/db/schema/derived-features.ts`
-- Create: `drizzle/0002_derived_feature_tranche.sql`
-- Modify: `drizzle/meta/_journal.json`
-- Create: `drizzle/meta/0002_snapshot.json`
-- Modify: `tests/db/schema/derived-features.test.ts`
-- Create: `tests/db/migrations/derived-feature-tranche.test.ts`
-
-**Behavioral invariants (write these tests first):**
-
-- `migration aborts when historical derived feature rows exist`: precondition failure is explicit; the migration never guesses statuses or deletes/relabels rows.
-- `database status and value constraints exclude fake availability`: unavailable requires null; available/partial require non-null.
-- `database unit kind and scope checks mirror the contract`: exact seven-kind allowlist, canonical units, and required position/pool identities are enforced.
-- `database replay identity is feature kind plus derivation key`: replace the old kind/payload unique index without losing the separate payload hash.
-
-- [ ] **Step 1: Add failing schema/migration tests** for every new column/check/index and statement ordering (precondition before alterations; old unique index dropped before replacement).
-
-- [ ] **Step 2: Update the Drizzle schema** with non-null `status`, `unit`, `pair`, calculator/selection versions, integer arrays for selected/rejected IDs, `derivationKey`, non-null structured payload, optional pool/position IDs, and all contract-mirroring checks.
-
-- [ ] **Step 3: Generate and then edit migration artifacts.** Start from `pnpm db:generate`, retain generated snapshot/journal consistency, and make SQL fail safely if `derived_features` contains rows before adding non-null columns. The target identity is:
-
-```sql
-CREATE UNIQUE INDEX "uniq_features_kind_derivation_key"
-ON "intelligence"."derived_features" ("feature_kind", "derivation_key");
-```
-
-Do not backfill invented values, truncate, or delete historical rows.
-
-- [ ] **Step 4: Run the two focused persistence-definition tests and format checks.**
-
-**Validation commands:**
-
-```bash
-pnpm exec vitest run tests/db/schema/derived-features.test.ts tests/db/migrations/derived-feature-tranche.test.ts
-pnpm exec eslint src/db/schema/derived-features.ts tests/db/schema/derived-features.test.ts tests/db/migrations/derived-feature-tranche.test.ts --max-warnings 0
-pnpm exec prettier --check src/db/schema/derived-features.ts drizzle/meta/_journal.json drizzle/meta/0002_snapshot.json tests/db/schema/derived-features.test.ts tests/db/migrations/derived-feature-tranche.test.ts
-```
-
-**Commit:** `feat: constrain derived feature persistence`
-
-## Task 9: Make derived-feature batch persistence transactional and idempotent
+## Task 2: Add bounded feature candidate reads and deterministic seven-slot selection
 
 **Files:**
 
 - Modify: `src/ports/feature-repo.ts`
 - Modify: `src/adapters/node/drizzle-feature-repo.ts`
 - Modify: `tests/fakes/fake-feature-repo.ts`
+- Create: `src/domain/evidence-bundle/select.ts`
+- Create: `src/domain/evidence-bundle/index.ts`
 - Modify: `tests/ports/feature-repo.test.ts`
+- Create: `tests/domain/evidence-bundle/select.test.ts`
 
-**Behavioral invariants (write these tests first):**
+**Behavioral invariants (write these exact tests first):**
 
-- `insertMany persists all rows or exposes none`: any batch failure rolls back the entire batch.
-- `insertMany replay returns existing rows in caller order`: conflict recovery works for all-conflict and mixed insert/conflict batches.
-- `same derivation identity deduplicates sequential and concurrent replay`: feature kind plus derivation key is the sole replay identity.
-- `changed scope inputs versions or reasons produce distinct rows`: distinct derivation keys preserve history even when payload values match.
+- `returns only bounded SOL/USDC candidates for the seven requested kinds`: the adapter/fake coarse-filter by kinds, pair, inclusive minimum/maximum `asOfUnixMs`, and maximum `receivedAtUnixMs`, then return `(asOfUnixMs, receivedAtUnixMs, id)` ascending.
+- `selects independently into exactly seven canonical slots`: output contains every `MVP_FEATURE_KINDS` member once in canonical order, even when no candidate exists.
+- `selects the latest eligible row with a total tie break`: greatest `asOfUnixMs`, then greatest `receivedAtUnixMs`, then greatest database `id` wins regardless of repository return order.
+- `rejects future and boundary-expired rows`: `asOfUnixMs > evaluationTimeUnixMs` is future, and the exact upstream expiry boundary from Task 1 determines expiration.
+- `enforces pair pool and position scope by kind`: position features match pair+pool+position, volume/liquidity matches pair+pool with no position, and pair features match pair with neither pool nor position.
+- `rejects unsupported calculator versions per feature kind`: only the request's exact version for that slot is eligible and unsupported-only is distinguishable from missing.
+- `preserves partial and unavailable states without fabricating values`: `PARTIAL` keeps its legitimate numeric value; `UNAVAILABLE`, missing, expired-only, and unsupported-version-only have no numeric value.
+- `preserves a legitimate numeric zero`: a selected `AVAILABLE` or `PARTIAL` value of `0` remains `0` and is not classified as missing.
+- `produces stable rejection ids warnings and reasons`: candidate input permutations yield identical selected IDs and sorted/de-duplicated diagnostics.
 
-- [ ] **Step 1: Rewrite the small port contract test with the new required row shape**, then add batch atomicity, input-order, replay, and identity-change cases.
-
-- [ ] **Step 2: Change the port and every implementation together.** Add `insertMany` and derivation-key lookup in the same task as Drizzle and fake changes; retain `insert` as a one-row wrapper if useful.
+- [ ] **Step 1: Add failing port and pure-selector tests.** Keep new selector cases in the new test file. In the existing 323-line port test, add only the bounded-query contract cases; this task is primarily a port/domain implementation task, not a broad rewrite of the existing test file.
+- [ ] **Step 2: Add one query method and update all implementations atomically.** Add `listBundleCandidates(query)` to `DerivedFeatureRepo`, `DrizzleFeatureRepo`, and `FakeFeatureRepo` in this task. SQL remains a coarse bound only; do not encode semantic “winner” selection in the adapter.
 
 ```ts
+export interface BundleFeatureCandidateQuery {
+  readonly featureKinds: readonly FeatureKind[];
+  readonly pair: "SOL/USDC";
+  readonly asOfAtOrAfterUnixMs: number;
+  readonly asOfAtOrBeforeUnixMs: number;
+  readonly receivedAtOrBeforeUnixMs: number;
+}
+
 export interface DerivedFeatureRepo {
-  insert(row: DerivedFeatureInsert): Promise<DerivedFeatureRow>;
-  insertMany(rows: readonly DerivedFeatureInsert[]): Promise<DerivedFeatureRow[]>;
-  findByDerivationKey(
-    featureKind: FeatureKind,
-    derivationKey: string
-  ): Promise<DerivedFeatureRow | undefined>;
-  findByKind(featureKind: FeatureKind, sinceUnixMs: number): Promise<DerivedFeatureRow[]>;
+  // existing members remain
+  listBundleCandidates(query: BundleFeatureCandidateQuery): Promise<DerivedFeatureRow[]>;
 }
 ```
 
-Map all new persisted fields explicitly. Follow the normalized-observation adapter's transaction/conflict-recovery pattern, but key maps by `featureKind:derivationKey` and preserve caller order.
-
-- [ ] **Step 3: Run focused port checks and static checks.**
+- [ ] **Step 3: Implement the pure selector.** Define `BundleSelectionRequest`, the six explicit slot outcomes (`selected_available`, `selected_partial`, `selected_unavailable`, `missing`, `expired_only`, `unsupported_version_only`), `SelectedFeatureSlot`, and `selectEvidenceFeatureSlots`. Validate non-empty identities, exact pair, exactly one accepted calculator version per required kind, supported assembly selection version, and coherent evaluation/creation times before selection.
+- [ ] **Step 4: Run focused checks.** Expected: stable selection under candidate permutations and matching fake/Drizzle query semantics.
 
 **Validation commands:**
 
 ```bash
-pnpm exec vitest run tests/ports/feature-repo.test.ts
-pnpm exec eslint src/ports/feature-repo.ts src/adapters/node/drizzle-feature-repo.ts tests/fakes/fake-feature-repo.ts tests/ports/feature-repo.test.ts --max-warnings 0
-pnpm exec prettier --check src/ports/feature-repo.ts src/adapters/node/drizzle-feature-repo.ts tests/fakes/fake-feature-repo.ts tests/ports/feature-repo.test.ts
+pnpm exec vitest run tests/ports/feature-repo.test.ts tests/domain/evidence-bundle/select.test.ts
+pnpm exec eslint src/ports/feature-repo.ts src/adapters/node/drizzle-feature-repo.ts tests/fakes/fake-feature-repo.ts src/domain/evidence-bundle/select.ts src/domain/evidence-bundle/index.ts tests/ports/feature-repo.test.ts tests/domain/evidence-bundle/select.test.ts --max-warnings 0
+pnpm exec prettier --check src/ports/feature-repo.ts src/adapters/node/drizzle-feature-repo.ts tests/fakes/fake-feature-repo.ts src/domain/evidence-bundle/select.ts src/domain/evidence-bundle/index.ts tests/ports/feature-repo.test.ts tests/domain/evidence-bundle/select.test.ts
 ```
 
-**Commit:** `feat: persist feature batches idempotently`
+**Commit:** `feat: select evidence bundle feature slots`
 
-## Task 10: Orchestrate the complete derivation use case
+## Task 3: Add bulk normalized-observation lineage reads
 
 **Files:**
 
-- Create: `src/application/derive-mvp-features.ts`
-- Create: `tests/application/derive-mvp-features.test.ts`
+- Modify: `src/ports/normalized-observation-repo.ts`
+- Modify: `src/adapters/node/drizzle-normalized-observation-repo.ts`
+- Modify: `tests/fakes/fake-normalized-observation-repo.ts`
+- Modify: `tests/ports/normalized-observation-repo.test.ts`
 
-**Behavioral invariants (write these tests first):**
+**Behavioral invariants (write these exact tests first):**
 
-- `derives three features per requested position and four shared features once`: output order is caller position order with range kind order, then divergence, confidence width, volatility, and volume ratio.
-- `validates the complete tranche before the first insert`: a programmer-invalid result throws and writes zero rows; expected unavailable outcomes are valid rows and do persist.
-- `uses one explicit evaluation time for all selection and expiry decisions`: clock is read once and no calculator reads it independently.
-- `loads bounded candidates without source calls`: use only `NormalizedObservationRepo.listCandidates` for clmm-v2 position, Pyth oracle series, Jupiter executable quote, and Orca 24h pool statistics.
-- `replay returns persisted identities without duplicates`: identical scope, inputs, versions, rejected outcome rows, and reasons return existing IDs.
+- `findByIds returns each requested normalized row once in id order`: duplicate and unordered IDs return unique existing rows sorted ascending by ID.
+- `findByIds returns an empty list for an empty request`: the adapter performs no invalid `IN ()` query and the fake matches it.
+- `findByIds omits unknown ids without substituting another row`: missing IDs remain detectable by the lineage verifier.
 
-- [ ] **Step 1: Add failing application tests** for output count/order, available/partial/unavailable mixtures, candidate window requests, lineage, confidence/expiry propagation, all-before-insert validation, replay, and changed-input/version identity.
-
-- [ ] **Step 2: Implement the use case with explicit request/dependency contracts.** Parse the injected ISO clock once, require a non-empty de-duplicated position list and non-empty pool ID, read enough receipt history for the one-hour window plus a documented safety margin, then select/calculate/assemble/parse every result before one `insertMany` call.
-
-```ts
-export interface DeriveMvpFeaturesRequest {
-  readonly pair: "SOL/USDC";
-  readonly poolId: string;
-  readonly positionIds: readonly string[];
-  readonly pipelineRunId: string;
-  readonly codeVersion: string;
-}
-
-export interface DeriveMvpFeaturesDeps {
-  readonly clock: Clock;
-  readonly normalizedObservationRepo: NormalizedObservationRepo;
-  readonly featureRepo: DerivedFeatureRepo;
-}
-
-export interface DeriveMvpFeaturesResult {
-  readonly rows: readonly DerivedFeatureRow[];
-  readonly counts: Readonly<Record<FeatureStatus, number>>;
-  readonly warnings: readonly string[];
-}
-
-export async function deriveMvpFeatures(
-  deps: DeriveMvpFeaturesDeps,
-  request: DeriveMvpFeaturesRequest
-): Promise<DeriveMvpFeaturesResult>;
-```
-
-- [ ] **Step 3: Run the focused application checks.** Expected failures from data quality are persisted unavailable results; repository/contract failures reject without partial persistence.
+- [ ] **Step 1: Add the three failing contract cases** in a dedicated `findByIds` describe block in `tests/ports/normalized-observation-repo.test.ts`; do not restructure unrelated cases in this 605-line file.
+- [ ] **Step 2: Add `findByIds(ids)` to the port, Drizzle adapter, and fake together.** Normalize IDs with ascending unique order before querying, use one bounded `inArray` query, and sort the returned rows by ID in both implementations.
+- [ ] **Step 3: Run focused port checks.** Expected: the existing repository contract plus the new bulk-read block passes.
 
 **Validation commands:**
 
 ```bash
-pnpm exec vitest run tests/application/derive-mvp-features.test.ts
-pnpm exec eslint src/application/derive-mvp-features.ts tests/application/derive-mvp-features.test.ts --max-warnings 0
-pnpm exec prettier --check src/application/derive-mvp-features.ts tests/application/derive-mvp-features.test.ts
+pnpm exec vitest run tests/ports/normalized-observation-repo.test.ts -t "findByIds"
+pnpm exec eslint src/ports/normalized-observation-repo.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts tests/ports/normalized-observation-repo.test.ts --max-warnings 0
+pnpm exec prettier --check src/ports/normalized-observation-repo.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts tests/ports/normalized-observation-repo.test.ts
 ```
 
-**Commit:** `feat: orchestrate deterministic feature derivation`
+**Commit:** `feat: bulk load normalized lineage`
 
-## Task 11: Expose derivation through the Node runtime job and script
+## Task 4: Add bulk raw-observation lineage reads
+
+**Files:**
+
+- Modify: `src/ports/observation-repo.ts`
+- Modify: `src/adapters/node/drizzle-observation-repo.ts`
+- Modify: `tests/fakes/fake-observation-repo.ts`
+- Modify: `tests/ports/observation-repo.test.ts`
+
+**Behavioral invariants (write these exact tests first):**
+
+- `findByIds returns each requested raw row once in id order`: duplicate and unordered IDs return unique existing rows sorted ascending by ID.
+- `findByIds returns an empty list for an empty request`: no invalid SQL is produced and the fake matches the adapter contract.
+- `findByIds omits unknown ids without substituting another source identity`: unresolved raw parents remain visible to lineage verification.
+
+- [ ] **Step 1: Add the failing contract cases** to `tests/ports/observation-repo.test.ts`.
+- [ ] **Step 2: Add `findByIds(ids)` to `RawObservationRepo`, `DrizzleObservationRepo`, and `FakeObservationRepo` together.** Use the same sorted-unique input/output behavior as Task 3.
+- [ ] **Step 3: Run focused checks.** Expected: all bulk raw-read cases pass with matching implementations.
+
+**Validation commands:**
+
+```bash
+pnpm exec vitest run tests/ports/observation-repo.test.ts -t "findByIds"
+pnpm exec eslint src/ports/observation-repo.ts src/adapters/node/drizzle-observation-repo.ts tests/fakes/fake-observation-repo.ts tests/ports/observation-repo.test.ts --max-warnings 0
+pnpm exec prettier --check src/ports/observation-repo.ts src/adapters/node/drizzle-observation-repo.ts tests/fakes/fake-observation-repo.ts tests/ports/observation-repo.test.ts
+```
+
+**Commit:** `feat: bulk load raw lineage`
+
+## Task 5: Verify feature lineage and requested wallet scope
+
+**Files:**
+
+- Create: `src/domain/evidence-bundle/lineage.ts`
+- Modify: `src/domain/evidence-bundle/index.ts`
+- Create: `tests/domain/evidence-bundle/lineage.test.ts`
+
+**Behavioral invariants (write these exact tests first):**
+
+- `accepts complete raw normalized and derived lineage for the requested context`: every selected feature reference resolves and the clmm-v2 raw bundle proves the requested pair, wallet, position, and pool relationship.
+- `rejects a missing normalized reference`: a referenced normalized ID absent from the bulk result is a hard typed failure, not degraded coverage.
+- `rejects a missing raw parent`: every resolved normalized row must have its exact raw parent.
+- `rejects provenance id source or payload hash mismatches`: persisted row fields must match the corresponding feature provenance reference exactly.
+- `rejects wallet position pool or pair contradictions`: a lineage-linked clmm-v2 payload that does not contain the requested relationship fails before assembly.
+- `rejects invalid clmm-v2 canonical payload`: raw canonical text must parse as JSON and pass the existing `validateClmmBundle` contract before identity checks.
+- `combines pair pool and position lineage in stable order`: duplicate raw, normalized, derived, and source refs collapse by canonical identity and sort according to the pinned bundle contract.
+- `does not require numeric lineage for an explicit no-input unavailable slot`: a selected unavailable feature with contract-valid no-input provenance remains auditable through its reason codes.
+
+- [ ] **Step 1: Create fixture-driven failing tests** using real `DerivedFeatureRow`, `NormalizedObservationRow`, and `RawObservationRow` shapes. Assert typed failure codes rather than incidental error prose.
+- [ ] **Step 2: Implement `verifyEvidenceLineage`.** Accept the request, seven slots, and already-loaded rows; perform no I/O. Reuse the existing clmm-v2 validator, compare every provenance reference, and return the exact stable lineage/source-ref input required by the pinned contract.
+
+```ts
+export function verifyEvidenceLineage(input: VerifyEvidenceLineageInput): VerifiedEvidenceLineage;
+```
+
+- [ ] **Step 3: Run focused checks.** Expected: contradictory or incomplete lineage never produces a verified result.
+
+**Validation commands:**
+
+```bash
+pnpm exec vitest run tests/domain/evidence-bundle/lineage.test.ts
+pnpm exec eslint src/domain/evidence-bundle/lineage.ts src/domain/evidence-bundle/index.ts tests/domain/evidence-bundle/lineage.test.ts --max-warnings 0
+pnpm exec prettier --check src/domain/evidence-bundle/lineage.ts src/domain/evidence-bundle/index.ts tests/domain/evidence-bundle/lineage.test.ts
+```
+
+**Commit:** `feat: verify evidence bundle lineage`
+
+## Task 6: Compute quality and assemble the canonical contract candidate
+
+**Files:**
+
+- Create: `src/domain/evidence-bundle/quality.ts`
+- Create: `src/domain/evidence-bundle/assemble.ts`
+- Modify: `src/domain/evidence-bundle/index.ts`
+- Create: `tests/domain/evidence-bundle/quality.test.ts`
+- Create: `tests/domain/evidence-bundle/assemble.test.ts`
+
+**Behavioral invariants (write these exact tests first):**
+
+- `classifies all seven fresh available slots as complete deterministic coverage`: deterministic coverage is complete, while overall coverage still records absent context and absent research brief exactly as the schema requires.
+- `classifies one or multiple missing slots as partial without zero values`: missing slots carry canonical absence plus stable warnings.
+- `classifies partial unavailable expired and unsupported slots distinctly`: each state contributes the upstream-mandated quality facts and warning codes.
+- `refuses a zero-usable-feature bundle unless the pinned contract explicitly requires it`: the fail-closed result contains no candidate for persistence.
+- `keeps bundle confidence monotonic with its usable evidence`: any aggregate required by the contract is reproducible and never exceeds the weakest summarized evidence under the pinned formula.
+- `derives timestamps deterministically`: `asOf`, creation, and expiry follow the exact pinned rules, with creation supplied by immutable run context rather than an ambient clock.
+- `normalizes warnings and references before mapping`: input permutations produce structurally identical candidates.
+- `maps deterministic-only context and brief absence exactly`: contextual collections/sections and `researchBrief` use only the schema-authorized empty/unavailable/null representation.
+- `maps exactly seven feature summaries in canonical order`: selected values, units, status, freshness, confidence, feature IDs, versions, and reasons use upstream field names without extra local fields.
+- `does not include payload hash recursively unless the contract requires an envelope`: the candidate matches pinned valid fixtures before hashing.
+
+- [ ] **Step 1: Add failing quality tests.** Encode the exact quality/coverage formula, warning vocabulary, timestamp boundary, confidence rounding, and zero-usable posture obtained from the pinned contract; do not create an intelligence-local score.
+- [ ] **Step 2: Implement `classifyEvidenceBundleQuality`.** Make the rule version explicit and return only facts/fields defined by the generated contract.
+- [ ] **Step 3: Add failing assembler tests.** Compare complete, missing, partial, unavailable, expired, empty-context, absent-brief, reordered-input, and zero-value cases to pinned or locally composed schema-valid fixtures.
+- [ ] **Step 4: Implement `assembleEvidenceBundleCandidate`.** Accept only the validated request, seven selected slots, quality result, and verified lineage. Return `EvidenceBundleV1`-compatible data, but leave schema validation, canonicalization, hashing, and idempotency derivation to `EvidenceBundleContract`.
+
+```ts
+export function classifyEvidenceBundleQuality(input: EvidenceQualityInput): EvidenceBundleQuality;
+export function assembleEvidenceBundleCandidate(
+  input: AssembleEvidenceBundleInput
+): EvidenceBundleV1;
+```
+
+- [ ] **Step 5: Run focused checks.** Expected: candidate structures validate in Task 1's contract tests and all permutations remain stable.
+
+**Validation commands:**
+
+```bash
+pnpm exec vitest run tests/domain/evidence-bundle/quality.test.ts tests/domain/evidence-bundle/assemble.test.ts
+pnpm exec eslint src/domain/evidence-bundle/quality.ts src/domain/evidence-bundle/assemble.ts src/domain/evidence-bundle/index.ts tests/domain/evidence-bundle/quality.test.ts tests/domain/evidence-bundle/assemble.test.ts --max-warnings 0
+pnpm exec prettier --check src/domain/evidence-bundle/quality.ts src/domain/evidence-bundle/assemble.ts src/domain/evidence-bundle/index.ts tests/domain/evidence-bundle/quality.test.ts tests/domain/evidence-bundle/assemble.test.ts
+```
+
+**Commit:** `feat: assemble deterministic evidence bundle candidate`
+
+## Task 7: Migrate evidence bundle storage for canonical bytes and logical identity
+
+**Files:**
+
+- Modify: `src/db/schema/evidence-bundles.ts`
+- Modify: `src/db/schema/research-briefs.ts`
+- Create: `drizzle/0003_evidence_bundle_v1.sql`
+- Create: `drizzle/meta/0003_snapshot.json`
+- Modify: `drizzle/meta/_journal.json`
+- Modify: `tests/db/schema/evidence-bundles.test.ts`
+- Create: `tests/db/migrations/evidence-bundle-v1.test.ts`
+
+**Behavioral invariants (write these exact tests first):**
+
+- `aborts before schema mutation when historical bundles exist`: migration raises an explicit exception if existing rows cannot be proven canonical; it never fabricates canonical text or identity keys.
+- `never deletes rewrites or truncates historical bundles`: the migration contains no destructive data statement.
+- `stores exact canonical payload text and idempotency identity as required fields`: lengths and nullability follow the pinned contract.
+- `enforces one immutable row per canonical logical identity`: the unique index uses the exact schema/source/idempotency columns mandated upstream, not `(pair, payload_hash)`.
+- `retains payload hash and inspectable jsonb`: `payload_hash` remains SHA-256-sized and `payload` remains non-null JSONB.
+- `applies constraints only after the historical-row precondition`: abort logic precedes all `ALTER TABLE` and index changes.
+
+- [ ] **Step 1: Add failing schema and migration tests.** Assert exact columns, types, index columns/order, check constraints, old-index disposition, precondition ordering, and absence of destructive data rewrites.
+- [ ] **Step 2: Update the Drizzle schema.** Add `payloadCanonical`, `idempotencyKey`, and only the operational identity columns required by the pinned contract; replace `uniq_bundle_pair_hash` with the authoritative logical-identity uniqueness rule.
+- [ ] **Step 3: Verify no FK changes required in `src/db/schema/research-briefs.ts`.** The foreign key at `research-briefs.ts:70` references `evidenceBundles.id` (the primary key), which is unchanged by this task. Confirm the FK constraint remains valid as-is and no modification to `research-briefs.ts` is needed. Add `src/db/schema/research-briefs.ts` to the task's `expected_files` to record this verification boundary.
+- [ ] **Step 4: Generate migration metadata, then hand-author the safe precondition.** Use `pnpm db:generate` for schema metadata, inspect the generated SQL, and prepend an abort block before any mutation. Do not backfill unknown historical rows.
+- [ ] **Step 5: Run focused schema/migration checks.** Expected: the migration proves fail-closed handling and matches Drizzle metadata.
+
+**Validation commands:**
+
+```bash
+pnpm exec vitest run tests/db/schema/evidence-bundles.test.ts tests/db/migrations/evidence-bundle-v1.test.ts
+pnpm exec eslint src/db/schema/evidence-bundles.ts tests/db/schema/evidence-bundles.test.ts tests/db/migrations/evidence-bundle-v1.test.ts --max-warnings 0
+pnpm exec prettier --check src/db/schema/evidence-bundles.ts drizzle/0003_evidence_bundle_v1.sql drizzle/meta/0003_snapshot.json drizzle/meta/_journal.json tests/db/schema/evidence-bundles.test.ts tests/db/migrations/evidence-bundle-v1.test.ts
+```
+
+**Commit:** `feat: persist canonical evidence bundle identity`
+
+## Task 8: Implement idempotent evidence bundle repository outcomes
+
+**Files:**
+
+- Modify: `src/ports/bundle-repo.ts`
+- Modify: `src/adapters/node/drizzle-bundle-repo.ts`
+- Modify: `tests/fakes/fake-bundle-repo.ts`
+- Modify: `tests/ports/bundle-repo.test.ts`
+- Create: `tests/adapters/node/drizzle-bundle-repo.integration.test.ts`
+
+**Behavioral invariants (write these exact tests first):**
+
+- `returns inserted for a new logical identity`: one immutable row is created with the exact canonical payload text and hash.
+- `returns identical_replay for equal identity hash and canonical text`: the original row is returned and no field is updated.
+- `returns conflict for equal identity with different hash`: the stored winner is preserved and both hashes are exposed in the typed outcome.
+- `returns conflict for equal identity and hash with different canonical text`: a collision or inconsistent input cannot be mistaken for replay.
+- `rejects jsonb that is not structurally equal to parsed canonical text`: storage consistency is checked before the insert attempt.
+- `concurrent identical inserts converge on one immutable row`: one call inserts and the other classifies as replay.
+- `concurrent conflicting inserts preserve one winner and report one conflict`: neither call overwrites the winner.
+- `fails explicitly when the conflict winner disappears before reload`: concurrent deletion is an integrity error, not a replay.
+
+- [ ] **Step 1: Replace the simple port tests with outcome tests.** The existing test file is small; cover inserted/replay/conflict and canonical/JSON consistency against the fake contract.
+- [ ] **Step 2: Change the port and both implementations atomically.** Replace `insert` with `insertOrClassify`; add canonical payload and identity fields to row/insert shapes; retain existing read methods.
+
+```ts
+export type EvidenceBundleInsertOutcome =
+  | { readonly outcome: "inserted"; readonly row: EvidenceBundleRow }
+  | { readonly outcome: "identical_replay"; readonly row: EvidenceBundleRow }
+  | {
+      readonly outcome: "conflict";
+      readonly row: EvidenceBundleRow;
+      readonly incomingPayloadHash: string;
+    };
+
+export interface EvidenceBundleRepo {
+  insertOrClassify(row: EvidenceBundleInsert): Promise<EvidenceBundleInsertOutcome>;
+  findByPair(pair: string, sinceUnixMs: number): Promise<EvidenceBundleRow[]>;
+  findLatestByPair(pair: string): Promise<EvidenceBundleRow | undefined>;
+}
+```
+
+- [ ] **Step 3: Implement atomic Drizzle conflict classification.** Insert against the Task 7 logical unique index with `onConflictDoNothing`, reload by the full logical identity, compare schema version, idempotency key, payload hash, and canonical text, and return replay only for exact equality. Parse canonical text and recursively compare it with JSONB before attempting the write.
+- [ ] **Step 4: Add isolated database integration coverage.** Create a dedicated bundle integration file rather than expanding the 364-line observation integration suite. Skip only when `TEST_DATABASE_URL` is absent, and cover sequential and concurrent outcomes.
+- [ ] **Step 5: Run focused checks.** Expected: fake contract and real adapter classify all transitions identically.
+
+**Validation commands:**
+
+```bash
+pnpm exec vitest run tests/ports/bundle-repo.test.ts tests/adapters/node/drizzle-bundle-repo.integration.test.ts
+pnpm exec eslint src/ports/bundle-repo.ts src/adapters/node/drizzle-bundle-repo.ts tests/fakes/fake-bundle-repo.ts tests/ports/bundle-repo.test.ts tests/adapters/node/drizzle-bundle-repo.integration.test.ts --max-warnings 0
+pnpm exec prettier --check src/ports/bundle-repo.ts src/adapters/node/drizzle-bundle-repo.ts tests/fakes/fake-bundle-repo.ts tests/ports/bundle-repo.test.ts tests/adapters/node/drizzle-bundle-repo.integration.test.ts
+```
+
+**Commit:** `feat: classify evidence bundle replay conflicts`
+
+## Task 9: Orchestrate validated assembly and persistence
+
+**Files:**
+
+- Create: `src/application/assemble-evidence-bundle.ts`
+- Create: `tests/application/assemble-evidence-bundle.test.ts`
+
+**Behavioral invariants (write these exact tests first):**
+
+- `persists one schema-valid complete deterministic bundle`: bounded candidates, verified lineage, quality, assembly, contract validation, and insert occur in that order.
+- `persists a schema-valid partial bundle with explicit missing warnings`: one and multiple missing features never become zero and still persist when at least one usable feature exists and the contract permits it.
+- `preserves partial unavailable stale and nullable-brief semantics`: each acceptance-criteria case reaches the contract service with the exact canonical representation.
+- `returns no_bundle when no feature is usable`: no contract or bundle repository write occurs unless the pinned contract explicitly mandates a durable unavailable bundle.
+- `returns identical_replay without rebuilding mutable run context`: an explicit repeated request returns the original persisted row.
+- `returns a typed conflict for same logical identity and different canonical content`: the use case never retries, overwrites, or hides the repository conflict.
+- `persists nothing on invalid request lineage schema or canonicalization`: every hard failure occurs before `insertOrClassify`.
+- `loads only lineage ids referenced by the selected slots`: bulk reads are bounded and unrelated observations do not enter the bundle.
+- `does not call HTTP LLM publisher or policy dependencies`: the dependency object contains only feature, normalized, raw, bundle, and contract ports.
+
+- [ ] **Step 1: Add failing orchestration tests** with recording fakes for call order and no-write assertions. Cover complete, one/multiple missing, partial, unavailable, expired, zero usable, invalid schema, corrupt lineage, exact replay, and conflict.
+- [ ] **Step 2: Define and validate the explicit request.** Export `AssembleEvidenceBundleRequest`, `AssembleEvidenceBundleResult`, `AssembleEvidenceBundleError`, and `assembleEvidenceBundle`. The request contains exact pair, wallet, position, pool, run/correlation ID, evaluation time, creation time, accepted calculator versions, schema version, assembly selection version, and code version; it contains no ambient defaults.
+- [ ] **Step 3: Implement the fail-closed flow.** Validate the request; query bounded feature candidates; select seven slots; collect referenced normalized IDs; bulk-load normalized rows; collect raw parents; bulk-load raw rows; verify lineage; classify quality; assemble the candidate; call `validateCanonicalizeAndHash`; map canonical/audit fields to `EvidenceBundleInsert`; then call `insertOrClassify` exactly once.
+- [ ] **Step 4: Return stable outcomes.** Distinguish `persisted`, `identical_replay`, `no_bundle`, and typed hard errors/conflict. Include only row ID, hash, slot counts, warnings, and outcome in the result; do not expose or log wallet-sensitive payloads by default.
+- [ ] **Step 5: Run focused checks.** Expected: all acceptance-criteria branches pass and no failed validation reaches persistence.
+
+**Validation commands:**
+
+```bash
+pnpm exec vitest run tests/application/assemble-evidence-bundle.test.ts
+pnpm exec eslint src/application/assemble-evidence-bundle.ts tests/application/assemble-evidence-bundle.test.ts --max-warnings 0
+pnpm exec prettier --check src/application/assemble-evidence-bundle.ts tests/application/assemble-evidence-bundle.test.ts
+```
+
+**Commit:** `feat: assemble and persist evidence bundles`
+
+## Task 10: Wire the runtime job, replay script, and operator documentation
 
 **Files:**
 
 - Modify: `src/adapters/node/composition-root.ts`
-- Create: `src/jobs/derive-mvp-features-job.ts`
+- Create: `src/jobs/assemble-evidence-bundle-job.ts`
 - Modify: `src/jobs/index.ts`
-- Create: `scripts/collectors/derive-mvp-features.ts`
-- Create: `tests/scripts/derive-mvp-features.test.ts`
+- Create: `scripts/collectors/assemble-evidence-bundle.ts`
+- Create: `tests/scripts/assemble-evidence-bundle.test.ts`
 - Modify: `package.json`
-- Modify: `.env.example`
-
-**Behavioral invariants (write these tests first):**
-
-- `script prints deterministic status counts and sorted warnings after persistence`: available/partial/unavailable data outcomes exit zero.
-- `script fails for missing scope malformed position list or infrastructure failure`: configuration/contract/database failures set a nonzero exit code and never claim a successful derivation.
-- `runtime persistence exposes all three repositories from one connection`: raw, normalized, and derived repositories share the lazily initialized DB connection.
-- `job performs no publication or source collection`: it binds only clock, normalized repo, feature repo, run ID, and request metadata.
-
-- [ ] **Step 1: Add failing script tests** with a dependency-injected runner for successful mixed status output, empty/malformed `INTELLIGENCE_POSITION_IDS`, missing pool ID, database failure, and connection close failure.
-
-- [ ] **Step 2: Extend runtime composition and add the thin job.** Add `featureRepo` to the exported `Persistence` required-member shape and instantiate `DrizzleFeatureRepo` beside the existing repositories. The job obtains a run ID and delegates directly to `deriveMvpFeatures`.
-
-- [ ] **Step 3: Add the operator script and configuration.** Read pool identity from `WHIRLPOOL_ADDRESS` (already used by collection), parse comma-separated `INTELLIGENCE_POSITION_IDS` by trim/filter/de-duplicate while rejecting an empty result, use `INTELLIGENCE_CODE_VERSION ?? "development"`, print JSON counts/warnings, always close the DB, and add:
-
-```json
-{
-  "scripts": {
-    "derive:mvp": "tsx scripts/collectors/derive-mvp-features.ts"
-  }
-}
-```
-
-- [ ] **Step 4: Run the focused entrypoint checks.**
-
-**Validation commands:**
-
-```bash
-pnpm exec vitest run tests/scripts/derive-mvp-features.test.ts
-pnpm exec eslint src/adapters/node/composition-root.ts src/jobs/derive-mvp-features-job.ts src/jobs/index.ts scripts/collectors/derive-mvp-features.ts tests/scripts/derive-mvp-features.test.ts --max-warnings 0
-pnpm exec prettier --check src/adapters/node/composition-root.ts src/jobs/derive-mvp-features-job.ts src/jobs/index.ts scripts/collectors/derive-mvp-features.ts tests/scripts/derive-mvp-features.test.ts package.json
-```
-
-**Commit:** `feat: expose deterministic feature derivation job`
-
-## Task 12: Document feature semantics and operator usage
-
-**Files:**
-
 - Modify: `README.md`
 - Modify: `docs/architecture.md`
 - Modify: `docs/operator-runbook.md`
 
-- [ ] **Step 1: Update feature inventory and authority boundary.** List exactly the seven canonical kinds, units, scopes, calculator versions, deterministic-evidence-only role, and the complete deferred #8 feature list.
+**Behavioral invariants (write these exact tests first):**
 
-- [ ] **Step 2: Document reproducibility rules.** Include nearest-integer/ties-away-from-zero rounding, exact range/oracle/pool formulas, the Pyth-only nonannualized volatility formula, inclusive one-hour window, 10-sample/45-minute/10-minute-gap thresholds, duplicate handling, confidence cap, freshness minimum, and lineage/derivation-key semantics.
+- `runtime composes the bundle repository and pinned contract adapter`: `getPersistence()` supplies all five repositories and the runtime supplies the v1 contract service without eager database access.
+- `job forwards an explicit immutable assembly request unchanged`: the job adds no clock, run ID, wallet, version, or timestamp defaults.
+- `script parses required inputs and prints a redacted outcome summary`: output contains outcome, row ID when present, payload hash, coverage counts, and warning codes, but not wallet ID or canonical payload.
+- `replaying the same input file preserves run and creation identity`: the script sends the same request bytes/values and permits `identical_replay`.
+- `invalid input exits before database composition`: malformed JSON, missing required identity/version fields, or wrong pair produces a non-zero exit and no repository access.
 
-- [ ] **Step 3: Add operator examples.** Document `WHIRLPOOL_ADDRESS`, `INTELLIGENCE_POSITION_IDS`, `INTELLIGENCE_CODE_VERSION`, migration precondition, `pnpm derive:mvp`, one available response, one unavailable response, and that unavailable evidence is stored but is not a numeric publication candidate.
-
-- [ ] **Step 4: Run documentation formatting checks.**
+- [ ] **Step 1: Add failing script/job boundary tests.** Invoke the script's exported `main` with fake dependencies and captured stdout/stderr; do not spawn a real process or database.
+- [ ] **Step 2: Complete composition atomically.** Extend exported `Persistence` with `bundleRepo`, instantiate `DrizzleBundleRepo` in `getPersistence`, expose the `EvidenceBundleContract` from `NodeRuntime`, and instantiate the pinned adapter. Because `Persistence` and `NodeRuntime` are exported interfaces, update their implementation in this same task.
+- [ ] **Step 3: Add the thin job and script.** The script accepts one repository-relative JSON request path, validates it through the application request parser, obtains persistence lazily, invokes the job once, emits redacted JSON, and sets a non-zero exit code for hard failure/conflict. Add `assemble:bundle` to `package.json`.
+- [ ] **Step 4: Document contract provenance and replay.** In README/architecture/runbook, document the pinned schema commit/hash/update procedure, seven-slot selection and expiry rules, quality/coverage vocabulary, lineage verification, canonical hash/idempotency semantics, migration precondition, exact request-file example, exact replay behavior, redacted output, and the boundary that future publishing must send stored `payloadCanonical` without reassembly.
+- [ ] **Step 5: Run focused checks.** Expected: script tests pass, runtime remains lazy, examples match the request/result types, and dependency boundaries remain valid for the new source paths.
 
 **Validation commands:**
 
 ```bash
-pnpm exec prettier --check README.md docs/architecture.md docs/operator-runbook.md
+pnpm exec vitest run tests/scripts/assemble-evidence-bundle.test.ts
+pnpm exec eslint src/adapters/node/composition-root.ts src/jobs/assemble-evidence-bundle-job.ts src/jobs/index.ts scripts/collectors/assemble-evidence-bundle.ts tests/scripts/assemble-evidence-bundle.test.ts --max-warnings 0
+pnpm exec prettier --check src/adapters/node/composition-root.ts src/jobs/assemble-evidence-bundle-job.ts src/jobs/index.ts scripts/collectors/assemble-evidence-bundle.ts tests/scripts/assemble-evidence-bundle.test.ts package.json README.md docs/architecture.md docs/operator-runbook.md
+pnpm exec depcruise --config .dependency-cruiser.cjs src/adapters/node/composition-root.ts src/jobs/assemble-evidence-bundle-job.ts
 ```
 
-**Commit:** `docs: explain deterministic feature tranche`
+**Commit:** `feat: expose deterministic bundle assembly workflow`
 
-**Tests to add or update**
+**Tests added or updated**
 
-- Contract/taxonomy: exact feature set; status/value, kind/unit, scope, time, sorted-ID, version, and provenance validation.
-- Arithmetic: plain-decimal parsing, exact rational operations, ties-away-from-zero rounding, zero division, overflow.
-- Selection: exact scope/source, semantic/tie-break ordering, dynamic expiry, malformed rows, volatility ordering/duplicates/history.
-- Calculators: all issue acceptance cases plus golden units/rounding for all seven features.
-- Assembly: confidence cap, partial/unavailable confidence, expiry, lineage, canonical hashes.
-- Persistence: migration precondition/checks/indexes and transaction/order/replay behavior.
-- Application/CLI: tranche cardinality/order, validate-before-write, replay, status output, configuration and infrastructure failures.
+- Contract conformance: pinned asset hashes, JSON Schema valid/invalid fixtures, deterministic-only validity, canonical bytes/hash/idempotency goldens, and generated-type drift.
+- Pure domain: seven-slot selection, dynamic freshness, scope/version filtering, status/value handling, lineage integrity, stable ordering, quality/coverage, timestamps, confidence, empty context, absent brief, and canonical candidate mapping.
+- Repository contracts: bounded feature reads, bulk normalized/raw lineage reads, exact replay/conflict classification, and JSONB/canonical-text consistency.
+- Database: migration abort behavior, new columns/indexes/constraints, and concurrent identical/conflicting inserts.
+- Application/script: complete and degraded assembly, no-usable stop, fail-before-write behavior, replay/conflict outcomes, explicit request forwarding, and redacted output.
 
 **Risk areas**
 
-- The migration assumes `intelligence.derived_features` has no historical rows. Its precondition must abort instead of inventing data.
-- JSON payload identities are not indexed; bounded receipt reads must stay conservative enough for one-hour coverage without becoming unbounded.
-- Persisted `isStale` is a snapshot; selectors must also compare expiry to the single evaluation time.
-- `Math.log` is intentionally floating point. The version string, selected price strings, metadata, and final integer value are the audit boundary.
-- Unavailable no-input outcomes need scope/reasons in the derivation key or unrelated operational failures can collapse.
-- Transaction conflict recovery must preserve caller order under sequential and concurrent replay.
-- Pyth confidence width, evidence confidence, and availability status are distinct concepts and must not be conflated.
+- The upstream contract is not currently pinned; any implementation before that is contract invention.
+- JSON canonicalization, Unicode, and decimal rendering can diverge across libraries even when parsed JSON is equivalent; golden byte/hash fixtures are mandatory.
+- Historical `evidence_bundles` rows cannot safely receive fabricated canonical text or identity keys; the migration intentionally aborts when they exist unless a separately approved data migration proves them.
+- Wallet identity exists only in raw clmm-v2 payload lineage, so trusting the request alone could create cross-wallet evidence.
+- Persisted `isStale` reflects derivation time and can be wrong at later assembly time; expiration must be evaluated again.
+- Candidate query bounds must be broad enough to retain expired-only and unsupported-version-only diagnostics while remaining operationally bounded.
+- Concurrent insert classification depends on the exact logical unique index and a reliable winner reload; a disappearing winner is an integrity failure.
+- Canonical payloads and wallet/position identifiers are sensitive; CLI output and errors must stay redacted.
+- Partial bundle persistence must follow both the pinned schema and repository fail-closed posture; zero usable evidence defaults to no bundle.
 
 **Stop conditions**
 
-- Abort the migration if any existing derived-feature row is present or any historical feature kind cannot be classified safely; do not rewrite/delete it.
-- Stop if normalized source payloads on this branch do not match the #22/#23/#24 contracts assumed by the selectors; revise the design/plan instead of adding silent fallbacks.
-- Stop if implementing either repository method would leave any adapter, fake, or required-member consumer uncompilable after the task's automatic `pnpm -r typecheck` gate.
-- Stop before persistence if any assembled result fails `parseDerivedFeatureV1` or status-aware provenance validation; do not persist a partial tranche.
-- Stop on database transaction failure or conflict recovery that cannot find the winning row; never return a partially ordered/partially persisted batch.
-- Stop if an operator invocation lacks a pool ID or at least one explicit position ID; do not discover positions implicitly.
-- Stop if a requested change would call external sources, publish evidence, make policy decisions, or authorize execution; those are outside this issue.
+- Abort before Task 1 if `issue.md` lacks the merged Regime Engine SHA, exact schema/fixture paths, schema version, and SHA-256 values, or if those assets cannot be copied under repository policy.
+- Abort if the pinned schema/fixtures do not validate deterministic-only bundles with canonical contextual absence and no research brief.
+- Abort if canonicalization, payload hashing, idempotency identity, timestamp boundaries, or any required aggregate quality/confidence formula is not unambiguously specified and fixture-covered upstream.
+- Abort if copied asset hashes differ from the issue pin or generated types cannot represent the deterministic-only fixture exactly.
+- Abort the migration if historical `evidence_bundles` rows exist and no separately approved, provably correct canonical backfill is supplied.
+- Abort assembly before persistence on invalid request identity, unsupported schema/version configuration, zero usable evidence (unless upstream explicitly mandates persistence), missing/corrupt lineage, wallet/position/pool contradiction, schema validation failure, canonicalization failure, or JSONB/canonical-text mismatch.
+- Abort rather than overwrite on same logical identity with different canonical content, and abort rather than retry on database integrity failures in this issue.
 
-**Plan-level acceptance**
+**Plan review classification**
 
-- Each implementation task owns its focused tests and exact validation commands; there is no standalone validation task.
-- Tasks 3 and 9 keep each port change with all adapters/fakes. Task 11 keeps the `Persistence` required-member change with its concrete construction and callers.
-- The dedicated validate phase after all tasks should run the repository-standard `pnpm verify`; this is intentionally not a task in this plan.
+This plan requires review because it introduces an irreversible database write and explicit inserted/replay/conflict state transitions. The first-line `plan-review-required` marker is therefore present.

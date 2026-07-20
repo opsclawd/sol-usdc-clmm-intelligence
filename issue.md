@@ -1,216 +1,175 @@
-# feat: derive the deterministic MVP SOL/USDC evidence feature tranche
+# feat: assemble and persist deterministic EvidenceBundle v1
 
 ## Summary
 
-Implement and persist the first bounded deterministic feature tranche for the SOL/USDC evidence pipeline using normalized observations produced by the core ingestion children.
+Assemble and persist a strict, versioned deterministic-only `EvidenceBundle v1` from the current normalized observations and derived features, using the canonical Regime Engine evidence contract.
 
-This is a PR-sized child of #8. It intentionally implements exactly seven features needed to prove the initial vertical slice and defers broader CLMM economics, breakout, liquidity-cliff, route-risk, and contextual metrics.
+This is a PR-sized child of #13. It ends at durable bundle creation inside the intelligence repository. It does not send HTTP requests to Regime Engine, implement publish retries, create publish-attempt records, generate an LLM brief, or synthesize final `PolicyInsight` output.
 
-## Required feature set
+## Why
 
-Implement exactly these feature kinds for the MVP tranche:
+Bundle assembly and outbound publishing are distinct concerns. Separating them provides a stable, replayable evidence artifact that can be validated against the Regime Engine contract before network behavior is introduced. It also lets the deterministic vertical slice proceed without waiting for contextual collector packs or LLM research briefs.
 
-1. `RANGE_LOCATION`
-2. `DISTANCE_TO_LOWER`
-3. `DISTANCE_TO_UPPER`
-4. `ORACLE_DEX_DIVERGENCE`
-5. `ORACLE_CONFIDENCE_WIDTH`
-6. `REALIZED_VOLATILITY_1H`
-7. `VOLUME_LIQUIDITY_RATIO_24H`
+## Canonical contract dependency
 
-Extend the canonical taxonomy/registry, validation, persistence enums/checks, docs, and fixtures as needed so these kinds are first-class and exhaustively handled.
+The implementation must consume the exact machine-readable contract delivered by `opsclawd/regime-engine#58`.
 
-## Feature contracts
-
-Every derived feature must record at minimum:
-
-- stable feature kind;
-- `AVAILABLE`, `PARTIAL`, or `UNAVAILABLE` status;
-- numeric value or `null`;
-- explicit unit (`BPS` or `PPM` as appropriate);
-- pair and position identity where position-scoped;
-- `asOf` and `expiresAt` timestamps;
-- confidence and freshness state;
-- normalized input observation IDs;
-- provenance/lineage sufficient to trace through normalized observations to raw source payloads;
-- warnings/reason codes explaining partial or unavailable results;
-- calculator/version identity so historical values remain auditable after formula changes.
-
-Do not persist fake zero values for missing or invalid inputs.
-
-## Deterministic calculations
-
-### 1. Range location
-
-For a valid position range:
+Before this issue is executed, update this issue body with:
 
 ```text
-rawLocation = (currentPrice - lowerPrice) / (upperPrice - lowerPrice)
-rangeLocationPpm = clamp(rawLocation, 0, 1) * 1_000_000
+Regime Engine contract commit: <merged SHA>
+Schema path: <repository-relative path>
+Schema version: evidence-bundle.v1
+Schema SHA-256: <hash>
+Valid fixture path: <repository-relative path>
 ```
 
-The feature must preserve enough status/warning context to distinguish below-range and above-range observations from a position genuinely centered at a boundary-clamped value.
+Do not infer or recreate the downstream schema from prose. The Regime Engine JSON Schema and fixtures are the contract source of truth.
 
-Unit: `PPM`.
+## Required deterministic-only semantics
 
-### 2. Distance to lower boundary
+`EvidenceBundle v1` must support the initial vertical slice without contextual or LLM evidence:
 
-```text
-distanceToLowerBps = ((currentPrice - lowerPrice) / currentPrice) * 10_000
-```
+- deterministic features are present when available;
+- contextual evidence collections may be empty;
+- contextual evidence sections may use the canonical unavailable/empty representation defined by the Regime Engine contract;
+- `researchBrief` must be nullable or use the canonical explicit unavailable representation;
+- absence of a research brief must not prevent bundle validation, persistence, or later publishing;
+- quality/coverage metadata must state that contextual and LLM evidence are absent rather than pretending the bundle is fully comprehensive.
 
-A negative result means current price is below the lower boundary.
+## Bundle input selection
 
-Unit: `BPS`.
+Add an application use case that selects the evidence inputs deterministically for one SOL/USDC position context.
 
-### 3. Distance to upper boundary
+Selection must account for:
 
-```text
-distanceToUpperBps = ((upperPrice - currentPrice) / currentPrice) * 10_000
-```
-
-A negative result means current price is above the upper boundary.
-
-Unit: `BPS`.
-
-### 4. Oracle–DEX divergence
-
-```text
-oracleDexDivergenceBps = abs(dexPrice - oraclePrice) / oraclePrice * 10_000
-```
-
-Use a fresh canonical oracle price and a fresh Jupiter executable-quote implied price. Do not substitute the clmm-v2 current pool price for either source silently.
-
-Unit: `BPS`.
-
-### 5. Oracle confidence width
-
-```text
-oracleConfidenceWidthBps = oracleConfidence / oraclePrice * 10_000
-```
-
-Use the confidence value from the canonical oracle observation and preserve stale/invalid oracle status explicitly.
-
-Unit: `BPS`.
-
-### 6. One-hour realized volatility
-
-Use timestamp-ordered price observations and log returns:
-
-```text
-logReturn[t] = ln(price[t] / price[t-1])
-```
-
-Compute a documented one-hour realized-volatility value from a deterministic sampling policy. The implementation must define and test:
-
-- accepted source/price series;
-- one-hour lookback boundary;
-- minimum sample count;
-- maximum allowed gap;
-- duplicate timestamp handling;
-- out-of-order observation handling;
-- annualized versus non-annualized semantics.
-
-Prefer a non-annualized one-hour measure for the first version unless existing repository conventions strongly require otherwise. The exact formula and scaling must be documented and versioned.
-
-Unit: `BPS`.
-
-### 7. Twenty-four-hour volume/liquidity ratio
-
-```text
-volumeLiquidityRatio24hPpm = volumeUsd24h / liquidityUsd * 1_000_000
-```
-
-The implementation must use the documented Orca liquidity/TVL semantic from #24. Zero or negative denominators are invalid/unavailable, not successful zero-valued features.
-
-Unit: `PPM`.
-
-## Input selection
-
-Add an application use case that selects the required normalized observations deterministically by:
-
-- pair and position identity;
-- supported observation kind;
+- pair identity;
+- wallet/position/Whirlpool identity where required by the canonical schema;
+- supported feature kinds and calculator versions;
 - freshness and expiry;
-- source identity/quality where relevant;
-- latest valid `asOf` time with deterministic tie-breaking;
-- documented minimum coverage for windowed calculations.
+- latest valid feature result with deterministic tie-breaking;
+- explicit inclusion of `AVAILABLE` features;
+- documented handling of `PARTIAL` and `UNAVAILABLE` features;
+- source coverage and missing-feature warnings;
+- complete input lineage.
 
-Input selection must not be hidden inside SQL that cannot be unit tested. Keep calculators pure and separate from persistence/query orchestration.
+The initial required feature coverage is the seven-feature tranche from #25:
+
+- `RANGE_LOCATION`;
+- `DISTANCE_TO_LOWER`;
+- `DISTANCE_TO_UPPER`;
+- `ORACLE_DEX_DIVERGENCE`;
+- `ORACLE_CONFIDENCE_WIDTH`;
+- `REALIZED_VOLATILITY_1H`;
+- `VOLUME_LIQUIDITY_RATIO_24H`.
+
+A missing feature must produce explicit degraded/partial coverage according to deterministic rules; it must not be replaced with zero.
+
+## Bundle identity and hashing
+
+Define and document deterministic bundle identity using the canonical Regime Engine contract semantics.
+
+At minimum preserve:
+
+- `schemaVersion`;
+- source identity;
+- run/correlation identity;
+- pair;
+- position context when required;
+- `asOf`, creation, and expiry timestamps;
+- deterministic feature summaries;
+- quality, confidence, freshness, coverage, and warnings;
+- source refs/provenance;
+- raw observation IDs, normalized observation IDs, and derived feature IDs or their canonical lineage representation;
+- canonical payload hash;
+- deterministic idempotency identity.
+
+Canonicalization and hashing must exactly match the Regime Engine contract. The implementation must not invent a repository-local hash algorithm that the ingest service cannot reproduce.
+
+## Quality and coverage
+
+Compute bundle quality deterministically from the selected feature results and the canonical contract rules.
+
+The bundle must distinguish at least:
+
+- complete deterministic feature coverage;
+- partial feature coverage;
+- stale/expired inputs;
+- unavailable feature inputs;
+- absent contextual evidence;
+- absent research brief;
+- contract-invalid state.
+
+Any aggregate confidence or coverage score must be reproducible from documented inputs and rules. Do not use an LLM to assign quality or confidence.
 
 ## Persistence and idempotency
 
-- Persist successful, partial, and unavailable feature results in `derived_features` where the existing schema supports auditable unavailable states.
-- Re-running derivation over the same calculator version and same normalized input set must be idempotent or deterministically deduplicated.
-- A changed input set or calculator version must produce a distinct auditable result rather than overwriting historical values.
+- Persist the complete validated bundle in `evidence_bundles`.
+- Preserve the exact canonical payload used to calculate the hash.
+- Rebuilding a bundle from the same schema version, source/run identity, position context, selected inputs, and payload must be idempotent or deterministically deduplicated.
+- The same logical idempotency identity with different canonical content must produce an explicit conflict rather than overwrite the prior bundle.
+- Changed inputs or a changed schema/calculator version must remain historically auditable.
 
-## Explicitly deferred features
+## Validation
 
-Do not implement these in this issue:
+Bundle creation must validate against the pinned Regime Engine JSON Schema before persistence.
 
-- inventory skew;
-- fee APR or fee yield;
-- expected fee capture;
-- fee-to-volatility ratio;
-- rebalance cost;
-- breach probability/risk model beyond direct range distances;
-- wick/spike detection;
-- breakout or volume confirmation;
-- liquidity-cliff detection;
-- route/slippage or landing-risk scoring;
-- support/resistance, flows, perps, funding, liquidations, news, or LLM-derived metrics.
-
-Parent #8 remains open for those later tranches.
+Tests must consume the canonical valid and invalid fixtures from Regime Engine or a pinned exact copy with documented provenance. Avoid parallel handwritten validation rules that can drift from the schema.
 
 ## Scope
 
 In scope:
 
-- taxonomy/registry additions for the seven feature kinds;
-- pure deterministic calculators;
-- normalized-input selection use cases;
-- confidence/freshness propagation;
-- lineage and calculator versioning;
-- derived-feature persistence and idempotency;
-- fixtures, tests, docs, and operator/developer examples.
+- deterministic bundle input selection;
+- mapping derived features and lineage into the canonical `EvidenceBundle v1` contract;
+- empty/unavailable contextual-evidence handling;
+- nullable/unavailable research-brief handling;
+- deterministic quality/coverage calculation;
+- canonical serialization and hashing;
+- JSON Schema validation;
+- evidence-bundle persistence and idempotency/conflict handling;
+- fixtures, tests, docs, and replay examples.
 
 Out of scope:
 
-- new source collectors;
-- evidence-bundle assembly;
-- LLM research briefs;
-- Regime Engine publishing or policy synthesis;
+- outbound HTTP publishing;
+- authentication headers or Regime Engine endpoint configuration;
+- retry/backoff behavior;
+- `publish_attempts` persistence;
+- LLM research-brief generation;
+- contextual collector packs;
+- evidence selection or final policy synthesis inside Regime Engine;
 - clmm-v2 UI or execution behavior.
 
 ## Guardrails
 
-- All numerical metrics are calculated by code, never by an LLM.
-- Calculators are pure and do not read environment variables, clocks, HTTP, or the database directly.
-- Missing, stale, invalid, or insufficient inputs return explicit partial/unavailable results with reasons.
-- Freshness/confidence cannot improve beyond the quality of the underlying inputs.
-- Research evidence cannot become execution authority.
-- Decimal/large-integer handling must avoid silent precision loss; numeric representation and rounding rules must be documented.
+- Publish evidence, never final `PolicyInsight` output.
+- Bundle assembly reads persisted normalized/derived data; it does not call source APIs directly.
+- The Regime Engine schema is the contract authority.
+- Missing evidence remains explicitly missing/degraded, never fabricated.
+- A research brief is optional for the deterministic MVP bundle.
+- Bundle creation introduces no execution authority.
 
 ## Acceptance criteria
 
-- [ ] All seven required feature kinds exist in the canonical taxonomy and persistence model.
-- [ ] Each feature is implemented as a pure, unit-tested deterministic calculator.
-- [ ] Application logic selects inputs deterministically and keeps selection separate from calculation.
-- [ ] Each persisted result records status, value/unit, time bounds, confidence/freshness, warnings, calculator version, and complete input lineage.
-- [ ] Missing, stale, malformed, insufficient-window, zero-denominator, and invalid-range inputs produce explicit partial/unavailable results rather than fake zeros or NaN/Infinity.
-- [ ] Re-running the same calculator version over the same input set is idempotent or deterministically deduplicated.
-- [ ] Tests cover below-range, in-range, above-range, stale oracle, unavailable Jupiter route, wide oracle confidence, insufficient volatility samples, out-of-order samples, excessive sample gaps, and unavailable Orca liquidity.
-- [ ] Golden fixtures demonstrate exact expected units and rounding for every feature.
-- [ ] Documentation lists these seven as the implemented MVP tranche and explicitly lists all deferred #8 features.
+- [ ] The implementation is pinned to the merged Regime Engine `EvidenceBundle v1` JSON Schema, commit, path, and hash recorded in this issue.
+- [ ] A deterministic-only bundle with empty contextual evidence and no research brief validates successfully under the canonical contract.
+- [ ] The seven #25 feature kinds are selected and mapped deterministically when fresh and available.
+- [ ] Missing, partial, stale, and unavailable feature inputs produce explicit coverage/quality warnings and never fake zero values.
+- [ ] Bundle timestamps, expiry, confidence, coverage, provenance, source refs, and lineage are populated deterministically.
+- [ ] Canonical serialization and payload hashing match the Regime Engine fixtures/contract tests.
+- [ ] The complete schema-valid bundle is persisted in `evidence_bundles`.
+- [ ] Identical rebuilds are idempotent or deterministically deduplicated, while conflicting content for the same idempotency identity is rejected explicitly.
+- [ ] Tests cover complete deterministic coverage, one missing feature, multiple missing features, stale feature input, unavailable feature input, nullable brief, empty contextual evidence, exact replay, conflicting replay, schema mismatch, and invalid canonical fixture.
+- [ ] No outbound HTTP publisher or LLM call is introduced.
 
 ## Parent
 
-Child of #8.
+Child of #13.
 
 ## Blocked by
 
-- #22
-- #23
-- #24
+- #25
+- opsclawd/regime-engine#58
 
-The implementation must derive from persisted normalized observations produced by those ingestion children rather than calling source APIs directly.
+The publisher in parent #13 must later consume the persisted bundle produced here rather than rebuilding evidence ad hoc during an HTTP request.
