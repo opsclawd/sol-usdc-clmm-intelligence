@@ -276,14 +276,14 @@ describe("selectors", () => {
           source: "pyth-hermes",
           observationKind: "oracle_price",
           receivedAtUnixMs: 1000,
-          payload: { observedSource: { slot: 200 } }
+          payload: { observedSource: { slot: 100 } }
         }),
         makeRow({
           id: 3,
           source: "pyth-hermes",
           observationKind: "oracle_price",
           receivedAtUnixMs: 2000,
-          payload: { observedSource: { slot: 150 } }
+          payload: { observedSource: { slot: 100 } }
         })
       ];
       const result = selectVolatilityTimestamps(candidates, 3000, 3600000);
@@ -331,7 +331,7 @@ describe("selectors", () => {
         id: 1,
         source: "pyth-hermes",
         observationKind: "oracle_price",
-        receivedAtUnixMs: oneHourAgo + 1000,
+        receivedAtUnixMs: now - 1000,
         validUntilUnixMs: oneHourAgo,
         payload: { observedSource: { slot: 300 } }
       });
@@ -381,9 +381,9 @@ describe("selectors", () => {
       const result = selectVolatilityTimestamps(candidates, 5000, 3600000);
 
       expect(result.selected).toHaveLength(3);
-      expect(result.selected[0]!.id).toBe(1);
+      expect(result.selected[0]!.id).toBe(3);
       expect(result.selected[1]!.id).toBe(2);
-      expect(result.selected[2]!.id).toBe(3);
+      expect(result.selected[2]!.id).toBe(1);
 
       expect(result.rejected).toHaveLength(0);
     });

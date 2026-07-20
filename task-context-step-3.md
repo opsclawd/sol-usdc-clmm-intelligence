@@ -1,6 +1,6 @@
 # Task Context: Task 3
 
-Title: Implement exact Pyth acceptance, identity, and normalization
+Title: Add bounded candidate reads and pure deterministic selectors
 
 ## Workspace & Scope Constraints
 
@@ -10,49 +10,108 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-23
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-25
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-23
-Start Commit: 6a3197f1ad619c2594d8a693577cd6c67b3689f1
+Branch: ai/issue-25
+Start Commit: 72198d814d2ef33860d879741b7b7acc3b54e679
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `tests/fixtures/pyth-price-update.ts`
-- Create: `src/domain/price-observation/decimal.ts`
-- Create: `src/domain/price-observation/pyth.ts`
-- Create: `src/domain/price-observation/index.ts`
-- Create: `tests/domain/price-observation/pyth.test.ts`
+- Modify: `src/ports/normalized-observation-repo.ts`
+- Modify: `src/adapters/node/drizzle-normalized-observation-repo.ts`
+- Modify: `tests/fakes/fake-normalized-observation-repo.ts`
+- Create: `src/domain/derived-feature/select.ts`
+- Modify: `src/domain/derived-feature/index.ts`
+- Create: `tests/domain/derived-feature/select.test.ts`
+- Modify: `tests/ports/normalized-observation-repo.test.ts`
 
-**Provider contract:** `acceptPythEnvelope` validates exactly one configured feed update while returning the complete original response for raw storage. `derivePythSourceObservationKey` hashes `{ identityVersion: 1, feedId, publishTimeUnixSeconds }`. `normalizePythPrice` rejects non-positive price and emits exact decimal bounds and ratio bps.
+**Behavioral invariants (write these tests first):**
 
-- [ ] **Step 1: Add a sanitized full Hermes fixture and failing tests.** Cover feed mismatch, missing parsed price, invalid integer strings/exponent/time, optional slot, extra envelope fields retained, key-order-stable identity, identity-field changes, negative exponent conversion, exact lower/upper bounds, and no precision loss. Name the arithmetic case `converts fixed-point and atomic integer strings without binary floating-point loss` and the identity case `uses versioned source identities and detects changed content at the same identity`.
-- [ ] **Step 2: Run the test and confirm missing modules.** Run `pnpm exec vitest run tests/domain/price-observation/pyth.test.ts`; expect failure because the Pyth and decimal modules do not exist.
-- [ ] **Step 3: Implement minimal pure helpers.** Use Zod for shape/string constraints, `BigInt` plus decimal-string shift/division helpers for exact output, canonical hashing for identity, and warning `oracle_confidence_wide` when the absolute confidence-to-price ratio exceeds 100 bps. Never import ports, clocks, or adapters.
-- [ ] **Step 4: Verify this task.** Run `pnpm exec vitest run tests/domain/price-observation/pyth.test.ts tests/domain/content-hash.test.ts` and `pnpm exec eslint tests/fixtures/pyth-price-update.ts src/domain/price-observation/decimal.ts src/domain/price-observation/pyth.ts src/domain/price-observation/index.ts tests/domain/price-observation/pyth.test.ts`; expect all selected checks to pass.
-- [ ] **Step 5: Commit.** Run `git add tests/fixtures/pyth-price-update.ts src/domain/price-observation/decimal.ts src/domain/price-observation/pyth.ts src/domain/price-observation/index.ts tests/domain/price-observation/pyth.test.ts && git commit -m "feat: normalize Pyth oracle prices"`.
+- `candidate reads filter source kind and inclusive receipt lower bound`: the port performs only coarse indexed filtering and returns `(receivedAtUnixMs, id)` ascending.
+- `selects the latest exact-scope valid row with deterministic tie breaks`: compare semantic time, provider slot when present, receipt time, then normalized ID.
+- `rejects a persisted-fresh row that expired by evaluation time`: `isStale === false` never overrides `validUntilUnixMs <= evaluationAsOfUnixMs`.
+- `records malformed wrong-source and wrong-scope candidates deterministically`: rejected IDs and reasons are stable regardless of database input order.
+- `deduplicates volatility timestamps by slot receipt and id`: select the highest slot, then receipt time, then ID, sort timestamps ascending, and retain discarded IDs.
+- `accepts historical volatility samples while requiring a fresh anchor`: samples inside the one-hour window may be expired at evaluation time; the latest anchor may not be.
+
+- [ ] **Step 1: Add failing port and selector tests.** Cover pair/pool/position matching, source allowlists, malformed payloads, dynamic expiry, semantic tie breaks, out-of-order series, inclusive lookback, and duplicate timestamps.
+
+- [ ] **Step 2: Add one bounded query method and update every implementation in the same step.** This is an exported port change and must remain atomic across the port, Drizzle adapter, and fake.
+
+```ts
+export interface NormalizedObservationCandidateQuery {
+  readonly sourceKinds: readonly {
+    readonly source: Source;
+    readonly observationKind: ObservationKind;
+  }[];
+  readonly receivedAtOrAfterUnixMs: number;
+}
+
+export interface NormalizedObservationRepo {
+  // existing methods remain
+  listCandidates(query: NormalizedObservationCandidateQuery): Promise<NormalizedObservationRow[]>;
+}
+```
+
+The Drizzle implementation must build an `OR` over source/kind pairs plus the receipt lower bound and order by receipt then ID. The fake must mirror those semantics exactly.
+
+- [ ] **Step 3: Implement pure payload narrowing and selectors.** Return selected rows and structured rejected candidates; do not import ports, DB, environment, clock, or adapters.
+
+```ts
+export interface CandidateRejection {
+  readonly observationId: number;
+  readonly reason: string;
+}
+
+export interface Selection<T> {
+  readonly selected: readonly T[];
+  readonly rejected: readonly CandidateRejection[];
+}
+
+export const SELECTION_VERSION = "mvp-feature-selection/v1";
+```
+
+- [ ] **Step 4: Run the selector/port checks.** Expected: stable results for all permutations of the same candidates.
+
+**Validation commands:**
+
+```bash
+pnpm exec vitest run tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts
+pnpm exec eslint src/ports/normalized-observation-repo.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts src/domain/derived-feature/select.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts --max-warnings 0
+pnpm exec prettier --check src/ports/normalized-observation-repo.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts src/domain/derived-feature/select.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts
+```
+
+**Commit:** `feat: select bounded feature inputs deterministically`
 
 ## Repository Targets
 
 ### Expected Files
 
-- tests/fixtures/pyth-price-update.ts
-- src/domain/price-observation/decimal.ts
-- src/domain/price-observation/pyth.ts
-- src/domain/price-observation/index.ts
-- tests/domain/price-observation/pyth.test.ts
+- src/ports/normalized-observation-repo.ts
+- src/adapters/node/drizzle-normalized-observation-repo.ts
+- tests/fakes/fake-normalized-observation-repo.ts
+- src/domain/derived-feature/select.ts
+- src/domain/derived-feature/index.ts
+- tests/domain/derived-feature/select.test.ts
+- tests/ports/normalized-observation-repo.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/domain/price-observation/pyth.test.ts tests/domain/content-hash.test.ts
-pnpm exec eslint tests/fixtures/pyth-price-update.ts src/domain/price-observation/decimal.ts src/domain/price-observation/pyth.ts src/domain/price-observation/index.ts tests/domain/price-observation/pyth.test.ts
+pnpm exec vitest run tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts
+pnpm exec eslint src/ports/normalized-observation-repo.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts src/domain/derived-feature/select.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts --max-warnings 0
+pnpm exec prettier --check src/ports/normalized-observation-repo.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts src/domain/derived-feature/select.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **exact fixed-point arithmetic**: Pyth integer price, confidence, exponent, bounds, and ratio become canonical decimal strings without binary floating-point arithmetic. (Test: `converts fixed-point and atomic integer strings without binary floating-point loss`)
-- **versioned Pyth identity**: Object key ordering does not alter identity, while feed ID or publish time changes do; changed response content under one identity remains conflict-detectable. (Test: `uses versioned source identities and detects changed content at the same identity`)
+- **bounded candidate read**: Candidate reads filter only requested source/kind pairs and an inclusive receipt lower bound, returning receipt/id order. (Test: `candidate reads filter source kind and inclusive receipt lower bound`)
+- **deterministic latest selection**: Semantic time, provider slot, receipt time, and normalized ID form the complete tie-break order. (Test: `selects the latest exact-scope valid row with deterministic tie breaks`)
+- **dynamic expiry**: A row at or beyond its validity deadline is rejected even if persisted isStale is false. (Test: `rejects a persisted-fresh row that expired by evaluation time`)
+- **deterministic rejection audit**: Malformed, wrong-source, and wrong-scope candidates produce stable rejected IDs and reasons independent of input order. (Test: `records malformed wrong-source and wrong-scope candidates deterministically`)
+- **volatility timestamp deduplication**: Duplicate timestamp winners use slot, receipt, then ID and discarded IDs remain auditable. (Test: `deduplicates volatility timestamps by slot receipt and id`)
+- **fresh anchor historical window**: The volatility anchor must be fresh while valid historical samples inside the window may have expired by evaluation time. (Test: `accepts historical volatility samples while requiring a fresh anchor`)

@@ -1,0 +1,1052 @@
+commit 9458df12c0ae303f5deafc5e902c620892098c17
+Author: opsclawd <opsclawd@gmail.com>
+Date:   Sun Jul 19 21:30:15 2026 -0600
+
+    feat: select bounded feature inputs deterministically
+
+diff --git a/src/adapters/node/drizzle-normalized-observation-repo.ts b/src/adapters/node/drizzle-normalized-observation-repo.ts
+index b2466cf..4ccbd20 100644
+--- a/src/adapters/node/drizzle-normalized-observation-repo.ts
++++ b/src/adapters/node/drizzle-normalized-observation-repo.ts
+@@ -3,7 +3,8 @@ import { normalizedObservations } from "../../db/schema/normalized-observations.
+ import type {
+   NormalizedObservationRepo,
+   NormalizedObservationInsert,
+-  NormalizedObservationRow
++  NormalizedObservationRow,
++  NormalizedObservationCandidateQuery
+ } from "../../ports/normalized-observation-repo.js";
+ import type {
+   Source,
+@@ -258,4 +259,28 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
+     const row = rows[0];
+     return row ? toPortRow(row) : null;
+   }
++
++  async listCandidates(
++    query: NormalizedObservationCandidateQuery
++  ): Promise<NormalizedObservationRow[]> {
++    if (query.sourceKinds.length === 0) {
++      return [];
++    }
++
++    const conditions = query.sourceKinds.map(({ source, observationKind }) =>
++      and(
++        eq(normalizedObservations.source, source),
++        eq(normalizedObservations.observationKind, observationKind),
++        gte(normalizedObservations.receivedAtUnixMs, query.receivedAtOrAfterUnixMs)
++      )
++    );
++
++    const rows = await this.db
++      .select()
++      .from(normalizedObservations)
++      .where(or(...conditions))
++      .orderBy(asc(normalizedObservations.receivedAtUnixMs), asc(normalizedObservations.id));
++
++    return rows.map(toPortRow);
++  }
+ }
+diff --git a/src/domain/derived-feature/index.ts b/src/domain/derived-feature/index.ts
+index 27d1263..a220277 100644
+--- a/src/domain/derived-feature/index.ts
++++ b/src/domain/derived-feature/index.ts
+@@ -9,3 +9,13 @@ export {
+   type Rational,
+   type NumericFailure
+ } from "./decimal.js";
++
++export {
++  selectLatestBySourceAndKind,
++  selectVolatilityTimestamps,
++  selectWithExpiryCheck,
++  type CandidateRejection,
++  type Selection,
++  type SourceKindFilter,
++  SELECTION_VERSION
++} from "./select.js";
+diff --git a/src/domain/derived-feature/select.ts b/src/domain/derived-feature/select.ts
+new file mode 100644
+index 0000000..2ca717e
+--- /dev/null
++++ b/src/domain/derived-feature/select.ts
+@@ -0,0 +1,246 @@
++import type { Source, ObservationKind } from "../../contracts/taxonomy.js";
++import type { NormalizedObservationRow } from "../../ports/normalized-observation-repo.js";
++
++export const SELECTION_VERSION = "mvp-feature-selection/v1";
++
++export interface CandidateRejection {
++  readonly observationId: number;
++  readonly reason: string;
++}
++
++export interface Selection<T> {
++  readonly selected: readonly T[];
++  readonly rejected: readonly CandidateRejection[];
++}
++
++export interface SourceKindFilter {
++  readonly source: Source;
++  readonly observationKind: ObservationKind;
++}
++
++export function selectLatestBySourceAndKind(
++  candidates: readonly NormalizedObservationRow[],
++  evaluationAsOfUnixMs: number,
++  options?: {
++    readonly allowedSources?: readonly SourceKindFilter[];
++  }
++): Selection<NormalizedObservationRow> {
++  if (candidates.length === 0) {
++    return { selected: [], rejected: [] };
++  }
++
++  const allowedSources = options?.allowedSources;
++  const allowedSourceSet = allowedSources
++    ? new Set(allowedSources.map(({ source, observationKind }) => `${source}:${observationKind}`))
++    : null;
++
++  const wrongSourceRejections: CandidateRejection[] = [];
++  const validCandidates: NormalizedObservationRow[] = [];
++
++  for (const candidate of candidates) {
++    const key = `${candidate.source}:${candidate.observationKind}`;
++    if (allowedSourceSet !== null && !allowedSourceSet.has(key)) {
++      wrongSourceRejections.push({
++        observationId: candidate.id,
++        reason: `wrong_source_kind: expected one of ${allowedSources!.map((s) => `${s.source}:${s.observationKind}`).join(", ")}, got ${key}`
++      });
++    } else {
++      validCandidates.push(candidate);
++    }
++  }
++
++  wrongSourceRejections.sort((a, b) => a.observationId - b.observationId);
++
++  const expiredRejections: CandidateRejection[] = [];
++  const notExpiredCandidates: NormalizedObservationRow[] = [];
++
++  for (const candidate of validCandidates) {
++    if (candidate.validUntilUnixMs !== null && candidate.validUntilUnixMs <= evaluationAsOfUnixMs) {
++      expiredRejections.push({
++        observationId: candidate.id,
++        reason: `expired: validUntil=${candidate.validUntilUnixMs} <= evaluationAsOf=${evaluationAsOfUnixMs}`
++      });
++    } else {
++      notExpiredCandidates.push(candidate);
++    }
++  }
++
++  expiredRejections.sort((a, b) => a.observationId - b.observationId);
++
++  if (notExpiredCandidates.length === 0) {
++    return {
++      selected: [],
++      rejected: [...wrongSourceRejections, ...expiredRejections]
++    };
++  }
++
++  notExpiredCandidates.sort((a, b) => {
++    if (a.receivedAtUnixMs !== b.receivedAtUnixMs) {
++      return b.receivedAtUnixMs - a.receivedAtUnixMs;
++    }
++    return a.id - b.id;
++  });
++
++  return {
++    selected: [notExpiredCandidates[0]!],
++    rejected: [...wrongSourceRejections, ...expiredRejections]
++  };
++}
++
++interface VolatilityPayload {
++  observedSource?: {
++    slot?: number;
++  };
++}
++
++export function selectVolatilityTimestamps(
++  candidates: readonly NormalizedObservationRow[],
++  evaluationAsOfUnixMs: number,
++  windowMs: number
++): Selection<NormalizedObservationRow> {
++  if (candidates.length === 0) {
++    return { selected: [], rejected: [] };
++  }
++
++  const windowStart = evaluationAsOfUnixMs - windowMs;
++
++  const outsideWindowRejections: CandidateRejection[] = [];
++  const anchorRejections: CandidateRejection[] = [];
++  const windowCandidates: NormalizedObservationRow[] = [];
++
++  for (const candidate of candidates) {
++    if (
++      candidate.receivedAtUnixMs < windowStart ||
++      candidate.receivedAtUnixMs > evaluationAsOfUnixMs
++    ) {
++      outsideWindowRejections.push({
++        observationId: candidate.id,
++        reason: `outside_window: receivedAt=${candidate.receivedAtUnixMs} not in [${windowStart}, ${evaluationAsOfUnixMs}]`
++      });
++      continue;
++    }
++    windowCandidates.push(candidate);
++  }
++
++  if (windowCandidates.length === 0) {
++    const allRejections = [...outsideWindowRejections, ...anchorRejections];
++    allRejections.sort((a, b) => a.observationId - b.observationId);
++    return { selected: [], rejected: allRejections };
++  }
++
++  const anchorThreshold = evaluationAsOfUnixMs - 300000;
++  const anchorCandidates = windowCandidates.filter((c) => c.receivedAtUnixMs >= anchorThreshold);
++
++  const freshAnchorCandidates = anchorCandidates.filter(
++    (c) => c.validUntilUnixMs === null || c.validUntilUnixMs > evaluationAsOfUnixMs
++  );
++
++  if (freshAnchorCandidates.length === 0) {
++    for (const c of anchorCandidates) {
++      anchorRejections.push({
++        observationId: c.id,
++        reason: `anchor_expired: validUntil=${c.validUntilUnixMs} <= evaluationAsOf=${evaluationAsOfUnixMs}`
++      });
++    }
++    for (const c of windowCandidates) {
++      if (!anchorCandidates.includes(c)) {
++        anchorRejections.push({
++          observationId: c.id,
++          reason: `no_fresh_anchor: candidate receipt=${c.receivedAtUnixMs} < anchorThreshold=${anchorThreshold}`
++        });
++      }
++    }
++    const allRejections = [...outsideWindowRejections, ...anchorRejections];
++    allRejections.sort((a, b) => a.observationId - b.observationId);
++    return { selected: [], rejected: allRejections };
++  }
++
++  freshAnchorCandidates.sort((a, b) => {
++    if (b.receivedAtUnixMs !== a.receivedAtUnixMs) {
++      return b.receivedAtUnixMs - a.receivedAtUnixMs;
++    }
++    return a.id - b.id;
++  });
++
++  const latestAnchor = freshAnchorCandidates[0]!;
++
++  const deduplicatedMap = new Map<number, NormalizedObservationRow>();
++  const duplicateRejections: CandidateRejection[] = [];
++
++  const anchorPayload = latestAnchor.payload as VolatilityPayload;
++  const anchorSlot = anchorPayload?.observedSource?.slot ?? 0;
++  deduplicatedMap.set(anchorSlot, latestAnchor);
++
++  const nonAnchorCandidates = windowCandidates.filter((c) => c.id !== latestAnchor.id);
++
++  nonAnchorCandidates.sort((a, b) => {
++    const payloadA = a.payload as VolatilityPayload;
++    const payloadB = b.payload as VolatilityPayload;
++    const slotA = payloadA?.observedSource?.slot ?? 0;
++    const slotB = payloadB?.observedSource?.slot ?? 0;
++
++    if (slotA !== slotB) {
++      return slotB - slotA;
++    }
++    if (a.receivedAtUnixMs !== b.receivedAtUnixMs) {
++      return b.receivedAtUnixMs - a.receivedAtUnixMs;
++    }
++    return a.id - b.id;
++  });
++
++  for (const candidate of nonAnchorCandidates) {
++    const payload = candidate.payload as VolatilityPayload;
++    const slot = payload?.observedSource?.slot ?? 0;
++
++    if (deduplicatedMap.has(slot)) {
++      duplicateRejections.push({
++        observationId: candidate.id,
++        reason: `duplicate_slot: slot=${slot}`
++      });
++    } else {
++      deduplicatedMap.set(slot, candidate);
++    }
++  }
++
++  const selected = Array.from(deduplicatedMap.values()).sort(
++    (a, b) => a.receivedAtUnixMs - b.receivedAtUnixMs
++  );
++
++  const allRejections = [...outsideWindowRejections, ...anchorRejections, ...duplicateRejections];
++  allRejections.sort((a, b) => a.observationId - b.observationId);
++
++  return {
++    selected,
++    rejected: allRejections
++  };
++}
++
++export function selectWithExpiryCheck(
++  candidates: readonly NormalizedObservationRow[],
++  evaluationAsOfUnixMs: number
++): Selection<NormalizedObservationRow> {
++  if (candidates.length === 0) {
++    return { selected: [], rejected: [] };
++  }
++
++  const rejections: CandidateRejection[] = [];
++  const validCandidates: NormalizedObservationRow[] = [];
++
++  for (const candidate of candidates) {
++    if (candidate.validUntilUnixMs !== null && candidate.validUntilUnixMs <= evaluationAsOfUnixMs) {
++      rejections.push({
++        observationId: candidate.id,
++        reason: `expired: validUntil=${candidate.validUntilUnixMs} <= evaluationAsOf=${evaluationAsOfUnixMs}`
++      });
++    } else {
++      validCandidates.push(candidate);
++    }
++  }
++
++  rejections.sort((a, b) => a.observationId - b.observationId);
++
++  return {
++    selected: validCandidates,
++    rejected: rejections
++  };
++}
+diff --git a/src/ports/normalized-observation-repo.ts b/src/ports/normalized-observation-repo.ts
+index f6bef81..e9deb93 100644
+--- a/src/ports/normalized-observation-repo.ts
++++ b/src/ports/normalized-observation-repo.ts
+@@ -27,6 +27,14 @@ export interface NormalizedObservationRow {
+   receivedAtUnixMs: number;
+ }
+ 
++export interface NormalizedObservationCandidateQuery {
++  readonly sourceKinds: readonly {
++    readonly source: Source;
++    readonly observationKind: ObservationKind;
++  }[];
++  readonly receivedAtOrAfterUnixMs: number;
++}
++
+ export interface NormalizedObservationInsert {
+   rawObservationId: number;
+   source: Source;
+@@ -65,4 +73,5 @@ export interface NormalizedObservationRepo {
+     rawObservationId: number,
+     observationKind: ObservationKind
+   ): Promise<NormalizedObservationRow | null>;
++  listCandidates(query: NormalizedObservationCandidateQuery): Promise<NormalizedObservationRow[]>;
+ }
+diff --git a/tests/domain/derived-feature/select.test.ts b/tests/domain/derived-feature/select.test.ts
+new file mode 100644
+index 0000000..5505fb0
+--- /dev/null
++++ b/tests/domain/derived-feature/select.test.ts
+@@ -0,0 +1,430 @@
++import { describe, it, expect } from "vitest";
++import type {
++  Source,
++  ObservationKind,
++  SignalClass,
++  EvidenceFamily,
++  Provenance,
++  Confidence
++} from "../../../src/contracts/taxonomy.js";
++import {
++  selectLatestBySourceAndKind,
++  selectVolatilityTimestamps,
++  selectWithExpiryCheck,
++  SELECTION_VERSION
++} from "../../../src/domain/derived-feature/select.js";
++import type { NormalizedObservationRow } from "../../../src/ports/normalized-observation-repo.js";
++
++const DEFAULT_CONFIDENCE: Confidence = {
++  components: {
++    sourceReliability: 1,
++    dataCompleteness: 1,
++    derivationConfidence: 1,
++    llmConfidence: null
++  },
++  compositeScore: 1,
++  level: "high",
++  weightingVersion: "v1",
++  reasons: []
++};
++
++const DEFAULT_PROVENANCE: Provenance = {
++  sourceRefs: [],
++  rawObservationRefs: [],
++  derivedFromRefs: [],
++  processRef: {
++    collector: "test",
++    jobName: "test",
++    pipelineRunId: null,
++    codeVersion: null,
++    modelVersion: null
++  },
++  codeVersion: "test",
++  runId: null
++};
++
++function makeRow(
++  overrides: Partial<NormalizedObservationRow> & {
++    id: number;
++    source: Source;
++    observationKind: ObservationKind;
++    receivedAtUnixMs: number;
++  }
++): NormalizedObservationRow {
++  return {
++    id: overrides.id,
++    rawObservationId: overrides.rawObservationId ?? 0,
++    source: overrides.source,
++    observationKind: overrides.observationKind,
++    signalClass: (overrides.signalClass ?? "deterministic") as SignalClass,
++    evidenceFamily: (overrides.evidenceFamily ?? "clmm_state") as EvidenceFamily,
++    payload: overrides.payload ?? { price: 100 },
++    payloadHash: overrides.payloadHash ?? `hash-${overrides.id}`,
++    confidence: overrides.confidence ?? DEFAULT_CONFIDENCE,
++    confidenceComposite: overrides.confidenceComposite ?? null,
++    confidenceLevel: overrides.confidenceLevel ?? null,
++    validUntilUnixMs: overrides.validUntilUnixMs ?? null,
++    isStale: overrides.isStale ?? false,
++    staleBehavior: overrides.staleBehavior ?? null,
++    provenance: overrides.provenance ?? DEFAULT_PROVENANCE,
++    receivedAtUnixMs: overrides.receivedAtUnixMs
++  };
++}
++
++describe("selectors", () => {
++  describe("SELECTION_VERSION", () => {
++    it("is a valid non-empty string", () => {
++      expect(typeof SELECTION_VERSION).toBe("string");
++      expect(SELECTION_VERSION.length).toBeGreaterThan(0);
++    });
++
++    it("is deterministic across calls", () => {
++      expect(SELECTION_VERSION).toBe(SELECTION_VERSION);
++    });
++  });
++
++  describe("selectLatestBySourceAndKind", () => {
++    it("returns empty selection when no candidates provided", () => {
++      const result = selectLatestBySourceAndKind([], 1000);
++      expect(result.selected).toHaveLength(0);
++      expect(result.rejected).toHaveLength(0);
++    });
++
++    it("selects single candidate as latest", () => {
++      const candidates = [
++        makeRow({
++          id: 1,
++          source: "clmm-v2-bundle",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 1000
++        })
++      ];
++      const result = selectLatestBySourceAndKind(candidates, 2000);
++      expect(result.selected).toHaveLength(1);
++      expect(result.selected[0]!.id).toBe(1);
++      expect(result.rejected).toHaveLength(0);
++    });
++
++    it("selects latest by receivedAtUnixMs ascending then id", () => {
++      const candidates = [
++        makeRow({
++          id: 3,
++          source: "clmm-v2-bundle",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 1000
++        }),
++        makeRow({
++          id: 1,
++          source: "clmm-v2-bundle",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 3000
++        }),
++        makeRow({
++          id: 2,
++          source: "clmm-v2-bundle",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 2000
++        })
++      ];
++      const result = selectLatestBySourceAndKind(candidates, 5000);
++      expect(result.selected).toHaveLength(1);
++      expect(result.selected[0]!.id).toBe(1);
++      expect(result.selected[0]!.receivedAtUnixMs).toBe(3000);
++    });
++
++    it("rejects a persisted-fresh row that expired by evaluation time", () => {
++      const candidates = [
++        makeRow({
++          id: 1,
++          source: "clmm-v2-bundle",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 1000,
++          isStale: false,
++          validUntilUnixMs: 1500
++        })
++      ];
++      const result = selectLatestBySourceAndKind(candidates, 2000);
++      expect(result.selected).toHaveLength(0);
++      expect(result.rejected).toHaveLength(1);
++      expect(result.rejected[0]!.reason).toContain("expired");
++    });
++
++    it("accepts a row that is fresh at evaluation time even if isStale is true", () => {
++      const candidates = [
++        makeRow({
++          id: 1,
++          source: "clmm-v2-bundle",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 1000,
++          isStale: true,
++          validUntilUnixMs: 5000
++        })
++      ];
++      const result = selectLatestBySourceAndKind(candidates, 3000);
++      expect(result.selected).toHaveLength(1);
++      expect(result.rejected).toHaveLength(0);
++    });
++
++    it("records wrong-source candidates deterministically", () => {
++      const candidates = [
++        makeRow({
++          id: 1,
++          source: "clmm-v2-bundle",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 1000
++        }),
++        makeRow({
++          id: 2,
++          source: "jupiter-price",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 1000
++        })
++      ];
++      const result = selectLatestBySourceAndKind(candidates, 2000, {
++        allowedSources: [{ source: "clmm-v2-bundle", observationKind: "pool_state" }]
++      });
++      expect(result.selected).toHaveLength(1);
++      expect(result.selected[0]!.id).toBe(1);
++      expect(result.rejected).toHaveLength(1);
++      expect(result.rejected[0]!.observationId).toBe(2);
++    });
++
++    it("records wrong-kind candidates deterministically", () => {
++      const candidates = [
++        makeRow({
++          id: 1,
++          source: "clmm-v2-bundle",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 1000
++        }),
++        makeRow({
++          id: 2,
++          source: "clmm-v2-bundle",
++          observationKind: "position_state",
++          receivedAtUnixMs: 1000
++        })
++      ];
++      const result = selectLatestBySourceAndKind(candidates, 2000, {
++        allowedSources: [{ source: "clmm-v2-bundle", observationKind: "pool_state" }]
++      });
++      expect(result.selected).toHaveLength(1);
++      expect(result.selected[0]!.id).toBe(1);
++      expect(result.rejected).toHaveLength(1);
++      expect(result.rejected[0]!.observationId).toBe(2);
++    });
++
++    it("produces stable results regardless of input order", () => {
++      const candidatesA = [
++        makeRow({
++          id: 2,
++          source: "jupiter-price",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 1000
++        }),
++        makeRow({
++          id: 1,
++          source: "clmm-v2-bundle",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 1000
++        })
++      ];
++      const candidatesB = [
++        makeRow({
++          id: 1,
++          source: "clmm-v2-bundle",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 1000
++        }),
++        makeRow({
++          id: 2,
++          source: "jupiter-price",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 1000
++        })
++      ];
++
++      const resultA = selectLatestBySourceAndKind(candidatesA, 2000, {
++        allowedSources: [{ source: "clmm-v2-bundle", observationKind: "pool_state" }]
++      });
++      const resultB = selectLatestBySourceAndKind(candidatesB, 2000, {
++        allowedSources: [{ source: "clmm-v2-bundle", observationKind: "pool_state" }]
++      });
++
++      expect(resultA.selected).toEqual(resultB.selected);
++      expect(resultA.rejected).toEqual(resultB.rejected);
++    });
++  });
++
++  describe("selectVolatilityTimestamps", () => {
++    it("returns empty when no candidates", () => {
++      const result = selectVolatilityTimestamps([], 1000, 3600000);
++      expect(result.selected).toHaveLength(0);
++      expect(result.rejected).toHaveLength(0);
++    });
++
++    it("selects highest slot then receipt time then id for duplicates", () => {
++      const candidates = [
++        makeRow({
++          id: 1,
++          source: "pyth-hermes",
++          observationKind: "oracle_price",
++          receivedAtUnixMs: 1000,
++          payload: { observedSource: { slot: 100 } }
++        }),
++        makeRow({
++          id: 2,
++          source: "pyth-hermes",
++          observationKind: "oracle_price",
++          receivedAtUnixMs: 1000,
++          payload: { observedSource: { slot: 200 } }
++        }),
++        makeRow({
++          id: 3,
++          source: "pyth-hermes",
++          observationKind: "oracle_price",
++          receivedAtUnixMs: 2000,
++          payload: { observedSource: { slot: 150 } }
++        })
++      ];
++      const result = selectVolatilityTimestamps(candidates, 3000, 3600000);
++      expect(result.selected).toHaveLength(1);
++      expect(result.selected[0]!.id).toBe(2);
++      expect(result.rejected).toHaveLength(2);
++    });
++
++    it("accepts historical volatility samples while requiring a fresh anchor", () => {
++      const now = 5000000000;
++      const oneHourAgo = now - 3600000;
++
++      const anchorRow = makeRow({
++        id: 1,
++        source: "pyth-hermes",
++        observationKind: "oracle_price",
++        receivedAtUnixMs: now - 60000,
++        validUntilUnixMs: now + 300000,
++        payload: { observedSource: { slot: 300 } }
++      });
++
++      const oldSample = makeRow({
++        id: 2,
++        source: "pyth-hermes",
++        observationKind: "oracle_price",
++        receivedAtUnixMs: oneHourAgo + 60000,
++        validUntilUnixMs: oneHourAgo,
++        payload: { observedSource: { slot: 200 } }
++      });
++
++      const candidates = [oldSample, anchorRow];
++      const result = selectVolatilityTimestamps(candidates, now, 3600000);
++
++      expect(result.selected).toHaveLength(2);
++      const selectedIds = result.selected.map((r) => r.id);
++      expect(selectedIds).toContain(1);
++      expect(selectedIds).toContain(2);
++    });
++
++    it("rejects expired anchor even if within window", () => {
++      const now = 5000000000;
++      const oneHourAgo = now - 3600000;
++
++      const expiredAnchor = makeRow({
++        id: 1,
++        source: "pyth-hermes",
++        observationKind: "oracle_price",
++        receivedAtUnixMs: oneHourAgo + 1000,
++        validUntilUnixMs: oneHourAgo,
++        payload: { observedSource: { slot: 300 } }
++      });
++
++      const freshSample = makeRow({
++        id: 2,
++        source: "pyth-hermes",
++        observationKind: "oracle_price",
++        receivedAtUnixMs: now - 60000,
++        validUntilUnixMs: now + 300000,
++        payload: { observedSource: { slot: 200 } }
++      });
++
++      const candidates = [expiredAnchor, freshSample];
++      const result = selectVolatilityTimestamps(candidates, now, 3600000);
++
++      expect(result.selected).toHaveLength(1);
++      expect(result.selected[0]!.id).toBe(2);
++      expect(result.rejected).toHaveLength(1);
++      expect(result.rejected[0]!.observationId).toBe(1);
++    });
++
++    it("sorts timestamps ascending with discarded IDs auditable", () => {
++      const candidates = [
++        makeRow({
++          id: 3,
++          source: "pyth-hermes",
++          observationKind: "oracle_price",
++          receivedAtUnixMs: 1000,
++          payload: { observedSource: { slot: 100 } }
++        }),
++        makeRow({
++          id: 1,
++          source: "pyth-hermes",
++          observationKind: "oracle_price",
++          receivedAtUnixMs: 3000,
++          payload: { observedSource: { slot: 300 } }
++        }),
++        makeRow({
++          id: 2,
++          source: "pyth-hermes",
++          observationKind: "oracle_price",
++          receivedAtUnixMs: 2000,
++          payload: { observedSource: { slot: 200 } }
++        })
++      ];
++      const result = selectVolatilityTimestamps(candidates, 5000, 3600000);
++
++      expect(result.selected).toHaveLength(3);
++      expect(result.selected[0]!.id).toBe(1);
++      expect(result.selected[1]!.id).toBe(2);
++      expect(result.selected[2]!.id).toBe(3);
++
++      expect(result.rejected).toHaveLength(0);
++    });
++  });
++
++  describe("selectWithExpiryCheck", () => {
++    it("returns empty when no candidates", () => {
++      const result = selectWithExpiryCheck([], 1000);
++      expect(result.selected).toHaveLength(0);
++      expect(result.rejected).toHaveLength(0);
++    });
++
++    it("accepts valid candidate", () => {
++      const candidates = [
++        makeRow({
++          id: 1,
++          source: "clmm-v2-bundle",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 1000,
++          validUntilUnixMs: null
++        })
++      ];
++      const result = selectWithExpiryCheck(candidates, 2000);
++      expect(result.selected).toHaveLength(1);
++      expect(result.rejected).toHaveLength(0);
++    });
++
++    it("rejects expired candidate", () => {
++      const candidates = [
++        makeRow({
++          id: 1,
++          source: "clmm-v2-bundle",
++          observationKind: "pool_state",
++          receivedAtUnixMs: 1000,
++          validUntilUnixMs: 1500
++        })
++      ];
++      const result = selectWithExpiryCheck(candidates, 2000);
++      expect(result.selected).toHaveLength(0);
++      expect(result.rejected).toHaveLength(1);
++      expect(result.rejected[0]!.reason).toContain("expired");
++    });
++  });
++});
+diff --git a/tests/fakes/fake-normalized-observation-repo.ts b/tests/fakes/fake-normalized-observation-repo.ts
+index f26297f..9935508 100644
+--- a/tests/fakes/fake-normalized-observation-repo.ts
++++ b/tests/fakes/fake-normalized-observation-repo.ts
+@@ -1,7 +1,8 @@
+ import type {
+   NormalizedObservationRepo,
+   NormalizedObservationRow,
+-  NormalizedObservationInsert
++  NormalizedObservationInsert,
++  NormalizedObservationCandidateQuery
+ } from "../../src/ports/normalized-observation-repo.js";
+ import type { Source, ObservationKind } from "../../src/contracts/taxonomy.js";
+ import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
+@@ -119,4 +120,27 @@ export class FakeNormalizedObservationRepo implements NormalizedObservationRepo
+     matches.sort((a, b) => b.receivedAtUnixMs - a.receivedAtUnixMs);
+     return matches[0] || null;
+   }
++
++  async listCandidates(
++    query: NormalizedObservationCandidateQuery
++  ): Promise<NormalizedObservationRow[]> {
++    const sourceKindSet = new Set(
++      query.sourceKinds.map(({ source, observationKind }) => `${source}:${observationKind}`)
++    );
++
++    const matches = this.store.filter(
++      (r) =>
++        sourceKindSet.has(`${r.source}:${r.observationKind}`) &&
++        r.receivedAtUnixMs >= query.receivedAtOrAfterUnixMs
++    );
++
++    matches.sort((a, b) => {
++      if (a.receivedAtUnixMs !== b.receivedAtUnixMs) {
++        return a.receivedAtUnixMs - b.receivedAtUnixMs;
++      }
++      return a.id - b.id;
++    });
++
++    return matches;
++  }
+ }
+diff --git a/tests/ports/normalized-observation-repo.test.ts b/tests/ports/normalized-observation-repo.test.ts
+index 07c81a1..099f152 100644
+--- a/tests/ports/normalized-observation-repo.test.ts
++++ b/tests/ports/normalized-observation-repo.test.ts
+@@ -351,7 +351,6 @@ describe("NormalizedObservationRepo contract", () => {
+         provenance: DEFAULT_PROVENANCE,
+         receivedAtUnixMs: 1000
+       });
+-      // insert another kind with same raw ID
+       await repo.insert({
+         rawObservationId: 100,
+         source: "clmm-v2-bundle",
+@@ -390,4 +389,217 @@ describe("NormalizedObservationRepo contract", () => {
+       expect(found).toBeNull();
+     });
+   });
++
++  describe("listCandidates", () => {
++    it("returns empty array when no candidates match", async () => {
++      const repo = new FakeNormalizedObservationRepo();
++      const results = await repo.listCandidates({
++        sourceKinds: [{ source: "clmm-v2-bundle", observationKind: "pool_state" }],
++        receivedAtOrAfterUnixMs: 1000
++      });
++      expect(results).toHaveLength(0);
++    });
++
++    it("filters by source and kind with inclusive receipt lower bound", async () => {
++      const repo = new FakeNormalizedObservationRepo();
++      await repo.insert({
++        rawObservationId: 1,
++        source: "clmm-v2-bundle",
++        observationKind: "pool_state",
++        signalClass: "deterministic",
++        evidenceFamily: "clmm_state",
++        payload: { price: 150.0 },
++        payloadHash: "hash-cand-1",
++        confidence: DEFAULT_CONFIDENCE,
++        provenance: DEFAULT_PROVENANCE,
++        receivedAtUnixMs: 500
++      });
++      await repo.insert({
++        rawObservationId: 2,
++        source: "clmm-v2-bundle",
++        observationKind: "pool_state",
++        signalClass: "deterministic",
++        evidenceFamily: "clmm_state",
++        payload: { price: 151.0 },
++        payloadHash: "hash-cand-2",
++        confidence: DEFAULT_CONFIDENCE,
++        provenance: DEFAULT_PROVENANCE,
++        receivedAtUnixMs: 1500
++      });
++      await repo.insert({
++        rawObservationId: 3,
++        source: "jupiter-price",
++        observationKind: "pool_state",
++        signalClass: "deterministic",
++        evidenceFamily: "clmm_state",
++        payload: { price: 152.0 },
++        payloadHash: "hash-cand-3",
++        confidence: DEFAULT_CONFIDENCE,
++        provenance: DEFAULT_PROVENANCE,
++        receivedAtUnixMs: 2000
++      });
++
++      const results = await repo.listCandidates({
++        sourceKinds: [{ source: "clmm-v2-bundle", observationKind: "pool_state" }],
++        receivedAtOrAfterUnixMs: 1000
++      });
++
++      expect(results).toHaveLength(1);
++      expect(results[0]!.receivedAtUnixMs).toBe(1500);
++    });
++
++    it("returns rows ordered by receipt then id ascending", async () => {
++      const repo = new FakeNormalizedObservationRepo();
++      await repo.insert({
++        rawObservationId: 1,
++        source: "clmm-v2-bundle",
++        observationKind: "pool_state",
++        signalClass: "deterministic",
++        evidenceFamily: "clmm_state",
++        payload: { price: 150.0 },
++        payloadHash: "hash-order-1",
++        confidence: DEFAULT_CONFIDENCE,
++        provenance: DEFAULT_PROVENANCE,
++        receivedAtUnixMs: 3000
++      });
++      await repo.insert({
++        rawObservationId: 2,
++        source: "clmm-v2-bundle",
++        observationKind: "pool_state",
++        signalClass: "deterministic",
++        evidenceFamily: "clmm_state",
++        payload: { price: 151.0 },
++        payloadHash: "hash-order-2",
++        confidence: DEFAULT_CONFIDENCE,
++        provenance: DEFAULT_PROVENANCE,
++        receivedAtUnixMs: 1000
++      });
++      await repo.insert({
++        rawObservationId: 3,
++        source: "clmm-v2-bundle",
++        observationKind: "pool_state",
++        signalClass: "deterministic",
++        evidenceFamily: "clmm_state",
++        payload: { price: 152.0 },
++        payloadHash: "hash-order-3",
++        confidence: DEFAULT_CONFIDENCE,
++        provenance: DEFAULT_PROVENANCE,
++        receivedAtUnixMs: 2000
++      });
++
++      const results = await repo.listCandidates({
++        sourceKinds: [{ source: "clmm-v2-bundle", observationKind: "pool_state" }],
++        receivedAtOrAfterUnixMs: 0
++      });
++
++      expect(results).toHaveLength(3);
++      expect(results[0]!.receivedAtUnixMs).toBe(1000);
++      expect(results[1]!.receivedAtUnixMs).toBe(2000);
++      expect(results[2]!.receivedAtUnixMs).toBe(3000);
++    });
++
++    it("supports multiple source/kind pairs", async () => {
++      const repo = new FakeNormalizedObservationRepo();
++      await repo.insert({
++        rawObservationId: 1,
++        source: "clmm-v2-bundle",
++        observationKind: "pool_state",
++        signalClass: "deterministic",
++        evidenceFamily: "clmm_state",
++        payload: { price: 150.0 },
++        payloadHash: "hash-multi-1",
++        confidence: DEFAULT_CONFIDENCE,
++        provenance: DEFAULT_PROVENANCE,
++        receivedAtUnixMs: 1000
++      });
++      await repo.insert({
++        rawObservationId: 2,
++        source: "jupiter-price",
++        observationKind: "oracle_price",
++        signalClass: "deterministic",
++        evidenceFamily: "clmm_state",
++        payload: { price: 151.0 },
++        payloadHash: "hash-multi-2",
++        confidence: DEFAULT_CONFIDENCE,
++        provenance: DEFAULT_PROVENANCE,
++        receivedAtUnixMs: 1000
++      });
++      await repo.insert({
++        rawObservationId: 3,
++        source: "coingecko",
++        observationKind: "oracle_price",
++        signalClass: "deterministic",
++        evidenceFamily: "clmm_state",
++        payload: { price: 152.0 },
++        payloadHash: "hash-multi-3",
++        confidence: DEFAULT_CONFIDENCE,
++        provenance: DEFAULT_PROVENANCE,
++        receivedAtUnixMs: 1000
++      });
++
++      const results = await repo.listCandidates({
++        sourceKinds: [
++          { source: "clmm-v2-bundle", observationKind: "pool_state" },
++          { source: "jupiter-price", observationKind: "oracle_price" }
++        ],
++        receivedAtOrAfterUnixMs: 0
++      });
++
++      expect(results).toHaveLength(2);
++      const sources = results.map((r) => r.source);
++      expect(sources).toContain("clmm-v2-bundle");
++      expect(sources).toContain("jupiter-price");
++      expect(sources).not.toContain("coingecko");
++    });
++
++    it("handles out-of-order insertion with stable ordering", async () => {
++      const repo = new FakeNormalizedObservationRepo();
++      await repo.insert({
++        rawObservationId: 3,
++        source: "clmm-v2-bundle",
++        observationKind: "pool_state",
++        signalClass: "deterministic",
++        evidenceFamily: "clmm_state",
++        payload: { price: 153.0 },
++        payloadHash: "hash-offer-3",
++        confidence: DEFAULT_CONFIDENCE,
++        provenance: DEFAULT_PROVENANCE,
++        receivedAtUnixMs: 3000
++      });
++      await repo.insert({
++        rawObservationId: 1,
++        source: "clmm-v2-bundle",
++        observationKind: "pool_state",
++        signalClass: "deterministic",
++        evidenceFamily: "clmm_state",
++        payload: { price: 151.0 },
++        payloadHash: "hash-offer-1",
++        confidence: DEFAULT_CONFIDENCE,
++        provenance: DEFAULT_PROVENANCE,
++        receivedAtUnixMs: 1000
++      });
++      await repo.insert({
++        rawObservationId: 2,
++        source: "clmm-v2-bundle",
++        observationKind: "pool_state",
++        signalClass: "deterministic",
++        evidenceFamily: "clmm_state",
++        payload: { price: 152.0 },
++        payloadHash: "hash-offer-2",
++        confidence: DEFAULT_CONFIDENCE,
++        provenance: DEFAULT_PROVENANCE,
++        receivedAtUnixMs: 2000
++      });
++
++      const results = await repo.listCandidates({
++        sourceKinds: [{ source: "clmm-v2-bundle", observationKind: "pool_state" }],
++        receivedAtOrAfterUnixMs: 0
++      });
++
++      expect(results).toHaveLength(3);
++      expect(results[0]!.rawObservationId).toBe(1);
++      expect(results[1]!.rawObservationId).toBe(2);
++      expect(results[2]!.rawObservationId).toBe(3);
++    });
++  });
+ });
