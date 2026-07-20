@@ -27,3 +27,11 @@ export {
   type FeatureCalculation,
   type AssembledFeature
 } from "./assemble.js";
+
+export {
+  calculateRangeLocation,
+  calculateDistanceToLower,
+  calculateDistanceToUpper,
+  RANGE_CALCULATOR_VERSIONS,
+  type RangeClassification
+} from "./range.js";
