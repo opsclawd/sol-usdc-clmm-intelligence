@@ -1,4 +1,4 @@
-import { eq, and, gte, or, asc, desc } from "drizzle-orm";
+import { eq, and, gte, or, asc, desc, inArray } from "drizzle-orm";
 import { normalizedObservations } from "../../db/schema/normalized-observations.js";
 import type {
   NormalizedObservationRepo,
@@ -281,6 +281,18 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
       .where(or(...conditions))
       .orderBy(asc(normalizedObservations.receivedAtUnixMs), asc(normalizedObservations.id));
 
+    return rows.map(toPortRow);
+  }
+
+  async findByIds(ids: readonly number[]): Promise<NormalizedObservationRow[]> {
+    if (ids.length === 0) return [];
+
+    const uniqueAscIds = [...new Set(ids)].sort((a, b) => a - b);
+    const rows = await this.db
+      .select()
+      .from(normalizedObservations)
+      .where(inArray(normalizedObservations.id, uniqueAscIds))
+      .orderBy(asc(normalizedObservations.id));
     return rows.map(toPortRow);
   }
 }

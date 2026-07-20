@@ -56,4 +56,5 @@ export interface NormalizedObservationRepo {
     observationKind: ObservationKind
   ): Promise<NormalizedObservationRow | null>;
   listCandidates(query: NormalizedObservationCandidateQuery): Promise<NormalizedObservationRow[]>;
+  findByIds(ids: readonly number[]): Promise<NormalizedObservationRow[]>;
 }
