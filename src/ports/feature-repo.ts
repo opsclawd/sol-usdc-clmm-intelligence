@@ -42,6 +42,8 @@ export interface DerivedFeatureRow {
   derivationKey: string;
   poolId: string | null;
   positionId: string | null;
+  warnings: readonly string[];
+  reasons: readonly string[];
 }
 
 export interface DerivedFeatureInsert {

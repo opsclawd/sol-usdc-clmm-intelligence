@@ -83,7 +83,9 @@ function makeFeatureRow(
     rejectedObservationIds: overrides.rejectedObservationIds ?? [],
     derivationKey: overrides.derivationKey,
     poolId: overrides.poolId ?? null,
-    positionId: overrides.positionId ?? null
+    positionId: overrides.positionId ?? null,
+    warnings: overrides.warnings ?? [],
+    reasons: overrides.reasons ?? []
   };
 }
 
@@ -91,22 +93,31 @@ function makeRequest(
   candidates: readonly DerivedFeatureRow[],
   overrides?: Partial<BundleSelectionRequest>
 ): BundleSelectionRequest {
+  const defaultCalculatorVersions: Readonly<Record<FeatureKind, string>> = {
+    range_location: "1.0",
+    distance_to_lower: "1.0",
+    distance_to_upper: "1.0",
+    oracle_dex_divergence: "1.0",
+    oracle_confidence_width: "1.0",
+    realized_volatility_1h: "1.0",
+    volume_liquidity_ratio_24h: "1.0"
+  };
+
+  const calculatorVersions: Readonly<Record<FeatureKind, string>> = overrides?.calculatorVersions
+    ? { ...defaultCalculatorVersions, ...overrides.calculatorVersions }
+    : defaultCalculatorVersions;
+
+  const { calculatorVersions: _cv, ...restOverrides } = overrides ?? {};
+  void _cv;
+
   return {
     evaluationTimeUnixMs: overrides?.evaluationTimeUnixMs ?? 5000000000,
     selectionVersion: overrides?.selectionVersion ?? "1.0",
-    calculatorVersions: overrides?.calculatorVersions ?? {
-      range_location: "1.0",
-      distance_to_lower: "1.0",
-      distance_to_upper: "1.0",
-      oracle_dex_divergence: "1.0",
-      oracle_confidence_width: "1.0",
-      realized_volatility_1h: "1.0",
-      volume_liquidity_ratio_24h: "1.0"
-    },
+    calculatorVersions,
     candidates,
     poolId: overrides?.poolId ?? "pool-abc",
     positionId: overrides?.positionId ?? "position-1",
-    ...overrides
+    ...(restOverrides as Partial<BundleSelectionRequest>)
   };
 }
 
@@ -495,7 +506,7 @@ describe("selectEvidenceFeatureSlots", () => {
       ];
       const request = makeRequest(candidates, {
         calculatorVersions: { range_location: "1.0" }
-      });
+      } as Partial<BundleSelectionRequest>);
 
       const result = selectEvidenceFeatureSlots(request);
 
@@ -522,7 +533,7 @@ describe("selectEvidenceFeatureSlots", () => {
 
       const requestMismatch = makeRequest(candidatesVersionMismatch, {
         calculatorVersions: { range_location: "1.0" }
-      });
+      } as Partial<BundleSelectionRequest>);
       const requestMissing = makeRequest(candidatesMissing);
 
       const resultMismatch = selectEvidenceFeatureSlots(requestMismatch);
@@ -634,7 +645,7 @@ describe("selectEvidenceFeatureSlots", () => {
       ];
       const request = makeRequest(candidates, {
         calculatorVersions: { range_location: "1.0" }
-      });
+      } as Partial<BundleSelectionRequest>);
 
       const result = selectEvidenceFeatureSlots(request);
 
@@ -786,7 +797,7 @@ describe("selectEvidenceFeatureSlots", () => {
       ];
       const request = makeRequest(candidates, {
         calculatorVersions: { range_location: "1.0" }
-      });
+      } as Partial<BundleSelectionRequest>);
 
       const result = selectEvidenceFeatureSlots(request);
 

@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { FakeFeatureRepo } from "../../tests/fakes/fake-feature-repo.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
+import type { FeatureKind, StaleBehavior } from "../../src/contracts/taxonomy.js";
 
 const FEATURE_INSERT: {
-  featureKind: "range_location";
+  featureKind: FeatureKind;
   signalClass: "deterministic";
   evidenceFamily: "clmm_state";
   confidence: typeof DEFAULT_CONFIDENCE;
@@ -13,6 +14,20 @@ const FEATURE_INSERT: {
   status: "AVAILABLE";
   unit: "PPM";
   value?: number | null;
+  pair?: string;
+  poolId?: string | null;
+  positionId?: string | null;
+  calculatorVersion?: string;
+  selectionVersion?: string;
+  inputObservationIds?: number[];
+  rejectedObservationIds?: number[];
+  warnings?: readonly string[];
+  reasons?: readonly string[];
+  confidenceComposite?: number | null;
+  confidenceLevel?: string | null;
+  validUntilUnixMs?: number | null;
+  isStale?: boolean;
+  staleBehavior?: StaleBehavior | null;
 } = {
   featureKind: "range_location",
   signalClass: "deterministic",

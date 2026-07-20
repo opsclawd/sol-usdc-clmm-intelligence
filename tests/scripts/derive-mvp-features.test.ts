@@ -28,7 +28,8 @@ function createMockFeatureRepo() {
     insert: vi.fn(),
     insertMany: vi.fn(),
     findByDerivationKey: vi.fn(),
-    findByKind: vi.fn()
+    findByKind: vi.fn(),
+    listBundleCandidates: vi.fn()
   };
 }
 

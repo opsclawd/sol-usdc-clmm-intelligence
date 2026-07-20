@@ -59,7 +59,9 @@ export class FakeFeatureRepo implements DerivedFeatureRepo {
           rejectedObservationIds: row.rejectedObservationIds ?? [],
           derivationKey: row.derivationKey,
           poolId: row.poolId ?? null,
-          positionId: row.positionId ?? null
+          positionId: row.positionId ?? null,
+          warnings: row.warnings ?? [],
+          reasons: row.reasons ?? []
         };
         this.store.push(result);
         batchInsertedMap.set(key, result);

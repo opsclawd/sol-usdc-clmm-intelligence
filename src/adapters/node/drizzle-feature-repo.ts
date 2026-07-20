@@ -41,7 +41,9 @@ function toPortRow(row: typeof derivedFeatures.$inferSelect): DerivedFeatureRow 
     rejectedObservationIds: row.rejectedObservationIds,
     derivationKey: row.derivationKey,
     poolId: row.poolId,
-    positionId: row.positionId
+    positionId: row.positionId,
+    warnings: row.warnings ?? [],
+    reasons: row.reasons ?? []
   };
 }
 
@@ -231,7 +233,7 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
       .from(derivedFeatures)
       .where(
         and(
-          inArray(derivedFeatures.featureKind, query.featureKinds),
+          inArray(derivedFeatures.featureKind, [...query.featureKinds]),
           eq(derivedFeatures.pair, query.pair),
           gte(derivedFeatures.asOfUnixMs, query.asOfAtOrAfterUnixMs),
           lte(derivedFeatures.asOfUnixMs, query.asOfAtOrBeforeUnixMs),
