@@ -275,107 +275,8 @@ export const observationKindRegistry = {
 } as const satisfies Record<ObservationKind, ObservationKindEntry>;
 
 export const featureKindRegistry = {
-  fee_apr: {
-    kind: "fee_apr",
-    evidenceFamily: "clmm_economics",
-    signalClass: "deterministic",
-    freshnessPolicy: {
-      maxObservedAgeMs: 300_000,
-      maxFetchLagMs: null,
-      validForMs: null,
-      clockSkewToleranceMs: 5_000,
-      staleBehavior: "degrade_confidence"
-    },
-    confidencePolicy: {
-      weights: {
-        sourceReliability: 0.3,
-        dataCompleteness: 0.3,
-        derivationConfidence: 0.4,
-        llmConfidence: 0
-      },
-      thresholds: DEFAULT_THRESHOLDS,
-      redistributeLlmWeight: true
-    },
-    provenanceRequirements: {
-      minRawObservationRefs: 1,
-      minDerivedFromRefs: 1,
-      minSourceRefs: 1,
-      requireProcessRef: true,
-      requireCodeVersion: true,
-      requireRunId: false,
-      allowedSourceRefs: ["clmm-v2-bundle"]
-    },
-    active: true,
-    schemaVersion: 1
-  },
-  oracle_divergence: {
-    kind: "oracle_divergence",
-    evidenceFamily: "price_quality",
-    signalClass: "deterministic",
-    freshnessPolicy: {
-      maxObservedAgeMs: 60_000,
-      maxFetchLagMs: null,
-      validForMs: null,
-      clockSkewToleranceMs: 5_000,
-      staleBehavior: "degrade_confidence"
-    },
-    confidencePolicy: {
-      weights: {
-        sourceReliability: 0.3,
-        dataCompleteness: 0.3,
-        derivationConfidence: 0.4,
-        llmConfidence: 0
-      },
-      thresholds: DEFAULT_THRESHOLDS,
-      redistributeLlmWeight: true
-    },
-    provenanceRequirements: {
-      minRawObservationRefs: 2,
-      minDerivedFromRefs: 0,
-      minSourceRefs: 2,
-      requireProcessRef: true,
-      requireCodeVersion: true,
-      requireRunId: false,
-      allowedSourceRefs: ["pyth-hermes", "jupiter-quote", "jupiter-price-v3", "coingecko"]
-    },
-    active: true,
-    schemaVersion: 1
-  },
-  volatility_24h: {
-    kind: "volatility_24h",
-    evidenceFamily: "price_quality",
-    signalClass: "deterministic",
-    freshnessPolicy: {
-      maxObservedAgeMs: 600_000,
-      maxFetchLagMs: null,
-      validForMs: null,
-      clockSkewToleranceMs: 5_000,
-      staleBehavior: "allow_context_only"
-    },
-    confidencePolicy: {
-      weights: {
-        sourceReliability: 0.3,
-        dataCompleteness: 0.3,
-        derivationConfidence: 0.4,
-        llmConfidence: 0
-      },
-      thresholds: DEFAULT_THRESHOLDS,
-      redistributeLlmWeight: true
-    },
-    provenanceRequirements: {
-      minRawObservationRefs: 1,
-      minDerivedFromRefs: 0,
-      minSourceRefs: 1,
-      requireProcessRef: true,
-      requireCodeVersion: true,
-      requireRunId: false,
-      allowedSourceRefs: ["coingecko", "defillama"]
-    },
-    active: true,
-    schemaVersion: 1
-  },
-  liquidity_depth: {
-    kind: "liquidity_depth",
+  range_location: {
+    kind: "range_location",
     evidenceFamily: "clmm_state",
     signalClass: "deterministic",
     freshnessPolicy: {
@@ -397,12 +298,210 @@ export const featureKindRegistry = {
     },
     provenanceRequirements: {
       minRawObservationRefs: 1,
-      minDerivedFromRefs: 1,
+      minDerivedFromRefs: 0,
       minSourceRefs: 1,
       requireProcessRef: true,
       requireCodeVersion: true,
       requireRunId: false,
       allowedSourceRefs: ["clmm-v2-bundle"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  distance_to_lower: {
+    kind: "distance_to_lower",
+    evidenceFamily: "clmm_state",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 60_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "exclude"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.4,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      minRawObservationRefs: 1,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 1,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: ["clmm-v2-bundle"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  distance_to_upper: {
+    kind: "distance_to_upper",
+    evidenceFamily: "clmm_state",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 60_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "exclude"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.4,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      minRawObservationRefs: 1,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 1,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: ["clmm-v2-bundle"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  oracle_dex_divergence: {
+    kind: "oracle_dex_divergence",
+    evidenceFamily: "price_quality",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 60_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "exclude"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.3,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.4,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      minRawObservationRefs: 2,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 2,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: ["pyth-hermes", "jupiter-price", "jupiter-price-v3"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  oracle_confidence_width: {
+    kind: "oracle_confidence_width",
+    evidenceFamily: "price_quality",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 60_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "exclude"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.3,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.4,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      minRawObservationRefs: 1,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 1,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: ["pyth-hermes"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  realized_volatility_1h: {
+    kind: "realized_volatility_1h",
+    evidenceFamily: "price_quality",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 300_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "degrade_confidence"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.3,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.4,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      minRawObservationRefs: 1,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 1,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: ["pyth-hermes", "jupiter-price", "jupiter-price-v3"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  volume_liquidity_ratio_24h: {
+    kind: "volume_liquidity_ratio_24h",
+    evidenceFamily: "clmm_economics",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 300_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "degrade_confidence"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.3,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.4,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      minRawObservationRefs: 1,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 1,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: ["clmm-v2-bundle", "orca-public-api"]
     },
     active: true,
     schemaVersion: 1

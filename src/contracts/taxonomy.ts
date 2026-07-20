@@ -26,7 +26,14 @@ export type ObservationKind =
   | "data_quality"
   | "pool_statistics";
 
-export type FeatureKind = "fee_apr" | "oracle_divergence" | "volatility_24h" | "liquidity_depth";
+export type FeatureKind =
+  | "range_location"
+  | "distance_to_lower"
+  | "distance_to_upper"
+  | "oracle_dex_divergence"
+  | "oracle_confidence_width"
+  | "realized_volatility_1h"
+  | "volume_liquidity_ratio_24h";
 
 export type Source =
   | "clmm-v2-bundle"

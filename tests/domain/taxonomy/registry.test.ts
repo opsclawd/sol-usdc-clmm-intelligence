@@ -93,10 +93,13 @@ describe("observationKindRegistry", () => {
 
 describe("featureKindRegistry", () => {
   const featureKinds: FeatureKind[] = [
-    "fee_apr",
-    "oracle_divergence",
-    "volatility_24h",
-    "liquidity_depth"
+    "range_location",
+    "distance_to_lower",
+    "distance_to_upper",
+    "oracle_dex_divergence",
+    "oracle_confidence_width",
+    "realized_volatility_1h",
+    "volume_liquidity_ratio_24h"
   ];
 
   it("has an entry for every FeatureKind union member", () => {
@@ -148,10 +151,10 @@ describe("getObservationKindEntry", () => {
 });
 
 describe("getFeatureKindEntry", () => {
-  it("returns entry for fee_apr", () => {
-    const entry = getFeatureKindEntry("fee_apr");
-    expect(entry.kind).toBe("fee_apr");
-    expect(entry.evidenceFamily).toBe("clmm_economics");
+  it("returns entry for range_location", () => {
+    const entry = getFeatureKindEntry("range_location");
+    expect(entry.kind).toBe("range_location");
+    expect(entry.evidenceFamily).toBe("clmm_state");
   });
 });
 

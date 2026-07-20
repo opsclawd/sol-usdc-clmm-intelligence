@@ -6,3 +6,4 @@ export * from "./snapshots.js";
 export * from "./taxonomy.js";
 export * from "./normalized-pool-statistics.js";
 export * from "./collection-run.js";
+export * from "./derived-feature.js";

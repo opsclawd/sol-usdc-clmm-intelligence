@@ -25,8 +25,8 @@ describe("parseObservationKind", () => {
 
 describe("parseFeatureKind", () => {
   it("returns typed value for valid kinds", () => {
-    expect(parseFeatureKind("fee_apr")).toBe("fee_apr");
-    expect(parseFeatureKind("volatility_24h")).toBe("volatility_24h");
+    expect(parseFeatureKind("range_location")).toBe("range_location");
+    expect(parseFeatureKind("oracle_dex_divergence")).toBe("oracle_dex_divergence");
   });
 
   it("throws for unknown kind", () => {

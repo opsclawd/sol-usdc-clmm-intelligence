@@ -3,9 +3,9 @@ import { FakeFeatureRepo } from "../../tests/fakes/fake-feature-repo.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 
 const FEATURE_INSERT = {
-  featureKind: "fee_apr" as const,
+  featureKind: "range_location" as const,
   signalClass: "deterministic" as const,
-  evidenceFamily: "clmm_economics" as const,
+  evidenceFamily: "clmm_state" as const,
   confidence: DEFAULT_CONFIDENCE,
   provenance: DEFAULT_PROVENANCE
 };
@@ -21,7 +21,7 @@ describe("DerivedFeatureRepo contract", () => {
       receivedAtUnixMs: 1001
     });
 
-    const found = await repo.findByKind("fee_apr", 900);
+    const found = await repo.findByKind("range_location", 900);
     expect(found).toHaveLength(1);
     expect(found[0]!.value).toBe(0.15);
   });
@@ -43,7 +43,7 @@ describe("DerivedFeatureRepo contract", () => {
       receivedAtUnixMs: 1001
     });
 
-    const found = await repo.findByKind("fee_apr", 800);
+    const found = await repo.findByKind("range_location", 800);
     expect(found).toHaveLength(1);
     expect(found[0]!.value).toBe(0.2);
   });
@@ -65,7 +65,7 @@ describe("DerivedFeatureRepo contract", () => {
       receivedAtUnixMs: 1001
     });
     expect(second.id).toBe(first.id);
-    const all = await repo.findByKind("fee_apr", 0);
+    const all = await repo.findByKind("range_location", 0);
     expect(all).toHaveLength(1);
   });
 
@@ -78,10 +78,10 @@ describe("DerivedFeatureRepo contract", () => {
       payloadHash: "findme",
       receivedAtUnixMs: 1001
     });
-    const found = await repo.findByHash("fee_apr", "findme");
+    const found = await repo.findByHash("range_location", "findme");
     expect(found).toBeDefined();
     expect(found!.id).toBe(inserted.id);
-    const notFound = await repo.findByHash("fee_apr", "nope");
+    const notFound = await repo.findByHash("range_location", "nope");
     expect(notFound).toBeUndefined();
   });
 });
