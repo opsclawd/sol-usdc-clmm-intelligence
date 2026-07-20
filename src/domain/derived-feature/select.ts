@@ -116,9 +116,10 @@ export function selectVolatilityTimestamps(
   }
 
   const windowStart = evaluationAsOfUnixMs - windowMs;
+  const anchorThreshold = evaluationAsOfUnixMs - 300000;
 
   const outsideWindowRejections: CandidateRejection[] = [];
-  const anchorRejections: CandidateRejection[] = [];
+  const anchorExpiredRejections: CandidateRejection[] = [];
   const windowCandidates: NormalizedObservationRow[] = [];
 
   for (const candidate of candidates) {
@@ -136,90 +137,87 @@ export function selectVolatilityTimestamps(
   }
 
   if (windowCandidates.length === 0) {
-    const allRejections = [...outsideWindowRejections, ...anchorRejections];
+    const allRejections = [...outsideWindowRejections];
     allRejections.sort((a, b) => a.observationId - b.observationId);
     return { selected: [], rejected: allRejections };
   }
 
-  const anchorThreshold = evaluationAsOfUnixMs - 300000;
-  const anchorCandidates = windowCandidates.filter((c) => c.receivedAtUnixMs >= anchorThreshold);
+  // Only candidates within the anchor threshold need to be fresh (they are
+  // eligible to serve as the "latest" observation). Older, historical
+  // samples in the window are retained regardless of expiry.
+  const eligibleCandidates: NormalizedObservationRow[] = [];
+  let hasFreshAnchor = false;
 
-  const freshAnchorCandidates = anchorCandidates.filter(
-    (c) => c.validUntilUnixMs === null || c.validUntilUnixMs > evaluationAsOfUnixMs
-  );
+  for (const candidate of windowCandidates) {
+    const isAnchorZone = candidate.receivedAtUnixMs >= anchorThreshold;
+    const isFresh =
+      candidate.validUntilUnixMs === null || candidate.validUntilUnixMs > evaluationAsOfUnixMs;
 
-  if (freshAnchorCandidates.length === 0) {
-    for (const c of anchorCandidates) {
-      anchorRejections.push({
-        observationId: c.id,
-        reason: `anchor_expired: validUntil=${c.validUntilUnixMs} <= evaluationAsOf=${evaluationAsOfUnixMs}`
+    if (isAnchorZone && !isFresh) {
+      anchorExpiredRejections.push({
+        observationId: candidate.id,
+        reason: `anchor_expired: validUntil=${candidate.validUntilUnixMs} <= evaluationAsOf=${evaluationAsOfUnixMs}`
+      });
+      continue;
+    }
+
+    if (isAnchorZone && isFresh) {
+      hasFreshAnchor = true;
+    }
+
+    eligibleCandidates.push(candidate);
+  }
+
+  if (!hasFreshAnchor) {
+    const allRejections = [...outsideWindowRejections, ...anchorExpiredRejections];
+    for (const candidate of eligibleCandidates) {
+      allRejections.push({
+        observationId: candidate.id,
+        reason: `no_fresh_anchor: no candidate within anchorThreshold=${anchorThreshold} is fresh`
       });
     }
-    for (const c of windowCandidates) {
-      if (!anchorCandidates.includes(c)) {
-        anchorRejections.push({
-          observationId: c.id,
-          reason: `no_fresh_anchor: candidate receipt=${c.receivedAtUnixMs} < anchorThreshold=${anchorThreshold}`
-        });
-      }
-    }
-    const allRejections = [...outsideWindowRejections, ...anchorRejections];
     allRejections.sort((a, b) => a.observationId - b.observationId);
     return { selected: [], rejected: allRejections };
   }
 
-  freshAnchorCandidates.sort((a, b) => {
-    if (b.receivedAtUnixMs !== a.receivedAtUnixMs) {
-      return b.receivedAtUnixMs - a.receivedAtUnixMs;
-    }
-    return a.id - b.id;
-  });
-
-  const latestAnchor = freshAnchorCandidates[0]!;
-
-  const deduplicatedMap = new Map<number, NormalizedObservationRow>();
-  const duplicateRejections: CandidateRejection[] = [];
-
-  const anchorPayload = latestAnchor.payload as VolatilityPayload;
-  const anchorSlot = anchorPayload?.observedSource?.slot ?? 0;
-  deduplicatedMap.set(anchorSlot, latestAnchor);
-
-  const nonAnchorCandidates = windowCandidates.filter((c) => c.id !== latestAnchor.id);
-
-  nonAnchorCandidates.sort((a, b) => {
-    const payloadA = a.payload as VolatilityPayload;
-    const payloadB = b.payload as VolatilityPayload;
-    const slotA = payloadA?.observedSource?.slot ?? 0;
-    const slotB = payloadB?.observedSource?.slot ?? 0;
-
-    if (slotA !== slotB) {
-      return slotB - slotA;
-    }
-    if (a.receivedAtUnixMs !== b.receivedAtUnixMs) {
-      return b.receivedAtUnixMs - a.receivedAtUnixMs;
-    }
-    return a.id - b.id;
-  });
-
-  for (const candidate of nonAnchorCandidates) {
+  const bySlot = new Map<number, NormalizedObservationRow[]>();
+  for (const candidate of eligibleCandidates) {
     const payload = candidate.payload as VolatilityPayload;
     const slot = payload?.observedSource?.slot ?? 0;
-
-    if (deduplicatedMap.has(slot)) {
-      duplicateRejections.push({
-        observationId: candidate.id,
-        reason: `duplicate_slot: slot=${slot}`
-      });
+    const group = bySlot.get(slot);
+    if (group) {
+      group.push(candidate);
     } else {
-      deduplicatedMap.set(slot, candidate);
+      bySlot.set(slot, [candidate]);
     }
   }
 
-  const selected = Array.from(deduplicatedMap.values()).sort(
-    (a, b) => a.receivedAtUnixMs - b.receivedAtUnixMs
-  );
+  const duplicateRejections: CandidateRejection[] = [];
+  const selected: NormalizedObservationRow[] = [];
 
-  const allRejections = [...outsideWindowRejections, ...anchorRejections, ...duplicateRejections];
+  for (const group of bySlot.values()) {
+    group.sort((a, b) => {
+      if (a.receivedAtUnixMs !== b.receivedAtUnixMs) {
+        return a.receivedAtUnixMs - b.receivedAtUnixMs;
+      }
+      return b.id - a.id;
+    });
+    selected.push(group[0]!);
+    for (const duplicate of group.slice(1)) {
+      duplicateRejections.push({
+        observationId: duplicate.id,
+        reason: `duplicate_slot: slot=${(duplicate.payload as VolatilityPayload)?.observedSource?.slot ?? 0}`
+      });
+    }
+  }
+
+  selected.sort((a, b) => a.receivedAtUnixMs - b.receivedAtUnixMs);
+
+  const allRejections = [
+    ...outsideWindowRejections,
+    ...anchorExpiredRejections,
+    ...duplicateRejections
+  ];
   allRejections.sort((a, b) => a.observationId - b.observationId);
 
   return {
