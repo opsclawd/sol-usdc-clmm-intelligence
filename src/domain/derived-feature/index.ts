@@ -45,3 +45,13 @@ export {
   type ConfidenceWidthResult,
   type VolumeRatioResult
 } from "./market.js";
+
+export {
+  calculateRealizedVolatility1h,
+  REALIZED_VOLATILITY_1H_VERSION,
+  VOLATILITY_WINDOW_MS,
+  VOLATILITY_MIN_SAMPLES,
+  VOLATILITY_MIN_SPAN_MS,
+  VOLATILITY_MAX_GAP_MS,
+  type PriceObservation
+} from "./volatility.js";
