@@ -22,3 +22,17 @@ export type {
   LineageVerificationError,
   LineageVerificationErrorCode
 } from "./lineage.js";
+
+export { classifyEvidenceBundleQuality } from "./quality.js";
+export type {
+  EvidenceBundleQuality,
+  EvidenceQualityInput,
+  QualityLevel,
+  CoverageStatus,
+  SlotQualitySummary,
+  FamilyCoverage,
+  BundleWarning
+} from "./quality.js";
+
+export { assembleEvidenceBundleCandidate } from "./assemble.js";
+export type { AssembleEvidenceBundleInput } from "./assemble.js";
