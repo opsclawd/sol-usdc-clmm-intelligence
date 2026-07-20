@@ -117,7 +117,9 @@ const DerivedFeatureV1InputSchema = DerivedFeatureV1BaseSchema;
 
 function validateSortedUnique<T>(arr: readonly T[], name: string): void {
   for (let i = 1; i < arr.length; i++) {
-    if (arr[i - 1] >= arr[i]) {
+    const prev = arr[i - 1]!;
+    const curr = arr[i]!;
+    if (prev >= curr) {
       throw new Error(`${name} must be strictly sorted and unique`);
     }
   }

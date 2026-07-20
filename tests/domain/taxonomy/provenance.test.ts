@@ -82,7 +82,7 @@ describe("validateProvenance", () => {
       requireRunId: false,
       allowedSourceRefs: ["clmm-v2-bundle" as const]
     };
-    const result = validateProvenance(baseProvenance, requirements, "fee_apr");
+    const result = validateProvenance(baseProvenance, requirements, "volume_liquidity_ratio_24h");
     expect(result).toMatchObject({ valid: false });
     if (!result.valid) {
       expect(result.reasons).toContain("insufficient_derived_from_refs");

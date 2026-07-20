@@ -618,7 +618,9 @@ describe("DerivedFeatureV1 contract", () => {
     });
 
     it("rejects other pair values", () => {
-      const feature = buildMinimalFeature({ pair: "ETH/USDC" } as unknown as "SOL/USDC");
+      const feature = buildMinimalFeature({
+        pair: "ETH/USDC"
+      } as unknown as Partial<DerivedFeatureV1>);
       expect(() => parseDerivedFeatureV1(feature)).toThrow();
     });
   });
