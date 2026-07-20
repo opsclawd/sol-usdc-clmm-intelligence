@@ -213,6 +213,42 @@ describe("selectors", () => {
       expect(result.rejected[0]!.observationId).toBe(2);
     });
 
+    it("selects the latest exact-scope valid row with deterministic tie breaks", () => {
+      const candidates = [
+        makeRow({
+          id: 1,
+          source: "pyth-hermes",
+          observationKind: "oracle_price",
+          receivedAtUnixMs: 3000,
+          payload: { observedSource: { slot: 200, observedAtUnixMs: 2500 } }
+        }),
+        makeRow({
+          id: 2,
+          source: "pyth-hermes",
+          observationKind: "oracle_price",
+          receivedAtUnixMs: 3000,
+          payload: { observedSource: { slot: 300, observedAtUnixMs: 2000 } }
+        }),
+        makeRow({
+          id: 3,
+          source: "pyth-hermes",
+          observationKind: "oracle_price",
+          receivedAtUnixMs: 4000,
+          payload: { observedSource: { slot: 100, observedAtUnixMs: 3500 } }
+        }),
+        makeRow({
+          id: 4,
+          source: "pyth-hermes",
+          observationKind: "oracle_price",
+          receivedAtUnixMs: 5000,
+          payload: { observedSource: { slot: 300, observedAtUnixMs: 2000 } }
+        })
+      ];
+      const result = selectLatestBySourceAndKind(candidates, 10000);
+      expect(result.selected).toHaveLength(1);
+      expect(result.selected[0]!.id).toBe(4);
+    });
+
     it("produces stable results regardless of input order", () => {
       const candidatesA = [
         makeRow({

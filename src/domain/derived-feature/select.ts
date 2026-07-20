@@ -75,6 +75,18 @@ export function selectLatestBySourceAndKind(
   }
 
   notExpiredCandidates.sort((a, b) => {
+    const payloadA = a.payload as VolatilityPayload;
+    const payloadB = b.payload as VolatilityPayload;
+    const slotA = payloadA?.observedSource?.slot ?? 0;
+    const slotB = payloadB?.observedSource?.slot ?? 0;
+    if (slotA !== slotB) {
+      return slotB - slotA;
+    }
+    const semanticTimeA = payloadA?.observedSource?.observedAtUnixMs ?? 0;
+    const semanticTimeB = payloadB?.observedSource?.observedAtUnixMs ?? 0;
+    if (semanticTimeA !== semanticTimeB) {
+      return semanticTimeB - semanticTimeA;
+    }
     if (a.receivedAtUnixMs !== b.receivedAtUnixMs) {
       return b.receivedAtUnixMs - a.receivedAtUnixMs;
     }
@@ -90,6 +102,7 @@ export function selectLatestBySourceAndKind(
 interface VolatilityPayload {
   observedSource?: {
     slot?: number;
+    observedAtUnixMs?: number;
   };
 }
 
