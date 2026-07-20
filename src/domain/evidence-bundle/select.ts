@@ -21,6 +21,8 @@ export interface SelectedAvailableSlot {
   readonly provenance: Provenance;
   readonly warnings: readonly string[];
   readonly reasons: readonly string[];
+  readonly asOfUnixMs: number;
+  readonly validUntilUnixMs: number | null;
 }
 
 export interface SelectedPartialSlot {
@@ -32,6 +34,8 @@ export interface SelectedPartialSlot {
   readonly provenance: Provenance;
   readonly warnings: readonly string[];
   readonly reasons: readonly string[];
+  readonly asOfUnixMs: number;
+  readonly validUntilUnixMs: number | null;
 }
 
 export interface SelectedUnavailableSlot {
@@ -42,6 +46,8 @@ export interface SelectedUnavailableSlot {
   readonly provenance: Provenance;
   readonly warnings: readonly string[];
   readonly reasons: readonly string[];
+  readonly asOfUnixMs: number;
+  readonly validUntilUnixMs: number | null;
 }
 
 export interface MissingSlot {
@@ -259,7 +265,9 @@ function selectSlot(
         confidence: winner.confidence,
         provenance: winner.provenance,
         warnings: combinedWarnings,
-        reasons: combinedReasons
+        reasons: combinedReasons,
+        asOfUnixMs: winner.asOfUnixMs,
+        validUntilUnixMs: winner.validUntilUnixMs
       },
       rejectedIds: [...rejectedIds, ...eligible.slice(1).map((c) => c.id)],
       warnings: combinedWarnings,
@@ -277,7 +285,9 @@ function selectSlot(
         confidence: winner.confidence,
         provenance: winner.provenance,
         warnings: combinedWarnings,
-        reasons: combinedReasons
+        reasons: combinedReasons,
+        asOfUnixMs: winner.asOfUnixMs,
+        validUntilUnixMs: winner.validUntilUnixMs
       },
       rejectedIds: [...rejectedIds, ...eligible.slice(1).map((c) => c.id)],
       warnings: combinedWarnings,
@@ -293,7 +303,9 @@ function selectSlot(
       confidence: winner.confidence,
       provenance: winner.provenance,
       warnings: combinedWarnings,
-      reasons: combinedReasons
+      reasons: combinedReasons,
+      asOfUnixMs: winner.asOfUnixMs,
+      validUntilUnixMs: winner.validUntilUnixMs
     },
     rejectedIds: [...rejectedIds, ...eligible.slice(1).map((c) => c.id)],
     warnings: combinedWarnings,

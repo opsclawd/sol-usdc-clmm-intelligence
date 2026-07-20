@@ -108,7 +108,9 @@ function makeSlotsAllAvailable(candidates: DerivedFeatureRow[]): SelectedFeature
       confidence: candidate.confidence,
       provenance: candidate.provenance,
       warnings: candidate.warnings,
-      reasons: candidate.reasons
+      reasons: candidate.reasons,
+      asOfUnixMs: candidate.asOfUnixMs,
+      validUntilUnixMs: candidate.validUntilUnixMs
     };
   });
 }
@@ -549,7 +551,9 @@ describe("assembleEvidenceBundleCandidate", () => {
               confidence: DEFAULT_CONFIDENCE,
               provenance: DEFAULT_PROVENANCE,
               warnings: [] as readonly string[],
-              reasons: [] as readonly string[]
+              reasons: [] as readonly string[],
+              asOfUnixMs: 1000,
+              validUntilUnixMs: null
             }
       );
       const result = assembleEvidenceBundleCandidate(

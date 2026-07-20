@@ -7,6 +7,7 @@ import type {
 import type { SelectedFeatureSlot } from "./select.js";
 import type { EvidenceBundleQuality } from "./quality.js";
 import type { VerifiedEvidenceLineage } from "./lineage.js";
+import type { FeatureKind } from "../../contracts/taxonomy.js";
 import { MVP_FEATURE_KINDS } from "../../contracts/derived-feature.js";
 
 export const EVIDENCE_BUNDLE_ASSEMBLE_VERSION = "mvp-evidence-bundle-assemble/v1";
@@ -39,7 +40,14 @@ type FeatureFamily =
   | "liquidity"
   | "risk";
 
-function mapFeatureKindToFamily(featureKind: string): FeatureFamily {
+const PPM_KINDS: readonly FeatureKind[] = [
+  "range_location",
+  "distance_to_lower",
+  "distance_to_upper",
+  "volume_liquidity_ratio_24h"
+];
+
+function mapFeatureKindToFamily(featureKind: FeatureKind): FeatureFamily {
   switch (featureKind) {
     case "range_location":
     case "distance_to_lower":
@@ -57,7 +65,7 @@ function mapFeatureKindToFamily(featureKind: string): FeatureFamily {
   }
 }
 
-function mapFeatureKindToKind(featureKind: string): "number" | "boolean" | "category" {
+function mapFeatureKindToKind(featureKind: FeatureKind): "number" | "boolean" | "category" {
   switch (featureKind) {
     case "range_location":
     case "distance_to_lower":
@@ -70,6 +78,13 @@ function mapFeatureKindToKind(featureKind: string): "number" | "boolean" | "cate
     default:
       return "number";
   }
+}
+
+function mapFeatureKindToUnit(featureKind: FeatureKind): "basis_points" | "percent" {
+  if (PPM_KINDS.includes(featureKind)) {
+    return "percent";
+  }
+  return "basis_points";
 }
 
 function normalizeWarnings(warnings: readonly string[]): string[] {
@@ -90,22 +105,31 @@ function getRowIdFromSlot(slot: SelectedFeatureSlot): number {
   return 0;
 }
 
-function getProvenanceFromSlot(slot: SelectedFeatureSlot) {
-  if ("provenance" in slot) {
-    return slot.provenance;
+function getAsOfUnixMsFromSlot(slot: SelectedFeatureSlot): number | null {
+  if ("asOfUnixMs" in slot) {
+    return slot.asOfUnixMs;
+  }
+  return null;
+}
+
+function getValidUntilUnixMsFromSlot(slot: SelectedFeatureSlot): number | null {
+  if ("validUntilUnixMs" in slot) {
+    return slot.validUntilUnixMs;
   }
   return null;
 }
 
 function buildDeterministicFeature(
   slot: SelectedFeatureSlot,
-  featureKind: string
+  featureKind: FeatureKind
 ): DeterministicFeature {
   const family = mapFeatureKindToFamily(featureKind);
   const featureKindType = mapFeatureKindToKind(featureKind);
   const rowId = getRowIdFromSlot(slot);
   const warnings = getWarningsFromSlot(slot);
-  const provenance = getProvenanceFromSlot(slot);
+  const asOfUnixMs = getAsOfUnixMsFromSlot(slot);
+  const validUntilUnixMs = getValidUntilUnixMsFromSlot(slot);
+  const unit = mapFeatureKindToUnit(featureKind);
 
   if (slot.outcome === "missing") {
     const result = {
@@ -145,9 +169,9 @@ function buildDeterministicFeature(
       ...baseFeature,
       status: "available" as const,
       value: slot.value,
-      unit: "percent" as const,
-      observedAt: String(provenance?.processRef?.collector ?? rowId),
-      freshUntil: String(provenance?.processRef?.collector ?? "50000003600000"),
+      unit: unit,
+      observedAt: asOfUnixMs !== null ? String(asOfUnixMs) : null,
+      freshUntil: validUntilUnixMs !== null ? String(validUntilUnixMs) : null,
       confidenceBps: slot.confidence.compositeScore,
       warnings: normalizedWarnings.slice(0, 16) as [string, ...string[]]
     };
@@ -288,9 +312,9 @@ export function assembleEvidenceBundleCandidate(
       "1.0.0" as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128
   };
 
-  const contextualEvidence = input.contextPresent
-    ? buildEmptyContextualEvidence()
-    : buildEmptyContextualEvidence();
+  const contextualEvidence = buildEmptyContextualEvidence();
+
+  const researchBrief = input.briefPresent ? null : null;
 
   return {
     schemaVersion: "evidence-bundle.v1",
@@ -309,7 +333,7 @@ export function assembleEvidenceBundleCandidate(
       ...DeterministicFeature[]
     ],
     contextualEvidence,
-    researchBrief: input.briefPresent ? null : null,
+    researchBrief,
     sourceReferences: buildSourceReferences(lineage) as [SourceReference, ...SourceReference[]],
     assessment: buildBundleAssessment(quality),
     provenance: buildBundleProvenance(input, lineage)

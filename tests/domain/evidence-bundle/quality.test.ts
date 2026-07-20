@@ -42,7 +42,9 @@ function makeSlotsAllAvailable(): SelectedFeatureSlot[] {
     confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 10000 - i * 100 },
     provenance: DEFAULT_PROVENANCE,
     warnings: [] as readonly string[],
-    reasons: [] as readonly string[]
+    reasons: [] as readonly string[],
+    asOfUnixMs: 5000000000000 + i,
+    validUntilUnixMs: null
   }));
 }
 
@@ -133,7 +135,9 @@ describe("classifyEvidenceBundleQuality", () => {
         confidence: DEFAULT_CONFIDENCE,
         provenance: DEFAULT_PROVENANCE,
         warnings: [],
-        reasons: ["actual_zero_value"]
+        reasons: ["actual_zero_value"],
+        asOfUnixMs: 5000000000000,
+        validUntilUnixMs: null
       };
 
       const input = makeQualityInput(slots);
@@ -155,7 +159,9 @@ describe("classifyEvidenceBundleQuality", () => {
         confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 5000 },
         provenance: DEFAULT_PROVENANCE,
         warnings: ["partial_input"],
-        reasons: ["degraded_confidence"]
+        reasons: ["degraded_confidence"],
+        asOfUnixMs: 5000000000000,
+        validUntilUnixMs: null
       };
 
       const input = makeQualityInput(slots);
@@ -177,7 +183,9 @@ describe("classifyEvidenceBundleQuality", () => {
         confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0 },
         provenance: DEFAULT_PROVENANCE,
         warnings: ["no_valid_input"],
-        reasons: ["input_exhausted"]
+        reasons: ["input_exhausted"],
+        asOfUnixMs: 5000000000000,
+        validUntilUnixMs: null
       };
 
       const input = makeQualityInput(slots);
@@ -234,7 +242,9 @@ describe("classifyEvidenceBundleQuality", () => {
         confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0 },
         provenance: DEFAULT_PROVENANCE,
         warnings: ["no_input"],
-        reasons: ["exhausted"]
+        reasons: ["exhausted"],
+        asOfUnixMs: 5000000000000,
+        validUntilUnixMs: null
       }));
 
       const input = makeQualityInput(slots, { allowNoUsableFeatures: false });
@@ -268,7 +278,9 @@ describe("classifyEvidenceBundleQuality", () => {
         confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 3000 },
         provenance: DEFAULT_PROVENANCE,
         warnings: [],
-        reasons: []
+        reasons: [],
+        asOfUnixMs: 5000000000000,
+        validUntilUnixMs: null
       };
       slots[1] = {
         featureKind: "distance_to_lower",
@@ -278,7 +290,9 @@ describe("classifyEvidenceBundleQuality", () => {
         confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 5000 },
         provenance: DEFAULT_PROVENANCE,
         warnings: [],
-        reasons: []
+        reasons: [],
+        asOfUnixMs: 5000000000000,
+        validUntilUnixMs: null
       };
 
       const input = makeQualityInput(slots);
@@ -325,7 +339,9 @@ describe("classifyEvidenceBundleQuality", () => {
         confidence: DEFAULT_CONFIDENCE,
         provenance: DEFAULT_PROVENANCE,
         warnings: ["z_warning", "a_warning", "m_warning"],
-        reasons: []
+        reasons: [],
+        asOfUnixMs: 5000000000000,
+        validUntilUnixMs: null
       };
 
       const slotsB = makeSlotsAllAvailable();
@@ -337,7 +353,9 @@ describe("classifyEvidenceBundleQuality", () => {
         confidence: DEFAULT_CONFIDENCE,
         provenance: DEFAULT_PROVENANCE,
         warnings: ["a_warning", "m_warning", "z_warning"],
-        reasons: []
+        reasons: [],
+        asOfUnixMs: 5000000000000,
+        validUntilUnixMs: null
       };
 
       const inputA = makeQualityInput(slotsA);
