@@ -128,9 +128,14 @@ export function divide(left: Rational, right: Rational): Rational | NumericFailu
 }
 
 export function compare(left: Rational, right: Rational): -1 | 0 | 1 {
-  const lcm = (left.denominator * right.denominator) / gcd(left.denominator, right.denominator);
-  const leftScaled = left.numerator * (lcm / left.denominator);
-  const rightScaled = right.numerator * (lcm / right.denominator);
+  const leftDen = left.denominator < 0n ? -left.denominator : left.denominator;
+  const leftNum = left.denominator < 0n ? -left.numerator : left.numerator;
+  const rightDen = right.denominator < 0n ? -right.denominator : right.denominator;
+  const rightNum = right.denominator < 0n ? -right.numerator : right.numerator;
+
+  const lcm = (leftDen * rightDen) / gcd(leftDen, rightDen);
+  const leftScaled = leftNum * (lcm / leftDen);
+  const rightScaled = rightNum * (lcm / rightDen);
   if (leftScaled < rightScaled) return -1;
   if (leftScaled > rightScaled) return 1;
   return 0;
@@ -144,7 +149,7 @@ export function roundToSafeInteger(value: Rational): number | NumericFailure {
     return "numeric_overflow";
   }
 
-  const isNegative = numerator < 0n;
+  const isNegative = numerator < 0n !== denominator < 0n;
   const absNumerator = numerator < 0n ? -numerator : numerator;
   const absDenominator = denominator < 0n ? -denominator : denominator;
 

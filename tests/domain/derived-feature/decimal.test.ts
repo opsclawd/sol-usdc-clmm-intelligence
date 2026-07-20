@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseDecimal,
+  add,
   subtract,
   multiply,
   divide,
@@ -191,7 +192,7 @@ describe("decimal arithmetic", () => {
       expect(value).toEqual({ numerator: 1005n, denominator: 1000n });
 
       const scaled = multiply(value, { numerator: 10000n, denominator: 1n });
-      expect(scaled).toEqual({ numerator: 10050000n, denominator: 1000n });
+      expect(scaled).toEqual({ numerator: 10050n, denominator: 1n });
 
       const result = roundToSafeInteger(scaled);
       expect(result).toBe(10050);
@@ -202,7 +203,7 @@ describe("decimal arithmetic", () => {
       expect(value).toEqual({ numerator: 10005n, denominator: 10000n });
 
       const scaled = multiply(value, { numerator: 1000000n, denominator: 1n });
-      expect(scaled).toEqual({ numerator: 10005000000n, denominator: 10000n });
+      expect(scaled).toEqual({ numerator: 1000500n, denominator: 1n });
 
       const result = roundToSafeInteger(scaled);
       expect(result).toBe(1000500);
@@ -215,7 +216,7 @@ describe("decimal arithmetic", () => {
       expect(diff).toEqual({ numerator: 1n, denominator: 1000n });
 
       const scaled = multiply(diff, { numerator: 10000n, denominator: 1n });
-      expect(scaled).toEqual({ numerator: 10000n, denominator: 1000n });
+      expect(scaled).toEqual({ numerator: 10n, denominator: 1n });
 
       const result = roundToSafeInteger(scaled);
       expect(result).toBe(10);
@@ -237,6 +238,19 @@ describe("decimal arithmetic", () => {
   });
 
   describe("arithmetic operations", () => {
+    it("adds two rationals", () => {
+      const a: Rational = { numerator: 1n, denominator: 2n };
+      const b: Rational = { numerator: 1n, denominator: 2n };
+      expect(add(a, b)).toEqual({ numerator: 1n, denominator: 1n });
+    });
+
+    it("adds with different denominators", () => {
+      const a: Rational = { numerator: 1n, denominator: 2n };
+      const b: Rational = { numerator: 1n, denominator: 3n };
+      const result = add(a, b);
+      expect(result).toEqual({ numerator: 5n, denominator: 6n });
+    });
+
     it("subtracts two rationals", () => {
       const a: Rational = { numerator: 3n, denominator: 4n };
       const b: Rational = { numerator: 1n, denominator: 4n };
@@ -253,7 +267,7 @@ describe("decimal arithmetic", () => {
     it("multiplies two rationals", () => {
       const a: Rational = { numerator: 2n, denominator: 3n };
       const b: Rational = { numerator: 3n, denominator: 4n };
-      expect(multiply(a, b)).toEqual({ numerator: 6n, denominator: 12n });
+      expect(multiply(a, b)).toEqual({ numerator: 1n, denominator: 2n });
     });
 
     it("divides two rationals", () => {

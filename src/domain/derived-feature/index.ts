@@ -1,5 +1,6 @@
 export {
   parseDecimal,
+  add,
   subtract,
   multiply,
   divide,
