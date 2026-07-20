@@ -277,3 +277,92 @@ SELECT parse_status, COUNT(*) AS cnt, MIN(observed_at_unix_ms), MAX(observed_at_
 FROM intelligence.raw_observations
 GROUP BY parse_status;
 ```
+
+## MVP Feature Derivation (`pnpm derive:mvp`)
+
+The `pnpm derive:mvp` command derives the seven canonical deterministic features for explicit pool/position pairs. It is a pure function: identical inputs produce bit-for-bit identical outputs.
+
+### Required environment variables
+
+```bash
+# Whirlpool address for the SOL/USDC pool
+WHIRLPOOL_ADDRESS=HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw
+
+# Comma-separated list of position IDs to derive features for
+INTELLIGENCE_POSITION_IDS=Pos11111111111111111111111111111111111111111,Pos22222222222222222222222222222222222222222
+
+# Version string for this code deployment (fallback: "development")
+INTELLIGENCE_CODE_VERSION=abc1234
+```
+
+> [!STOP]
+> **Migration precondition:** The migration that introduces `derived_features` constraints assumes `intelligence.derived_features` is empty. If any row exists, the migration aborts. Do not rewrite or delete existing rows without lead engineer approval.
+
+### Pre-flight checks
+
+Before running derivation, verify the database is ready:
+
+```sql
+-- Verify no existing derived feature rows (migration precondition)
+SELECT COUNT(*) AS derived_feature_count FROM intelligence.derived_features;
+-- If count > 0, abort and consult lead engineer
+
+-- Verify source observations are present
+SELECT source, observation_kind, COUNT(*) AS cnt
+FROM intelligence.normalized_observations
+GROUP BY source, observation_kind;
+```
+
+### Example invocation
+
+```bash
+pnpm derive:mvp
+```
+
+**Successful response example:**
+
+```json
+{
+  "counts": {
+    "AVAILABLE": 7,
+    "PARTIAL": 0,
+    "UNAVAILABLE": 0
+  },
+  "warnings": []
+}
+```
+
+This indicates all seven canonical features were derived with `AVAILABLE` status.
+
+**Unavailable response example:**
+
+```json
+{
+  "counts": {
+    "AVAILABLE": 4,
+    "PARTIAL": 1,
+    "UNAVAILABLE": 2
+  },
+  "warnings": [
+    "oracle_dex_divergence: missing_oracle",
+    "realized_volatility_1h: insufficient_coverage"
+  ]
+}
+```
+
+Unavailable features are persisted with `status: "UNAVAILABLE"` and explicit reason codes. They are stored as evidence but are **not numeric publication candidates** — they cannot be used as-is in regime-engine synthesis without further handling.
+
+### Output artifacts
+
+Each derived feature row is stored in `intelligence.derived_features` with:
+
+- `feature_kind`: one of the seven canonical kinds
+- `status`: `AVAILABLE`, `PARTIAL`, or `UNAVAILABLE`
+- `value`: integer (PPM or BPS) when `AVAILABLE` or `PARTIAL`, null when `UNAVAILABLE`
+- `derivation_key`: canonical hash of input identity (scope + reasons + versions)
+- `input_observation_ids`: sorted array of source observation IDs used
+- `rejected_observation_ids`: sorted array of observations rejected during selection
+
+### Replay behavior
+
+The system uses `derivation_key` as a idempotency key. Re-running derivation with identical inputs produces a replay result with the same `derivation_key` — no duplicate rows are created. The transaction conflict recovery preserves caller order.
