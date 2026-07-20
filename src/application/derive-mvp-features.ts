@@ -21,7 +21,8 @@ import type {
 import type { PoolStatisticsPayloadV1 } from "../contracts/normalized-pool-statistics.js";
 import {
   assembleDerivedFeature,
-  type AssembleFeatureInput
+  type AssembleFeatureInput,
+  type AssembledFeature
 } from "../domain/derived-feature/assemble.js";
 import {
   selectLatestBySourceAndKind,
@@ -164,7 +165,7 @@ async function assembleAvailableFeature(
   evaluationAsOfUnixMs: number,
   runId: string,
   codeVersion: string
-): Promise<{ derivationKey: string; payloadHash: string }> {
+): Promise<AssembledFeature> {
   const input: AssembleFeatureInput = {
     featureKind,
     status,
@@ -206,7 +207,7 @@ async function assembleAvailableFeature(
     calculationMetadata
   };
 
-  const assembled = await assembleDerivedFeature({
+  return assembleDerivedFeature({
     input,
     selectedRows,
     rejectedRows,
@@ -214,11 +215,6 @@ async function assembleAvailableFeature(
     runId,
     codeVersion
   });
-
-  return {
-    derivationKey: assembled.derivationKey,
-    payloadHash: assembled.payloadHash
-  };
 }
 
 async function checkExistingFeature(
@@ -300,7 +296,9 @@ async function derivePositionFeatures(
     rejectedObservationIds: [],
     derivationKey: rangeKey.derivationKey,
     poolId,
-    positionId
+    positionId,
+    warnings: rangeKey.result.warnings,
+    reasons: rangeKey.result.reasons
   });
 
   const distLowerCalc = calculateDistanceToLower(payload);
@@ -362,7 +360,9 @@ async function derivePositionFeatures(
     rejectedObservationIds: [],
     derivationKey: distLowerKey.derivationKey,
     poolId,
-    positionId
+    positionId,
+    warnings: distLowerKey.result.warnings,
+    reasons: distLowerKey.result.reasons
   });
 
   const distUpperCalc = calculateDistanceToUpper(payload);
@@ -424,7 +424,9 @@ async function derivePositionFeatures(
     rejectedObservationIds: [],
     derivationKey: distUpperKey.derivationKey,
     poolId,
-    positionId
+    positionId,
+    warnings: distUpperKey.result.warnings,
+    reasons: distUpperKey.result.reasons
   });
 
   return results;
@@ -488,7 +490,9 @@ async function deriveOracleDivergence(
       rejectedObservationIds: rejectedRows.map((r) => r.id),
       derivationKey,
       poolId: null,
-      positionId: null
+      positionId: null,
+      warnings: [],
+      reasons
     };
   }
 
@@ -557,7 +561,9 @@ async function deriveOracleDivergence(
     rejectedObservationIds: rejectedIds,
     derivationKey: divKey.derivationKey,
     poolId: null,
-    positionId: null
+    positionId: null,
+    warnings: divKey.result.warnings,
+    reasons: divKey.result.reasons
   };
 }
 
@@ -615,13 +621,17 @@ async function deriveOracleConfidenceWidth(
       rejectedObservationIds: rejectedRows.map((r) => r.id),
       derivationKey,
       poolId: null,
-      positionId: null
+      positionId: null,
+      warnings: [],
+      reasons
     };
   }
 
   const oracle = oracleRow.payload as OraclePricePayloadV1;
   const calc = calculateOracleConfidenceWidth(oracle, evaluationAsOfUnixMs);
   const inputIds = [oracleRow.id];
+
+  const rejectedIds = rejectedRows.map((r) => r.id);
 
   const cwKey = await assembleAvailableFeature(
     "oracle_confidence_width",
@@ -634,7 +644,7 @@ async function deriveOracleConfidenceWidth(
     evaluationAsOfUnixMs + 3_600_000,
     buildDefaultConfidence(),
     inputIds,
-    [],
+    rejectedIds,
     calc.warnings,
     calc.reasons,
     MARKET_CALCULATOR_VERSIONS.oracle_confidence_width,
@@ -679,10 +689,12 @@ async function deriveOracleConfidenceWidth(
     calculatorVersion: MARKET_CALCULATOR_VERSIONS.oracle_confidence_width,
     selectionVersion: SELECTION_VERSION,
     inputObservationIds: inputIds,
-    rejectedObservationIds: [],
+    rejectedObservationIds: rejectedIds,
     derivationKey: cwKey.derivationKey,
     poolId: null,
-    positionId: null
+    positionId: null,
+    warnings: cwKey.result.warnings,
+    reasons: cwKey.result.reasons
   };
 }
 
@@ -740,7 +752,9 @@ async function deriveRealizedVolatility(
       rejectedObservationIds: rejectedRows.map((r) => r.id),
       derivationKey,
       poolId: null,
-      positionId: null
+      positionId: null,
+      warnings: [],
+      reasons
     };
   }
 
@@ -821,7 +835,9 @@ async function deriveRealizedVolatility(
     rejectedObservationIds: rejectedIds,
     derivationKey: volKey.derivationKey,
     poolId: null,
-    positionId: null
+    positionId: null,
+    warnings: volKey.result.warnings,
+    reasons: volKey.result.reasons
   };
 }
 
@@ -880,7 +896,9 @@ async function deriveVolumeRatio(
       rejectedObservationIds: rejectedRows.map((r) => r.id),
       derivationKey,
       poolId,
-      positionId: null
+      positionId: null,
+      warnings: [],
+      reasons
     };
   }
 
@@ -948,7 +966,9 @@ async function deriveVolumeRatio(
     rejectedObservationIds: rejectedIds,
     derivationKey: vrKey.derivationKey,
     poolId,
-    positionId: null
+    positionId: null,
+    warnings: vrKey.result.warnings,
+    reasons: vrKey.result.reasons
   };
 }
 
@@ -1025,7 +1045,9 @@ async function deriveUnavailablePositionFeatures(
       rejectedObservationIds: [],
       derivationKey: rangeDerivationKey,
       poolId,
-      positionId
+      positionId,
+      warnings: [],
+      reasons: ["position_not_found"]
     },
     {
       featureKind: "distance_to_lower",
@@ -1063,7 +1085,9 @@ async function deriveUnavailablePositionFeatures(
       rejectedObservationIds: [],
       derivationKey: distLowerDerivationKey,
       poolId,
-      positionId
+      positionId,
+      warnings: [],
+      reasons: ["position_not_found"]
     },
     {
       featureKind: "distance_to_upper",
@@ -1101,7 +1125,9 @@ async function deriveUnavailablePositionFeatures(
       rejectedObservationIds: [],
       derivationKey: distUpperDerivationKey,
       poolId,
-      positionId
+      positionId,
+      warnings: [],
+      reasons: ["position_not_found"]
     }
   ];
 }
@@ -1195,10 +1221,46 @@ export async function deriveMvpFeatures(
     dexRow,
     [
       ...oracleSel.rejected.map(
-        (r) => ({ ...oracleRow!, id: r.observationId }) as NormalizedObservationRow
+        (r) =>
+          ({
+            id: r.observationId,
+            rawObservationId: r.observationId,
+            source: oracleRow!.source,
+            observationKind: oracleRow!.observationKind,
+            signalClass: oracleRow!.signalClass,
+            evidenceFamily: oracleRow!.evidenceFamily,
+            payload: oracleRow!.payload,
+            payloadHash: oracleRow!.payloadHash,
+            confidence: oracleRow!.confidence,
+            confidenceComposite: oracleRow!.confidenceComposite,
+            confidenceLevel: oracleRow!.confidenceLevel,
+            validUntilUnixMs: oracleRow!.validUntilUnixMs,
+            isStale: oracleRow!.isStale,
+            staleBehavior: oracleRow!.staleBehavior,
+            provenance: oracleRow!.provenance,
+            receivedAtUnixMs: oracleRow!.receivedAtUnixMs
+          }) as NormalizedObservationRow
       ),
       ...dexSel.rejected.map(
-        (r) => ({ ...dexRow!, id: r.observationId }) as NormalizedObservationRow
+        (r) =>
+          ({
+            id: r.observationId,
+            rawObservationId: r.observationId,
+            source: dexRow!.source,
+            observationKind: dexRow!.observationKind,
+            signalClass: dexRow!.signalClass,
+            evidenceFamily: dexRow!.evidenceFamily,
+            payload: dexRow!.payload,
+            payloadHash: dexRow!.payloadHash,
+            confidence: dexRow!.confidence,
+            confidenceComposite: dexRow!.confidenceComposite,
+            confidenceLevel: dexRow!.confidenceLevel,
+            validUntilUnixMs: dexRow!.validUntilUnixMs,
+            isStale: dexRow!.isStale,
+            staleBehavior: dexRow!.staleBehavior,
+            provenance: dexRow!.provenance,
+            receivedAtUnixMs: dexRow!.receivedAtUnixMs
+          }) as NormalizedObservationRow
       )
     ],
     evaluationAsOfUnixMs,
@@ -1210,7 +1272,25 @@ export async function deriveMvpFeatures(
   const confidenceWidthInsert = await deriveOracleConfidenceWidth(
     oracleRow,
     oracleSel.rejected.map(
-      (r) => ({ ...oracleRow!, id: r.observationId }) as NormalizedObservationRow
+      (r) =>
+        ({
+          id: r.observationId,
+          rawObservationId: r.observationId,
+          source: oracleRow!.source,
+          observationKind: oracleRow!.observationKind,
+          signalClass: oracleRow!.signalClass,
+          evidenceFamily: oracleRow!.evidenceFamily,
+          payload: oracleRow!.payload,
+          payloadHash: oracleRow!.payloadHash,
+          confidence: oracleRow!.confidence,
+          confidenceComposite: oracleRow!.confidenceComposite,
+          confidenceLevel: oracleRow!.confidenceLevel,
+          validUntilUnixMs: oracleRow!.validUntilUnixMs,
+          isStale: oracleRow!.isStale,
+          staleBehavior: oracleRow!.staleBehavior,
+          provenance: oracleRow!.provenance,
+          receivedAtUnixMs: oracleRow!.receivedAtUnixMs
+        }) as NormalizedObservationRow
     ),
     evaluationAsOfUnixMs,
     pipelineRunId,
@@ -1264,7 +1344,25 @@ export async function deriveMvpFeatures(
     poolStatsRow,
     poolId,
     poolStatsSel.rejected.map(
-      (r) => ({ ...poolStatsRow!, id: r.observationId }) as NormalizedObservationRow
+      (r) =>
+        ({
+          id: r.observationId,
+          rawObservationId: r.observationId,
+          source: poolStatsRow!.source,
+          observationKind: poolStatsRow!.observationKind,
+          signalClass: poolStatsRow!.signalClass,
+          evidenceFamily: poolStatsRow!.evidenceFamily,
+          payload: poolStatsRow!.payload,
+          payloadHash: poolStatsRow!.payloadHash,
+          confidence: poolStatsRow!.confidence,
+          confidenceComposite: poolStatsRow!.confidenceComposite,
+          confidenceLevel: poolStatsRow!.confidenceLevel,
+          validUntilUnixMs: poolStatsRow!.validUntilUnixMs,
+          isStale: poolStatsRow!.isStale,
+          staleBehavior: poolStatsRow!.staleBehavior,
+          provenance: poolStatsRow!.provenance,
+          receivedAtUnixMs: poolStatsRow!.receivedAtUnixMs
+        }) as NormalizedObservationRow
     ),
     evaluationAsOfUnixMs,
     pipelineRunId,
@@ -1275,8 +1373,6 @@ export async function deriveMvpFeatures(
   const validatedInserts: DerivedFeatureInsert[] = [];
   for (const insert of allInserts) {
     try {
-      const payloadReasons =
-        (insert.structuredPayload as { reasons?: readonly string[] })?.reasons ?? [];
       const confidence = insert.confidence ?? buildDefaultConfidence();
       const expiresAt =
         insert.validUntilUnixMs != null ? insert.validUntilUnixMs : evaluationAsOfUnixMs;
@@ -1308,8 +1404,8 @@ export async function deriveMvpFeatures(
         inputObservationIds: (insert.inputObservationIds ?? []).slice().sort((a, b) => a - b),
         rejectedObservationIds: (insert.rejectedObservationIds ?? []).slice().sort((a, b) => a - b),
         provenance: insert.provenance as DerivedFeatureV1["provenance"],
-        warnings: [],
-        reasons: [...payloadReasons].sort(),
+        warnings: (insert.warnings ?? []).slice(),
+        reasons: (insert.reasons ?? []).slice().sort((a, b) => a.localeCompare(b)),
         calculatorVersion: insert.calculatorVersion ?? "1.0.0",
         selectionVersion: insert.selectionVersion ?? SELECTION_VERSION,
         calculationMetadata: insert.structuredPayload as Record<string, unknown>
