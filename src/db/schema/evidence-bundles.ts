@@ -6,6 +6,7 @@ import {
   jsonb,
   numeric,
   serial,
+  text,
   uniqueIndex,
   varchar,
   index
@@ -23,6 +24,8 @@ export const evidenceBundles = intelligence.table(
     expiresAtUnixMs: bigint("expires_at_unix_ms", { mode: "number" }).notNull(),
     payload: jsonb("payload").notNull(),
     payloadHash: varchar("payload_hash", { length: 64 }).notNull(),
+    payloadCanonical: text("payload_canonical").notNull(),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
     taxonomySummary: jsonb("taxonomy_summary"),
     dominantSignalClass: varchar("dominant_signal_class", { length: 16 })
       .notNull()
@@ -38,7 +41,7 @@ export const evidenceBundles = intelligence.table(
     receivedAtUnixMs: bigint("received_at_unix_ms", { mode: "number" }).notNull()
   },
   (t) => [
-    uniqueIndex("uniq_bundle_pair_hash").on(t.pair, t.payloadHash),
+    uniqueIndex("uniq_bundle_source_idem").on(t.schemaVersion, t.pair, t.idempotencyKey),
     index("idx_bundle_pair_as_of").on(t.pair, t.asOfUnixMs, t.id),
     index("idx_bundle_pair_latest").on(t.pair, t.receivedAtUnixMs, t.id),
     check(
