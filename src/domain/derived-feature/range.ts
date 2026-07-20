@@ -1,5 +1,6 @@
 import type { PositionStatePayloadV1 } from "../../contracts/normalized-clmm-observation.js";
 import type { FeatureCalculation } from "./assemble.js";
+import type { Rational } from "./decimal.js";
 import { parseDecimal, divide, subtract, multiply, roundToSafeInteger } from "./decimal.js";
 
 export const RANGE_CALCULATOR_VERSIONS = {
@@ -15,16 +16,12 @@ export type RangeClassification =
   | "at_lower_boundary"
   | "at_upper_boundary";
 
-function parsePriceLabel(label: string): number | null {
+function parsePriceLabel(label: string): Rational | null {
   const result = parseDecimal(label);
   if (typeof result === "string") {
     return null;
   }
-  const num = roundToSafeInteger(result);
-  if (typeof num === "string") {
-    return null;
-  }
-  return num;
+  return result;
 }
 
 function classifyRangePosition(
@@ -86,24 +83,34 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export function calculateRangeLocation(position: PositionStatePayloadV1): FeatureCalculation {
-  const lowerPrice = parsePriceLabel(position.lowerPriceLabel);
-  const upperPrice = parsePriceLabel(position.upperPriceLabel);
+  const lowerPriceRational = parsePriceLabel(position.lowerPriceLabel);
+  const upperPriceRational = parsePriceLabel(position.upperPriceLabel);
+  const currentPriceRational = parseDecimal(position.currentPriceLabel);
   const currentPrice = position.currentPrice;
 
-  if (lowerPrice === null) {
+  if (lowerPriceRational === null) {
     return makeUnavailable(["invalid lowerPriceLabel"]);
   }
-  if (upperPrice === null) {
+  if (upperPriceRational === null) {
     return makeUnavailable(["invalid upperPriceLabel"]);
+  }
+  if (typeof currentPriceRational === "string") {
+    return makeUnavailable(["invalid currentPriceLabel"]);
   }
   if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
     return makeUnavailable(["invalid currentPrice"]);
   }
-  if (!Number.isFinite(lowerPrice) || lowerPrice <= 0) {
+
+  const lowerPrice = roundToSafeInteger(lowerPriceRational);
+  const upperPrice = roundToSafeInteger(upperPriceRational);
+  if (typeof lowerPrice === "string") {
     return makeUnavailable(["invalid lowerPrice"]);
   }
-  if (!Number.isFinite(upperPrice) || upperPrice <= 0) {
+  if (typeof upperPrice === "string") {
     return makeUnavailable(["invalid upperPrice"]);
+  }
+  if (lowerPrice <= 0 || upperPrice <= 0) {
+    return makeUnavailable(["invalid price values"]);
   }
   if (upperPrice <= lowerPrice) {
     return makeUnavailable(["upperPrice must be greater than lowerPrice"]);
@@ -121,12 +128,9 @@ export function calculateRangeLocation(position: PositionStatePayloadV1): Featur
 
   const { classification, rangeState } = classificationResult;
 
-  const rangeSpan = upperPrice - lowerPrice;
-  const currentOffset = currentPrice - lowerPrice;
-  const rationalLocation = divide(
-    { numerator: BigInt(currentOffset), denominator: 1n },
-    { numerator: BigInt(rangeSpan), denominator: 1n }
-  );
+  const rangeSpan = subtract(upperPriceRational, lowerPriceRational);
+  const currentOffset = subtract(currentPriceRational, lowerPriceRational);
+  const rationalLocation = divide(currentOffset, rangeSpan);
   if (typeof rationalLocation === "string") {
     return makeUnavailable(["numeric failure in range location calculation"]);
   }
@@ -154,7 +158,7 @@ export function calculateRangeLocation(position: PositionStatePayloadV1): Featur
 export function calculateDistanceToLower(position: PositionStatePayloadV1): FeatureCalculation {
   const lowerPrice = parsePriceLabel(position.lowerPriceLabel);
   const upperPrice = parsePriceLabel(position.upperPriceLabel);
-  const currentPrice = position.currentPrice;
+  const currentPrice = parseDecimal(position.currentPriceLabel);
 
   if (lowerPrice === null) {
     return makeUnavailable(["invalid lowerPriceLabel"]);
@@ -162,26 +166,40 @@ export function calculateDistanceToLower(position: PositionStatePayloadV1): Feat
   if (upperPrice === null) {
     return makeUnavailable(["invalid upperPriceLabel"]);
   }
-  if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
-    return makeUnavailable(["invalid currentPrice"]);
+  if (typeof currentPrice === "string") {
+    return makeUnavailable(["invalid currentPriceLabel"]);
   }
-  if (!Number.isFinite(lowerPrice) || lowerPrice <= 0) {
+
+  const lowerPriceNum = roundToSafeInteger(lowerPrice);
+  const upperPriceNum = roundToSafeInteger(upperPrice);
+  if (typeof lowerPriceNum === "string" || lowerPriceNum <= 0) {
     return makeUnavailable(["invalid lowerPrice"]);
   }
+  if (typeof upperPriceNum === "string" || upperPriceNum <= 0) {
+    return makeUnavailable(["invalid upperPrice"]);
+  }
+  if (upperPriceNum <= lowerPriceNum) {
+    return makeUnavailable(["upperPrice must be greater than lowerPrice"]);
+  }
 
-  const rangeState = position.rangeState;
-  const classification =
-    currentPrice < lowerPrice
-      ? "below_range"
-      : currentPrice > upperPrice
-        ? "above_range"
-        : "in_range";
+  const currentPriceNum = position.currentPrice;
+  if (!Number.isFinite(currentPriceNum) || currentPriceNum <= 0) {
+    return makeUnavailable(["invalid currentPrice"]);
+  }
 
-  const offset = subtract(
-    { numerator: BigInt(currentPrice), denominator: 1n },
-    { numerator: BigInt(lowerPrice), denominator: 1n }
+  const classificationResult = classifyRangePosition(
+    currentPriceNum,
+    lowerPriceNum,
+    upperPriceNum,
+    position.rangeState
   );
-  const rationalDistance = divide(offset, { numerator: BigInt(currentPrice), denominator: 1n });
+  if (classificationResult === null) {
+    return makeUnavailable(["contradictory rangeState"]);
+  }
+  const { classification, rangeState } = classificationResult;
+
+  const offset = subtract(currentPrice, lowerPrice);
+  const rationalDistance = divide(offset, currentPrice);
   if (typeof rationalDistance === "string") {
     return makeUnavailable(["numeric failure in distance-to-lower calculation"]);
   }
@@ -205,36 +223,50 @@ export function calculateDistanceToLower(position: PositionStatePayloadV1): Feat
 }
 
 export function calculateDistanceToUpper(position: PositionStatePayloadV1): FeatureCalculation {
-  const upperPrice = parsePriceLabel(position.upperPriceLabel);
   const lowerPrice = parsePriceLabel(position.lowerPriceLabel);
-  const currentPrice = position.currentPrice;
+  const upperPrice = parsePriceLabel(position.upperPriceLabel);
+  const currentPrice = parseDecimal(position.currentPriceLabel);
 
-  if (upperPrice === null) {
-    return makeUnavailable(["invalid upperPriceLabel"]);
-  }
   if (lowerPrice === null) {
     return makeUnavailable(["invalid lowerPriceLabel"]);
   }
-  if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
-    return makeUnavailable(["invalid currentPrice"]);
+  if (upperPrice === null) {
+    return makeUnavailable(["invalid upperPriceLabel"]);
   }
-  if (!Number.isFinite(upperPrice) || upperPrice <= 0) {
+  if (typeof currentPrice === "string") {
+    return makeUnavailable(["invalid currentPriceLabel"]);
+  }
+
+  const lowerPriceNum = roundToSafeInteger(lowerPrice);
+  const upperPriceNum = roundToSafeInteger(upperPrice);
+  if (typeof lowerPriceNum === "string" || lowerPriceNum <= 0) {
+    return makeUnavailable(["invalid lowerPrice"]);
+  }
+  if (typeof upperPriceNum === "string" || upperPriceNum <= 0) {
     return makeUnavailable(["invalid upperPrice"]);
   }
+  if (upperPriceNum <= lowerPriceNum) {
+    return makeUnavailable(["upperPrice must be greater than lowerPrice"]);
+  }
 
-  const rangeState = position.rangeState;
-  const classification =
-    currentPrice < lowerPrice
-      ? "below_range"
-      : currentPrice > upperPrice
-        ? "above_range"
-        : "in_range";
+  const currentPriceNum = position.currentPrice;
+  if (!Number.isFinite(currentPriceNum) || currentPriceNum <= 0) {
+    return makeUnavailable(["invalid currentPrice"]);
+  }
 
-  const offset = subtract(
-    { numerator: BigInt(upperPrice), denominator: 1n },
-    { numerator: BigInt(currentPrice), denominator: 1n }
+  const classificationResult = classifyRangePosition(
+    currentPriceNum,
+    lowerPriceNum,
+    upperPriceNum,
+    position.rangeState
   );
-  const rationalDistance = divide(offset, { numerator: BigInt(currentPrice), denominator: 1n });
+  if (classificationResult === null) {
+    return makeUnavailable(["contradictory rangeState"]);
+  }
+  const { classification, rangeState } = classificationResult;
+
+  const offset = subtract(upperPrice, currentPrice);
+  const rationalDistance = divide(offset, currentPrice);
   if (typeof rationalDistance === "string") {
     return makeUnavailable(["numeric failure in distance-to-upper calculation"]);
   }

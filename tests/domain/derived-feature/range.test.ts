@@ -138,7 +138,7 @@ describe("range calculators", () => {
       const result = calculateDistanceToLower(pos);
       expect(result.status).toBe("AVAILABLE");
       expect(result.value).toBeLessThan(0);
-      expect(result.metadata.classification).toBe("below_range");
+      expect(result.metadata.classification).toBe("below_range_clamped");
     });
 
     it("returns negative distance-to-upper when current is above upper", () => {
@@ -152,7 +152,7 @@ describe("range calculators", () => {
       const result = calculateDistanceToUpper(pos);
       expect(result.status).toBe("AVAILABLE");
       expect(result.value).toBeLessThan(0);
-      expect(result.metadata.classification).toBe("above_range");
+      expect(result.metadata.classification).toBe("above_range_clamped");
     });
 
     it("returns positive distance-to-lower when current is above lower (in-range)", () => {
@@ -432,12 +432,12 @@ describe("range calculators", () => {
       const lowerResult = calculateDistanceToLower(pos);
       expect(lowerResult.status).toBe("AVAILABLE");
       expect(lowerResult.value).toBeLessThan(0);
-      expect(lowerResult.metadata.classification).toBe("below_range");
+      expect(lowerResult.metadata.classification).toBe("below_range_clamped");
 
       const upperResult = calculateDistanceToUpper(pos);
       expect(upperResult.status).toBe("AVAILABLE");
       expect(upperResult.value).toBeGreaterThan(0);
-      expect(upperResult.metadata.classification).toBe("below_range");
+      expect(upperResult.metadata.classification).toBe("below_range_clamped");
     });
 
     it("golden fixture 2: in-range position at midpoint", () => {
@@ -480,12 +480,12 @@ describe("range calculators", () => {
       const lowerResult = calculateDistanceToLower(pos);
       expect(lowerResult.status).toBe("AVAILABLE");
       expect(lowerResult.value).toBeGreaterThan(0);
-      expect(lowerResult.metadata.classification).toBe("above_range");
+      expect(lowerResult.metadata.classification).toBe("above_range_clamped");
 
       const upperResult = calculateDistanceToUpper(pos);
       expect(upperResult.status).toBe("AVAILABLE");
       expect(upperResult.value).toBeLessThan(0);
-      expect(upperResult.metadata.classification).toBe("above_range");
+      expect(upperResult.metadata.classification).toBe("above_range_clamped");
     });
   });
 
