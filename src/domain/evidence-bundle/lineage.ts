@@ -1,4 +1,4 @@
-import type { FeatureKind, ProvenanceRef } from "../../contracts/taxonomy.js";
+import type { FeatureKind, ProvenanceRef, Source } from "../../contracts/taxonomy.js";
 import type { DerivedFeatureRow, NormalizedObservationRow } from "../../ports/index.js";
 import type { RawObservationRow } from "../../ports/observation-repo.js";
 import { acceptClmmBundle } from "../clmm-bundle/validate.js";
@@ -247,15 +247,35 @@ function verifyProvenanceRef(
   return { ok: true };
 }
 
+function sourceToSourceType(source: Source): VerifiedLineageSourceRef["sourceType"] {
+  switch (source) {
+    case "clmm-v2-bundle":
+      return "chain";
+    case "jupiter-price":
+    case "jupiter-price-v3":
+    case "jupiter-quote":
+    case "coingecko":
+    case "defillama":
+    case "pyth-hermes":
+    case "orca-public-api":
+      return "api";
+    default:
+      return "internal_bundle";
+  }
+}
+
 function collectLineage(
   slots: VerifyEvidenceLineageInput["slots"],
-  normalizedObservations: ReadonlyMap<number, NormalizedObservationRow>
+  normalizedObservations: ReadonlyMap<number, NormalizedObservationRow>,
+  rawObservations: ReadonlyMap<number, RawObservationRow>
 ): {
   rawObservationIds: Set<number>;
   normalizedObservationIds: Set<number>;
+  sourceReferences: VerifiedLineageSourceRef[];
 } {
   const rawObservationIds = new Set<number>();
   const normalizedObservationIds = new Set<number>();
+  const sourceReferences: VerifiedLineageSourceRef[] = [];
 
   for (const slot of slots) {
     if (
@@ -275,14 +295,32 @@ function collectLineage(
         const normRow = normalizedObservations.get(ref.id);
         if (normRow) {
           rawObservationIds.add(normRow.rawObservationId);
+          const rawRow = rawObservations.get(normRow.rawObservationId);
+          if (rawRow) {
+            sourceReferences.push({
+              referenceId: `raw-${rawRow.id}`,
+              sourceType: sourceToSourceType(rawRow.source),
+              locator: rawRow.sourceObservationKey,
+              observedAt: String(rawRow.observedAtUnixMs)
+            });
+          }
         }
       } else if (ref.refType === "raw_observation") {
         rawObservationIds.add(ref.id);
+        const rawRow = rawObservations.get(ref.id);
+        if (rawRow) {
+          sourceReferences.push({
+            referenceId: `raw-${rawRow.id}`,
+            sourceType: sourceToSourceType(rawRow.source),
+            locator: rawRow.sourceObservationKey,
+            observedAt: String(rawRow.observedAtUnixMs)
+          });
+        }
       }
     }
   }
 
-  return { rawObservationIds, normalizedObservationIds };
+  return { rawObservationIds, normalizedObservationIds, sourceReferences };
 }
 
 export function verifyEvidenceLineage(
@@ -345,9 +383,10 @@ export function verifyEvidenceLineage(
     }
   }
 
-  const { rawObservationIds, normalizedObservationIds } = collectLineage(
+  const { rawObservationIds, normalizedObservationIds, sourceReferences } = collectLineage(
     slots,
-    normalizedObservations
+    normalizedObservations,
+    rawObservations
   );
 
   const sortedRawIds = [...rawObservationIds].sort((a, b) => a - b);
@@ -358,7 +397,7 @@ export function verifyEvidenceLineage(
     lineage: {
       rawObservationIds: sortedRawIds,
       normalizedObservationIds: sortedNormIds,
-      sourceReferences: []
+      sourceReferences
     }
   };
 }
