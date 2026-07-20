@@ -12,3 +12,13 @@ export type {
   BundleSelectionRequest,
   BundleSelectionResult
 } from "./select.js";
+
+export { verifyEvidenceLineage } from "./lineage.js";
+
+export type {
+  VerifyEvidenceLineageInput,
+  VerifiedEvidenceLineage,
+  VerifiedLineageSourceRef,
+  LineageVerificationError,
+  LineageVerificationErrorCode
+} from "./lineage.js";
