@@ -1,9 +1,13 @@
 import type {
   NormalizedObservationRepo,
-  NormalizedObservationRow,
-  NormalizedObservationInsert
+  NormalizedObservationInsert,
+  NormalizedObservationCandidateQuery
 } from "../../src/ports/normalized-observation-repo.js";
-import type { Source, ObservationKind } from "../../src/contracts/taxonomy.js";
+import type {
+  Source,
+  ObservationKind,
+  NormalizedObservationRow
+} from "../../src/contracts/index.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 
 export class FakeNormalizedObservationRepo implements NormalizedObservationRepo {
@@ -118,5 +122,28 @@ export class FakeNormalizedObservationRepo implements NormalizedObservationRepo 
     if (matches.length === 0) return null;
     matches.sort((a, b) => b.receivedAtUnixMs - a.receivedAtUnixMs);
     return matches[0] || null;
+  }
+
+  async listCandidates(
+    query: NormalizedObservationCandidateQuery
+  ): Promise<NormalizedObservationRow[]> {
+    const sourceKindSet = new Set(
+      query.sourceKinds.map(({ source, observationKind }) => `${source}:${observationKind}`)
+    );
+
+    const matches = this.store.filter(
+      (r) =>
+        sourceKindSet.has(`${r.source}:${r.observationKind}`) &&
+        r.receivedAtUnixMs >= query.receivedAtOrAfterUnixMs
+    );
+
+    matches.sort((a, b) => {
+      if (a.receivedAtUnixMs !== b.receivedAtUnixMs) {
+        return a.receivedAtUnixMs - b.receivedAtUnixMs;
+      }
+      return a.id - b.id;
+    });
+
+    return matches;
   }
 }

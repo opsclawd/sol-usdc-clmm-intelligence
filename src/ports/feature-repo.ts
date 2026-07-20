@@ -24,6 +24,16 @@ export interface DerivedFeatureRow {
   provenance: Provenance;
   payloadHash: string;
   receivedAtUnixMs: number;
+  status: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
+  unit: "BPS" | "PPM";
+  pair: string;
+  calculatorVersion: string;
+  selectionVersion: string;
+  inputObservationIds: number[];
+  rejectedObservationIds: number[];
+  derivationKey: string;
+  poolId: string | null;
+  positionId: string | null;
 }
 
 export interface DerivedFeatureInsert {
@@ -31,7 +41,7 @@ export interface DerivedFeatureInsert {
   signalClass: SignalClass;
   evidenceFamily: EvidenceFamily;
   value?: number | null;
-  structuredPayload?: unknown;
+  structuredPayload: unknown;
   asOfUnixMs: number;
   confidence: Confidence;
   confidenceComposite?: number | null;
@@ -42,10 +52,26 @@ export interface DerivedFeatureInsert {
   provenance: Provenance;
   payloadHash: string;
   receivedAtUnixMs: number;
+  status: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
+  unit: "BPS" | "PPM";
+  pair?: string;
+  calculatorVersion?: string;
+  selectionVersion?: string;
+  inputObservationIds?: number[];
+  rejectedObservationIds?: number[];
+  derivationKey: string;
+  poolId?: string | null;
+  positionId?: string | null;
+  warnings?: readonly string[];
+  reasons?: readonly string[];
 }
 
 export interface DerivedFeatureRepo {
   insert(row: DerivedFeatureInsert): Promise<DerivedFeatureRow>;
-  findByHash(featureKind: FeatureKind, payloadHash: string): Promise<DerivedFeatureRow | undefined>;
+  insertMany(rows: readonly DerivedFeatureInsert[]): Promise<DerivedFeatureRow[]>;
+  findByDerivationKey(
+    featureKind: FeatureKind,
+    derivationKey: string
+  ): Promise<DerivedFeatureRow | undefined>;
   findByKind(featureKind: FeatureKind, sinceUnixMs: number): Promise<DerivedFeatureRow[]>;
 }

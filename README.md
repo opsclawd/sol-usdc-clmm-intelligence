@@ -61,6 +61,35 @@ regime-engine       = synthesize canonical PolicyInsight
 clmm-v2             = consume/display final policy and own live LP state
 ```
 
+### Deterministic feature tranche (INT-FEATURES #8)
+
+The system derives exactly seven canonical numeric features from normalized source observations. All seven are deterministic evidence — computed by code, not authored by an LLM.
+
+**Seven canonical feature kinds:**
+
+| Kind                         | Unit | Scope            | Calculator version              |
+| ---------------------------- | ---- | ---------------- | ------------------------------- |
+| `range_location`             | PPM  | pool + position  | `range-location/v1`             |
+| `distance_to_lower`          | PPM  | pool + position  | `distance-to-lower/v1`          |
+| `distance_to_upper`          | PPM  | pool + position  | `distance-to-upper/v1`          |
+| `oracle_dex_divergence`      | BPS  | pool-independent | `oracle-dex-divergence/v1`      |
+| `oracle_confidence_width`    | BPS  | pool-independent | `oracle-confidence-width/v1`    |
+| `realized_volatility_1h`     | BPS  | pool-independent | `realized-volatility-1h/v1`     |
+| `volume_liquidity_ratio_24h` | PPM  | pool only        | `volume-liquidity-ratio-24h/v1` |
+
+**Authority boundary:** Derived features are numeric evidence. They carry provenance lineage, confidence metadata, and freshness expiry. They are stored in `intelligence.derived_features` and published as structured evidence to `regime-engine`. The LLM cannot invent, override, or approximate these values.
+
+**Deferred feature list (backlog after #8):** The following feature families are identified but not yet in the canonical seven. They remain deferred to a future iteration:
+
+- Fee APR / expected fee capture
+- Volume / liquidity ratio variants beyond 24h
+- Inventory skew metrics
+- Fee-to-volatility ratio
+- Rebalance cost estimates
+- Range-distance variant metrics (normalized by vol, not price)
+- Wick / spike / breakout flags
+- Liquidity-cliff candidates
+
 ### Evidence-pipeline epic
 
 Tracked by #2.

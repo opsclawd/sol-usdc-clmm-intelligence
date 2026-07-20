@@ -3,15 +3,16 @@ import { normalizedObservations } from "../../db/schema/normalized-observations.
 import type {
   NormalizedObservationRepo,
   NormalizedObservationInsert,
-  NormalizedObservationRow
+  NormalizedObservationCandidateQuery
 } from "../../ports/normalized-observation-repo.js";
 import type {
   Source,
   ObservationKind,
   SignalClass,
   EvidenceFamily,
-  StaleBehavior
-} from "../../contracts/taxonomy.js";
+  StaleBehavior,
+  NormalizedObservationRow
+} from "../../contracts/index.js";
 import type { Db } from "../../db/db.js";
 
 function toPortRow(row: typeof normalizedObservations.$inferSelect): NormalizedObservationRow {
@@ -257,5 +258,29 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
       .limit(1);
     const row = rows[0];
     return row ? toPortRow(row) : null;
+  }
+
+  async listCandidates(
+    query: NormalizedObservationCandidateQuery
+  ): Promise<NormalizedObservationRow[]> {
+    if (query.sourceKinds.length === 0) {
+      return [];
+    }
+
+    const conditions = query.sourceKinds.map(({ source, observationKind }) =>
+      and(
+        eq(normalizedObservations.source, source),
+        eq(normalizedObservations.observationKind, observationKind),
+        gte(normalizedObservations.receivedAtUnixMs, query.receivedAtOrAfterUnixMs)
+      )
+    );
+
+    const rows = await this.db
+      .select()
+      .from(normalizedObservations)
+      .where(or(...conditions))
+      .orderBy(asc(normalizedObservations.receivedAtUnixMs), asc(normalizedObservations.id));
+
+    return rows.map(toPortRow);
   }
 }

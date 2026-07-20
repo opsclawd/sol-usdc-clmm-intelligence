@@ -22,10 +22,13 @@ const OBSERVATION_KINDS = new Set<ObservationKind>([
 ]);
 
 const FEATURE_KINDS = new Set<FeatureKind>([
-  "fee_apr",
-  "oracle_divergence",
-  "volatility_24h",
-  "liquidity_depth"
+  "range_location",
+  "distance_to_lower",
+  "distance_to_upper",
+  "oracle_dex_divergence",
+  "oracle_confidence_width",
+  "realized_volatility_1h",
+  "volume_liquidity_ratio_24h"
 ]);
 
 const SOURCES = new Set<Source>([

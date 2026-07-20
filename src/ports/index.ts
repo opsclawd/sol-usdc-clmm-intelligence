@@ -12,10 +12,10 @@ export type {
   RawObservationInsert,
   RawInsertOutcome
 } from "./observation-repo.js";
+export type { NormalizedObservationRow } from "../contracts/index.js";
 // Normalized observation repository port interface and rows
 export type {
   NormalizedObservationRepo,
-  NormalizedObservationRow,
   NormalizedObservationInsert
 } from "./normalized-observation-repo.js";
 export type {

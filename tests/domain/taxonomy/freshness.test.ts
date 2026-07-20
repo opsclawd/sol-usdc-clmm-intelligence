@@ -124,9 +124,9 @@ describe("computeFreshness", () => {
       baseTimestamps,
       basePolicy,
       baseTimestamps.observedAtUnixMs,
-      "fee_apr"
+      "volume_liquidity_ratio_24h"
     );
-    expect(result.policyKind).toBe("fee_apr");
+    expect(result.policyKind).toBe("volume_liquidity_ratio_24h");
   });
 
   it("carries derivedAt as nowMs", () => {

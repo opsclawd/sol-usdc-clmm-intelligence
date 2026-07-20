@@ -48,7 +48,8 @@ function createMockNormalizedObservationRepo(): NormalizedObservationRepo {
     findBySource: vi.fn(),
     findFreshByKind: vi.fn(),
     findLatestByKind: vi.fn(),
-    findByRawObservation: vi.fn()
+    findByRawObservation: vi.fn(),
+    listCandidates: vi.fn()
   };
 }
 

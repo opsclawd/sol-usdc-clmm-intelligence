@@ -140,3 +140,35 @@ Key Architectural Invariants:
 7. **Solana Network-Health Deferment**: Solana network-health/status ingestion is identified as a separate backlog gap after the deterministic vertical slice. It is excluded from the core source count, and issue #24 completion does not depend on it.
 8. **No Execution Authority**: The pipeline collects evidence and advises only. It does not construct instructions, sign transactions, or execute swaps.
 9. **Operator Handoff**: `pnpm collect:core` is the canonical CLI/operator interface for gathering all four core telemetry sources. Legacy commands remain supported for backwards compatibility.
+
+## Deterministic Feature Derivation
+
+All seven canonical features are derived by code from normalized source observations. The derivation is deterministic: identical inputs produce bit-for-bit identical outputs.
+
+### Reproducibility rules
+
+**Arithmetic:** All intermediate calculations use exact rational arithmetic (`bigint` numerator/denominator). Decimal strings from source payloads are parsed into `{ numerator, denominator }` rationals before any operation. The only floating-point operation is `Math.log` inside the realized volatility calculator; the version string, selected price strings, and final integer output form the audit boundary.
+
+**Rounding:** Final integer values use ties-away-from-zero rounding (round half up). For a rational `p/q`, the remainder `r = p mod q` is compared to `q/2`. If `r > q/2`, round up. If `r == q/2` and `q` is even, round up. This matches the SQL `ROUND()` behavior for positive numbers and is symmetric for negatives.
+
+**Formulas:**
+
+- `range_location`: `(currentPrice - lowerPrice) / (upperPrice - lowerPrice) * 1_000_000`, clamped to `[0, 1_000_000]`
+- `distance_to_lower`: `(currentPrice - lowerPrice) / currentPrice * 10_000`
+- `distance_to_upper`: `(upperPrice - currentPrice) / currentPrice * 10_000`
+- `oracle_dex_divergence`: `|dexPrice - oraclePrice| / oraclePrice * 10_000` (Pyth-only oracle)
+- `oracle_confidence_width`: `oracleConfidence / oraclePrice * 10_000`
+- `realized_volatility_1h`: `sqrt(sum(log(price[i]/price[i-1])^2 for i=1..n)) * 10_000` — nonannualized, Pyth-only
+- `volume_liquidity_ratio_24h`: `volume24hUsdc / tvlUsdc * 1_000_000`
+
+**Volatility window:** Inclusive one-hour window (`VOLATILITY_WINDOW_MS = 3_600_000`). Minimum 10 samples required. Minimum span of 45 minutes required (`VOLATILITY_MIN_SPAN_MS = 2_700_000`). Maximum gap between consecutive samples is 10 minutes (`VOLATILITY_MAX_GAP_MS = 600_000`).
+
+**Selection ordering:** When multiple candidates exist, selection orders by: slot descending, then `observedAtUnixMs` descending, then `receivedAtUnixMs` descending, then ID ascending. This gives the most recent on-chain observation priority.
+
+**Duplicate handling:** For volatility, duplicates are deduplicated by keeping the highest-slot observation per timestamp. The IDs of discarded duplicates are recorded in the feature metadata.
+
+**Confidence cap:** All derived features use a default `high` confidence of `1.0` when inputs are valid and fresh. Confidence degradation to `PARTIAL` occurs when source warnings are present (e.g., wide oracle confidence interval, DEX provider warning). `UNAVAILABLE` features carry a null value and explicit reason codes in the derivation key.
+
+**Freshness minimum:** Features are valid for one hour from `asOfUnixMs` (`expiresAtUnixMs = asOfUnixMs + 3_600_000`). Selectors also compare `validUntilUnixMs` against the single evaluation timestamp to detect expired source observations at query time.
+
+**Lineage and derivation key:** Every feature carries `inputObservationIds` (sorted, unique), `rejectedObservationIds` (sorted, unique), `calculatorVersion`, `selectionVersion`, and a `derivationKey` that is a canonical hash of the complete input identity. Unavailable outcomes include `reasons` in the derivation key identity so that distinct failure modes produce distinct keys.

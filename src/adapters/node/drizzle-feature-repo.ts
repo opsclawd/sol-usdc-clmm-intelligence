@@ -1,4 +1,4 @@
-import { eq, and, gte } from "drizzle-orm";
+import { eq, and, gte, or } from "drizzle-orm";
 import { derivedFeatures } from "../../db/schema/derived-features.js";
 import type {
   DerivedFeatureRepo,
@@ -30,7 +30,17 @@ function toPortRow(row: typeof derivedFeatures.$inferSelect): DerivedFeatureRow 
     staleBehavior: row.staleBehavior as StaleBehavior | null,
     provenance: row.provenance as unknown as DerivedFeatureRow["provenance"],
     payloadHash: row.payloadHash,
-    receivedAtUnixMs: row.receivedAtUnixMs
+    receivedAtUnixMs: row.receivedAtUnixMs,
+    status: row.status as "AVAILABLE" | "PARTIAL" | "UNAVAILABLE",
+    unit: row.unit as "BPS" | "PPM",
+    pair: row.pair,
+    calculatorVersion: row.calculatorVersion,
+    selectionVersion: row.selectionVersion,
+    inputObservationIds: row.inputObservationIds,
+    rejectedObservationIds: row.rejectedObservationIds,
+    derivationKey: row.derivationKey,
+    poolId: row.poolId,
+    positionId: row.positionId
   };
 }
 
@@ -38,14 +48,20 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
   constructor(private readonly db: Db) {}
 
   async insert(row: DerivedFeatureInsert): Promise<DerivedFeatureRow> {
-    const [result] = await this.db
-      .insert(derivedFeatures)
-      .values({
+    const results = await this.insertMany([row]);
+    return results[0]!;
+  }
+
+  async insertMany(rows: readonly DerivedFeatureInsert[]): Promise<DerivedFeatureRow[]> {
+    if (rows.length === 0) return [];
+
+    return this.db.transaction(async (tx) => {
+      const values = rows.map((row) => ({
         featureKind: row.featureKind,
         signalClass: row.signalClass,
         evidenceFamily: row.evidenceFamily,
         value: row.value ?? null,
-        structuredPayload: row.structuredPayload ?? null,
+        structuredPayload: row.structuredPayload,
         asOfUnixMs: row.asOfUnixMs,
         confidence: row.confidence as unknown,
         confidenceComposite:
@@ -60,20 +76,127 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
         staleBehavior: row.staleBehavior ?? null,
         provenance: row.provenance as unknown,
         payloadHash: row.payloadHash,
-        receivedAtUnixMs: row.receivedAtUnixMs
-      })
-      .onConflictDoNothing({
-        target: [derivedFeatures.featureKind, derivedFeatures.payloadHash]
-      })
-      .returning();
-    if (result) return toPortRow(result);
-    const existing = await this.findByHash(row.featureKind, row.payloadHash);
-    return existing!;
+        receivedAtUnixMs: row.receivedAtUnixMs,
+        status: row.status,
+        unit: row.unit,
+        pair: row.pair ?? "SOL/USDC",
+        calculatorVersion: row.calculatorVersion ?? "1.0",
+        selectionVersion: row.selectionVersion ?? "1.0",
+        inputObservationIds: row.inputObservationIds ?? [],
+        rejectedObservationIds: row.rejectedObservationIds ?? [],
+        derivationKey: row.derivationKey,
+        poolId: row.poolId ?? null,
+        positionId: row.positionId ?? null
+      }));
+
+      const inserted = await tx
+        .insert(derivedFeatures)
+        .values(values)
+        .onConflictDoNothing({
+          target: [derivedFeatures.featureKind, derivedFeatures.derivationKey]
+        })
+        .returning();
+
+      const insertedCount = inserted.length;
+
+      if (insertedCount === rows.length) {
+        return inserted.map(toPortRow);
+      }
+
+      if (insertedCount === 0) {
+        const conflictKeys = rows.map((r) => ({
+          featureKind: r.featureKind,
+          derivationKey: r.derivationKey
+        }));
+
+        const filterConditions = conflictKeys.map((key) =>
+          and(
+            eq(derivedFeatures.featureKind, key.featureKind),
+            eq(derivedFeatures.derivationKey, key.derivationKey)
+          )
+        );
+
+        const existingRows = await tx
+          .select()
+          .from(derivedFeatures)
+          .where(or(...filterConditions));
+
+        const existingMap = new Map<string, typeof derivedFeatures.$inferSelect>();
+        for (const r of existingRows) {
+          const key = `${r.featureKind}:${r.derivationKey}`;
+          existingMap.set(key, r);
+        }
+
+        return rows.map((row) => {
+          const key = `${row.featureKind}:${row.derivationKey}`;
+          const existing = existingMap.get(key);
+          if (existing === undefined) {
+            throw new Error(`Concurrent deletion conflict: no existing row found for key=${key}`);
+          }
+          return toPortRow(existing);
+        });
+      }
+
+      const insertedMap = new Map<string, typeof derivedFeatures.$inferSelect>();
+      for (const r of inserted) {
+        const key = `${r.featureKind}:${r.derivationKey}`;
+        insertedMap.set(key, r);
+      }
+
+      const results: DerivedFeatureRow[] = new Array(rows.length);
+      for (let i = 0; i < rows.length; i++) {
+        const key = `${rows[i]!.featureKind}:${rows[i]!.derivationKey}`;
+        const insertedRow = insertedMap.get(key);
+        if (insertedRow !== undefined) {
+          results[i] = toPortRow(insertedRow);
+        }
+      }
+
+      const missingKeys = rows
+        .filter((_, i) => results[i] === undefined)
+        .map((r) => ({
+          featureKind: r.featureKind,
+          derivationKey: r.derivationKey
+        }));
+
+      if (missingKeys.length > 0) {
+        const filterConditions = missingKeys.map((key) =>
+          and(
+            eq(derivedFeatures.featureKind, key.featureKind),
+            eq(derivedFeatures.derivationKey, key.derivationKey)
+          )
+        );
+
+        const existingRows = await tx
+          .select()
+          .from(derivedFeatures)
+          .where(or(...filterConditions));
+
+        const existingMap = new Map<string, typeof derivedFeatures.$inferSelect>();
+        for (const r of existingRows) {
+          const key = `${r.featureKind}:${r.derivationKey}`;
+          existingMap.set(key, r);
+        }
+
+        for (let i = 0; i < rows.length; i++) {
+          if (results[i] === undefined) {
+            const key = `${rows[i]!.featureKind}:${rows[i]!.derivationKey}`;
+            const existing = existingMap.get(key);
+            if (existing === undefined) {
+              throw new Error(`Concurrent deletion conflict: no existing row found for key=${key}`);
+            }
+            results[i] = toPortRow(existing);
+          }
+        }
+      }
+
+      return results;
+    });
   }
 
-  async findByHash(
+  async findByDerivationKey(
     featureKind: FeatureKind,
-    payloadHash: string
+    derivationKey: string
   ): Promise<DerivedFeatureRow | undefined> {
     const [result] = await this.db
       .select()
@@ -81,7 +204,7 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
       .where(
         and(
           eq(derivedFeatures.featureKind, featureKind),
-          eq(derivedFeatures.payloadHash, payloadHash)
+          eq(derivedFeatures.derivationKey, derivationKey)
         )
       )
       .limit(1);
