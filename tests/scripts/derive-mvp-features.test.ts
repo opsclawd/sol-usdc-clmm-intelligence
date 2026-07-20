@@ -3,6 +3,7 @@ import type { Clock } from "../../src/ports/clock.js";
 import type { RunIdFactory } from "../../src/ports/run-id.js";
 import type { EnvReader } from "../../src/ports/env.js";
 import type { NodeRuntime } from "../../src/adapters/node/composition-root.js";
+import { runDeriveMvpFeaturesScript } from "../../scripts/collectors/derive-mvp-features.js";
 
 function createMockClock(now?: string): Clock {
   return {
@@ -240,10 +241,9 @@ describe("deriveMvpFeaturesJob thin job", () => {
 
 describe("derive-mvp-features script", () => {
   describe("script validation", () => {
-    it("should parse comma-separated position IDs with trim and deduplication", async () => {
+    it("should throw for missing WHIRLPOOL_ADDRESS", async () => {
       const env = createMockEnvReader({
-        WHIRLPOOL_ADDRESS: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
-        INTELLIGENCE_POSITION_IDS: " pos1 , pos2 , pos1 , pos3 ",
+        INTELLIGENCE_POSITION_IDS: "pos1",
         DATABASE_URL: "postgresql://test:test@localhost:5432/test"
       });
 
@@ -263,14 +263,9 @@ describe("derive-mvp-features script", () => {
         })
       };
 
-      const positionIds = runtime.env.getOptional("INTELLIGENCE_POSITION_IDS") ?? "";
-      const parsed = positionIds
-        .split(",")
-        .map((id) => id.trim())
-        .filter((id) => id.length > 0);
-      const unique = [...new Set(parsed)];
-
-      expect(unique).toEqual(["pos1", "pos2", "pos3"]);
+      await expect(runDeriveMvpFeaturesScript(runtime)).rejects.toThrow(
+        "Missing required environment variable: WHIRLPOOL_ADDRESS"
+      );
     });
 
     it("should throw when INTELLIGENCE_POSITION_IDS is empty", async () => {
@@ -280,35 +275,136 @@ describe("derive-mvp-features script", () => {
         DATABASE_URL: "postgresql://test:test@localhost:5432/test"
       });
 
-      const positionIds = env.getOptional("INTELLIGENCE_POSITION_IDS") ?? "";
-      const parsed = positionIds
-        .split(",")
-        .map((id) => id.trim())
-        .filter((id) => id.length > 0);
+      const runtime: NodeRuntime = {
+        http: { getJson: vi.fn() } as unknown as NodeRuntime["http"],
+        jsonStore: { readJson: vi.fn(), writeJson: vi.fn() } as unknown as NodeRuntime["jsonStore"],
+        textReader: { readText: vi.fn() } as unknown as NodeRuntime["textReader"],
+        env,
+        clock: createMockClock(),
+        commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
+        runIdFactory: createMockRunIdFactory(),
+        getDb: vi.fn(),
+        getPersistence: vi.fn().mockResolvedValue({
+          connection: { close: vi.fn().mockResolvedValue(undefined) },
+          normalizedObservationRepo: createMockNormalizedObservationRepo(),
+          featureRepo: createMockFeatureRepo()
+        })
+      };
 
-      expect(parsed.length === 0).toBe(true);
+      await expect(runDeriveMvpFeaturesScript(runtime)).rejects.toThrow(
+        "INTELLIGENCE_POSITION_IDS cannot be empty"
+      );
     });
 
-    it("should use development as default code version", async () => {
+    it("should produce mixed status output when job returns available, partial, and unavailable", async () => {
+      const normalizedObservationRepo = createMockNormalizedObservationRepo();
+      const featureRepo = createMockFeatureRepo();
+
+      const mockRows = [
+        { id: 1, status: "AVAILABLE" as const },
+        { id: 2, status: "PARTIAL" as const },
+        { id: 3, status: "UNAVAILABLE" as const },
+        { id: 4, status: "AVAILABLE" as const }
+      ];
+
+      (featureRepo.insertMany as Mock).mockResolvedValue(mockRows);
+      (normalizedObservationRepo.listCandidates as Mock).mockResolvedValue([]);
+
+      const env = createMockEnvReader({
+        WHIRLPOOL_ADDRESS: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
+        INTELLIGENCE_POSITION_IDS: "pos1,pos2",
+        DATABASE_URL: "postgresql://test:test@localhost:5432/test"
+      });
+
+      const runtime: NodeRuntime = {
+        http: { getJson: vi.fn() } as unknown as NodeRuntime["http"],
+        jsonStore: { readJson: vi.fn(), writeJson: vi.fn() } as unknown as NodeRuntime["jsonStore"],
+        textReader: { readText: vi.fn() } as unknown as NodeRuntime["textReader"],
+        env,
+        clock: createMockClock(),
+        commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
+        runIdFactory: createMockRunIdFactory(),
+        getDb: vi.fn(),
+        getPersistence: vi.fn().mockResolvedValue({
+          connection: { close: vi.fn().mockResolvedValue(undefined) },
+          normalizedObservationRepo,
+          featureRepo
+        })
+      };
+
+      const result = await runDeriveMvpFeaturesScript(runtime);
+
+      expect(result.counts["AVAILABLE"]).toBe(2);
+      expect(result.counts["PARTIAL"]).toBe(1);
+      expect(result.counts["UNAVAILABLE"]).toBe(1);
+    });
+
+    it("should throw when job throws (database failure)", async () => {
+      const normalizedObservationRepo = createMockNormalizedObservationRepo();
+      const featureRepo = createMockFeatureRepo();
+
+      (normalizedObservationRepo.listCandidates as Mock).mockRejectedValue(
+        new Error("Database query failed")
+      );
+
+      const env = createMockEnvReader({
+        WHIRLPOOL_ADDRESS: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
+        INTELLIGENCE_POSITION_IDS: "pos1,pos2",
+        DATABASE_URL: "postgresql://test:test@localhost:5432/test"
+      });
+
+      const runtime: NodeRuntime = {
+        http: { getJson: vi.fn() } as unknown as NodeRuntime["http"],
+        jsonStore: { readJson: vi.fn(), writeJson: vi.fn() } as unknown as NodeRuntime["jsonStore"],
+        textReader: { readText: vi.fn() } as unknown as NodeRuntime["textReader"],
+        env,
+        clock: createMockClock(),
+        commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
+        runIdFactory: createMockRunIdFactory(),
+        getDb: vi.fn(),
+        getPersistence: vi.fn().mockResolvedValue({
+          connection: { close: vi.fn().mockResolvedValue(undefined) },
+          normalizedObservationRepo,
+          featureRepo
+        })
+      };
+
+      await expect(runDeriveMvpFeaturesScript(runtime)).rejects.toThrow(
+        "MVP feature derivation failed"
+      );
+    });
+
+    it("should throw when connection.close() throws (connection close failure)", async () => {
+      const normalizedObservationRepo = createMockNormalizedObservationRepo();
+      const featureRepo = createMockFeatureRepo();
+
+      const mockRows = [{ id: 1, status: "AVAILABLE" as const }];
+      (featureRepo.insertMany as Mock).mockResolvedValue(mockRows);
+      (normalizedObservationRepo.listCandidates as Mock).mockResolvedValue([]);
+
       const env = createMockEnvReader({
         WHIRLPOOL_ADDRESS: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
         INTELLIGENCE_POSITION_IDS: "pos1",
         DATABASE_URL: "postgresql://test:test@localhost:5432/test"
       });
 
-      const codeVersion = env.getOptional("INTELLIGENCE_CODE_VERSION") ?? "development";
-      expect(codeVersion).toBe("development");
-    });
+      const runtime: NodeRuntime = {
+        http: { getJson: vi.fn() } as unknown as NodeRuntime["http"],
+        jsonStore: { readJson: vi.fn(), writeJson: vi.fn() } as unknown as NodeRuntime["jsonStore"],
+        textReader: { readText: vi.fn() } as unknown as NodeRuntime["textReader"],
+        env,
+        clock: createMockClock(),
+        commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
+        runIdFactory: createMockRunIdFactory(),
+        getDb: vi.fn(),
+        getPersistence: vi.fn().mockResolvedValue({
+          connection: { close: vi.fn().mockRejectedValue(new Error("Connection close failed")) },
+          normalizedObservationRepo,
+          featureRepo
+        })
+      };
 
-    it("should throw for missing WHIRLPOOL_ADDRESS", async () => {
-      const env = createMockEnvReader({
-        INTELLIGENCE_POSITION_IDS: "pos1",
-        DATABASE_URL: "postgresql://test:test@localhost:5432/test"
-      });
-
-      expect(() => env.get("WHIRLPOOL_ADDRESS")).toThrow(
-        "Missing required environment variable: WHIRLPOOL_ADDRESS"
-      );
+      await expect(runDeriveMvpFeaturesScript(runtime)).rejects.toThrow("Connection close failed");
     });
   });
 });

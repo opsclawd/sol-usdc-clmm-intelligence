@@ -56,7 +56,7 @@ export async function runDeriveMvpFeaturesScript(
     throw derivationError;
   }
 
-  if (closeError !== undefined && result === undefined) {
+  if (closeError !== undefined) {
     throw closeError;
   }
 
