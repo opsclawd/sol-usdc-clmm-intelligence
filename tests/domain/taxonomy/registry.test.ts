@@ -35,7 +35,8 @@ describe("observationKindRegistry", () => {
     "fee_metrics",
     "volume_metrics",
     "trigger_event",
-    "data_quality"
+    "data_quality",
+    "pool_statistics"
   ];
 
   it("has an entry for every ObservationKind union member", () => {
@@ -247,5 +248,29 @@ describe("registers source-independent price kinds with exclude-on-stale policie
     expect(executableQuoteEntry.provenanceRequirements.allowedSourceRefs).not.toContain(
       "pyth-hermes"
     );
+  });
+});
+
+describe("pool_statistics registry", () => {
+  it("registers pool statistics as five-minute degrade-on-stale clmm economics", () => {
+    const entry = getObservationKindEntry("pool_statistics");
+    expect(entry).toBeDefined();
+    expect(entry.kind).toBe("pool_statistics");
+    expect(entry.evidenceFamily).toBe("clmm_economics");
+    expect(entry.signalClass).toBe("deterministic");
+    expect(entry.freshnessPolicy.maxObservedAgeMs).toBe(300_000);
+    expect(entry.freshnessPolicy.clockSkewToleranceMs).toBe(5_000);
+    expect(entry.freshnessPolicy.staleBehavior).toBe("degrade_confidence");
+    expect(entry.confidencePolicy.weights.sourceReliability).toBe(0.4);
+    expect(entry.confidencePolicy.weights.dataCompleteness).toBe(0.3);
+    expect(entry.confidencePolicy.weights.derivationConfidence).toBe(0.3);
+    expect(entry.confidencePolicy.weights.llmConfidence).toBe(0);
+    expect(entry.active).toBe(true);
+    expect(entry.schemaVersion).toBe(1);
+  });
+
+  it("allows only orca public api provenance for pool statistics", () => {
+    const entry = getObservationKindEntry("pool_statistics");
+    expect(entry.provenanceRequirements.allowedSourceRefs).toEqual(["orca-public-api"]);
   });
 });

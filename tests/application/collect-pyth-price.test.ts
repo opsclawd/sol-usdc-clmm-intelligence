@@ -57,7 +57,37 @@ async function importCollectPythPrice() {
   return import("../../src/application/collect-pyth-price.js");
 }
 
+const VALID_CONTEXT = Object.freeze({
+  runId: "run-123",
+  startedAtUnixMs: new Date(FIXED_CLOCK_TIME).getTime()
+});
+
 describe("collectPythPrice", () => {
+  it("passes explicit immutable context without leaf environment rereads", async () => {
+    const { collectPythPrice } = await importCollectPythPrice();
+    const deps = createDeps();
+    const validEnvelope = makeRecentEnvelope();
+    const url = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
+    deps.http.setResponse(url, { body: validEnvelope });
+
+    // Mock env to reject run ID reads
+    deps.env.getOptional = (name) => {
+      if (name === "INTELLIGENCE_PIPELINE_RUN_ID")
+        throw new Error("Should not read run id from env");
+      return undefined;
+    };
+
+    const result = await collectPythPrice(deps, VALID_CONTEXT);
+    expect(result.status).toBe("accepted");
+    if (result.status !== "accepted") return;
+    const row = await deps.rawObservationRepo.findById(result.rawObservationId!);
+    expect(row?.sourceRequestMeta).toEqual(
+      expect.objectContaining({
+        runId: "run-123"
+      })
+    );
+  });
+
   describe("behavioral invariants", () => {
     it("persists an accepted Pyth envelope before normalization and rejects malformed envelopes before raw insert", async () => {
       const { collectPythPrice } = await importCollectPythPrice();
@@ -67,7 +97,7 @@ describe("collectPythPrice", () => {
       const url = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
       deps.http.setResponse(url, { body: validEnvelope });
 
-      const result = await collectPythPrice(deps);
+      const result = await collectPythPrice(deps, VALID_CONTEXT);
 
       expect(result.status).toBe("accepted");
       if (result.status !== "accepted") return;
@@ -83,7 +113,7 @@ describe("collectPythPrice", () => {
       const malformedEnvelope = { binary: "data", parsed: [] };
       deps.http.setResponse(url, { body: malformedEnvelope });
 
-      const malformedResult = await collectPythPrice(deps);
+      const malformedResult = await collectPythPrice(deps, VALID_CONTEXT);
       expect(malformedResult.status).toBe("failed");
     });
 
@@ -95,7 +125,7 @@ describe("collectPythPrice", () => {
       const url = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
       deps.http.setResponse(url, { body: validEnvelope });
 
-      await collectPythPrice(deps);
+      await collectPythPrice(deps, VALID_CONTEXT);
 
       const httpCall = deps.http.calls[0];
       expect(httpCall).toBeDefined();
@@ -134,7 +164,7 @@ describe("collectPythPrice", () => {
       const url = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
       deps.http.setResponse(url, { body: staleEnvelope });
 
-      const result = await collectPythPrice(deps);
+      const result = await collectPythPrice(deps, VALID_CONTEXT);
 
       expect(result.status).toBe("stale");
       if (result.status !== "stale") return;
@@ -153,7 +183,7 @@ describe("collectPythPrice", () => {
       const url = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
       deps.http.setResponse(url, { body: makeRecentEnvelope() });
 
-      await collectPythPrice(deps);
+      await collectPythPrice(deps, VALID_CONTEXT);
 
       const call = deps.http.calls[0];
       expect(call?.options?.timeoutMs).toBe(5_000);
@@ -167,7 +197,7 @@ describe("collectPythPrice", () => {
       const url = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
       deps.http.setResponse(url, { body: makeRecentEnvelope() });
 
-      await collectPythPrice(deps);
+      await collectPythPrice(deps, VALID_CONTEXT);
 
       expect(deps.http.calls[0]?.url).toBe(url);
     });
@@ -190,7 +220,7 @@ describe("collectPythPrice", () => {
       const url = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
       deps.http.setResponse(url, { body: envelope });
 
-      const result = await collectPythPrice(deps);
+      const result = await collectPythPrice(deps, VALID_CONTEXT);
 
       expect(result.status).toBe("accepted");
       if (result.status !== "accepted") return;
@@ -217,10 +247,10 @@ describe("collectPythPrice", () => {
       const url = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
       deps.http.setResponse(url, { body: envelope });
 
-      const result1 = await collectPythPrice(deps);
+      const result1 = await collectPythPrice(deps, VALID_CONTEXT);
       expect(result1.status).toBe("accepted");
 
-      const result2 = await collectPythPrice(deps);
+      const result2 = await collectPythPrice(deps, VALID_CONTEXT);
       expect(result2.status).toBe("identical_replay");
       if (result2.status !== "identical_replay") return;
 
@@ -244,7 +274,7 @@ describe("collectPythPrice", () => {
       const url = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
       deps.http.setResponse(url, { body: envelope1 });
 
-      await collectPythPrice(deps);
+      await collectPythPrice(deps, VALID_CONTEXT);
 
       const envelope2 = makePythHermesEnvelope({
         parsed: [
@@ -255,7 +285,7 @@ describe("collectPythPrice", () => {
       });
       deps.http.setResponse(url, { body: envelope2 });
 
-      const result = await collectPythPrice(deps);
+      const result = await collectPythPrice(deps, VALID_CONTEXT);
       expect(result.status).toBe("conflict");
     });
   });
@@ -281,7 +311,7 @@ describe("collectPythPrice", () => {
       const url = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
       deps.http.setResponse(url, { body: envelope });
 
-      const result = await collectPythPrice(deps);
+      const result = await collectPythPrice(deps, VALID_CONTEXT);
 
       expect(result.status).toBe("degraded");
     });
@@ -297,7 +327,7 @@ describe("collectPythPrice", () => {
         error: new HttpRequestError("timeout", "Request timed out", null, true)
       });
 
-      const result = await collectPythPrice(deps);
+      const result = await collectPythPrice(deps, VALID_CONTEXT);
 
       expect(result.status).toBe("timeout");
       if (result.status !== "timeout") return;
@@ -316,7 +346,7 @@ describe("collectPythPrice", () => {
         error: new HttpRequestError("network", "Connection failed", null, true)
       });
 
-      const result = await collectPythPrice(deps);
+      const result = await collectPythPrice(deps, VALID_CONTEXT);
 
       expect(result.status).toBe("network");
     });
@@ -330,7 +360,7 @@ describe("collectPythPrice", () => {
         error: new HttpRequestError("http_status", "Service unavailable", 503, false)
       });
 
-      const result = await collectPythPrice(deps);
+      const result = await collectPythPrice(deps, VALID_CONTEXT);
 
       expect(result.status).toBe("unavailable");
     });
@@ -344,7 +374,7 @@ describe("collectPythPrice", () => {
         error: new HttpRequestError("invalid_json", "Unexpected token", null, false)
       });
 
-      const result = await collectPythPrice(deps);
+      const result = await collectPythPrice(deps, VALID_CONTEXT);
 
       expect(result.status).toBe("malformed");
     });
@@ -361,7 +391,7 @@ describe("collectPythPrice", () => {
       const url = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
       deps.http.setResponse(url, { body: envelope });
 
-      const result = await collectPythPrice(deps);
+      const result = await collectPythPrice(deps, VALID_CONTEXT);
 
       expect(result.status).toBe("no_route");
     });

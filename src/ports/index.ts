@@ -12,6 +12,7 @@ export type {
   RawObservationInsert,
   RawInsertOutcome
 } from "./observation-repo.js";
+// Normalized observation repository port interface and rows
 export type {
   NormalizedObservationRepo,
   NormalizedObservationRow,
@@ -24,3 +25,4 @@ export type {
 } from "./feature-repo.js";
 export type { EvidenceBundleRepo, EvidenceBundleRow, EvidenceBundleInsert } from "./bundle-repo.js";
 export type { ResearchBriefRepo, ResearchBriefRow, ResearchBriefInsert } from "./brief-repo.js";
+export type { RunIdFactory } from "./run-id.js";

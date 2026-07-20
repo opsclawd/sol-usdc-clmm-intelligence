@@ -21,6 +21,31 @@ export class RawObservationConflictError extends Error {
   }
 }
 
+export class PostPersistenceOutputError extends Error {
+  readonly rawObservationId: number;
+  readonly rawOutcome: "inserted" | "identical_replay";
+  readonly normalizedCount: number;
+  readonly parseStatus: "parsed";
+
+  constructor(
+    message: string,
+    state: {
+      readonly rawObservationId: number;
+      readonly rawOutcome: "inserted" | "identical_replay";
+      readonly normalizedCount: number;
+      readonly parseStatus: "parsed";
+    },
+    options: ErrorOptions
+  ) {
+    super(message, options);
+    this.name = "PostPersistenceOutputError";
+    this.rawObservationId = state.rawObservationId;
+    this.rawOutcome = state.rawOutcome;
+    this.normalizedCount = state.normalizedCount;
+    this.parseStatus = state.parseStatus;
+  }
+}
+
 export interface IngestRawObservationDeps {
   rawObservationRepo: RawObservationRepo;
   normalizedObservationRepo: NormalizedObservationRepo;
@@ -109,7 +134,21 @@ export async function ingestRawObservation<TAccepted, TCandidate, TEnriched>(
       if (writeCompatibilityOutput) {
         const revalidator = revalidateStoredCanonical ?? validatePayload;
         const { accepted } = revalidator(existingRow.payloadCanonical);
-        await writeCompatibilityOutput(accepted, existingRow);
+        try {
+          await writeCompatibilityOutput(accepted, existingRow);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          throw new PostPersistenceOutputError(
+            message,
+            {
+              rawObservationId: existingRow.id,
+              rawOutcome: "identical_replay",
+              normalizedCount: 0,
+              parseStatus: "parsed"
+            },
+            { cause: err }
+          );
+        }
       }
       return {
         rawObservationId: existingRow.id,
@@ -136,7 +175,21 @@ export async function ingestRawObservation<TAccepted, TCandidate, TEnriched>(
       await rawObservationRepo.updateParseStatus(existingRow.id, replayParseStatus);
 
       if (writeCompatibilityOutput) {
-        await writeCompatibilityOutput(replayAccepted, existingRow);
+        try {
+          await writeCompatibilityOutput(replayAccepted, existingRow);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          throw new PostPersistenceOutputError(
+            message,
+            {
+              rawObservationId: existingRow.id,
+              rawOutcome: "identical_replay",
+              normalizedCount: replayNormalizedCount,
+              parseStatus: "parsed"
+            },
+            { cause: err }
+          );
+        }
       }
 
       return {
@@ -180,7 +233,21 @@ export async function ingestRawObservation<TAccepted, TCandidate, TEnriched>(
   await rawObservationRepo.updateParseStatus(rawRow.id, parseStatus);
 
   if (writeCompatibilityOutput && accepted !== undefined) {
-    await writeCompatibilityOutput(accepted, rawRow);
+    try {
+      await writeCompatibilityOutput(accepted, rawRow);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new PostPersistenceOutputError(
+        message,
+        {
+          rawObservationId: rawRow.id,
+          rawOutcome: "inserted",
+          normalizedCount,
+          parseStatus
+        },
+        { cause: err }
+      );
+    }
   }
 
   return {

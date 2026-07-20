@@ -3,6 +3,7 @@ import {
   collectClmmBundle,
   ClmmObservationConflictError
 } from "../../src/application/collect-clmm-bundle.js";
+import { mapSourceError } from "../../src/application/source-outcome.js";
 import { FakeHttp, FakeJsonStore, FakeEnv, FakeClock } from "../fakes/index.js";
 import { FakeObservationRepo } from "../fakes/fake-observation-repo.js";
 import { FakeNormalizedObservationRepo } from "../fakes/fake-normalized-observation-repo.js";
@@ -40,9 +41,13 @@ const VALID_ENV = {
   CLMM_DATA_API_BASE: "http://api.test",
   CLMM_INSIGHTS_API_KEY: "test-key-123",
   WALLET_PUBLIC_KEY: "11111111111111111111111111111111",
-  INTELLIGENCE_CODE_VERSION: "1.0.0",
-  INTELLIGENCE_PIPELINE_RUN_ID: "run-123"
+  INTELLIGENCE_CODE_VERSION: "1.0.0"
 };
+
+const VALID_CONTEXT = Object.freeze({
+  runId: "run-123",
+  startedAtUnixMs: 1704067200000 // 2024-01-01T00:00:00.000Z
+});
 
 function makeDeps() {
   return {
@@ -56,6 +61,40 @@ function makeDeps() {
 }
 
 describe("collectClmmBundle", () => {
+  it("passes explicit immutable context without leaf environment rereads", async () => {
+    const { http, jsonStore, env, clock, rawObservationRepo, normalizedObservationRepo } =
+      makeDeps();
+    http.setResponse("http://api.test/insights/sol-usdc/bundle/11111111111111111111111111111111", {
+      body: VALID_BUNDLE
+    });
+    env.getOptional = () => undefined;
+    env.get = (name) => {
+      if (name === "INTELLIGENCE_PIPELINE_RUN_ID")
+        throw new Error("Should not read run id from env");
+      return VALID_ENV[name as keyof typeof VALID_ENV] || "";
+    };
+
+    const res = await collectClmmBundle(
+      {
+        http,
+        jsonStore,
+        env,
+        clock,
+        rawObservationRepo,
+        normalizedObservationRepo
+      },
+      VALID_CONTEXT
+    );
+
+    expect(res.rawObservationId).toBeDefined();
+    const row = await rawObservationRepo.findById(res.rawObservationId);
+    expect(row?.sourceRequestMeta).toEqual(
+      expect.objectContaining({
+        intelligencePipelineRunId: "run-123"
+      })
+    );
+  });
+
   describe("successful collection orders raw insert normalized batch parsed status then latest file write", () => {
     it("enforces durable boundary", async () => {
       const { http, jsonStore, env, clock, rawObservationRepo, normalizedObservationRepo } =
@@ -88,14 +127,17 @@ describe("collectClmmBundle", () => {
         return originalUpdateParseStatus(id, status);
       };
 
-      await collectClmmBundle({
-        http,
-        jsonStore,
-        env,
-        clock,
-        rawObservationRepo,
-        normalizedObservationRepo
-      });
+      await collectClmmBundle(
+        {
+          http,
+          jsonStore,
+          env,
+          clock,
+          rawObservationRepo,
+          normalizedObservationRepo
+        },
+        VALID_CONTEXT
+      );
 
       expect(events).toContain("raw_insert");
       expect(events).toContain("normalized_batch");
@@ -131,14 +173,17 @@ describe("collectClmmBundle", () => {
       );
 
       await expect(
-        collectClmmBundle({
-          http,
-          jsonStore,
-          env,
-          clock,
-          rawObservationRepo,
-          normalizedObservationRepo
-        })
+        collectClmmBundle(
+          {
+            http,
+            jsonStore,
+            env,
+            clock,
+            rawObservationRepo,
+            normalizedObservationRepo
+          },
+          VALID_CONTEXT
+        )
       ).rejects.toThrow();
 
       expect(rawObservationRepo["store"].size).toBe(0);
@@ -165,23 +210,29 @@ describe("collectClmmBundle", () => {
         return originalInsertMany(rows);
       };
 
-      await collectClmmBundle({
-        http,
-        jsonStore,
-        env,
-        clock,
-        rawObservationRepo,
-        normalizedObservationRepo
-      });
+      await collectClmmBundle(
+        {
+          http,
+          jsonStore,
+          env,
+          clock,
+          rawObservationRepo,
+          normalizedObservationRepo
+        },
+        VALID_CONTEXT
+      );
       const countAfterFirst = normalizedCount;
-      await collectClmmBundle({
-        http,
-        jsonStore,
-        env,
-        clock,
-        rawObservationRepo,
-        normalizedObservationRepo
-      });
+      await collectClmmBundle(
+        {
+          http,
+          jsonStore,
+          env,
+          clock,
+          rawObservationRepo,
+          normalizedObservationRepo
+        },
+        VALID_CONTEXT
+      );
 
       expect(normalizedCount).toBe(countAfterFirst);
       expect(jsonStore.writes.length).toBe(2);
@@ -200,14 +251,17 @@ describe("collectClmmBundle", () => {
         }
       );
 
-      await collectClmmBundle({
-        http,
-        jsonStore,
-        env,
-        clock,
-        rawObservationRepo,
-        normalizedObservationRepo
-      });
+      await collectClmmBundle(
+        {
+          http,
+          jsonStore,
+          env,
+          clock,
+          rawObservationRepo,
+          normalizedObservationRepo
+        },
+        VALID_CONTEXT
+      );
 
       const writesAfterFirst = jsonStore.writes.length;
 
@@ -226,14 +280,17 @@ describe("collectClmmBundle", () => {
       );
 
       await expect(
-        collectClmmBundle({
-          http,
-          jsonStore,
-          env,
-          clock,
-          rawObservationRepo,
-          normalizedObservationRepo
-        })
+        collectClmmBundle(
+          {
+            http,
+            jsonStore,
+            env,
+            clock,
+            rawObservationRepo,
+            normalizedObservationRepo
+          },
+          VALID_CONTEXT
+        )
       ).rejects.toThrow(ClmmObservationConflictError);
 
       expect(jsonStore.writes.length).toBe(writesAfterFirst);
@@ -254,14 +311,17 @@ describe("collectClmmBundle", () => {
       normalizedObservationRepo.failAtIndex = 0;
 
       await expect(
-        collectClmmBundle({
-          http,
-          jsonStore,
-          env,
-          clock,
-          rawObservationRepo,
-          normalizedObservationRepo
-        })
+        collectClmmBundle(
+          {
+            http,
+            jsonStore,
+            env,
+            clock,
+            rawObservationRepo,
+            normalizedObservationRepo
+          },
+          VALID_CONTEXT
+        )
       ).rejects.toThrow();
 
       const rawRows = [...rawObservationRepo["store"].values()];
@@ -281,14 +341,17 @@ describe("collectClmmBundle", () => {
         }
       );
 
-      await collectClmmBundle({
-        http,
-        jsonStore,
-        env,
-        clock,
-        rawObservationRepo,
-        normalizedObservationRepo
-      });
+      await collectClmmBundle(
+        {
+          http,
+          jsonStore,
+          env,
+          clock,
+          rawObservationRepo,
+          normalizedObservationRepo
+        },
+        VALID_CONTEXT
+      );
 
       const writesAfterFirst = jsonStore.writes.length;
 
@@ -300,30 +363,47 @@ describe("collectClmmBundle", () => {
         }
       );
 
-      await expect(
-        collectClmmBundle({
+      let errorThrown: unknown;
+      try {
+        await collectClmmBundle(
+          {
+            http,
+            jsonStore,
+            env,
+            clock,
+            rawObservationRepo,
+            normalizedObservationRepo
+          },
+          VALID_CONTEXT
+        );
+      } catch (err) {
+        errorThrown = err;
+      }
+      expect(errorThrown).toBeDefined();
+
+      const rawRows = [...rawObservationRepo["store"].values()];
+      expect(rawRows[0]!.parseStatus).toBe("parsed");
+      expect(normalizedObservationRepo.count).toBeGreaterThan(0);
+
+      const mapped = mapSourceError("clmm-v2", "clmm-v2-bundle", errorThrown);
+      expect(mapped.status).toBe("failed");
+      expect(mapped.hasUsableEvidence).toBe(true);
+      expect(mapped.rawObservationId).toBe(rawRows[0]!.id);
+      expect(mapped.normalizedCount).toBe(0);
+      expect(mapped.diagnostic).toContain("disk full");
+
+      jsonStore.writeError = null;
+      await collectClmmBundle(
+        {
           http,
           jsonStore,
           env,
           clock,
           rawObservationRepo,
           normalizedObservationRepo
-        })
-      ).rejects.toThrow("disk full");
-
-      const rawRows = [...rawObservationRepo["store"].values()];
-      expect(rawRows[0]!.parseStatus).toBe("parsed");
-      expect(normalizedObservationRepo.count).toBeGreaterThan(0);
-
-      jsonStore.writeError = null;
-      await collectClmmBundle({
-        http,
-        jsonStore,
-        env,
-        clock,
-        rawObservationRepo,
-        normalizedObservationRepo
-      });
+        },
+        VALID_CONTEXT
+      );
 
       expect(jsonStore.writes.length).toBeGreaterThan(writesAfterFirst);
     });
@@ -347,14 +427,17 @@ describe("collectClmmBundle", () => {
         return originalInsertOrClassify(row);
       };
 
-      await collectClmmBundle({
-        http,
-        jsonStore,
-        env,
-        clock,
-        rawObservationRepo,
-        normalizedObservationRepo
-      });
+      await collectClmmBundle(
+        {
+          http,
+          jsonStore,
+          env,
+          clock,
+          rawObservationRepo,
+          normalizedObservationRepo
+        },
+        VALID_CONTEXT
+      );
 
       const meta = capturedMeta as Record<string, unknown>;
       expect(meta).toHaveProperty("method");
@@ -379,14 +462,17 @@ describe("collectClmmBundle", () => {
         }
       );
 
-      await collectClmmBundle({
-        http,
-        jsonStore,
-        env,
-        clock,
-        rawObservationRepo,
-        normalizedObservationRepo
-      });
+      await collectClmmBundle(
+        {
+          http,
+          jsonStore,
+          env,
+          clock,
+          rawObservationRepo,
+          normalizedObservationRepo
+        },
+        VALID_CONTEXT
+      );
 
       const rawRows = [...rawObservationRepo["store"].values()];
       expect(rawRows[0]!.parseStatus).toBe("parsed");
@@ -394,14 +480,17 @@ describe("collectClmmBundle", () => {
       await rawObservationRepo.updateParseStatus(rawRows[0]!.id, "pending");
 
       const normalizedCountBefore = normalizedObservationRepo.count;
-      await collectClmmBundle({
-        http,
-        jsonStore,
-        env,
-        clock,
-        rawObservationRepo,
-        normalizedObservationRepo
-      });
+      await collectClmmBundle(
+        {
+          http,
+          jsonStore,
+          env,
+          clock,
+          rawObservationRepo,
+          normalizedObservationRepo
+        },
+        VALID_CONTEXT
+      );
 
       expect(normalizedObservationRepo.count).toBe(normalizedCountBefore);
       const updatedRawRows = [...rawObservationRepo["store"].values()];
@@ -418,14 +507,17 @@ describe("collectClmmBundle", () => {
         }
       );
 
-      await collectClmmBundle({
-        http,
-        jsonStore,
-        env,
-        clock,
-        rawObservationRepo,
-        normalizedObservationRepo
-      });
+      await collectClmmBundle(
+        {
+          http,
+          jsonStore,
+          env,
+          clock,
+          rawObservationRepo,
+          normalizedObservationRepo
+        },
+        VALID_CONTEXT
+      );
 
       const rawRows = [...rawObservationRepo["store"].values()];
       expect(rawRows[0]!.parseStatus).toBe("parsed");
@@ -433,14 +525,17 @@ describe("collectClmmBundle", () => {
       await rawObservationRepo.updateParseStatus(rawRows[0]!.id, "failed");
 
       const normalizedCountBefore = normalizedObservationRepo.count;
-      await collectClmmBundle({
-        http,
-        jsonStore,
-        env,
-        clock,
-        rawObservationRepo,
-        normalizedObservationRepo
-      });
+      await collectClmmBundle(
+        {
+          http,
+          jsonStore,
+          env,
+          clock,
+          rawObservationRepo,
+          normalizedObservationRepo
+        },
+        VALID_CONTEXT
+      );
 
       expect(normalizedObservationRepo.count).toBe(normalizedCountBefore);
       const updatedRawRows = [...rawObservationRepo["store"].values()];
@@ -459,14 +554,17 @@ describe("collectClmmBundle", () => {
         }
       );
 
-      await collectClmmBundle({
-        http,
-        jsonStore,
-        env,
-        clock,
-        rawObservationRepo,
-        normalizedObservationRepo
-      });
+      await collectClmmBundle(
+        {
+          http,
+          jsonStore,
+          env,
+          clock,
+          rawObservationRepo,
+          normalizedObservationRepo
+        },
+        VALID_CONTEXT
+      );
 
       const normalizedCountAfterFirst = normalizedObservationRepo.count;
       const rawRows = [...rawObservationRepo["store"].values()];
@@ -477,14 +575,17 @@ describe("collectClmmBundle", () => {
       rawObservationRepo.failOnUpdateParseStatus = new Error("status update failed");
 
       await expect(
-        collectClmmBundle({
-          http,
-          jsonStore,
-          env,
-          clock,
-          rawObservationRepo,
-          normalizedObservationRepo
-        })
+        collectClmmBundle(
+          {
+            http,
+            jsonStore,
+            env,
+            clock,
+            rawObservationRepo,
+            normalizedObservationRepo
+          },
+          VALID_CONTEXT
+        )
       ).rejects.toThrow("status update failed");
 
       const rawRowsAfterFailure = [...rawObservationRepo["store"].values()];
@@ -492,14 +593,17 @@ describe("collectClmmBundle", () => {
       expect(normalizedObservationRepo.count).toBe(normalizedCountAfterFirst);
 
       rawObservationRepo.failOnUpdateParseStatus = null;
-      await collectClmmBundle({
-        http,
-        jsonStore,
-        env,
-        clock,
-        rawObservationRepo,
-        normalizedObservationRepo
-      });
+      await collectClmmBundle(
+        {
+          http,
+          jsonStore,
+          env,
+          clock,
+          rawObservationRepo,
+          normalizedObservationRepo
+        },
+        VALID_CONTEXT
+      );
 
       expect(normalizedObservationRepo.count).toBe(normalizedCountAfterFirst);
       const finalRawRows = [...rawObservationRepo["store"].values()];

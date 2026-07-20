@@ -8,7 +8,6 @@ import type { CommandRunner } from "../../src/ports/command-runner.js";
 import type { RawObservationRepo } from "../../src/ports/observation-repo.js";
 import type { NormalizedObservationRepo } from "../../src/ports/normalized-observation-repo.js";
 import type { DbConnection } from "../../src/ports/db.js";
-import type { CollectClmmBundleResult } from "../../src/application/collect-clmm-bundle.js";
 import type { NodeRuntime } from "../../src/adapters/node/composition-root.js";
 
 function createMockEnvReader(envMap?: Record<string, string>): EnvReader {
@@ -48,7 +47,8 @@ function createMockNormalizedObservationRepo(): NormalizedObservationRepo {
     insertMany: vi.fn(),
     findBySource: vi.fn(),
     findFreshByKind: vi.fn(),
-    findLatestByKind: vi.fn()
+    findLatestByKind: vi.fn(),
+    findByRawObservation: vi.fn()
   };
 }
 
@@ -188,6 +188,7 @@ describe("clmm-bundle collector lifecycle", () => {
         env,
         clock,
         commandRunner: createMockCommandRunner(),
+        runIdFactory: { nextRunId: () => "run-123" },
         getDb: vi.fn(),
         getPersistence: vi.fn().mockResolvedValue(persistence)
       };
@@ -227,6 +228,7 @@ describe("clmm-bundle collector lifecycle", () => {
         env,
         clock,
         commandRunner: createMockCommandRunner(),
+        runIdFactory: { nextRunId: () => "run-123" },
         getDb: vi.fn(),
         getPersistence: vi.fn().mockResolvedValue(persistence)
       };
@@ -268,6 +270,7 @@ describe("clmm-bundle collector lifecycle", () => {
         env,
         clock,
         commandRunner: createMockCommandRunner(),
+        runIdFactory: { nextRunId: () => "run-123" },
         getDb: vi.fn(),
         getPersistence: vi.fn().mockResolvedValue(persistence)
       };
@@ -338,7 +341,7 @@ describe("clmm-bundle collector lifecycle", () => {
 });
 
 describe("clmmBundleJob result type", () => {
-  it("should preserve the CollectClmmBundleResult type", async () => {
+  it("should return the SourceCollectionOutcome type", async () => {
     const rawObservationRepo = createMockRawObservationRepo();
     const normalizedObservationRepo = createMockNormalizedObservationRepo();
     const env = createMockEnvReader(TEST_ENV);
@@ -346,29 +349,24 @@ describe("clmmBundleJob result type", () => {
     const http = createMockHttpClient();
     const jsonStore = createMockJsonStore();
 
-    const mockResult: CollectClmmBundleResult = {
-      rawObservationId: 123,
-      rawOutcome: {
-        outcome: "inserted",
-        row: {
-          id: 123,
-          source: "clmm-v2-bundle",
-          sourceObservationKey: "key1",
-          observedAtUnixMs: Date.now(),
-          fetchedAtUnixMs: Date.now(),
-          payloadHash: "hash1",
-          payloadCanonical: "{}",
-          parseStatus: "parsed",
-          sourceRequestMeta: null,
-          receivedAtUnixMs: Date.now()
-        }
-      },
-      normalizedCount: 2,
-      parseStatus: "parsed"
+    const mockOutcome = {
+      outcome: "inserted",
+      row: {
+        id: 123,
+        source: "clmm-v2-bundle",
+        sourceObservationKey: "key1",
+        observedAtUnixMs: Date.now(),
+        fetchedAtUnixMs: Date.now(),
+        payloadHash: "hash1",
+        payloadCanonical: "{}",
+        parseStatus: "parsed",
+        sourceRequestMeta: null,
+        receivedAtUnixMs: Date.now()
+      }
     };
 
     (http.getJson as Mock).mockResolvedValue(makeValidBundleEnvelope());
-    (rawObservationRepo.insertOrClassify as Mock).mockResolvedValue(mockResult.rawOutcome);
+    (rawObservationRepo.insertOrClassify as Mock).mockResolvedValue(mockOutcome);
 
     const { clmmBundleJob } = await import("../../src/jobs/clmm-bundle-job.js");
 
@@ -378,13 +376,15 @@ describe("clmmBundleJob result type", () => {
       env,
       clock,
       rawObservationRepo,
-      normalizedObservationRepo
+      normalizedObservationRepo,
+      runIdFactory: { nextRunId: () => "run-123" }
     });
 
     const result = await job();
-    expect(result.rawObservationId).toBe(mockResult.rawObservationId);
-    expect(result.rawOutcome.outcome).toBe(mockResult.rawOutcome.outcome);
-    expect(result.parseStatus).toBe(mockResult.parseStatus);
+    expect(result.sourceKey).toBe("clmm-v2");
+    expect(result.source).toBe("clmm-v2-bundle");
+    expect(result.status).toBe("accepted");
+    expect(result.rawObservationId).toBe(123);
     expect(typeof result.normalizedCount).toBe("number");
   });
 });

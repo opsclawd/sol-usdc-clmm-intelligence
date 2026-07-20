@@ -93,7 +93,7 @@ The ingestion layer should collect and normalize at least:
 - Orca pool/public stats for pool-level volume, fees, and TVL context where needed;
 - Pyth or equivalent canonical SOL/USD oracle observations;
 - Jupiter quotes and price observations for DEX comparison and route context;
-- Solana network/status inputs needed for deterministic availability warnings.
+- [Deferred Gap] Solana network-health/status inputs (identified as a backlog gap after the deterministic vertical slice; not part of the core source count).
 
 Raw responses should be persisted before normalization. Partial source failures should produce explicit warnings, not fabricated values.
 
@@ -221,31 +221,42 @@ clmm-v2 /insights/sol-usdc/bundle/:walletId
      advisory output / operator review
 ```
 
-Durable price data flow (Pyth & Jupiter):
+Durable Core Data Flow (Four-Source Core Set):
 
-Both Pyth Hermes and Jupiter quote feeds are collected in a raw-first flow and persisted to Postgres before normalization. The Postgres database tables (`raw_observations` and `normalized_observations`) are the absolute authority. The local JSON file `data/latest-price-snapshot.json` is a legacy compatibility snapshot ONLY. If Pyth succeeds but Jupiter quote fails, the job succeeds partially but the compatibility snapshot remains stale (it is NOT overwritten with oracle data).
+All core sources (CLMM bundle, Pyth oracle updates, Jupiter executable quotes, and Orca pool statistics) are collected in a raw-first flow and persisted to Postgres before normalization. The Postgres database tables (`raw_observations` and `normalized_observations`) are the absolute authority. Local JSON compatibility snapshots are fallbacks only. Sibling source collectors execute concurrently and persist their raw observations and normalized rows independently within a single execution context (sharing a unique `runId`). A failure in one source does not roll back already committed evidence from sibling sources.
 
 ```text
-        Pyth Hermes API              Jupiter Quote API
-               |                             |
-               +--------------+--------------+
-                              v
-             raw_observations (append-only)
-                              |
-                              v
-           normalized_observations (immutable)
-                              |
-            +-----------------+-----------------+
-            v                                   v
-      derived_features             data/latest-price-snapshot.json
- (future oracle/DEX features)       (Compatibility snapshot fallback)
-                                                |
-                                                v
-                                  OpenClaw routine + memory
-                                                |
-                                                v
-                                    Advisory review / Operator
+  CLMM Bundle      Pyth Hermes      Jupiter Quote      Orca Stats
+       |                |                 |                 |
+       +----------------+--------+--------+-----------------+
+                                 v
+                  raw_observations (append-only)
+                                 |
+                                 v
+               normalized_observations (immutable)
+                                 |
+               +-----------------+-----------------+
+               v                                   v
+         derived_features             Compatibility Snapshots
+      (divergence, fee APR)          (e.g., latest-clmm-bundle.json,
+                                      latest-price-snapshot.json)
 ```
+
+The overall command run status is mapped via a pure reducer truth table based on individual source outcomes:
+
+- **COMPLETE**: All sources succeed or replay identically.
+- **PARTIAL**: At least one source succeeds (usable) while others fail or degrade.
+- **UNAVAILABLE**: All sources are unavailable (e.g. rate-limiting 429s or outages).
+- **FAILED**: Any validation conflict, DB integrity issue, or total failure with zero usable evidence.
+
+Orca `pool_statistics` metrics are defined as:
+
+- `tvlUsdc`: Orca's current pool TVL mark.
+- `volume24hUsdc`: Rolling traded notional.
+- `fees24hUsdc`: Rolling total swap fees.
+  Explicitly, these are decimal strings denominated in USDC and are not raw liquidity, wallet fees, LP-only revenue, APR, or guaranteed fiat USD.
+
+Solana network-health/status ingestion is identified as a separate backlog gap after the deterministic vertical slice; it is not part of the core source count, and issue #24 completion does not depend on it.
 
 ## Future evidence flow
 
@@ -329,8 +340,9 @@ The render step prints the OpenClaw commands needed to register cron jobs define
 ## Useful commands
 
 ```bash
-pnpm collect:price        # collects Pyth and Jupiter telemetry to Postgres, updates compatibility snapshot
-pnpm collect:clmm-bundle  # fetches and writes SOL/USDC CLMM bundle from clmm-v2
+pnpm collect:core         # collects CLMM, Pyth, Jupiter, and Orca telemetry to Postgres
+pnpm collect:price        # legacy command: collects Pyth and Jupiter telemetry to Postgres, updates compatibility snapshot
+pnpm collect:clmm-bundle  # legacy command: fetches and writes SOL/USDC CLMM bundle from clmm-v2
 pnpm db:generate          # generates Drizzle migrations from schema changes
 pnpm db:migrate           # runs Drizzle migrations against DATABASE_URL
 pnpm db:push              # pushes schema changes directly (dev only)
@@ -351,6 +363,8 @@ CLMM_INSIGHTS_API_KEY=<shared-read-token-from-clmm-v2>
 WALLET_PUBLIC_KEY=<your-solana-wallet-address>
 SOL_MINT=So11111111111111111111111111111111111111112
 USDC_MINT=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
+ORCA_API_BASE=https://api.orca.so/v2/solana
+ORCA_SOL_USDC_WHIRLPOOL=HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw
 ```
 
 For OpenClaw delivery:

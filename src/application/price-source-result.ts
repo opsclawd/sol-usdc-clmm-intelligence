@@ -75,6 +75,11 @@ export type ConflictResult = Readonly<{
 export type FailedResult = Readonly<{
   status: "failed";
   summary: string;
+  durableEvidence?: Readonly<{
+    rawObservationId: number;
+    normalizedCount: number;
+  }>;
+  hasUsableEvidence?: boolean;
 }>;
 
 export type PriceSourceResult =
@@ -90,14 +95,7 @@ export type PriceSourceResult =
   | ConflictResult
   | FailedResult;
 
-function redactSecrets(text: string): string {
-  return text
-    .replace(/api[_-]?key/gi, "[REDACTED]")
-    .replace(/bearer/gi, "[REDACTED]")
-    .replace(/token/gi, "[REDACTED]")
-    .replace(/auth/gi, "[REDACTED]")
-    .replace(/secret/gi, "[REDACTED]");
-}
+import { redactDiagnostic } from "./source-outcome.js";
 
 export function safeSummary(result: PriceSourceResult): string {
   switch (result.status) {
@@ -110,19 +108,19 @@ export function safeSummary(result: PriceSourceResult): string {
     case "degraded":
       return `degraded|id=${result.rawObservationId}|reason=${result.reason}|warnings=${result.warnings.join(",")}`;
     case "timeout":
-      return `timeout|${redactSecrets(result.summary)}`;
+      return `timeout|${redactDiagnostic(result.summary)}`;
     case "network":
-      return `network|${redactSecrets(result.summary)}`;
+      return `network|${redactDiagnostic(result.summary)}`;
     case "unavailable":
-      return `unavailable|${redactSecrets(result.summary)}|status=${result.httpStatus}`;
+      return `unavailable|${redactDiagnostic(result.summary)}|status=${result.httpStatus}`;
     case "malformed":
-      return `malformed|${redactSecrets(result.summary)}`;
+      return `malformed|${redactDiagnostic(result.summary)}`;
     case "no_route":
-      return `no_route|${redactSecrets(result.summary)}`;
+      return `no_route|${redactDiagnostic(result.summary)}`;
     case "conflict":
       return `conflict|existing=${result.existingPayloadHash.slice(0, 8)}|incoming=${result.incomingPayloadHash.slice(0, 8)}`;
     case "failed":
-      return `failed|${redactSecrets(result.summary)}`;
+      return `failed|${redactDiagnostic(result.summary)}`;
     default:
       return `unknown`;
   }

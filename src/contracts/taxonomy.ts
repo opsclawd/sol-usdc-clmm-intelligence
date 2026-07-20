@@ -23,7 +23,8 @@ export type ObservationKind =
   | "fee_metrics"
   | "volume_metrics"
   | "trigger_event"
-  | "data_quality";
+  | "data_quality"
+  | "pool_statistics";
 
 export type FeatureKind = "fee_apr" | "oracle_divergence" | "volatility_24h" | "liquidity_depth";
 
@@ -34,7 +35,8 @@ export type Source =
   | "coingecko"
   | "defillama"
   | "pyth-hermes"
-  | "jupiter-quote";
+  | "jupiter-quote"
+  | "orca-public-api";
 
 export type ParseStatus = "pending" | "parsed" | "failed";
 

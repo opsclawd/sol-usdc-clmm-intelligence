@@ -1,11 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
 import { eq, and, gte } from "drizzle-orm";
 import { rawObservations } from "../../../src/db/schema/raw-observations.js";
+import { normalizedObservations } from "../../../src/db/schema/normalized-observations.js";
 import { DrizzleObservationRepo } from "../../../src/adapters/node/drizzle-observation-repo.js";
+import { DrizzleNormalizedObservationRepo } from "../../../src/adapters/node/drizzle-normalized-observation-repo.js";
 import { createDb } from "../../../src/db/db.js";
 import { canonicalHash } from "../../../src/domain/content-hash.js";
 import type { Db } from "../../../src/db/db.js";
 import type { Source } from "../../../src/contracts/taxonomy.js";
+import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../../helpers/taxonomy-fixtures.js";
 
 const TEST_DB_URL = process.env.TEST_DATABASE_URL;
 const EXTRA_SOURCES: Source[] = ["pyth-hermes", "jupiter-quote"];
@@ -20,6 +23,7 @@ describe("DrizzleObservationRepo integration", () => {
 
   let db: Db;
   let repo: DrizzleObservationRepo;
+  let normalizedRepo: DrizzleNormalizedObservationRepo;
   let client: ReturnType<typeof import("postgres")>;
 
   beforeAll(() => {
@@ -27,6 +31,7 @@ describe("DrizzleObservationRepo integration", () => {
     db = database;
     client = pgClient;
     repo = new DrizzleObservationRepo(db);
+    normalizedRepo = new DrizzleNormalizedObservationRepo(db);
   });
 
   afterAll(async () => {
@@ -34,6 +39,7 @@ describe("DrizzleObservationRepo integration", () => {
   });
 
   beforeEach(async () => {
+    await db.delete(normalizedObservations);
     await db
       .delete(rawObservations)
       .where(
@@ -287,6 +293,72 @@ describe("DrizzleObservationRepo integration", () => {
 
       const stillStored = await repo.findByIdentity(source, key);
       expect(stillStored!.payloadHash).toBe(hash1);
+    });
+  });
+
+  describe("DrizzleNormalizedObservationRepo finds/reconstructs normalized replay row", () => {
+    it("finds the normalized replay row by raw observation and kind", async () => {
+      const hash = await canonicalHash({ test: "data" });
+      const rawRes = await repo.insertOrClassify({
+        source: "clmm-v2-bundle",
+        sourceObservationKey: `key-${Date.now()}`,
+        observedAtUnixMs: 1000,
+        fetchedAtUnixMs: 1001,
+        payloadHash: hash,
+        payloadCanonical: '{"test":"data"}',
+        receivedAtUnixMs: 1002
+      });
+      expect(rawRes.outcome).toBe("inserted");
+      const rawId = rawRes.row.id;
+
+      const normRow = await normalizedRepo.insert({
+        rawObservationId: rawId,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_statistics",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { volume24h: 123 },
+        payloadHash: "hash-norm-1",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1003
+      });
+
+      const found = await normalizedRepo.findByRawObservation(rawId, "pool_statistics");
+      expect(found).not.toBeNull();
+      expect(found!.id).toBe(normRow.id);
+      expect(found!.observationKind).toBe("pool_statistics");
+    });
+
+    it("returns null instead of a row from another raw identity", async () => {
+      const hash = await canonicalHash({ test: "data" });
+      const rawRes = await repo.insertOrClassify({
+        source: "clmm-v2-bundle",
+        sourceObservationKey: `key-${Date.now()}`,
+        observedAtUnixMs: 1000,
+        fetchedAtUnixMs: 1001,
+        payloadHash: hash,
+        payloadCanonical: '{"test":"data"}',
+        receivedAtUnixMs: 1002
+      });
+      expect(rawRes.outcome).toBe("inserted");
+      const rawId = rawRes.row.id;
+
+      await normalizedRepo.insert({
+        rawObservationId: rawId,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_statistics",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { volume24h: 123 },
+        payloadHash: "hash-norm-1",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1003
+      });
+
+      const found = await normalizedRepo.findByRawObservation(99999, "pool_statistics");
+      expect(found).toBeNull();
     });
   });
 });

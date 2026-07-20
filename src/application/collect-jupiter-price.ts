@@ -19,9 +19,12 @@ export interface CollectJupiterPriceDeps {
 
 export const PRICE_SNAPSHOT_PATH = "data/latest-price-snapshot.json";
 
+import type { CollectionRunContext } from "./create-collection-run-context.js";
+
 /** @deprecated Use collectJupiterQuote instead */
 export async function collectJupiterPrice(
-  deps: CollectJupiterPriceDeps
+  deps: CollectJupiterPriceDeps,
+  context?: CollectionRunContext
 ): Promise<PriceSourceResult> {
   const resolvedDeps = { ...deps };
   if (!resolvedDeps.rawObservationRepo || !resolvedDeps.normalizedObservationRepo) {
@@ -34,5 +37,11 @@ export async function collectJupiterPrice(
     resolvedDeps.normalizedObservationRepo =
       resolvedDeps.normalizedObservationRepo ?? persistence.normalizedObservationRepo;
   }
-  return collectJupiterQuote(resolvedDeps as CollectJupiterQuoteDeps);
+
+  const runContext = context ?? {
+    runId: resolvedDeps.env.getOptional("INTELLIGENCE_PIPELINE_RUN_ID") || "unknown-run",
+    startedAtUnixMs: Date.parse(resolvedDeps.clock.now()) || Date.now()
+  };
+
+  return collectJupiterQuote(resolvedDeps as CollectJupiterQuoteDeps, runContext);
 }

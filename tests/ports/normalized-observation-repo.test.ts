@@ -335,4 +335,59 @@ describe("NormalizedObservationRepo contract", () => {
       expect(latest!.payloadHash).toBe("hash-latest-2");
     });
   });
+
+  describe("findByRawObservation", () => {
+    it("finds the normalized replay row by raw observation and kind", async () => {
+      const repo = new FakeNormalizedObservationRepo();
+      const row = await repo.insert({
+        rawObservationId: 100,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 150.0 },
+        payloadHash: "hash-norm-100",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1000
+      });
+      // insert another kind with same raw ID
+      await repo.insert({
+        rawObservationId: 100,
+        source: "clmm-v2-bundle",
+        observationKind: "position_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { positions: [] },
+        payloadHash: "hash-norm-101",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1000
+      });
+
+      const found = await repo.findByRawObservation(100, "pool_state");
+      expect(found).not.toBeNull();
+      expect(found!.id).toBe(row.id);
+      expect(found!.observationKind).toBe("pool_state");
+    });
+
+    it("returns null instead of a row from another raw identity", async () => {
+      const repo = new FakeNormalizedObservationRepo();
+      await repo.insert({
+        rawObservationId: 100,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 150.0 },
+        payloadHash: "hash-norm-100",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1000
+      });
+
+      const found = await repo.findByRawObservation(999, "pool_state");
+      expect(found).toBeNull();
+    });
+  });
 });

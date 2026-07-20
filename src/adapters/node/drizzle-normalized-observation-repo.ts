@@ -239,4 +239,23 @@ export class DrizzleNormalizedObservationRepo implements NormalizedObservationRe
     const row = rows[0];
     return row ? toPortRow(row) : null;
   }
+
+  async findByRawObservation(
+    rawObservationId: number,
+    observationKind: ObservationKind
+  ): Promise<NormalizedObservationRow | null> {
+    const rows = await this.db
+      .select()
+      .from(normalizedObservations)
+      .where(
+        and(
+          eq(normalizedObservations.rawObservationId, rawObservationId),
+          eq(normalizedObservations.observationKind, observationKind)
+        )
+      )
+      .orderBy(desc(normalizedObservations.receivedAtUnixMs))
+      .limit(1);
+    const row = rows[0];
+    return row ? toPortRow(row) : null;
+  }
 }

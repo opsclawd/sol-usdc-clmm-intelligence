@@ -9,7 +9,8 @@ import type {
 import type { NormalizedObservationInsert } from "../../src/ports/normalized-observation-repo.js";
 import {
   ingestRawObservation,
-  RawObservationConflictError
+  RawObservationConflictError,
+  PostPersistenceOutputError
 } from "../../src/application/ingest-raw-observation.js";
 import { FakeObservationRepo } from "../fakes/fake-observation-repo.js";
 import { FakeNormalizedObservationRepo } from "../fakes/fake-normalized-observation-repo.js";
@@ -845,6 +846,111 @@ describe("ingestRawObservation", () => {
 
       expect(result3.parseStatus).toBe("parsed");
       expect(normRepo.count).toBe(normalizedCountAfterFirst);
+    });
+  });
+
+  describe("compatibility output failure wrapping", () => {
+    it("preserves durable evidence metadata when compatibility output fails", async () => {
+      const rawRepo = new FakeObservationRepo();
+      const normRepo = new FakeNormalizedObservationRepo();
+      const jsonStore = new FakeJsonStore();
+
+      const canonicalPayload = { price: 150.5, symbol: "SOL" };
+      const { payloadCanonical, payloadHash } = await makeCanonicalWithHash(canonicalPayload);
+
+      let rawId = -1;
+
+      await expect(
+        ingestRawObservation(
+          { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+          {
+            source: TEST_SOURCE,
+            sourceObservationKey: "test-compatibility-failure",
+            observedAtUnixMs: 1000,
+            fetchedAtUnixMs: 1001,
+            payloadCanonical,
+            payloadHash,
+            receivedAtUnixMs: 1002,
+            validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+            buildCandidates: (accepted) => [
+              { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+            ],
+            enrichCandidates: async (candidates, rawRow) => {
+              rawId = rawRow.id;
+              return candidates.map((c) => ({
+                observationKind: c.kind,
+                signalClass: "deterministic" as const,
+                evidenceFamily: "clmm_state" as const,
+                payloadHash: "hash",
+                confidence: makeTestConfidence(),
+                freshness: { isStale: false, validUntilUnixMs: 2000 }
+              }));
+            },
+            insertNormalized: async (normals) => {
+              const inserts: NormalizedObservationInsert[] = normals.map((n) => ({
+                rawObservationId: rawId,
+                source: TEST_SOURCE,
+                observationKind: n.observationKind,
+                signalClass: n.signalClass,
+                evidenceFamily: n.evidenceFamily,
+                payload: {},
+                payloadHash: n.payloadHash,
+                confidence: n.confidence,
+                confidenceComposite: n.confidence.compositeScore,
+                confidenceLevel: n.confidence.level,
+                validUntilUnixMs: n.freshness.validUntilUnixMs,
+                isStale: n.freshness.isStale,
+                provenance: makeTestProvenance(),
+                receivedAtUnixMs: 1002
+              }));
+              const results = await normRepo.insertMany(inserts);
+              return results.length;
+            },
+            writeCompatibilityOutput: async () => {
+              throw new Error("Failed to write compatibility file");
+            }
+          }
+        )
+      ).rejects.toThrow(PostPersistenceOutputError);
+
+      try {
+        await ingestRawObservation(
+          { rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo, jsonStore },
+          {
+            source: TEST_SOURCE,
+            sourceObservationKey: "test-compatibility-failure",
+            observedAtUnixMs: 1000,
+            fetchedAtUnixMs: 1001,
+            payloadCanonical,
+            payloadHash,
+            receivedAtUnixMs: 1002,
+            validatePayload: (c) => ({ accepted: JSON.parse(c) }),
+            buildCandidates: (accepted) => [
+              { id: 1, kind: "oracle_price" as ObservationKind, payload: accepted }
+            ],
+            enrichCandidates: async (candidates) =>
+              candidates.map((c) => ({
+                observationKind: c.kind,
+                signalClass: "deterministic" as const,
+                evidenceFamily: "clmm_state" as const,
+                payloadHash: "hash",
+                confidence: makeTestConfidence(),
+                freshness: { isStale: false, validUntilUnixMs: 2000 }
+              })),
+            insertNormalized: async () => 1,
+            writeCompatibilityOutput: async () => {
+              throw new Error("Failed to write compatibility file");
+            }
+          }
+        );
+      } catch (err: any) {
+        expect(err).toBeInstanceOf(PostPersistenceOutputError);
+        expect(err.rawObservationId).toBe(rawId);
+        expect(err.rawOutcome).toBe("identical_replay");
+        expect(err.normalizedCount).toBe(0);
+        expect(err.parseStatus).toBe("parsed");
+        expect(err.cause?.message).toBe("Failed to write compatibility file");
+      }
     });
   });
 });
