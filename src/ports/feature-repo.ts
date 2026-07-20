@@ -7,6 +7,14 @@ import type {
   Provenance
 } from "../contracts/taxonomy.js";
 
+export interface BundleFeatureCandidateQuery {
+  readonly featureKinds: readonly FeatureKind[];
+  readonly pair: "SOL/USDC";
+  readonly asOfAtOrAfterUnixMs: number;
+  readonly asOfAtOrBeforeUnixMs: number;
+  readonly receivedAtOrBeforeUnixMs: number;
+}
+
 export interface DerivedFeatureRow {
   id: number;
   featureKind: FeatureKind;
@@ -74,4 +82,5 @@ export interface DerivedFeatureRepo {
     derivationKey: string
   ): Promise<DerivedFeatureRow | undefined>;
   findByKind(featureKind: FeatureKind, sinceUnixMs: number): Promise<DerivedFeatureRow[]>;
+  listBundleCandidates(query: BundleFeatureCandidateQuery): Promise<DerivedFeatureRow[]>;
 }

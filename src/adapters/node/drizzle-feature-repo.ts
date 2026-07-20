@@ -1,9 +1,10 @@
-import { eq, and, gte, or } from "drizzle-orm";
+import { eq, and, gte, lte, or, inArray } from "drizzle-orm";
 import { derivedFeatures } from "../../db/schema/derived-features.js";
 import type {
   DerivedFeatureRepo,
   DerivedFeatureInsert,
-  DerivedFeatureRow
+  DerivedFeatureRow,
+  BundleFeatureCandidateQuery
 } from "../../ports/feature-repo.js";
 import type {
   FeatureKind,
@@ -221,6 +222,24 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
           gte(derivedFeatures.asOfUnixMs, sinceUnixMs)
         )
       );
+    return rows.map(toPortRow);
+  }
+
+  async listBundleCandidates(query: BundleFeatureCandidateQuery): Promise<DerivedFeatureRow[]> {
+    const rows = await this.db
+      .select()
+      .from(derivedFeatures)
+      .where(
+        and(
+          inArray(derivedFeatures.featureKind, query.featureKinds),
+          eq(derivedFeatures.pair, query.pair),
+          gte(derivedFeatures.asOfUnixMs, query.asOfAtOrAfterUnixMs),
+          lte(derivedFeatures.asOfUnixMs, query.asOfAtOrBeforeUnixMs),
+          lte(derivedFeatures.receivedAtUnixMs, query.receivedAtOrBeforeUnixMs)
+        )
+      )
+      .orderBy(derivedFeatures.asOfUnixMs, derivedFeatures.receivedAtUnixMs, derivedFeatures.id);
+
     return rows.map(toPortRow);
   }
 }
