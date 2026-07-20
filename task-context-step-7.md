@@ -1,6 +1,6 @@
 # Task Context: Task 7
 
-Title: Add atomic idempotent normalized batch insertion
+Title: Implement one-hour realized volatility
 
 ## Workspace & Scope Constraints
 
@@ -10,59 +10,73 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-22
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-25
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-22
-Start Commit: 354e656925912cc7e58de7220277b1694b69286d
+Branch: ai/issue-25
+Start Commit: 72198d814d2ef33860d879741b7b7acc3b54e679
 
 ## Task Requirements
 
 **Files:**
 
-- Modify: `src/ports/normalized-observation-repo.ts`
-- Modify: `src/ports/index.ts`
-- Modify: `src/adapters/node/drizzle-normalized-observation-repo.ts`
-- Modify: `tests/fakes/fake-normalized-observation-repo.ts`
-- Modify: `tests/ports/normalized-observation-repo.test.ts`
-- Modify: `tests/adapters/node/drizzle-observation-repos.integration.test.ts`
+- Create: `src/domain/derived-feature/volatility.ts`
+- Modify: `src/domain/derived-feature/index.ts`
+- Create: `tests/domain/derived-feature/volatility.test.ts`
 
-**Behavioral invariants to test first:**
+**Behavioral invariants (write these tests first):**
 
-- `insertMany inserts every row or exposes none when one row fails` defines transaction-level atomicity.
-- `insertMany replay for the same raw kind and payload hash returns existing rows without duplicates` makes crash recovery safe.
-- `equal normalized content from distinct raw observations creates distinct rows` preserves direct lineage.
-- `insertMany returns rows in input order across inserted and replayed members` gives deterministic orchestration results.
+- `computes nonannualized one hour realized volatility from ordered log returns`: use `sqrt(sum(log(p[i]/p[i-1])^2)) * 10_000`, no mean subtraction or time scaling.
+- `uses the inclusive one-hour window and deterministic duplicate winner`: `[anchor - 3_600_000, anchor]`, minimum 10 distinct samples, highest slot/receipt/ID per duplicate timestamp.
+- `is unavailable below minimum coverage`: fewer than 10 samples or less than 45 minutes first-to-last returns exact coverage reason and null.
+- `is unavailable when any adjacent gap exceeds ten minutes`: exactly 10 minutes passes; greater than 10 minutes fails.
+- `is unavailable for nonpositive or nonfinite price math`: conversion/log failures never persist `NaN` or infinity.
 
-- [ ] **Step 1: Add fake contract tests and normalized integration cases before changing the interface.** Give the fake an explicit fail-at-index hook that rolls back its staged batch so application tests can prove all-or-nothing visibility.
-- [ ] **Step 2: Run `pnpm vitest run tests/ports/normalized-observation-repo.test.ts tests/adapters/node/drizzle-observation-repos.integration.test.ts` and confirm missing batch behavior fails.**
-- [ ] **Step 3: Add `insertMany(rows: readonly NormalizedObservationInsert[]): Promise<NormalizedObservationRow[]>` to `NormalizedObservationRepo` and update both implementations in this same task.** The Drizzle implementation must use `db.transaction`, conflict on `(rawObservationId, observationKind, payloadHash)`, reload conflicts with that same identity, and preserve input order. Retain `insert` only if existing consumers still need it; if retained, implement it through a one-row batch so semantics cannot diverge.
-- [ ] **Step 4: Rerun focused tests, then run `pnpm exec eslint src/ports/normalized-observation-repo.ts src/ports/index.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts tests/ports/normalized-observation-repo.test.ts tests/adapters/node/drizzle-observation-repos.integration.test.ts --max-warnings 0` and `pnpm exec prettier --check src/ports/normalized-observation-repo.ts src/ports/index.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts tests/ports/normalized-observation-repo.test.ts tests/adapters/node/drizzle-observation-repos.integration.test.ts`.**
-- [ ] **Step 5: Commit:** `git add src/ports/normalized-observation-repo.ts src/ports/index.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts tests/ports/normalized-observation-repo.test.ts tests/adapters/node/drizzle-observation-repos.integration.test.ts && git commit -m "feat(persist): insert normalized observations atomically"`.
+- [ ] **Step 1: Add failing tests** using a hand-computed golden series plus inclusive boundary, insufficient count, insufficient span, exact/over maximum gap, duplicates, out-of-order input, and invalid prices.
+
+- [ ] **Step 2: Implement the pure calculator.** Validate exact decimal strings as positive before converting to finite numbers for `Math.log`; round only the final nonnegative BPS result and record sample count, first/last timestamp, max gap, and discarded duplicate IDs.
+
+```ts
+export const REALIZED_VOLATILITY_1H_VERSION = "realized-volatility-1h/v1";
+export const VOLATILITY_WINDOW_MS = 3_600_000;
+export const VOLATILITY_MIN_SAMPLES = 10;
+export const VOLATILITY_MIN_SPAN_MS = 2_700_000;
+export const VOLATILITY_MAX_GAP_MS = 600_000;
+```
+
+- [ ] **Step 3: Run task-scoped checks.**
+
+**Validation commands:**
+
+```bash
+pnpm exec vitest run tests/domain/derived-feature/volatility.test.ts
+pnpm exec eslint src/domain/derived-feature/volatility.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/volatility.test.ts --max-warnings 0
+pnpm exec prettier --check src/domain/derived-feature/volatility.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/volatility.test.ts
+```
+
+**Commit:** `feat: calculate one hour realized volatility`
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/ports/normalized-observation-repo.ts
-- src/ports/index.ts
-- src/adapters/node/drizzle-normalized-observation-repo.ts
-- tests/fakes/fake-normalized-observation-repo.ts
-- tests/ports/normalized-observation-repo.test.ts
-- tests/adapters/node/drizzle-observation-repos.integration.test.ts
+- src/domain/derived-feature/volatility.ts
+- src/domain/derived-feature/index.ts
+- tests/domain/derived-feature/volatility.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm vitest run tests/ports/normalized-observation-repo.test.ts tests/adapters/node/drizzle-observation-repos.integration.test.ts
-pnpm exec eslint src/ports/normalized-observation-repo.ts src/ports/index.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts tests/ports/normalized-observation-repo.test.ts tests/adapters/node/drizzle-observation-repos.integration.test.ts --max-warnings 0
-pnpm exec prettier --check src/ports/normalized-observation-repo.ts src/ports/index.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts tests/ports/normalized-observation-repo.test.ts tests/adapters/node/drizzle-observation-repos.integration.test.ts
+pnpm exec vitest run tests/domain/derived-feature/volatility.test.ts
+pnpm exec eslint src/domain/derived-feature/volatility.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/volatility.test.ts --max-warnings 0
+pnpm exec prettier --check src/domain/derived-feature/volatility.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/volatility.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **normalized batch atomicity**: A failed member prevents every row in that attempted batch from becoming visible. (Test: `insertMany inserts every row or exposes none when one row fails`)
-- **normalized replay idempotency**: Replaying the same raw, kind, and payload identity returns existing rows without duplicates. (Test: `insertMany replay for the same raw kind and payload hash returns existing rows without duplicates`)
-- **historical lineage separation**: Equal normalized content from different raw rows remains distinct history. (Test: `equal normalized content from distinct raw observations creates distinct rows`)
-- **batch result ordering**: Returned rows preserve input order whether inserted or recovered. (Test: `insertMany returns rows in input order across inserted and replayed members`)
+- **nonannualized log-return volatility**: The one-hour feature is sqrt of summed squared adjacent log returns, scaled to BPS without annualization or mean subtraction. (Test: `computes nonannualized one hour realized volatility from ordered log returns`)
+- **window and duplicate policy**: The window is inclusive and duplicate timestamp winners follow slot, receipt, then ID. (Test: `uses the inclusive one-hour window and deterministic duplicate winner`)
+- **minimum coverage**: At least ten distinct samples and forty-five minutes of span are required. (Test: `is unavailable below minimum coverage`)
+- **maximum gap**: An adjacent gap of ten minutes passes while any larger gap is unavailable. (Test: `is unavailable when any adjacent gap exceeds ten minutes`)
+- **finite positive prices**: Nonpositive prices or nonfinite log-return calculations return unavailable null. (Test: `is unavailable for nonpositive or nonfinite price math`)

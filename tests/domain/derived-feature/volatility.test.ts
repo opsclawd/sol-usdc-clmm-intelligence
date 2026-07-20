@@ -13,7 +13,7 @@ const ANCHOR = 1_000_000_000_000;
 const WINDOW_START = ANCHOR - VOLATILITY_WINDOW_MS;
 
 function makeObservation(id: number, ts: number, price: string): PriceObservation {
-  return { id, slot: 100 + id, observedAtUnixMs: ts, price };
+  return { id, slot: 100 + id, observedAtUnixMs: ts, price, receivedAtUnixMs: ts };
 }
 
 describe("realized volatility 1h", () => {
@@ -97,9 +97,27 @@ describe("realized volatility 1h", () => {
         makeObservation(2, WINDOW_START + 400_000, "102.0"),
         makeObservation(3, WINDOW_START + 800_000, "103.0"),
         makeObservation(4, WINDOW_START + 1_200_000, "104.0"),
-        { id: 5, slot: 105, observedAtUnixMs: WINDOW_START + 1_600_000, price: "105.0" },
-        { id: 6, slot: 106, observedAtUnixMs: WINDOW_START + 1_600_000, price: "107.0" },
-        { id: 7, slot: 104, observedAtUnixMs: WINDOW_START + 1_600_000, price: "103.5" },
+        {
+          id: 5,
+          slot: 105,
+          observedAtUnixMs: WINDOW_START + 1_600_000,
+          price: "105.0",
+          receivedAtUnixMs: WINDOW_START + 1_600_000
+        },
+        {
+          id: 6,
+          slot: 106,
+          observedAtUnixMs: WINDOW_START + 1_600_000,
+          price: "107.0",
+          receivedAtUnixMs: WINDOW_START + 1_600_000
+        },
+        {
+          id: 7,
+          slot: 104,
+          observedAtUnixMs: WINDOW_START + 1_600_000,
+          price: "103.5",
+          receivedAtUnixMs: WINDOW_START + 1_600_000
+        },
         makeObservation(8, WINDOW_START + 2_000_000, "108.0"),
         makeObservation(9, WINDOW_START + 2_400_000, "109.0"),
         makeObservation(10, WINDOW_START + 2_800_000, "110.0"),
@@ -121,8 +139,20 @@ describe("realized volatility 1h", () => {
         makeObservation(2, WINDOW_START + 400_000, "102.0"),
         makeObservation(3, WINDOW_START + 800_000, "104.0"),
         makeObservation(4, WINDOW_START + 1_200_000, "106.0"),
-        { id: 5, slot: 104, observedAtUnixMs: WINDOW_START + 1_600_000, price: "105.0" },
-        { id: 6, slot: 104, observedAtUnixMs: WINDOW_START + 1_600_000, price: "107.0" },
+        {
+          id: 5,
+          slot: 104,
+          observedAtUnixMs: WINDOW_START + 1_600_000,
+          price: "105.0",
+          receivedAtUnixMs: WINDOW_START + 1_600_000
+        },
+        {
+          id: 6,
+          slot: 104,
+          observedAtUnixMs: WINDOW_START + 1_600_000,
+          price: "107.0",
+          receivedAtUnixMs: WINDOW_START + 1_600_000
+        },
         makeObservation(7, WINDOW_START + 2_000_000, "108.0"),
         makeObservation(8, WINDOW_START + 2_400_000, "109.0"),
         makeObservation(9, WINDOW_START + 2_800_000, "110.0"),

@@ -12,6 +12,7 @@ export interface PriceObservation {
   readonly slot: number;
   readonly observedAtUnixMs: number;
   readonly price: string;
+  readonly receivedAtUnixMs: number;
 }
 
 type VolatilityResult = FeatureCalculation & {
@@ -80,6 +81,7 @@ export function calculateRealizedVolatility1h(
   for (const [, obsGroup] of byTimestamp) {
     obsGroup.sort((a, b) => {
       if (a.slot !== b.slot) return b.slot - a.slot;
+      if (a.receivedAtUnixMs !== b.receivedAtUnixMs) return b.receivedAtUnixMs - a.receivedAtUnixMs;
       return b.id - a.id;
     });
     deduplicated.push(obsGroup[0]!);
