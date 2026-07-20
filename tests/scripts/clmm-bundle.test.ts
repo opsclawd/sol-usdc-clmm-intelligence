@@ -34,6 +34,7 @@ function createMockRawObservationRepo(): RawObservationRepo {
   return {
     insertOrClassify: vi.fn(),
     findById: vi.fn(),
+    findByIds: vi.fn(),
     findByIdentity: vi.fn(),
     findByHash: vi.fn(),
     findBySource: vi.fn(),
