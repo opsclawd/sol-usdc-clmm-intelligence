@@ -351,7 +351,6 @@ describe("NormalizedObservationRepo contract", () => {
         provenance: DEFAULT_PROVENANCE,
         receivedAtUnixMs: 1000
       });
-      // insert another kind with same raw ID
       await repo.insert({
         rawObservationId: 100,
         source: "clmm-v2-bundle",
@@ -388,6 +387,219 @@ describe("NormalizedObservationRepo contract", () => {
 
       const found = await repo.findByRawObservation(999, "pool_state");
       expect(found).toBeNull();
+    });
+  });
+
+  describe("listCandidates", () => {
+    it("returns empty array when no candidates match", async () => {
+      const repo = new FakeNormalizedObservationRepo();
+      const results = await repo.listCandidates({
+        sourceKinds: [{ source: "clmm-v2-bundle", observationKind: "pool_state" }],
+        receivedAtOrAfterUnixMs: 1000
+      });
+      expect(results).toHaveLength(0);
+    });
+
+    it("filters by source and kind with inclusive receipt lower bound", async () => {
+      const repo = new FakeNormalizedObservationRepo();
+      await repo.insert({
+        rawObservationId: 1,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 150.0 },
+        payloadHash: "hash-cand-1",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 500
+      });
+      await repo.insert({
+        rawObservationId: 2,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 151.0 },
+        payloadHash: "hash-cand-2",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1500
+      });
+      await repo.insert({
+        rawObservationId: 3,
+        source: "jupiter-price",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 152.0 },
+        payloadHash: "hash-cand-3",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 2000
+      });
+
+      const results = await repo.listCandidates({
+        sourceKinds: [{ source: "clmm-v2-bundle", observationKind: "pool_state" }],
+        receivedAtOrAfterUnixMs: 1000
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.receivedAtUnixMs).toBe(1500);
+    });
+
+    it("returns rows ordered by receipt then id ascending", async () => {
+      const repo = new FakeNormalizedObservationRepo();
+      await repo.insert({
+        rawObservationId: 1,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 150.0 },
+        payloadHash: "hash-order-1",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 3000
+      });
+      await repo.insert({
+        rawObservationId: 2,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 151.0 },
+        payloadHash: "hash-order-2",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1000
+      });
+      await repo.insert({
+        rawObservationId: 3,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 152.0 },
+        payloadHash: "hash-order-3",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 2000
+      });
+
+      const results = await repo.listCandidates({
+        sourceKinds: [{ source: "clmm-v2-bundle", observationKind: "pool_state" }],
+        receivedAtOrAfterUnixMs: 0
+      });
+
+      expect(results).toHaveLength(3);
+      expect(results[0]!.receivedAtUnixMs).toBe(1000);
+      expect(results[1]!.receivedAtUnixMs).toBe(2000);
+      expect(results[2]!.receivedAtUnixMs).toBe(3000);
+    });
+
+    it("supports multiple source/kind pairs", async () => {
+      const repo = new FakeNormalizedObservationRepo();
+      await repo.insert({
+        rawObservationId: 1,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 150.0 },
+        payloadHash: "hash-multi-1",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1000
+      });
+      await repo.insert({
+        rawObservationId: 2,
+        source: "jupiter-price",
+        observationKind: "oracle_price",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 151.0 },
+        payloadHash: "hash-multi-2",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1000
+      });
+      await repo.insert({
+        rawObservationId: 3,
+        source: "coingecko",
+        observationKind: "oracle_price",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 152.0 },
+        payloadHash: "hash-multi-3",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1000
+      });
+
+      const results = await repo.listCandidates({
+        sourceKinds: [
+          { source: "clmm-v2-bundle", observationKind: "pool_state" },
+          { source: "jupiter-price", observationKind: "oracle_price" }
+        ],
+        receivedAtOrAfterUnixMs: 0
+      });
+
+      expect(results).toHaveLength(2);
+      const sources = results.map((r) => r.source);
+      expect(sources).toContain("clmm-v2-bundle");
+      expect(sources).toContain("jupiter-price");
+      expect(sources).not.toContain("coingecko");
+    });
+
+    it("handles out-of-order insertion with stable ordering", async () => {
+      const repo = new FakeNormalizedObservationRepo();
+      await repo.insert({
+        rawObservationId: 3,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 153.0 },
+        payloadHash: "hash-offer-3",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 3000
+      });
+      await repo.insert({
+        rawObservationId: 1,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 151.0 },
+        payloadHash: "hash-offer-1",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1000
+      });
+      await repo.insert({
+        rawObservationId: 2,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 152.0 },
+        payloadHash: "hash-offer-2",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 2000
+      });
+
+      const results = await repo.listCandidates({
+        sourceKinds: [{ source: "clmm-v2-bundle", observationKind: "pool_state" }],
+        receivedAtOrAfterUnixMs: 0
+      });
+
+      expect(results).toHaveLength(3);
+      expect(results[0]!.rawObservationId).toBe(1);
+      expect(results[1]!.rawObservationId).toBe(2);
+      expect(results[2]!.rawObservationId).toBe(3);
     });
   });
 });

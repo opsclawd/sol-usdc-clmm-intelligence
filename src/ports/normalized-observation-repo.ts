@@ -27,6 +27,14 @@ export interface NormalizedObservationRow {
   receivedAtUnixMs: number;
 }
 
+export interface NormalizedObservationCandidateQuery {
+  readonly sourceKinds: readonly {
+    readonly source: Source;
+    readonly observationKind: ObservationKind;
+  }[];
+  readonly receivedAtOrAfterUnixMs: number;
+}
+
 export interface NormalizedObservationInsert {
   rawObservationId: number;
   source: Source;
@@ -65,4 +73,5 @@ export interface NormalizedObservationRepo {
     rawObservationId: number,
     observationKind: ObservationKind
   ): Promise<NormalizedObservationRow | null>;
+  listCandidates(query: NormalizedObservationCandidateQuery): Promise<NormalizedObservationRow[]>;
 }
