@@ -13,6 +13,7 @@ import type { CommandRunner } from "../../ports/command-runner.js";
 import type { DbConnection } from "../../ports/db.js";
 import type { RawObservationRepo } from "../../ports/observation-repo.js";
 import type { NormalizedObservationRepo } from "../../ports/normalized-observation-repo.js";
+import type { DerivedFeatureRepo } from "../../ports/feature-repo.js";
 import type { RunIdFactory } from "../../ports/run-id.js";
 import { UuidRunIdFactory } from "./uuid-run-id-factory.js";
 
@@ -20,6 +21,7 @@ export interface Persistence {
   connection: DbConnection;
   rawObservationRepo: RawObservationRepo;
   normalizedObservationRepo: NormalizedObservationRepo;
+  featureRepo: DerivedFeatureRepo;
 }
 
 export interface NodeRuntime {
@@ -64,13 +66,15 @@ export function createNodeRuntime(): NodeRuntime {
           const { DrizzleObservationRepo } = await import("./drizzle-observation-repo.js");
           const { DrizzleNormalizedObservationRepo } =
             await import("./drizzle-normalized-observation-repo.js");
+          const { DrizzleFeatureRepo } = await import("./drizzle-feature-repo.js");
 
           type DrizzlePgAdapterInstance = InstanceType<typeof DrizzlePgAdapter>;
           const connection = (await this.getDb()) as DrizzlePgAdapterInstance;
           const rawObservationRepo = new DrizzleObservationRepo(connection.db);
           const normalizedObservationRepo = new DrizzleNormalizedObservationRepo(connection.db);
+          const featureRepo = new DrizzleFeatureRepo(connection.db);
 
-          return { connection, rawObservationRepo, normalizedObservationRepo };
+          return { connection, rawObservationRepo, normalizedObservationRepo, featureRepo };
         })();
       }
       return persistencePromise;

@@ -9,6 +9,7 @@
     "collect:price": "tsx scripts/collectors/jupiter-price.ts",
     "collect:clmm-bundle": "tsx scripts/collectors/clmm-bundle.ts",
     "collect:core": "tsx scripts/collectors/core-collection.ts",
+    "derive:features": "tsx scripts/collectors/derive-features.ts",
     "cron:render": "tsx scripts/openclaw/render-cron-commands.ts",
     "cron:sync": "tsx scripts/openclaw/sync-cron.ts",
     "test": "vitest run",

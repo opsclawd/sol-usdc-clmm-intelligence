@@ -5,3 +5,4 @@ export { cronSyncJob } from "./cron-sync-job.js";
 export { coingeckoJob } from "./coingecko-job.js";
 export { defillamaJob } from "./defillama-job.js";
 export { coreCollectionJob, runCoreCollectionJob } from "./core-collection-job.js";
+export { deriveFeaturesJob } from "./derive-features-job.js";
