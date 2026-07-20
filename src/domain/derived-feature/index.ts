@@ -35,3 +35,13 @@ export {
   RANGE_CALCULATOR_VERSIONS,
   type RangeClassification
 } from "./range.js";
+
+export {
+  calculateOracleDexDivergence,
+  calculateOracleConfidenceWidth,
+  calculateVolumeLiquidityRatio24h,
+  MARKET_CALCULATOR_VERSIONS,
+  type DivergenceResult,
+  type ConfidenceWidthResult,
+  type VolumeRatioResult
+} from "./market.js";
