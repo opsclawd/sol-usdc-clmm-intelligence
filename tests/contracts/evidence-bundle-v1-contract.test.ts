@@ -8,6 +8,10 @@ import {
   canonicalizePayload
 } from "../fixtures/evidence-bundle.js";
 import type { EvidenceBundleV1 } from "../../src/contracts/generated/evidence-bundle-v1.js";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { execSync } from "node:child_process";
 
 describe("EvidenceBundleV1 Contract", () => {
   let contract: ReturnType<typeof createEvidenceBundleContract>;
@@ -272,6 +276,23 @@ describe("EvidenceBundleV1 Contract", () => {
       const fixture = (await loadValidFixture("deterministic-only")) as EvidenceBundleV1;
       const modifiedFixture = { ...fixture, schemaVersion: null };
       await expect(contract.validateCanonicalizeAndHash(modifiedFixture)).rejects.toThrow();
+    });
+  });
+
+  describe("generated contract type is deterministic and matches checked-in file", () => {
+    it("should regenerate identical bytes to checked-in file", () => {
+      const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+      const checkedInPath = join(repoRoot, "src/contracts/generated/evidence-bundle-v1.ts");
+
+      execSync("pnpm contract:evidence-bundle:generate", { cwd: repoRoot });
+
+      const regenerated = readFileSync(
+        join(repoRoot, "src/contracts/generated/evidence-bundle-v1.ts"),
+        "utf-8"
+      );
+      const checkedIn = readFileSync(checkedInPath, "utf-8");
+
+      expect(regenerated).toBe(checkedIn);
     });
   });
 });
