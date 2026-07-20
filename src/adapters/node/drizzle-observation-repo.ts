@@ -1,4 +1,4 @@
-import { eq, and, gte } from "drizzle-orm";
+import { eq, and, gte, inArray } from "drizzle-orm";
 import { rawObservations } from "../../db/schema/raw-observations.js";
 import type {
   RawObservationRepo,
@@ -69,6 +69,19 @@ export class DrizzleObservationRepo implements RawObservationRepo {
       .where(eq(rawObservations.id, id))
       .limit(1);
     return row ? toPortRow(row) : undefined;
+  }
+
+  async findByIds(ids: number[]): Promise<RawObservationRow[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const uniqueIds = [...new Set(ids)];
+    const rows = await this.db
+      .select()
+      .from(rawObservations)
+      .where(inArray(rawObservations.id, uniqueIds))
+      .orderBy(rawObservations.id);
+    return rows.map(toPortRow);
   }
 
   async findByIdentity(

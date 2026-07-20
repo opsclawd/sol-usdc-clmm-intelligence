@@ -33,6 +33,7 @@ export type RawInsertOutcome =
 export interface RawObservationRepo {
   insertOrClassify(row: RawObservationInsert): Promise<RawInsertOutcome>;
   findById(id: number): Promise<RawObservationRow | undefined>;
+  findByIds(ids: number[]): Promise<RawObservationRow[]>;
   findByIdentity(
     source: Source,
     sourceObservationKey: string

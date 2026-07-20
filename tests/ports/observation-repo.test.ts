@@ -256,4 +256,70 @@ describe("RawObservationRepo contract", () => {
       expect(first.row.id).toBe(second.row.id);
     });
   });
+
+  describe("findByIds", () => {
+    it("returns each requested raw row once in id order", async () => {
+      const hash1 = await canonicalHash({ id: "first" });
+      const hash2 = await canonicalHash({ id: "second" });
+      const hash3 = await canonicalHash({ id: "third" });
+
+      const first = await repo.insertOrClassify({
+        source: "clmm-v2-bundle",
+        sourceObservationKey: "bulk-key-1",
+        observedAtUnixMs: 1000,
+        fetchedAtUnixMs: 1001,
+        payloadHash: hash1,
+        payloadCanonical: '{"id":"first"}',
+        receivedAtUnixMs: 1002
+      });
+
+      const second = await repo.insertOrClassify({
+        source: "clmm-v2-bundle",
+        sourceObservationKey: "bulk-key-2",
+        observedAtUnixMs: 2000,
+        fetchedAtUnixMs: 2001,
+        payloadHash: hash2,
+        payloadCanonical: '{"id":"second"}',
+        receivedAtUnixMs: 2002
+      });
+
+      const third = await repo.insertOrClassify({
+        source: "clmm-v2-bundle",
+        sourceObservationKey: "bulk-key-3",
+        observedAtUnixMs: 3000,
+        fetchedAtUnixMs: 3001,
+        payloadHash: hash3,
+        payloadCanonical: '{"id":"third"}',
+        receivedAtUnixMs: 3002
+      });
+
+      const results = await repo.findByIds([third.row.id, first.row.id, second.row.id]);
+      expect(results).toHaveLength(3);
+      expect(results[0]!.id).toBe(first.row.id);
+      expect(results[1]!.id).toBe(second.row.id);
+      expect(results[2]!.id).toBe(third.row.id);
+    });
+
+    it("returns an empty list for an empty request", async () => {
+      const results = await repo.findByIds([]);
+      expect(results).toHaveLength(0);
+    });
+
+    it("omits unknown ids without substituting another source identity", async () => {
+      const hash = await canonicalHash({ known: "item" });
+      const inserted = await repo.insertOrClassify({
+        source: "clmm-v2-bundle",
+        sourceObservationKey: "known-key",
+        observedAtUnixMs: 1000,
+        fetchedAtUnixMs: 1001,
+        payloadHash: hash,
+        payloadCanonical: '{"known":"item"}',
+        receivedAtUnixMs: 1002
+      });
+
+      const results = await repo.findByIds([inserted.row.id, 99999, 88888]);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.id).toBe(inserted.row.id);
+    });
+  });
 });
