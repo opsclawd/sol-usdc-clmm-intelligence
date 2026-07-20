@@ -1,133 +1,216 @@
-# feat: ingest and normalize Pyth and Jupiter SOL/USDC price observations
+# feat: derive the deterministic MVP SOL/USDC evidence feature tranche
 
 ## Summary
 
-Add durable Pyth and Jupiter source ingestion for SOL/USDC price-quality evidence. Persist each accepted source response before normalization, then produce source-independent oracle and executable-quote observations with freshness, confidence, provenance, and explicit partial-failure semantics.
+Implement and persist the first bounded deterministic feature tranche for the SOL/USDC evidence pipeline using normalized observations produced by the core ingestion children.
 
-This is a PR-sized child of #7. It covers only Pyth and Jupiter price observations; it does not add Orca public pool statistics, derived features, evidence-bundle assembly, research briefs, or publishing.
+This is a PR-sized child of #8. It intentionally implements exactly seven features needed to prove the initial vertical slice and defers broader CLMM economics, breakout, liquidity-cliff, route-risk, and contextual metrics.
 
-## Why
+## Required feature set
 
-The deterministic MVP needs two independently sourced price views:
+Implement exactly these feature kinds for the MVP tranche:
 
-- a canonical SOL/USD oracle observation with its confidence interval;
-- a DEX/executable-route observation that can be compared with the oracle.
+1. `RANGE_LOCATION`
+2. `DISTANCE_TO_LOWER`
+3. `DISTANCE_TO_UPPER`
+4. `ORACLE_DEX_DIVERGENCE`
+5. `ORACLE_CONFIDENCE_WIDTH`
+6. `REALIZED_VOLATILITY_1H`
+7. `VOLUME_LIQUIDITY_RATIO_24H`
 
-The existing Jupiter collector is not sufficient as a durable evidence source because downstream features require raw retention, normalized contracts, time-bounded freshness, and exact provenance. Pyth confidence data is also required so the system can distinguish a reliable oracle value from a wide-confidence observation.
+Extend the canonical taxonomy/registry, validation, persistence enums/checks, docs, and fixtures as needed so these kinds are first-class and exhaustively handled.
 
-## Required sources
+## Feature contracts
 
-### Pyth or canonical equivalent
+Every derived feature must record at minimum:
 
-Collect at minimum:
+- stable feature kind;
+- `AVAILABLE`, `PARTIAL`, or `UNAVAILABLE` status;
+- numeric value or `null`;
+- explicit unit (`BPS` or `PPM` as appropriate);
+- pair and position identity where position-scoped;
+- `asOf` and `expiresAt` timestamps;
+- confidence and freshness state;
+- normalized input observation IDs;
+- provenance/lineage sufficient to trace through normalized observations to raw source payloads;
+- warnings/reason codes explaining partial or unavailable results;
+- calculator/version identity so historical values remain auditable after formula changes.
 
-- SOL/USD price;
-- confidence interval/width;
-- source publish time;
-- source/feed identity;
-- any source status needed to determine whether the observation is valid or stale.
+Do not persist fake zero values for missing or invalid inputs.
 
-Pyth is the preferred implementation unless the repository already has an explicitly approved canonical equivalent. Do not silently substitute a generic token-price API without recording the design decision.
+## Deterministic calculations
 
-### Jupiter
+### 1. Range location
 
-Collect an executable SOL/USDC quote or equivalent route observation suitable for deterministic price comparison. Record at minimum:
+For a valid position range:
 
-- input/output mint identities;
-- exact input amount used for the probe quote;
-- quoted output amount;
-- implied SOL/USDC price;
-- price impact or route metadata when provided;
-- quote/context slot or source timestamp when provided;
-- route availability warnings.
+```text
+rawLocation = (currentPrice - lowerPrice) / (upperPrice - lowerPrice)
+rangeLocationPpm = clamp(rawLocation, 0, 1) * 1_000_000
+```
 
-The quote amount must be deterministic and documented. This adapter supplies generic market evidence only; it is not authority for a user-specific execution transaction.
+The feature must preserve enough status/warning context to distinguish below-range and above-range observations from a position genuinely centered at a boundary-clamped value.
 
-## Required behavior
+Unit: `PPM`.
 
-For each source independently:
+### 2. Distance to lower boundary
 
-1. Perform the source request with explicit timeout behavior.
-2. Validate the transport envelope and required source fields.
-3. Persist the exact accepted payload in `raw_observations` before normalization.
-4. Normalize the accepted payload into the common taxonomy.
-5. Preserve lineage from normalized observations to raw payloads.
-6. Apply source-specific freshness and confidence rules from the taxonomy.
-7. Make repeated identical observations idempotent.
-8. Surface malformed, unavailable, stale, or partial source results explicitly.
+```text
+distanceToLowerBps = ((currentPrice - lowerPrice) / currentPrice) * 10_000
+```
 
-The collection use case must support partial success:
+A negative result means current price is below the lower boundary.
 
-- Pyth success + Jupiter failure persists Pyth evidence and records Jupiter as unavailable.
-- Jupiter success + Pyth failure persists Jupiter evidence and records Pyth as unavailable.
-- One source failure must not fabricate the other source or roll back already accepted raw data.
+Unit: `BPS`.
 
-## Normalized observation scope
+### 3. Distance to upper boundary
 
-At minimum produce normalized facts equivalent to:
+```text
+distanceToUpperBps = ((upperPrice - currentPrice) / currentPrice) * 10_000
+```
 
-- oracle SOL/USD price;
-- oracle confidence interval/width;
-- oracle publish/as-of time;
-- Jupiter SOL/USDC executable quote;
-- Jupiter implied SOL/USDC price;
-- route availability and relevant generic route warnings.
+A negative result means current price is above the upper boundary.
 
-Use source-independent observation names. Source identity belongs in provenance, not in the semantic observation kind.
+Unit: `BPS`.
 
-## Idempotency and conflicts
+### 4. Oracle–DEX divergence
 
-- Identical replays must not create unnecessary duplicate raw or normalized records.
-- Canonical hashing and source observation identity must be deterministic and documented.
-- Conflicting content for the same source observation identity must be detected rather than silently overwritten.
+```text
+oracleDexDivergenceBps = abs(dexPrice - oraclePrice) / oraclePrice * 10_000
+```
+
+Use a fresh canonical oracle price and a fresh Jupiter executable-quote implied price. Do not substitute the clmm-v2 current pool price for either source silently.
+
+Unit: `BPS`.
+
+### 5. Oracle confidence width
+
+```text
+oracleConfidenceWidthBps = oracleConfidence / oraclePrice * 10_000
+```
+
+Use the confidence value from the canonical oracle observation and preserve stale/invalid oracle status explicitly.
+
+Unit: `BPS`.
+
+### 6. One-hour realized volatility
+
+Use timestamp-ordered price observations and log returns:
+
+```text
+logReturn[t] = ln(price[t] / price[t-1])
+```
+
+Compute a documented one-hour realized-volatility value from a deterministic sampling policy. The implementation must define and test:
+
+- accepted source/price series;
+- one-hour lookback boundary;
+- minimum sample count;
+- maximum allowed gap;
+- duplicate timestamp handling;
+- out-of-order observation handling;
+- annualized versus non-annualized semantics.
+
+Prefer a non-annualized one-hour measure for the first version unless existing repository conventions strongly require otherwise. The exact formula and scaling must be documented and versioned.
+
+Unit: `BPS`.
+
+### 7. Twenty-four-hour volume/liquidity ratio
+
+```text
+volumeLiquidityRatio24hPpm = volumeUsd24h / liquidityUsd * 1_000_000
+```
+
+The implementation must use the documented Orca liquidity/TVL semantic from #24. Zero or negative denominators are invalid/unavailable, not successful zero-valued features.
+
+Unit: `PPM`.
+
+## Input selection
+
+Add an application use case that selects the required normalized observations deterministically by:
+
+- pair and position identity;
+- supported observation kind;
+- freshness and expiry;
+- source identity/quality where relevant;
+- latest valid `asOf` time with deterministic tie-breaking;
+- documented minimum coverage for windowed calculations.
+
+Input selection must not be hidden inside SQL that cannot be unit tested. Keep calculators pure and separate from persistence/query orchestration.
+
+## Persistence and idempotency
+
+- Persist successful, partial, and unavailable feature results in `derived_features` where the existing schema supports auditable unavailable states.
+- Re-running derivation over the same calculator version and same normalized input set must be idempotent or deterministically deduplicated.
+- A changed input set or calculator version must produce a distinct auditable result rather than overwriting historical values.
+
+## Explicitly deferred features
+
+Do not implement these in this issue:
+
+- inventory skew;
+- fee APR or fee yield;
+- expected fee capture;
+- fee-to-volatility ratio;
+- rebalance cost;
+- breach probability/risk model beyond direct range distances;
+- wick/spike detection;
+- breakout or volume confirmation;
+- liquidity-cliff detection;
+- route/slippage or landing-risk scoring;
+- support/resistance, flows, perps, funding, liquidations, news, or LLM-derived metrics.
+
+Parent #8 remains open for those later tranches.
 
 ## Scope
 
 In scope:
 
-- Pyth HTTP/RPC adapter or approved canonical-oracle adapter;
-- Jupiter executable-quote adapter;
-- application collection use cases;
-- raw and normalized persistence;
-- timeout/retry behavior appropriate for collection;
-- provenance, freshness, and confidence mapping;
-- partial-source result aggregation;
-- fixtures, tests, config, and operator documentation.
+- taxonomy/registry additions for the seven feature kinds;
+- pure deterministic calculators;
+- normalized-input selection use cases;
+- confidence/freshness propagation;
+- lineage and calculator versioning;
+- derived-feature persistence and idempotency;
+- fixtures, tests, docs, and operator/developer examples.
 
 Out of scope:
 
-- Orca volume, fee, TVL, or liquidity statistics;
-- Solana network-health ingestion;
-- user-specific swap preparation or execution quoting;
-- deterministic derived-feature calculations;
+- new source collectors;
 - evidence-bundle assembly;
-- LLM use, policy synthesis, or app display.
+- LLM research briefs;
+- Regime Engine publishing or policy synthesis;
+- clmm-v2 UI or execution behavior.
 
 ## Guardrails
 
-- Raw payloads are persisted before normalization.
-- Numerical comparison features are not calculated in this issue.
-- Jupiter observations remain generic research evidence and cannot override clmm-v2 execution slippage, balance, or transaction-safety checks.
-- Missing values remain unavailable with warning metadata; they are never represented as zero.
-- Retry behavior must be bounded and must not create duplicate observations.
+- All numerical metrics are calculated by code, never by an LLM.
+- Calculators are pure and do not read environment variables, clocks, HTTP, or the database directly.
+- Missing, stale, invalid, or insufficient inputs return explicit partial/unavailable results with reasons.
+- Freshness/confidence cannot improve beyond the quality of the underlying inputs.
+- Research evidence cannot become execution authority.
+- Decimal/large-integer handling must avoid silent precision loss; numeric representation and rounding rules must be documented.
 
 ## Acceptance criteria
 
-- [ ] Pyth/canonical-oracle responses are persisted raw and normalized with price, confidence, source time, freshness, and provenance.
-- [ ] Jupiter executable-quote responses are persisted raw and normalized with exact probe amount, output amount, implied price, route context, freshness, and provenance.
-- [ ] Raw persistence occurs before normalization for both sources.
-- [ ] Identical replays are idempotent and conflicting replays are handled deterministically.
-- [ ] Pyth-only and Jupiter-only partial-success scenarios preserve accepted evidence and emit explicit warnings for the failed source.
-- [ ] Timeout, malformed response, stale oracle, unavailable route, and source failure cases are covered by tests.
-- [ ] No derived oracle/DEX divergence feature is implemented in this issue.
-- [ ] Documentation states that Jupiter route evidence is generic context, not user-specific execution authority.
+- [ ] All seven required feature kinds exist in the canonical taxonomy and persistence model.
+- [ ] Each feature is implemented as a pure, unit-tested deterministic calculator.
+- [ ] Application logic selects inputs deterministically and keeps selection separate from calculation.
+- [ ] Each persisted result records status, value/unit, time bounds, confidence/freshness, warnings, calculator version, and complete input lineage.
+- [ ] Missing, stale, malformed, insufficient-window, zero-denominator, and invalid-range inputs produce explicit partial/unavailable results rather than fake zeros or NaN/Infinity.
+- [ ] Re-running the same calculator version over the same input set is idempotent or deterministically deduplicated.
+- [ ] Tests cover below-range, in-range, above-range, stale oracle, unavailable Jupiter route, wide oracle confidence, insufficient volatility samples, out-of-order samples, excessive sample gaps, and unavailable Orca liquidity.
+- [ ] Golden fixtures demonstrate exact expected units and rounding for every feature.
+- [ ] Documentation lists these seven as the implemented MVP tranche and explicitly lists all deferred #8 features.
 
 ## Parent
 
-Child of #7.
+Child of #8.
 
 ## Blocked by
 
 - #22
+- #23
+- #24
 
-The implementation should reuse the raw-before-normalized persistence and idempotency patterns established by #22 rather than creating a second ingestion architecture.
+The implementation must derive from persisted normalized observations produced by those ingestion children rather than calling source APIs directly.

@@ -1,6 +1,6 @@
 # Task Context: Task 2
 
-Title: Define source-independent price contracts and taxonomy rules
+Title: Add exact decimal and rational arithmetic
 
 ## Workspace & Scope Constraints
 
@@ -10,68 +10,81 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-23
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-25
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-23
-Start Commit: 6a3197f1ad619c2594d8a693577cd6c67b3689f1
+Branch: ai/issue-25
+Start Commit: 72198d814d2ef33860d879741b7b7acc3b54e679
 
 ## Task Requirements
 
 **Files:**
 
-- Modify: `src/contracts/taxonomy.ts`
-- Create: `src/contracts/normalized-price-observation.ts`
-- Modify: `src/contracts/index.ts`
-- Modify: `src/domain/taxonomy/registry.ts`
-- Modify: `src/domain/taxonomy/confidence.ts`
-- Modify: `src/domain/taxonomy/validation.ts`
-- Modify: `src/domain/clmm-bundle/enrich.ts`
-- Modify: `tests/domain/taxonomy/registry.test.ts`
-- Modify: `tests/domain/taxonomy/confidence.test.ts`
-- Modify: `tests/domain/taxonomy/validation.test.ts`
-- Modify: `tests/domain/taxonomy/freshness.test.ts`
-- Modify: `tests/domain/taxonomy/provenance.test.ts`
-- Modify: `tests/domain/clmm-bundle/enrich.test.ts`
-- Modify: `tests/helpers/taxonomy-fixtures.ts`
+- Create: `src/domain/derived-feature/decimal.ts`
+- Create: `src/domain/derived-feature/index.ts`
+- Create: `tests/domain/derived-feature/decimal.test.ts`
 
-**Exported API changes:** Replace the inactive `price_quote` observation kind with `oracle_price` and `executable_quote`; add `pyth-hermes` and `jupiter-quote` sources; remove `ObservationKindEntry.source`; add `oracle_confidence_wide` and `high_price_impact` confidence reasons; export `OraclePricePayloadV1`, `ExecutableQuotePayloadV1`, `PriceObservationWarning`, and `PriceNormalizedCandidate`. Extend `computeConfidence` with an optional final `additionalReasons: readonly ConfidenceReason[] = []` parameter so direct-source reasons are included and deduplicated without overloading completeness semantics.
+**Behavioral invariants (write these tests first):**
 
-- [ ] **Step 1: Write taxonomy tests first.** Update only the observation-registry describe blocks in `tests/domain/taxonomy/registry.test.ts` with `registers source-independent price kinds with exclude-on-stale policies`, asserting Pyth 60-second/Jupiter 30-second windows, allowed provenance sources, active schema v1, and absence of singular `source`. Add confidence tests named `degrades source quality without conflating provider uncertainty with completeness` for explicit source-reliability factors and reasons. Update parser, generic freshness/provenance fixtures, and CLMM enrichment tests to use the new kinds/sources while proving CLMM completeness remains keyed only by `ClmmNormalizedCandidate["kind"]`.
-- [ ] **Step 2: Run the focused tests and confirm failures.** Run `pnpm exec vitest run tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/taxonomy/freshness.test.ts tests/domain/taxonomy/provenance.test.ts tests/domain/clmm-bundle/enrich.test.ts`; expect type/runtime failures for missing kinds, sources, reason codes, parser values, and price contracts.
-- [ ] **Step 3: Add exact normalized contracts.** Store provider integer inputs as strings and define decimal strings for oracle price/confidence/bounds/ratio and quote implied price. Include pair, assets/mints/decimals, observed/source time basis, slot, exact probe/slippage/threshold, route summary, `routeAvailable: true`, and warning arrays; omit unavailable optional values rather than replacing them with zero.
-- [ ] **Step 4: Implement registry, parser, confidence, and CLMM typing changes.** Remove every observation entry's singular `source`, rely on `allowedSourceRefs`, use 60,000 ms and 30,000 ms exclude policies, and let callers supply the deterministic source-quality factor and matching reason without changing completeness. Update `oracle_divergence`'s future provenance allowance to `pyth-hermes` and `jupiter-quote` without implementing the feature. Update runtime parser sets, and narrow the CLMM completeness table from all `ObservationKind` values to only CLMM candidate kinds so provider-specific logic stays out of that module.
-- [ ] **Step 5: Verify this task.** Run `pnpm exec vitest run tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/taxonomy/freshness.test.ts tests/domain/taxonomy/provenance.test.ts tests/domain/clmm-bundle/enrich.test.ts` and `pnpm exec eslint src/contracts/taxonomy.ts src/contracts/normalized-price-observation.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/confidence.ts src/domain/taxonomy/validation.ts src/domain/clmm-bundle/enrich.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/taxonomy/freshness.test.ts tests/domain/taxonomy/provenance.test.ts tests/domain/clmm-bundle/enrich.test.ts tests/helpers/taxonomy-fixtures.ts`; expect all selected checks to pass.
-- [ ] **Step 6: Commit.** Run `git add src/contracts/taxonomy.ts src/contracts/normalized-price-observation.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/confidence.ts src/domain/taxonomy/validation.ts src/domain/clmm-bundle/enrich.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/taxonomy/freshness.test.ts tests/domain/taxonomy/provenance.test.ts tests/domain/clmm-bundle/enrich.test.ts tests/helpers/taxonomy-fixtures.ts && git commit -m "feat: define price observation taxonomy"`.
+- `parses plain signed decimals without binary floating-point conversion`: accept integer/fractional forms and normalize trailing zeroes using `bigint` coefficient/scale.
+- `rejects empty exponent and non-finite decimal syntax`: reject whitespace-only, exponent notation, `NaN`, and infinities.
+- `rounds rational ties away from zero`: `1/2` becomes `1`, `-1/2` becomes `-1`, and non-ties round to the nearest integer.
+- `rejects zero divisors and unsafe integer outputs`: division by zero and results outside `Number.MIN_SAFE_INTEGER..Number.MAX_SAFE_INTEGER` return typed numeric failure codes.
+- `rounds only after the complete scaled formula`: golden BPS/PPM cases near half-way boundaries match exact rational expectations.
+
+- [ ] **Step 1: Write the failing arithmetic tests**, including positive/negative signs, different scales, tie cases, zero divisor, and safe-integer overflow.
+
+- [ ] **Step 2: Implement a pure rational representation and operations.** Do not reuse `src/domain/price-observation/decimal.ts`, which is a looser normalizer; use exact `bigint` math.
+
+```ts
+export interface Rational {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+
+export type NumericFailure = "invalid_decimal" | "division_by_zero" | "numeric_overflow";
+
+export function parseDecimal(value: string): Rational;
+export function subtract(left: Rational, right: Rational): Rational;
+export function multiply(left: Rational, right: Rational): Rational;
+export function divide(left: Rational, right: Rational): Rational;
+export function compare(left: Rational, right: Rational): -1 | 0 | 1;
+export function roundToSafeInteger(value: Rational): number;
+```
+
+- [ ] **Step 3: Export the helpers from the feature-domain barrel** and run the focused checks.
+
+**Validation commands:**
+
+```bash
+pnpm exec vitest run tests/domain/derived-feature/decimal.test.ts
+pnpm exec eslint src/domain/derived-feature/decimal.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/decimal.test.ts --max-warnings 0
+pnpm exec prettier --check src/domain/derived-feature/decimal.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/decimal.test.ts
+```
+
+**Commit:** `feat: add exact feature arithmetic`
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/contracts/taxonomy.ts
-- src/contracts/normalized-price-observation.ts
-- src/contracts/index.ts
-- src/domain/taxonomy/registry.ts
-- src/domain/taxonomy/confidence.ts
-- src/domain/taxonomy/validation.ts
-- src/domain/clmm-bundle/enrich.ts
-- tests/domain/taxonomy/registry.test.ts
-- tests/domain/taxonomy/confidence.test.ts
-- tests/domain/taxonomy/validation.test.ts
-- tests/domain/taxonomy/freshness.test.ts
-- tests/domain/taxonomy/provenance.test.ts
-- tests/domain/clmm-bundle/enrich.test.ts
-- tests/helpers/taxonomy-fixtures.ts
+- src/domain/derived-feature/decimal.ts
+- src/domain/derived-feature/index.ts
+- tests/domain/derived-feature/decimal.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/taxonomy/freshness.test.ts tests/domain/taxonomy/provenance.test.ts tests/domain/clmm-bundle/enrich.test.ts
-pnpm exec eslint src/contracts/taxonomy.ts src/contracts/normalized-price-observation.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/confidence.ts src/domain/taxonomy/validation.ts src/domain/clmm-bundle/enrich.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/taxonomy/freshness.test.ts tests/domain/taxonomy/provenance.test.ts tests/domain/clmm-bundle/enrich.test.ts tests/helpers/taxonomy-fixtures.ts
+pnpm exec vitest run tests/domain/derived-feature/decimal.test.ts
+pnpm exec eslint src/domain/derived-feature/decimal.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/decimal.test.ts --max-warnings 0
+pnpm exec prettier --check src/domain/derived-feature/decimal.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/decimal.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **price freshness policy**: Oracle observations use a 60-second publish-time window and executable quotes use a 30-second receipt-time window, both excluding stale evidence. (Test: `registers source-independent price kinds with exclude-on-stale policies`)
-- **source quality is independent from completeness**: Wide oracle confidence or high quote impact changes source reliability and reason codes without changing field completeness. (Test: `degrades source quality without conflating provider uncertainty with completeness`)
+- **exact decimal parsing**: Plain signed decimals become exact bigint rationals without binary floating-point conversion. (Test: `parses plain signed decimals without binary floating-point conversion`)
+- **strict decimal syntax**: Empty, exponent, NaN, and infinite syntax is rejected. (Test: `rejects empty exponent and non-finite decimal syntax`)
+- **ties away from zero**: Half-way rationals round to the nearest integer away from zero. (Test: `rounds rational ties away from zero`)
+- **safe numeric output**: Zero divisors and values outside the JavaScript safe-integer range fail explicitly. (Test: `rejects zero divisors and unsafe integer outputs`)
+- **single final rounding**: Scaling formulas round only after all rational operations are complete. (Test: `rounds only after the complete scaled formula`)

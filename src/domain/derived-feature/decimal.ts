@@ -39,7 +39,7 @@ export function parseDecimal(value: string): Rational | NumericFailure {
   const parts = rest.split(".");
   if (parts.length > 2) return "invalid_decimal";
 
-  const intPart = parts[0];
+  const intPart = parts[0]!;
   const fracPart = parts[1] ?? "";
 
   if (!/^\d*$/.test(intPart) || !/^\d*$/.test(fracPart)) return "invalid_decimal";
@@ -68,6 +68,22 @@ export function parseDecimal(value: string): Rational | NumericFailure {
   return { numerator: newCoefficient, denominator: 10n ** BigInt(newScale) };
 }
 
+export function add(left: Rational, right: Rational): Rational {
+  const lcm = (left.denominator * right.denominator) / gcd(left.denominator, right.denominator);
+  const leftScaled = left.numerator * (lcm / left.denominator);
+  const rightScaled = right.numerator * (lcm / right.denominator);
+  const num = leftScaled + rightScaled;
+  const den = lcm;
+  if (num === 0n) {
+    return { numerator: 0n, denominator: 1n };
+  }
+  const sign = num < 0n !== den < 0n ? -1n : 1n;
+  const absNum = num < 0n ? -num : num;
+  const absDen = den < 0n ? -den : den;
+  const div = gcd(absNum, absDen);
+  return { numerator: (sign * absNum) / div, denominator: absDen / div };
+}
+
 export function subtract(left: Rational, right: Rational): Rational {
   const lcm = (left.denominator * right.denominator) / gcd(left.denominator, right.denominator);
   const leftScaled = left.numerator * (lcm / left.denominator);
@@ -93,7 +109,8 @@ export function multiply(left: Rational, right: Rational): Rational {
   const sign = num < 0n !== den < 0n ? -1n : 1n;
   const absNum = num < 0n ? -num : num;
   const absDen = den < 0n ? -den : den;
-  return { numerator: sign * absNum, denominator: absDen };
+  const div = gcd(absNum, absDen);
+  return { numerator: (sign * absNum) / div, denominator: absDen / div };
 }
 
 export function divide(left: Rational, right: Rational): Rational | NumericFailure {

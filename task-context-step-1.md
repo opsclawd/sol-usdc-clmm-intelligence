@@ -1,6 +1,6 @@
 # Task Context: Task 1
 
-Title: Add bounded typed HTTP GET behavior
+Title: Define the seven feature kinds and validated result contract
 
 ## Workspace & Scope Constraints
 
@@ -10,84 +10,124 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-23
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-25
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-23
-Start Commit: 6a3197f1ad619c2594d8a693577cd6c67b3689f1
+Branch: ai/issue-25
+Start Commit: 72198d814d2ef33860d879741b7b7acc3b54e679
 
 ## Task Requirements
 
 **Files:**
 
-- Modify: `src/ports/http.ts`
-- Modify: `src/ports/index.ts`
-- Modify: `src/adapters/node/fetch-http.ts`
-- Modify: `tests/fakes/fake-http.ts`
-- Create: `tests/adapters/node/fetch-http.test.ts`
-- Modify: `src/application/collect-clmm-bundle.ts`
-- Modify: `src/application/collect-coingecko.ts`
-- Modify: `src/application/collect-jupiter-price.ts`
-- Modify: `tests/application/ancillary-collectors.test.ts`
-- Modify: `tests/application/collect-jupiter-price.test.ts`
+- Create: `src/contracts/derived-feature.ts`
+- Modify: `src/contracts/taxonomy.ts`
+- Modify: `src/contracts/index.ts`
+- Modify: `src/domain/taxonomy/registry.ts`
+- Modify: `src/domain/taxonomy/validation.ts`
+- Create: `tests/domain/derived-feature/contract.test.ts`
+- Modify: `tests/domain/taxonomy/registry.test.ts`
+- Modify: `tests/domain/taxonomy/validation.test.ts`
+- Modify: `tests/ports/feature-repo.test.ts`
+- Modify: `tests/db/schema/derived-features.test.ts`
 
-**Exported API changes:** Change `HttpClient.getJson` to accept one options object and export the policy/error vocabulary used by collectors:
+**Behavioral invariants (write these tests first):**
+
+- `accepts an AVAILABLE feature only with a finite safe-integer value`: `AVAILABLE` requires a non-null finite safe integer; `UNAVAILABLE` requires `null`; `PARTIAL` requires a non-null finite safe integer.
+- `enforces the canonical unit for every feature kind`: range location and volume/liquidity use `PPM`; the other five kinds use `BPS`.
+- `enforces feature scope identity by kind`: position features require both `poolId` and `positionId`; pool ratio requires `poolId` and no `positionId`; pair features require neither position identity.
+- `rejects unsorted duplicate observation ids and reason codes`: selected/rejected IDs and warning/reason arrays are strictly sorted and unique.
+- `accepts unavailable no-input provenance only with a stable reason`: ref-free provenance is allowed only for `UNAVAILABLE` with at least one reason; available/partial rows must satisfy registry ref minima.
+- `rejects removed placeholder feature kinds`: `fee_apr`, `oracle_divergence`, `volatility_24h`, and `liquidity_depth` no longer parse.
+- `tests/ports/feature-repo.test.ts and tests/db/schema/derived-features.test.ts reference the seven canonical kinds`: both test files must be updated in Task 1 to use `range_location`, `distance_to_lower`, `distance_to_upper`, `oracle_dex_divergence`, `oracle_confidence_width`, `realized_volatility_1h`, and `volume_liquidity_ratio_24h`; they must not reference the removed placeholder kinds or defer type fixes to Tasks 8 or 9.
+
+- [ ] **Step 1: Add failing contract and taxonomy tests.** Assert the exact seven-member set, registry families/source allowlists/freshness policies, kind-to-unit/scope rules, status/value rules, timestamps, schema version, version strings, confidence/freshness, sorted identities, metadata, and status-aware provenance. Also update `tests/ports/feature-repo.test.ts` and `tests/db/schema/derived-features.test.ts` to reference only the seven canonical feature kinds; this update must happen in Task 1, not deferred to Tasks 8 or 9, to keep `pnpm -r typecheck` green after each task.
+
+- [ ] **Step 2: Define and export the result contract.** Use a Zod-backed runtime parser with the following public shape; keep warnings/reasons as stable snake-case strings and metadata JSON-compatible.
 
 ```ts
-export interface HttpRequestOptions {
-  readonly headers?: Readonly<Record<string, string>>;
-  readonly timeoutMs?: number;
-  readonly maxAttempts?: number;
+export const MVP_FEATURE_KINDS = [
+  "range_location",
+  "distance_to_lower",
+  "distance_to_upper",
+  "oracle_dex_divergence",
+  "oracle_confidence_width",
+  "realized_volatility_1h",
+  "volume_liquidity_ratio_24h"
+] as const;
+
+export type FeatureStatus = "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
+export type FeatureUnit = "BPS" | "PPM";
+
+export interface DerivedFeatureV1 {
+  readonly schemaVersion: 1;
+  readonly featureKind: FeatureKind;
+  readonly status: FeatureStatus;
+  readonly value: number | null;
+  readonly unit: FeatureUnit;
+  readonly pair: "SOL/USDC";
+  readonly poolId: string | null;
+  readonly positionId: string | null;
+  readonly asOfUnixMs: number;
+  readonly expiresAtUnixMs: number;
+  readonly confidence: Confidence;
+  readonly freshness: Freshness;
+  readonly inputObservationIds: readonly number[];
+  readonly rejectedObservationIds: readonly number[];
+  readonly provenance: Provenance;
+  readonly warnings: readonly string[];
+  readonly reasons: readonly string[];
+  readonly calculatorVersion: string;
+  readonly selectionVersion: string;
+  readonly calculationMetadata: Readonly<Record<string, unknown>>;
 }
 
-export type HttpFailureKind = "timeout" | "network" | "http_status" | "invalid_json";
-
-export class HttpRequestError extends Error {
-  constructor(
-    readonly kind: HttpFailureKind,
-    message: string,
-    readonly status: number | null,
-    readonly retryable: boolean,
-    options?: ErrorOptions
-  );
-}
-
-export interface HttpClient {
-  getJson<T>(url: string, options?: HttpRequestOptions): Promise<T>;
-}
+export function parseDerivedFeatureV1(value: unknown): DerivedFeatureV1;
 ```
 
-- [ ] **Step 1: Write the transport policy tests first.** In `tests/adapters/node/fetch-http.test.ts`, inject a fetch-compatible function and fake timers/abort-aware promises to name and cover: `retries timeout and retryable failures at most once before succeeding or throwing`, `does not retry non-retryable HTTP failures or invalid JSON`, 408/429/5xx retries, network retry, a new signal for each attempt, response-body truncation/redaction in error summaries, and default single-attempt compatibility. Update `FakeHttp.calls` to capture options and allow queued responses; update the existing CoinGecko header assertion to expect `options.headers`.
-- [ ] **Step 2: Run the focused tests and confirm the signature/behavior failures.** Run `pnpm exec vitest run tests/adapters/node/fetch-http.test.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-jupiter-price.test.ts tests/application/ancillary-collectors.test.ts`; expect failures because the options signature, error class, fetch injection, retry loop, and authenticated caller argument shapes are not implemented.
-- [ ] **Step 3: Implement the port and all implementations in the same task.** Update `FetchHttpClient` to create/clear an `AbortController` per attempt, classify only network/timeout/408/429/5xx as retryable, parse JSON inside the classified attempt, and stop at `maxAttempts`. Export the new types/error from `src/ports/index.ts`, update `FakeHttp`, and change CLMM and CoinGecko calls from bare headers to `{ headers: ... }`; do not persist error bodies or credentials.
-- [ ] **Step 4: Update the existing Jupiter price collector and its test to use the new options signature.** In `src/application/collect-jupiter-price.ts` and `tests/application/collect-jupiter-price.test.ts`, change all `http.getJson` calls to pass the headers inside `{ headers: ... }`; the test's `FakeHttp` queue must also reflect the new call shape. This ensures the workspace typechecks after Task 1 before Task 8 introduces the new `collectJupiterQuote` use case.
-- [ ] **Step 5: Verify this task.** Run `pnpm exec vitest run tests/adapters/node/fetch-http.test.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-jupiter-price.test.ts tests/application/ancillary-collectors.test.ts` and `pnpm exec eslint src/ports/http.ts src/ports/index.ts src/adapters/node/fetch-http.ts tests/fakes/fake-http.ts tests/adapters/node/fetch-http.test.ts src/application/collect-clmm-bundle.ts src/application/collect-coingecko.ts src/application/collect-jupiter-price.ts tests/application/ancillary-collectors.test.ts tests/application/collect-jupiter-price.test.ts`; expect all selected tests and lint checks to pass.
-- [ ] **Step 6: Commit.** Run `git add src/ports/http.ts src/ports/index.ts src/adapters/node/fetch-http.ts tests/fakes/fake-http.ts tests/adapters/node/fetch-http.test.ts src/application/collect-clmm-bundle.ts src/application/collect-coingecko.ts src/application/collect-jupiter-price.ts tests/application/ancillary-collectors.test.ts tests/application/collect-jupiter-price.test.ts && git commit -m "feat: bound collector HTTP requests"`.
+- [ ] **Step 3: Replace placeholder taxonomy entries.** Change `FeatureKind` to the seven canonical strings and make `featureKindRegistry` exhaustive. Use `clmm_state` for the three range features, `price_quality` for divergence/confidence/volatility, and `clmm_economics` for the volume ratio; all remain deterministic and active. Allow only clmm-v2, Pyth+Jupiter, Pyth, or Orca sources as required by each formula.
+
+- [ ] **Step 4: Run task-scoped tests and static checks.** Expected: all three test files pass, and lint/format report no issues.
+
+**Validation commands:**
+
+```bash
+pnpm exec vitest run tests/domain/derived-feature/contract.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts tests/ports/feature-repo.test.ts tests/db/schema/derived-features.test.ts
+pnpm exec eslint src/contracts/derived-feature.ts src/contracts/index.ts src/contracts/taxonomy.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/domain/derived-feature/contract.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts tests/ports/feature-repo.test.ts tests/db/schema/derived-features.test.ts --max-warnings 0
+pnpm exec prettier --check src/contracts/derived-feature.ts src/contracts/index.ts src/contracts/taxonomy.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/domain/derived-feature/contract.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts tests/ports/feature-repo.test.ts tests/db/schema/derived-features.test.ts
+```
+
+**Commit:** `feat: define deterministic feature result contract`
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/ports/http.ts
-- src/ports/index.ts
-- src/adapters/node/fetch-http.ts
-- tests/fakes/fake-http.ts
-- tests/adapters/node/fetch-http.test.ts
-- src/application/collect-clmm-bundle.ts
-- src/application/collect-coingecko.ts
-- src/application/collect-jupiter-price.ts
-- tests/application/collect-jupiter-price.test.ts
-- tests/application/ancillary-collectors.test.ts
+- src/contracts/derived-feature.ts
+- src/contracts/taxonomy.ts
+- src/contracts/index.ts
+- src/domain/taxonomy/registry.ts
+- src/domain/taxonomy/validation.ts
+- tests/domain/derived-feature/contract.test.ts
+- tests/domain/taxonomy/registry.test.ts
+- tests/domain/taxonomy/validation.test.ts
+- tests/ports/feature-repo.test.ts
+- tests/db/schema/derived-features.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/adapters/node/fetch-http.test.ts tests/application/collect-clmm-bundle.test.ts tests/application/collect-jupiter-price.test.ts tests/application/ancillary-collectors.test.ts
-pnpm exec eslint src/ports/http.ts src/ports/index.ts src/adapters/node/fetch-http.ts tests/fakes/fake-http.ts tests/adapters/node/fetch-http.test.ts src/application/collect-clmm-bundle.ts src/application/collect-coingecko.ts src/application/collect-jupiter-price.ts tests/application/ancillary-collectors.test.ts tests/application/collect-jupiter-price.test.ts
+pnpm exec vitest run tests/domain/derived-feature/contract.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts tests/ports/feature-repo.test.ts tests/db/schema/derived-features.test.ts
+pnpm exec eslint src/contracts/derived-feature.ts src/contracts/index.ts src/contracts/taxonomy.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/domain/derived-feature/contract.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts tests/ports/feature-repo.test.ts tests/db/schema/derived-features.test.ts --max-warnings 0
+pnpm exec prettier --check src/contracts/derived-feature.ts src/contracts/index.ts src/contracts/taxonomy.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/domain/derived-feature/contract.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts tests/ports/feature-repo.test.ts tests/db/schema/derived-features.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **bounded retry policy**: Each attempt has a five-second abort signal, only network errors, timeouts, 408, 429, and 5xx retry, and no request exceeds two attempts. (Test: `retries timeout and retryable failures at most once before succeeding or throwing`)
-- **non-retryable failures stop**: Other 4xx statuses and invalid JSON stop after the first attempt with a typed safe error. (Test: `does not retry non-retryable HTTP failures or invalid JSON`)
+- **status value coherence**: AVAILABLE and PARTIAL require a finite safe-integer value while UNAVAILABLE requires null. (Test: `accepts an AVAILABLE feature only with a finite safe-integer value`)
+- **canonical unit**: Each feature kind accepts only its specified BPS or PPM unit. (Test: `enforces the canonical unit for every feature kind`)
+- **scope identity**: Position, pool, and pair feature kinds require exactly their canonical identity fields. (Test: `enforces feature scope identity by kind`)
+- **canonical arrays**: Input IDs, rejected IDs, warnings, and reasons are strictly sorted and unique. (Test: `rejects unsorted duplicate observation ids and reason codes`)
+- **status-aware provenance**: Only an unavailable result with a stable reason may have no observation references. (Test: `accepts unavailable no-input provenance only with a stable reason`)
+- **exact canonical kind set**: Legacy placeholder feature kinds are rejected after the seven-kind registry replaces them. (Test: `rejects removed placeholder feature kinds`)

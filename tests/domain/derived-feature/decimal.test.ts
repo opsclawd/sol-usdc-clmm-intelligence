@@ -12,49 +12,49 @@ import {
 describe("decimal arithmetic", () => {
   describe("parses plain signed decimals without binary floating-point conversion", () => {
     it("parses integer form", () => {
-      const result = parseDecimal("42");
+      const result = parseDecimal("42") as Rational;
       expect(result.numerator).toBe(42n);
       expect(result.denominator).toBe(1n);
     });
 
     it("parses negative integer", () => {
-      const result = parseDecimal("-42");
+      const result = parseDecimal("-42") as Rational;
       expect(result.numerator).toBe(-42n);
       expect(result.denominator).toBe(1n);
     });
 
     it("parses fractional form", () => {
-      const result = parseDecimal("3.14");
+      const result = parseDecimal("3.14") as Rational;
       expect(result.numerator).toBe(314n);
       expect(result.denominator).toBe(100n);
     });
 
     it("parses negative fractional", () => {
-      const result = parseDecimal("-3.14");
+      const result = parseDecimal("-3.14") as Rational;
       expect(result.numerator).toBe(-314n);
       expect(result.denominator).toBe(100n);
     });
 
     it("normalizes trailing zeroes", () => {
-      const result = parseDecimal("2.5000");
+      const result = parseDecimal("2.5000") as Rational;
       expect(result.numerator).toBe(25n);
       expect(result.denominator).toBe(10n);
     });
 
     it("parses zero", () => {
-      const result = parseDecimal("0");
+      const result = parseDecimal("0") as Rational;
       expect(result.numerator).toBe(0n);
       expect(result.denominator).toBe(1n);
     });
 
     it("parses leading zeroes", () => {
-      const result = parseDecimal("007");
+      const result = parseDecimal("007") as Rational;
       expect(result.numerator).toBe(7n);
       expect(result.denominator).toBe(1n);
     });
 
     it("parses 0.1 exactly", () => {
-      const result = parseDecimal("0.1");
+      const result = parseDecimal("0.1") as Rational;
       expect(result.numerator).toBe(1n);
       expect(result.denominator).toBe(10n);
     });
@@ -187,7 +187,7 @@ describe("decimal arithmetic", () => {
 
   describe("rounds only after the complete scaled formula", () => {
     it("BPS case: 1.005 * 10000 = 10050 (not 10049)", () => {
-      const value = parseDecimal("1.005");
+      const value = parseDecimal("1.005") as Rational;
       expect(value).toEqual({ numerator: 1005n, denominator: 1000n });
 
       const scaled = multiply(value, { numerator: 10000n, denominator: 1n });
@@ -198,7 +198,7 @@ describe("decimal arithmetic", () => {
     });
 
     it("PPM case: 1.0005 * 1000000 = 1000500 (not 1000499)", () => {
-      const value = parseDecimal("1.0005");
+      const value = parseDecimal("1.0005") as Rational;
       expect(value).toEqual({ numerator: 10005n, denominator: 10000n });
 
       const scaled = multiply(value, { numerator: 1000000n, denominator: 1n });
@@ -209,8 +209,8 @@ describe("decimal arithmetic", () => {
     });
 
     it("subtraction then multiply: (1.006 - 1.005) * 10000 = 10", () => {
-      const a = parseDecimal("1.006");
-      const b = parseDecimal("1.005");
+      const a = parseDecimal("1.006") as Rational;
+      const b = parseDecimal("1.005") as Rational;
       const diff = subtract(a, b);
       expect(diff).toEqual({ numerator: 1n, denominator: 1000n });
 
@@ -222,14 +222,14 @@ describe("decimal arithmetic", () => {
     });
 
     it("near half-way boundary: 0.005 * 10000 = 50 (exact)", () => {
-      const value = parseDecimal("0.005");
+      const value = parseDecimal("0.005") as Rational;
       const scaled = multiply(value, { numerator: 10000n, denominator: 1n });
       const result = roundToSafeInteger(scaled);
       expect(result).toBe(50);
     });
 
     it("near half-way boundary negative: -0.005 * 10000 = -50", () => {
-      const value = parseDecimal("-0.005");
+      const value = parseDecimal("-0.005") as Rational;
       const scaled = multiply(value, { numerator: 10000n, denominator: 1n });
       const result = roundToSafeInteger(scaled);
       expect(result).toBe(-50);
