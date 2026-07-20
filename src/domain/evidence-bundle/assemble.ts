@@ -236,6 +236,17 @@ function buildSourceReferences(lineage: VerifiedEvidenceLineage["lineage"]): Sou
     });
   }
 
+  if (refs.length === 0) {
+    refs.push({
+      referenceId:
+        "no_sources_available" as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
+      sourceType: "internal_bundle",
+      locator: "no_sources_available",
+      observedAt:
+        "0" as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp
+    });
+  }
+
   return refs;
 }
 
