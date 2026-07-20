@@ -1,7 +1,14 @@
 import type { PositionStatePayloadV1 } from "../../contracts/normalized-clmm-observation.js";
 import type { FeatureCalculation } from "./assemble.js";
 import type { Rational } from "./decimal.js";
-import { parseDecimal, divide, subtract, multiply, roundToSafeInteger } from "./decimal.js";
+import {
+  parseDecimal,
+  divide,
+  subtract,
+  multiply,
+  roundToSafeInteger,
+  compare
+} from "./decimal.js";
 
 export const RANGE_CALCULATOR_VERSIONS = {
   range_location: "range-location/v1",
@@ -25,36 +32,39 @@ function parsePriceLabel(label: string): Rational | null {
 }
 
 function classifyRangePosition(
-  current: number,
-  lower: number,
-  upper: number,
+  current: Rational,
+  lower: Rational,
+  upper: Rational,
   rangeState: PositionStatePayloadV1["rangeState"]
 ): {
   classification: RangeClassification;
   rangeState: PositionStatePayloadV1["rangeState"];
 } | null {
-  if (current < lower) {
+  const cmpLower = compare(current, lower);
+  const cmpUpper = compare(current, upper);
+
+  if (cmpLower < 0) {
     if (rangeState !== "below-range") {
       return null;
     }
     return { classification: "below_range_clamped", rangeState };
   }
-  if (current > upper) {
+  if (cmpUpper > 0) {
     if (rangeState !== "above-range") {
       return null;
     }
     return { classification: "above_range_clamped", rangeState };
   }
-  if (current === lower && current === upper) {
+  if (cmpLower === 0 && cmpUpper === 0) {
     return { classification: "at_lower_boundary", rangeState };
   }
-  if (current === lower) {
+  if (cmpLower === 0) {
     if (rangeState !== "in-range" && rangeState !== "below-range") {
       return null;
     }
     return { classification: "at_lower_boundary", rangeState };
   }
-  if (current === upper) {
+  if (cmpUpper === 0) {
     if (rangeState !== "in-range" && rangeState !== "above-range") {
       return null;
     }
@@ -86,7 +96,6 @@ export function calculateRangeLocation(position: PositionStatePayloadV1): Featur
   const lowerPriceRational = parsePriceLabel(position.lowerPriceLabel);
   const upperPriceRational = parsePriceLabel(position.upperPriceLabel);
   const currentPriceRational = parseDecimal(position.currentPriceLabel);
-  const currentPrice = position.currentPrice;
 
   if (lowerPriceRational === null) {
     return makeUnavailable(["invalid lowerPriceLabel"]);
@@ -97,29 +106,21 @@ export function calculateRangeLocation(position: PositionStatePayloadV1): Featur
   if (typeof currentPriceRational === "string") {
     return makeUnavailable(["invalid currentPriceLabel"]);
   }
-  if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
-    return makeUnavailable(["invalid currentPrice"]);
-  }
 
-  const lowerPrice = roundToSafeInteger(lowerPriceRational);
-  const upperPrice = roundToSafeInteger(upperPriceRational);
-  if (typeof lowerPrice === "string") {
+  if (compare(lowerPriceRational, { numerator: 0n, denominator: 1n }) <= 0) {
     return makeUnavailable(["invalid lowerPrice"]);
   }
-  if (typeof upperPrice === "string") {
+  if (compare(upperPriceRational, { numerator: 0n, denominator: 1n }) <= 0) {
     return makeUnavailable(["invalid upperPrice"]);
   }
-  if (lowerPrice <= 0 || upperPrice <= 0) {
-    return makeUnavailable(["invalid price values"]);
-  }
-  if (upperPrice <= lowerPrice) {
+  if (compare(upperPriceRational, lowerPriceRational) <= 0) {
     return makeUnavailable(["upperPrice must be greater than lowerPrice"]);
   }
 
   const classificationResult = classifyRangePosition(
-    currentPrice,
-    lowerPrice,
-    upperPrice,
+    currentPriceRational,
+    lowerPriceRational,
+    upperPriceRational,
     position.rangeState
   );
   if (classificationResult === null) {
@@ -170,27 +171,20 @@ export function calculateDistanceToLower(position: PositionStatePayloadV1): Feat
     return makeUnavailable(["invalid currentPriceLabel"]);
   }
 
-  const lowerPriceNum = roundToSafeInteger(lowerPrice);
-  const upperPriceNum = roundToSafeInteger(upperPrice);
-  if (typeof lowerPriceNum === "string" || lowerPriceNum <= 0) {
+  if (compare(lowerPrice, { numerator: 0n, denominator: 1n }) <= 0) {
     return makeUnavailable(["invalid lowerPrice"]);
   }
-  if (typeof upperPriceNum === "string" || upperPriceNum <= 0) {
+  if (compare(upperPrice, { numerator: 0n, denominator: 1n }) <= 0) {
     return makeUnavailable(["invalid upperPrice"]);
   }
-  if (upperPriceNum <= lowerPriceNum) {
+  if (compare(upperPrice, lowerPrice) <= 0) {
     return makeUnavailable(["upperPrice must be greater than lowerPrice"]);
   }
 
-  const currentPriceNum = position.currentPrice;
-  if (!Number.isFinite(currentPriceNum) || currentPriceNum <= 0) {
-    return makeUnavailable(["invalid currentPrice"]);
-  }
-
   const classificationResult = classifyRangePosition(
-    currentPriceNum,
-    lowerPriceNum,
-    upperPriceNum,
+    currentPrice,
+    lowerPrice,
+    upperPrice,
     position.rangeState
   );
   if (classificationResult === null) {
@@ -237,27 +231,20 @@ export function calculateDistanceToUpper(position: PositionStatePayloadV1): Feat
     return makeUnavailable(["invalid currentPriceLabel"]);
   }
 
-  const lowerPriceNum = roundToSafeInteger(lowerPrice);
-  const upperPriceNum = roundToSafeInteger(upperPrice);
-  if (typeof lowerPriceNum === "string" || lowerPriceNum <= 0) {
+  if (compare(lowerPrice, { numerator: 0n, denominator: 1n }) <= 0) {
     return makeUnavailable(["invalid lowerPrice"]);
   }
-  if (typeof upperPriceNum === "string" || upperPriceNum <= 0) {
+  if (compare(upperPrice, { numerator: 0n, denominator: 1n }) <= 0) {
     return makeUnavailable(["invalid upperPrice"]);
   }
-  if (upperPriceNum <= lowerPriceNum) {
+  if (compare(upperPrice, lowerPrice) <= 0) {
     return makeUnavailable(["upperPrice must be greater than lowerPrice"]);
   }
 
-  const currentPriceNum = position.currentPrice;
-  if (!Number.isFinite(currentPriceNum) || currentPriceNum <= 0) {
-    return makeUnavailable(["invalid currentPrice"]);
-  }
-
   const classificationResult = classifyRangePosition(
-    currentPriceNum,
-    lowerPriceNum,
-    upperPriceNum,
+    currentPrice,
+    lowerPrice,
+    upperPrice,
     position.rangeState
   );
   if (classificationResult === null) {

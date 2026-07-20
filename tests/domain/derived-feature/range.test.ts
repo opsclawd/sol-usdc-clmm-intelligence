@@ -334,6 +334,128 @@ describe("range calculators", () => {
       expect(result.status).toBe("UNAVAILABLE");
       expect(result.value).toBeNull();
     });
+
+    it("returns UNAVAILABLE when currentPriceLabel is malformed", () => {
+      const pos = makePositionState({
+        currentPrice: 100,
+        currentPriceLabel: "not-a-number",
+        lowerPriceLabel: "100",
+        upperPriceLabel: "200"
+      });
+      const result = calculateRangeLocation(pos);
+      expect(result.status).toBe("UNAVAILABLE");
+      expect(result.value).toBeNull();
+    });
+  });
+
+  describe("preserves decimal precision with fractional prices", () => {
+    it("range_location: correctly distinguishes narrow range with fractional prices", () => {
+      const pos = makePositionState({
+        currentPrice: 150.2,
+        currentPriceLabel: "150.2",
+        lowerPriceLabel: "150.123",
+        upperPriceLabel: "150.456",
+        rangeState: "in-range"
+      });
+      const result = calculateRangeLocation(pos);
+      expect(result.status).toBe("AVAILABLE");
+      expect(result.value).toBeGreaterThan(0);
+      expect(result.value).toBeLessThan(1_000_000);
+    });
+
+    it("range_location: correctly classifies when currentPrice is below narrow fractional range", () => {
+      const pos = makePositionState({
+        currentPrice: 150.0,
+        currentPriceLabel: "150.0",
+        lowerPriceLabel: "150.123",
+        upperPriceLabel: "150.456",
+        rangeState: "below-range"
+      });
+      const result = calculateRangeLocation(pos);
+      expect(result.status).toBe("AVAILABLE");
+      expect(result.value).toBe(0);
+      expect(result.metadata.classification).toBe("below_range_clamped");
+    });
+
+    it("range_location: correctly classifies when currentPrice is above narrow fractional range", () => {
+      const pos = makePositionState({
+        currentPrice: 150.5,
+        currentPriceLabel: "150.5",
+        lowerPriceLabel: "150.123",
+        upperPriceLabel: "150.456",
+        rangeState: "above-range"
+      });
+      const result = calculateRangeLocation(pos);
+      expect(result.status).toBe("AVAILABLE");
+      expect(result.value).toBe(1_000_000);
+      expect(result.metadata.classification).toBe("above_range_clamped");
+    });
+
+    it("distance_to_lower: preserves precision with fractional prices", () => {
+      const pos = makePositionState({
+        currentPrice: 150.2,
+        currentPriceLabel: "150.2",
+        lowerPriceLabel: "150.123",
+        upperPriceLabel: "150.456",
+        rangeState: "in-range"
+      });
+      const result = calculateDistanceToLower(pos);
+      expect(result.status).toBe("AVAILABLE");
+      expect(result.value).toBeGreaterThan(0);
+    });
+
+    it("distance_to_upper: preserves precision with fractional prices", () => {
+      const pos = makePositionState({
+        currentPrice: 150.2,
+        currentPriceLabel: "150.2",
+        lowerPriceLabel: "150.123",
+        upperPriceLabel: "150.456",
+        rangeState: "in-range"
+      });
+      const result = calculateDistanceToUpper(pos);
+      expect(result.status).toBe("AVAILABLE");
+      expect(result.value).toBeGreaterThan(0);
+    });
+
+    it("range_location: correctly rejects inverted range with fractional prices", () => {
+      const pos = makePositionState({
+        currentPrice: 150.2,
+        currentPriceLabel: "150.2",
+        lowerPriceLabel: "150.456",
+        upperPriceLabel: "150.123",
+        rangeState: "in-range"
+      });
+      const result = calculateRangeLocation(pos);
+      expect(result.status).toBe("UNAVAILABLE");
+      expect(result.value).toBeNull();
+    });
+
+    it("range_location: correctly rejects zero-width fractional range", () => {
+      const pos = makePositionState({
+        currentPrice: 150.2,
+        currentPriceLabel: "150.2",
+        lowerPriceLabel: "150.2",
+        upperPriceLabel: "150.2",
+        rangeState: "in-range"
+      });
+      const result = calculateRangeLocation(pos);
+      expect(result.status).toBe("UNAVAILABLE");
+      expect(result.value).toBeNull();
+    });
+
+    it("range_location: handles sub-integer currentPrice correctly", () => {
+      const pos = makePositionState({
+        currentPrice: 0.5,
+        currentPriceLabel: "0.5",
+        lowerPriceLabel: "0.1",
+        upperPriceLabel: "0.9",
+        rangeState: "in-range"
+      });
+      const result = calculateRangeLocation(pos);
+      expect(result.status).toBe("AVAILABLE");
+      expect(result.value).toBe(500_000);
+      expect(result.metadata.classification).toBe("in_range");
+    });
   });
 
   describe("applies nearest integer ties away from zero after the full formula", () => {
@@ -501,6 +623,7 @@ describe("range calculators", () => {
     it("below-range state yields below_range_clamped", () => {
       const pos = makePositionState({
         currentPrice: 50,
+        currentPriceLabel: "50",
         lowerPriceLabel: "100",
         upperPriceLabel: "200",
         rangeState: "below-range"
@@ -514,6 +637,7 @@ describe("range calculators", () => {
     it("above-range state yields above_range_clamped", () => {
       const pos = makePositionState({
         currentPrice: 250,
+        currentPriceLabel: "250",
         lowerPriceLabel: "100",
         upperPriceLabel: "200",
         rangeState: "above-range"
