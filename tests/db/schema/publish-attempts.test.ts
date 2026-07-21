@@ -60,7 +60,7 @@ describe("publishAttempts schema", () => {
       it(`${colName} is NOT NULL`, () => {
         const col = (publishAttempts as unknown as Record<string, Record<string, unknown>>)[
           colName
-        ];
+        ] as Record<string, unknown>;
         expect(col).toBeDefined();
         expect(col["notNull"]).toBe(true);
       });
@@ -70,7 +70,7 @@ describe("publishAttempts schema", () => {
       it(`${colName} is nullable`, () => {
         const col = (publishAttempts as unknown as Record<string, Record<string, unknown>>)[
           colName
-        ];
+        ] as Record<string, unknown>;
         expect(col).toBeDefined();
         expect(col["notNull"]).not.toBe(true);
       });
