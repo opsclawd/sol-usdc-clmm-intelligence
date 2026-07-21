@@ -193,7 +193,8 @@ describe("clmm-bundle collector lifecycle", () => {
         commandRunner: createMockCommandRunner(),
         runIdFactory: { nextRunId: () => "run-123" },
         getDb: vi.fn(),
-        getPersistence: vi.fn().mockResolvedValue(persistence)
+        getPersistence: vi.fn().mockResolvedValue(persistence),
+        getContract: vi.fn()
       };
 
       const { runClmmBundleCollector } = await import("../../scripts/collectors/clmm-bundle.js");
@@ -233,7 +234,8 @@ describe("clmm-bundle collector lifecycle", () => {
         commandRunner: createMockCommandRunner(),
         runIdFactory: { nextRunId: () => "run-123" },
         getDb: vi.fn(),
-        getPersistence: vi.fn().mockResolvedValue(persistence)
+        getPersistence: vi.fn().mockResolvedValue(persistence),
+        getContract: vi.fn()
       };
 
       const { runClmmBundleCollector } = await import("../../scripts/collectors/clmm-bundle.js");
@@ -275,7 +277,8 @@ describe("clmm-bundle collector lifecycle", () => {
         commandRunner: createMockCommandRunner(),
         runIdFactory: { nextRunId: () => "run-123" },
         getDb: vi.fn(),
-        getPersistence: vi.fn().mockResolvedValue(persistence)
+        getPersistence: vi.fn().mockResolvedValue(persistence),
+        getContract: vi.fn()
       };
 
       const { runClmmBundleCollector } = await import("../../scripts/collectors/clmm-bundle.js");

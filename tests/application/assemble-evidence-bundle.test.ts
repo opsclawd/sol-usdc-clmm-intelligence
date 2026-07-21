@@ -29,6 +29,7 @@ import type {
 } from "../../src/application/assemble-evidence-bundle.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 import type { ProvenanceRef, Source, ObservationKind } from "../../src/contracts/taxonomy.js";
+import { makeClmmBundle, makePoolData, makePositionData } from "../fixtures/clmm-bundle.js";
 
 const EPOCH = "2024-01-01T00:00:00.000Z";
 const EVAL_MS = new Date(EPOCH).getTime();
@@ -123,7 +124,18 @@ function makeNormalizedRow(
   };
 }
 
-function makeRawRow(overrides: Partial<RawObservationRow> & { id: number }): RawObservationRow {
+function makeRawRow(
+  overrides: Partial<RawObservationRow> & {
+    id: number;
+    poolId?: string;
+    positionId?: string;
+    walletId?: string;
+  }
+): RawObservationRow {
+  const poolId = overrides.poolId ?? "pool-abc";
+  const positionId = overrides.positionId ?? "pos-1";
+  const walletId = overrides.walletId ?? "wallet-123";
+
   return {
     id: overrides.id,
     source: overrides.source ?? "clmm-v2-bundle",
@@ -131,7 +143,21 @@ function makeRawRow(overrides: Partial<RawObservationRow> & { id: number }): Raw
     observedAtUnixMs: overrides.observedAtUnixMs ?? EVAL_MS - 70000,
     fetchedAtUnixMs: overrides.fetchedAtUnixMs ?? EVAL_MS - 65000,
     payloadHash: `raw-hash-${overrides.id}`,
-    payloadCanonical: JSON.stringify({ id: overrides.id }),
+    payloadCanonical:
+      overrides.payloadCanonical ??
+      JSON.stringify(
+        makeClmmBundle({
+          pool: makePoolData({ poolId }),
+          positions: [
+            makePositionData({
+              walletId,
+              positionId,
+              poolId
+            })
+          ],
+          alerts: []
+        })
+      ),
     parseStatus: "parsed",
     sourceRequestMeta: null,
     receivedAtUnixMs: overrides.receivedAtUnixMs ?? EVAL_MS - 60000
@@ -140,7 +166,8 @@ function makeRawRow(overrides: Partial<RawObservationRow> & { id: number }): Raw
 
 function assertSuccess(result: AssembleEvidenceBundleResult): AssembleEvidenceBundleSuccess {
   if ("code" in result) {
-    throw new Error(`Unexpected error result: ${result.code}`);
+    const msg = "message" in result ? result.message : JSON.stringify(result);
+    throw new Error(`Unexpected error result: ${result.code}: ${msg}`);
   }
   return result;
 }

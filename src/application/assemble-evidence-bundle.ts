@@ -365,22 +365,15 @@ export async function assembleEvidenceBundle(
 
   const lineageInput: VerifyEvidenceLineageInput = {
     request: selectionRequest,
-    slots: slots.map((slot): VerifyEvidenceLineageInput["slots"][number] => {
-      const base: { featureKind: FeatureKind; outcome: string } = {
-        featureKind: slot.featureKind,
-        outcome: slot.outcome
-      };
-      if ("rowId" in slot && slot.rowId !== undefined) {
-        return { ...base, rowId: slot.rowId };
-      }
-      if ("provenance" in slot && slot.provenance !== undefined) {
-        return { ...base, provenance: slot.provenance };
-      }
-      if ("reasons" in slot && slot.reasons !== undefined) {
-        return { ...base, reasons: slot.reasons };
-      }
-      return base;
-    }),
+    slots: slots.map((slot): VerifyEvidenceLineageInput["slots"][number] => ({
+      featureKind: slot.featureKind,
+      outcome: slot.outcome,
+      ...("rowId" in slot && slot.rowId !== undefined ? { rowId: slot.rowId } : {}),
+      ...("provenance" in slot && slot.provenance !== undefined
+        ? { provenance: slot.provenance }
+        : {}),
+      ...("reasons" in slot && slot.reasons !== undefined ? { reasons: slot.reasons } : {})
+    })),
     rawObservations: rawMap,
     normalizedObservations: normalizedMap,
     derivedFeatures: derivedFeaturesMap,

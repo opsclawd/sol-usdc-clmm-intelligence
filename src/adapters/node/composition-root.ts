@@ -15,6 +15,9 @@ import type { RawObservationRepo } from "../../ports/observation-repo.js";
 import type { NormalizedObservationRepo } from "../../ports/normalized-observation-repo.js";
 import type { DerivedFeatureRepo } from "../../ports/feature-repo.js";
 import type { RunIdFactory } from "../../ports/run-id.js";
+import type { EvidenceBundleRepo } from "../../ports/bundle-repo.js";
+import type { ResearchBriefRepo } from "../../ports/brief-repo.js";
+import type { EvidenceBundleContract } from "../../ports/evidence-bundle-contract.js";
 import { UuidRunIdFactory } from "./uuid-run-id-factory.js";
 
 export interface Persistence {
@@ -22,6 +25,8 @@ export interface Persistence {
   rawObservationRepo: RawObservationRepo;
   normalizedObservationRepo: NormalizedObservationRepo;
   featureRepo: DerivedFeatureRepo;
+  bundleRepo: EvidenceBundleRepo;
+  briefRepo: ResearchBriefRepo;
 }
 
 export interface NodeRuntime {
@@ -34,14 +39,15 @@ export interface NodeRuntime {
   runIdFactory: RunIdFactory;
   getDb(): Promise<DbConnection>;
   getPersistence(): Promise<Persistence>;
+  getContract(): Promise<EvidenceBundleContract>;
 }
 
 export function createNodeRuntime(): NodeRuntime {
-  // Resolves environment variables including JUPITER_API_BASE, JUPITER_API_KEY, PYTH_HERMES_BASE_URL, and PYTH_API_KEY
   const env = new ProcessEnvReader();
   const runIdFactory = new UuidRunIdFactory();
   let dbPromise: Promise<DbConnection> | undefined;
   let persistencePromise: Promise<Persistence> | undefined;
+  let contractPromise: Promise<EvidenceBundleContract> | undefined;
 
   return {
     http: new FetchHttpClient(),
@@ -67,17 +73,35 @@ export function createNodeRuntime(): NodeRuntime {
           const { DrizzleNormalizedObservationRepo } =
             await import("./drizzle-normalized-observation-repo.js");
           const { DrizzleFeatureRepo } = await import("./drizzle-feature-repo.js");
+          const { DrizzleBundleRepo } = await import("./drizzle-bundle-repo.js");
+          const { DrizzleBriefRepo } = await import("./drizzle-brief-repo.js");
 
           type DrizzlePgAdapterInstance = InstanceType<typeof DrizzlePgAdapter>;
           const connection = (await this.getDb()) as DrizzlePgAdapterInstance;
           const rawObservationRepo = new DrizzleObservationRepo(connection.db);
           const normalizedObservationRepo = new DrizzleNormalizedObservationRepo(connection.db);
           const featureRepo = new DrizzleFeatureRepo(connection.db);
+          const bundleRepo = new DrizzleBundleRepo(connection.db);
+          const briefRepo = new DrizzleBriefRepo(connection.db);
 
-          return { connection, rawObservationRepo, normalizedObservationRepo, featureRepo };
+          return {
+            connection,
+            rawObservationRepo,
+            normalizedObservationRepo,
+            featureRepo,
+            bundleRepo,
+            briefRepo
+          };
         })();
       }
       return persistencePromise;
+    },
+    async getContract() {
+      if (!contractPromise) {
+        const { createEvidenceBundleContract } = await import("./evidence-bundle-v1-contract.js");
+        contractPromise = Promise.resolve(createEvidenceBundleContract());
+      }
+      return contractPromise;
     }
   };
 }

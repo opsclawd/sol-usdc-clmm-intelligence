@@ -262,7 +262,8 @@ describe("derive-mvp-features script", () => {
           connection: { close: vi.fn().mockResolvedValue(undefined) },
           normalizedObservationRepo: createMockNormalizedObservationRepo(),
           featureRepo: createMockFeatureRepo()
-        })
+        }),
+        getContract: vi.fn()
       };
 
       await expect(runDeriveMvpFeaturesScript(runtime)).rejects.toThrow(
@@ -290,7 +291,8 @@ describe("derive-mvp-features script", () => {
           connection: { close: vi.fn().mockResolvedValue(undefined) },
           normalizedObservationRepo: createMockNormalizedObservationRepo(),
           featureRepo: createMockFeatureRepo()
-        })
+        }),
+        getContract: vi.fn()
       };
 
       await expect(runDeriveMvpFeaturesScript(runtime)).rejects.toThrow(
@@ -331,7 +333,8 @@ describe("derive-mvp-features script", () => {
           connection: { close: vi.fn().mockResolvedValue(undefined) },
           normalizedObservationRepo,
           featureRepo
-        })
+        }),
+        getContract: vi.fn()
       };
 
       const result = await runDeriveMvpFeaturesScript(runtime);
@@ -368,7 +371,8 @@ describe("derive-mvp-features script", () => {
           connection: { close: vi.fn().mockResolvedValue(undefined) },
           normalizedObservationRepo,
           featureRepo
-        })
+        }),
+        getContract: vi.fn()
       };
 
       await expect(runDeriveMvpFeaturesScript(runtime)).rejects.toThrow(
@@ -403,7 +407,8 @@ describe("derive-mvp-features script", () => {
           connection: { close: vi.fn().mockRejectedValue(new Error("Connection close failed")) },
           normalizedObservationRepo,
           featureRepo
-        })
+        }),
+        getContract: vi.fn()
       };
 
       await expect(runDeriveMvpFeaturesScript(runtime)).rejects.toThrow("Connection close failed");

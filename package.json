@@ -10,6 +10,7 @@
     "collect:clmm-bundle": "tsx scripts/collectors/clmm-bundle.ts",
     "collect:core": "tsx scripts/collectors/core-collection.ts",
     "derive:mvp": "tsx scripts/collectors/derive-mvp-features.ts",
+    "assemble:bundle": "tsx scripts/collectors/assemble-evidence-bundle.ts",
     "cron:render": "tsx scripts/openclaw/render-cron-commands.ts",
     "cron:sync": "tsx scripts/openclaw/sync-cron.ts",
     "test": "vitest run",
