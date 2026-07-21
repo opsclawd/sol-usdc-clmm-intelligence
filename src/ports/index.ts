@@ -31,3 +31,14 @@ export type {
   CanonicalEvidenceBundle,
   EvidenceBundleContractError
 } from "./evidence-bundle-contract.js";
+export type {
+  PublishAttemptRepo,
+  PublishAttemptRow,
+  PublishAttemptInsert,
+  PublishAttemptInsertOutcome,
+  PublishAttemptStatus
+} from "./publish-attempt-repo.js";
+export {
+  validatePublishAttemptInsert,
+  validatePublishAttemptQueryLimit
+} from "./publish-attempt-repo.js";

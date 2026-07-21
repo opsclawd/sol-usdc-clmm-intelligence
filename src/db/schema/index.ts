@@ -12,3 +12,5 @@ export { evidenceBundles } from "./evidence-bundles.js";
 export type { EvidenceBundleRow, EvidenceBundleInsert } from "./evidence-bundles.js";
 export { researchBriefs } from "./research-briefs.js";
 export type { ResearchBriefRow, ResearchBriefInsert } from "./research-briefs.js";
+export { publishAttempts } from "./publish-attempts.js";
+export type { PublishAttemptRow, PublishAttemptInsert } from "./publish-attempts.js";
