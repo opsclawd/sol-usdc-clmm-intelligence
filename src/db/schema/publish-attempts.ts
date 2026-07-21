@@ -18,6 +18,9 @@ export const publishAttempts = intelligence.table(
     id: serial("id").primaryKey(),
     target: varchar("target", { length: 64 }).notNull(),
     targetEndpoint: text("target_endpoint").notNull(),
+    // evidence_bundle_id and research_brief_id are intentionally logical references without
+    // FOREIGN KEY constraints: append-only audit records may be replayed/restored before
+    // their evidence rows, and no cascade behavior is valid for immutable history.
     evidenceBundleId: integer("evidence_bundle_id").notNull(),
     researchBriefId: integer("research_brief_id"),
     idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
@@ -38,7 +41,6 @@ export const publishAttempts = intelligence.table(
     index("idx_pub_attempt_bundle").on(t.evidenceBundleId),
     index("idx_pub_attempt_brief").on(t.researchBriefId),
     index("idx_pub_attempt_status_recency").on(t.status, t.receivedAtUnixMs),
-    index("idx_pub_attempt_target_idem").on(t.target, t.idempotencyKey),
     check(
       "chk_pub_attempt_status",
       sql`${t.status} IN ('pending', 'sent', 'created', 'idempotent_replay', 'validation_failed', 'auth_failed', 'conflict', 'store_unavailable', 'network_failed', 'unknown_failed')`

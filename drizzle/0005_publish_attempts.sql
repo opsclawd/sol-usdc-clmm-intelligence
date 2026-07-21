@@ -28,9 +28,7 @@ CREATE TABLE "intelligence"."publish_attempts" (
 	CONSTRAINT "chk_pub_attempt_completion_order" CHECK ("intelligence"."publish_attempts"."completed_at_unix_ms" IS NULL OR "intelligence"."publish_attempts"."completed_at_unix_ms" >= "intelligence"."publish_attempts"."first_attempted_at_unix_ms")
 );
 --> statement-breakpoint
-ALTER TABLE "intelligence"."raw_observations" ALTER COLUMN "source_observation_key" SET NOT NULL;--> statement-breakpoint
 CREATE UNIQUE INDEX "uniq_pub_attempt_idem" ON "intelligence"."publish_attempts" USING btree ("target","idempotency_key","attempt_number");--> statement-breakpoint
 CREATE INDEX "idx_pub_attempt_bundle" ON "intelligence"."publish_attempts" USING btree ("evidence_bundle_id");--> statement-breakpoint
 CREATE INDEX "idx_pub_attempt_brief" ON "intelligence"."publish_attempts" USING btree ("research_brief_id");--> statement-breakpoint
-CREATE INDEX "idx_pub_attempt_status_recency" ON "intelligence"."publish_attempts" USING btree ("status","received_at_unix_ms");--> statement-breakpoint
-CREATE INDEX "idx_pub_attempt_target_idem" ON "intelligence"."publish_attempts" USING btree ("target","idempotency_key");
+CREATE INDEX "idx_pub_attempt_status_recency" ON "intelligence"."publish_attempts" USING btree ("status","received_at_unix_ms");
