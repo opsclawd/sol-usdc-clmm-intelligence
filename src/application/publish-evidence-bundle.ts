@@ -106,12 +106,6 @@ function classifyHttpStatus(status: number): {
   return { outcome: "permanent_http_failed", auditStatus: "unknown_failed" };
 }
 
-function isEvidenceBundleRowWithSchema(
-  row: EvidenceBundleRow | undefined
-): row is EvidenceBundleRow {
-  return row !== undefined && row.schemaVersion === SUPPORTED_SCHEMA_VERSION;
-}
-
 export type PublishEvidenceBundleResult =
   | { readonly outcome: "created"; readonly bundleId: number; readonly attemptCount: 1 }
   | { readonly outcome: "idempotent_replay"; readonly bundleId: number; readonly attemptCount: 1 }
@@ -124,6 +118,11 @@ export type PublishEvidenceBundleResult =
     }
   | { readonly outcome: "auth_failed"; readonly bundleId: number; readonly httpStatus: number }
   | { readonly outcome: "conflict"; readonly bundleId: number; readonly httpStatus: number }
+  | {
+      readonly outcome: "unknown_failed";
+      readonly bundleId: number;
+      readonly httpStatus: number;
+    }
   | {
       readonly outcome: "permanent_http_failed";
       readonly bundleId: number;
@@ -177,10 +176,11 @@ export async function publishEvidenceBundle(
 
   const latestBundle = await bundleRepo.findLatestByPair("SOL/USDC");
 
-  if (!isEvidenceBundleRowWithSchema(latestBundle)) {
-    if (!latestBundle) {
-      return { outcome: "bundle_not_found" };
-    }
+  if (latestBundle === undefined) {
+    return { outcome: "bundle_not_found" };
+  }
+
+  if (latestBundle.schemaVersion !== SUPPORTED_SCHEMA_VERSION) {
     const insertResult = await insertValidationFailedAudit(
       deps,
       endpoint,
@@ -237,7 +237,7 @@ export async function publishEvidenceBundle(
 
   const requestHash = latestBundle.payloadHash;
   const firstAttemptedAtUnixMs = receivedAtUnixMs;
-  const target = endpoint.replace(/^https?:\/\//, "").split("/")[0] ?? target;
+  const target = endpoint.replace(/^https?:\/\//, "").split("/")[0] ?? "";
 
   let response: HttpResponse<unknown>;
   try {
@@ -305,6 +305,7 @@ export async function publishEvidenceBundle(
       | "validation_failed"
       | "auth_failed"
       | "conflict"
+      | "unknown_failed"
       | "permanent_http_failed",
     bundleId: latestBundle.id,
     httpStatus: response.status
