@@ -333,8 +333,8 @@ export async function publishEvidenceBundle(
   let lastHttpStatus = 0;
 
   for (let attemptNumber = 1; attemptNumber <= MAX_RETRY_ATTEMPTS; attemptNumber++) {
-    const completedAtUnixMs = new Date(clock.now()).getTime();
     lastResponse = null;
+    let completedAtUnixMs: number;
 
     try {
       lastResponse = await http.postJsonRaw<unknown>(endpoint, payload, {
@@ -346,8 +346,10 @@ export async function publishEvidenceBundle(
         timeoutMs,
         maxAttempts: 1
       });
+      completedAtUnixMs = new Date(clock.now()).getTime();
       lastHttpStatus = lastResponse.status;
     } catch (err: unknown) {
+      completedAtUnixMs = new Date(clock.now()).getTime();
       lastHttpStatus = 0;
 
       const networkFailedAuditInsert: PublishAttemptInsert = {
@@ -422,7 +424,9 @@ export async function publishEvidenceBundle(
       }
 
       const retryAfterMs = parseRetryAfterHeader(
-        lastResponse?.headers?.["Retry-After"],
+        Object.entries(lastResponse?.headers ?? {}).find(
+          ([k]) => k.toLowerCase() === "retry-after"
+        )?.[1],
         completedAtUnixMs
       );
       const delayMs = calculateRetryDelay(attemptNumber, deps.retry, retryAfterMs);
@@ -493,7 +497,9 @@ export async function publishEvidenceBundle(
       }
 
       const retryAfterMs = parseRetryAfterHeader(
-        lastResponse.headers?.["Retry-After"],
+        Object.entries(lastResponse.headers ?? {}).find(
+          ([k]) => k.toLowerCase() === "retry-after"
+        )?.[1],
         completedAtUnixMs
       );
       const delayMs = calculateRetryDelay(attemptNumber, deps.retry, retryAfterMs);
