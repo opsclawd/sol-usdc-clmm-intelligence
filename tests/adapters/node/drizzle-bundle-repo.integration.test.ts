@@ -1,9 +1,19 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { eq } from "drizzle-orm";
 import { evidenceBundles } from "../../../src/db/schema/evidence-bundles.js";
 import { DrizzleBundleRepo } from "../../../src/adapters/node/drizzle-bundle-repo.js";
 import { createDb } from "../../../src/db/db.js";
 import type { Db } from "../../../src/db/db.js";
+import type { EvidenceBundleInsertOutcome } from "../../../src/ports/bundle-repo.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../../helpers/taxonomy-fixtures.js";
+
+function assertConflict(
+  outcome: EvidenceBundleInsertOutcome
+): asserts outcome is Extract<EvidenceBundleInsertOutcome, { outcome: "conflict" }> {
+  if (outcome.outcome !== "conflict") {
+    throw new Error(`expected outcome "conflict", got "${outcome.outcome}"`);
+  }
+}
 
 const TEST_DB_URL = process.env.TEST_DATABASE_URL;
 
@@ -117,6 +127,7 @@ describe("DrizzleBundleRepo integration", () => {
       const second = await repo.insertOrClassify(insert2);
 
       expect(second.outcome).toBe("conflict");
+      assertConflict(second);
       expect(second.row.id).toBe(first.row.id);
       expect(second.row.payloadHash).toBe("hash-winner");
       expect(second.incomingPayloadHash).toBe("hash-loser");
@@ -200,6 +211,7 @@ describe("DrizzleBundleRepo integration", () => {
       const conflictOutcome = result1.outcome === "conflict" ? result1 : result2;
 
       expect(conflictOutcome.outcome).toBe("conflict");
+      assertConflict(conflictOutcome);
       expect(conflictOutcome.incomingPayloadHash).toBeDefined();
       expect(winnerOutcome.row.payloadHash).toBeDefined();
     });
@@ -225,7 +237,7 @@ describe("DrizzleBundleRepo integration", () => {
 
       const found = await repo.findByPair("SOL/USDC", 1500);
       expect(found).toHaveLength(1);
-      expect(found[0].asOfUnixMs).toBe(2000);
+      expect(found[0]?.asOfUnixMs).toBe(2000);
     });
 
     it("findLatestByPair returns the most recent", async () => {

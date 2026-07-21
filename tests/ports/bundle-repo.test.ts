@@ -1,6 +1,15 @@
 import { describe, it, expect } from "vitest";
 import { FakeBundleRepo } from "../../tests/fakes/fake-bundle-repo.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
+import type { EvidenceBundleInsertOutcome } from "../../src/ports/bundle-repo.js";
+
+function assertConflict(
+  outcome: EvidenceBundleInsertOutcome
+): asserts outcome is Extract<EvidenceBundleInsertOutcome, { outcome: "conflict" }> {
+  if (outcome.outcome !== "conflict") {
+    throw new Error(`expected outcome "conflict", got "${outcome.outcome}"`);
+  }
+}
 
 const BUNDLE_INSERT_BASE = {
   confidence: DEFAULT_CONFIDENCE,
@@ -100,6 +109,7 @@ describe("EvidenceBundleRepo contract", () => {
       const second = await repo.insertOrClassify(insert2);
 
       expect(second.outcome).toBe("conflict");
+      assertConflict(second);
       expect(second.row.id).toBe(first.row.id);
       expect(second.row.payloadHash).toBe("hash-winner");
       expect(second.incomingPayloadHash).toBe("hash-loser");
@@ -191,6 +201,7 @@ describe("EvidenceBundleRepo contract", () => {
       const conflictOutcome = result1.outcome === "conflict" ? result1 : result2;
 
       expect(conflictOutcome.outcome).toBe("conflict");
+      assertConflict(conflictOutcome);
       expect(conflictOutcome.incomingPayloadHash).toBeDefined();
       expect(winnerOutcome.row.payloadHash).toBeDefined();
     });
@@ -228,7 +239,7 @@ describe("EvidenceBundleRepo contract", () => {
 
       const found = await repo.findByPair("SOL/USDC", 1500);
       expect(found).toHaveLength(1);
-      expect(found[0].asOfUnixMs).toBe(2000);
+      expect(found[0]?.asOfUnixMs).toBe(2000);
     });
 
     it("findLatestByPair returns the most recent", async () => {
