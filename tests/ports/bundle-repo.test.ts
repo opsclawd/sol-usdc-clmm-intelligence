@@ -1,61 +1,259 @@
 import { describe, it, expect } from "vitest";
 import { FakeBundleRepo } from "../../tests/fakes/fake-bundle-repo.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
+import type { EvidenceBundleInsertOutcome } from "../../src/ports/bundle-repo.js";
 
-const BUNDLE_INSERT = {
+function assertConflict(
+  outcome: EvidenceBundleInsertOutcome
+): asserts outcome is Extract<EvidenceBundleInsertOutcome, { outcome: "conflict" }> {
+  if (outcome.outcome !== "conflict") {
+    throw new Error(`expected outcome "conflict", got "${outcome.outcome}"`);
+  }
+}
+
+const BUNDLE_INSERT_BASE = {
   confidence: DEFAULT_CONFIDENCE,
   provenance: DEFAULT_PROVENANCE
 };
 
+function makeBundle(
+  overrides: Partial<{
+    schemaVersion: string;
+    pair: string;
+    asOfUnixMs: number;
+    expiresAtUnixMs: number;
+    payload: unknown;
+    payloadHash: string;
+    payloadCanonical: string;
+    idempotencyKey: string;
+    receivedAtUnixMs: number;
+  }> = {}
+) {
+  const idemKey = `idem-${Date.now()}-${Math.random()}`;
+  return {
+    ...BUNDLE_INSERT_BASE,
+    schemaVersion: "1.0",
+    pair: "SOL/USDC",
+    asOfUnixMs: 1000,
+    expiresAtUnixMs: 2000,
+    payload: { pair: "SOL/USDC" },
+    payloadHash: "hash-1",
+    payloadCanonical: '{"pair":"SOL/USDC"}',
+    idempotencyKey: idemKey,
+    receivedAtUnixMs: 1001,
+    ...overrides
+  };
+}
+
 describe("EvidenceBundleRepo contract", () => {
-  it("inserts and finds by pair", async () => {
-    const repo = new FakeBundleRepo();
-    await repo.insert({
-      ...BUNDLE_INSERT,
-      schemaVersion: "1.0",
-      pair: "SOL/USDC",
-      asOfUnixMs: 1000,
-      expiresAtUnixMs: 2000,
-      payload: { pair: "SOL/USDC" },
-      payloadHash: "hash-bundle-1",
-      receivedAtUnixMs: 1001
-    });
+  describe("insertOrClassify returns inserted for a new logical identity", () => {
+    it("creates exactly one immutable row with exact canonical payload and hash", async () => {
+      const repo = new FakeBundleRepo();
+      const insert = makeBundle();
 
-    const found = await repo.findByPair("SOL/USDC", 500);
-    expect(found).toHaveLength(1);
+      const result = await repo.insertOrClassify(insert);
+
+      expect(result.outcome).toBe("inserted");
+      expect(result.row.id).toBeGreaterThan(0);
+      expect(result.row.payloadCanonical).toBe(insert.payloadCanonical);
+      expect(result.row.payloadHash).toBe(insert.payloadHash);
+
+      const found = await repo.findLatestByPair("SOL/USDC");
+      expect(found).toBeDefined();
+      expect(found!.id).toBe(result.row.id);
+    });
   });
 
-  it("findLatestByPair returns the most recent", async () => {
-    const repo = new FakeBundleRepo();
-    await repo.insert({
-      ...BUNDLE_INSERT,
-      schemaVersion: "1.0",
-      pair: "SOL/USDC",
-      asOfUnixMs: 1000,
-      expiresAtUnixMs: 2000,
-      payload: { pair: "SOL/USDC", v: 1 },
-      payloadHash: "hash-1",
-      receivedAtUnixMs: 1001
-    });
-    await repo.insert({
-      ...BUNDLE_INSERT,
-      schemaVersion: "1.0",
-      pair: "SOL/USDC",
-      asOfUnixMs: 1500,
-      expiresAtUnixMs: 2500,
-      payload: { pair: "SOL/USDC", v: 2 },
-      payloadHash: "hash-2",
-      receivedAtUnixMs: 1501
+  describe("insertOrClassify returns identical_replay for equal identity hash and canonical text", () => {
+    it("returns the existing row without mutation", async () => {
+      const repo = new FakeBundleRepo();
+      const insert = makeBundle();
+
+      await repo.insertOrClassify(insert);
+      const second = await repo.insertOrClassify(insert);
+
+      expect(second.outcome).toBe("identical_replay");
+      expect(second.row.id).toBeDefined();
     });
 
-    const latest = await repo.findLatestByPair("SOL/USDC");
-    expect(latest).toBeDefined();
-    expect(latest!.receivedAtUnixMs).toBe(1501);
+    it("does not update any field on replay", async () => {
+      const repo = new FakeBundleRepo();
+      const insert = makeBundle({ receivedAtUnixMs: 1001 });
+
+      const first = await repo.insertOrClassify(insert);
+      const second = await repo.insertOrClassify({ ...insert, receivedAtUnixMs: 9999 });
+
+      expect(second.outcome).toBe("identical_replay");
+      expect(second.row.receivedAtUnixMs).toBe(first.row.receivedAtUnixMs);
+    });
   });
 
-  it("findLatestByPair returns undefined when no bundles exist", async () => {
-    const repo = new FakeBundleRepo();
-    const latest = await repo.findLatestByPair("SOL/USDC");
-    expect(latest).toBeUndefined();
+  describe("insertOrClassify returns conflict for equal identity with different hash", () => {
+    it("preserves the stored winner and exposes both hashes", async () => {
+      const repo = new FakeBundleRepo();
+      const sharedKey = `idem-conflict-hash-${Date.now()}`;
+      const insert1 = makeBundle({
+        idempotencyKey: sharedKey,
+        payloadHash: "hash-winner",
+        payloadCanonical: '{"pair":"SOL/USDC","winner":true}',
+        payload: { pair: "SOL/USDC", winner: true }
+      });
+      const insert2 = makeBundle({
+        idempotencyKey: sharedKey,
+        payloadHash: "hash-loser",
+        payloadCanonical: '{"pair":"SOL/USDC","winner":false}',
+        payload: { pair: "SOL/USDC", winner: false }
+      });
+
+      const first = await repo.insertOrClassify(insert1);
+      const second = await repo.insertOrClassify(insert2);
+
+      expect(second.outcome).toBe("conflict");
+      assertConflict(second);
+      expect(second.row.id).toBe(first.row.id);
+      expect(second.row.payloadHash).toBe("hash-winner");
+      expect(second.incomingPayloadHash).toBe("hash-loser");
+    });
+  });
+
+  describe("insertOrClassify returns conflict for equal identity and hash with different canonical text", () => {
+    it("a collision cannot be mistaken for replay", async () => {
+      const repo = new FakeBundleRepo();
+      const sharedKey = `idem-conflict-canonical-${Date.now()}`;
+      const insert1 = makeBundle({
+        idempotencyKey: sharedKey,
+        payloadCanonical: '{"pair":"SOL/USDC","v":1}',
+        payload: { pair: "SOL/USDC", v: 1 }
+      });
+      const insert2 = makeBundle({
+        idempotencyKey: sharedKey,
+        payloadCanonical: '{"pair":"SOL/USDC","v":2}',
+        payload: { pair: "SOL/USDC", v: 2 }
+      });
+
+      const first = await repo.insertOrClassify(insert1);
+      const second = await repo.insertOrClassify(insert2);
+
+      expect(second.outcome).toBe("conflict");
+      expect(second.row.id).toBe(first.row.id);
+    });
+  });
+
+  describe("insertOrClassify rejects jsonb not structurally equal to parsed canonical text", () => {
+    it("storage consistency is checked before the insert attempt", async () => {
+      const repo = new FakeBundleRepo();
+      const mismatchedInsert = {
+        ...makeBundle(),
+        payload: { pair: "SOL/USDC", extraField: true },
+        payloadCanonical: '{"pair":"SOL/USDC"}'
+      };
+
+      await expect(repo.insertOrClassify(mismatchedInsert)).rejects.toThrow(
+        /canonical.*payload|jsonb.*canonical|canonical.*jsonb/i
+      );
+    });
+  });
+
+  describe("concurrent identical inserts converge on one immutable row", () => {
+    it("one call inserts and the other classifies as replay", async () => {
+      const repo = new FakeBundleRepo();
+      const insert = makeBundle();
+
+      const [first, second] = await Promise.all([
+        repo.insertOrClassify(insert),
+        repo.insertOrClassify(insert)
+      ]);
+
+      const outcomes = [first.outcome, second.outcome].sort();
+      expect(outcomes).toEqual(["identical_replay", "inserted"]);
+      const inserted = first.outcome === "inserted" ? first : second;
+      const replayed = first.outcome === "identical_replay" ? first : second;
+      expect(replayed.row.id).toBe(inserted.row.id);
+    });
+  });
+
+  describe("concurrent conflicting inserts preserve one winner and report one conflict", () => {
+    it("neither call overwrites the winner", async () => {
+      const repo = new FakeBundleRepo();
+      const sharedKey = `idem-concurrent-conflict-${Date.now()}`;
+      const insert1 = makeBundle({
+        idempotencyKey: sharedKey,
+        payloadHash: "hash-a",
+        payloadCanonical: '{"a":1}',
+        payload: { a: 1 }
+      });
+      const insert2 = makeBundle({
+        idempotencyKey: sharedKey,
+        payloadHash: "hash-b",
+        payloadCanonical: '{"b":2}',
+        payload: { b: 2 }
+      });
+
+      const [result1, result2] = await Promise.all([
+        repo.insertOrClassify(insert1),
+        repo.insertOrClassify(insert2)
+      ]);
+
+      const hasConflict = [result1.outcome, result2.outcome].includes("conflict");
+      expect(hasConflict).toBe(true);
+
+      const winnerOutcome = result1.outcome === "inserted" ? result1 : result2;
+      const conflictOutcome = result1.outcome === "conflict" ? result1 : result2;
+
+      expect(conflictOutcome.outcome).toBe("conflict");
+      assertConflict(conflictOutcome);
+      expect(conflictOutcome.incomingPayloadHash).toBeDefined();
+      expect(winnerOutcome.row.payloadHash).toBeDefined();
+    });
+  });
+
+  describe("fails explicitly when the conflict winner disappears before reload", () => {
+    it("concurrent deletion is an integrity error, not a replay", async () => {
+      const repo = new FakeBundleRepo();
+      const insert = makeBundle();
+
+      const first = await repo.insertOrClassify(insert);
+      expect(first.outcome).toBe("inserted");
+
+      await repo.findLatestByPair("SOL/USDC");
+
+      const fakeRepo = repo as FakeBundleRepo;
+      fakeRepo.store.splice(
+        0,
+        fakeRepo.store.length,
+        ...fakeRepo.store.filter((r) => r.id !== first.row.id)
+      );
+      fakeRepo.deletedIdentityKeys.add(
+        `${insert.schemaVersion}:${insert.pair}:${insert.idempotencyKey}`
+      );
+
+      await expect(repo.insertOrClassify(insert)).rejects.toThrow(/deleted|integrity/i);
+    });
+  });
+
+  describe("findByPair and findLatestByPair retain existing behavior", () => {
+    it("finds bundles by pair and time", async () => {
+      const repo = new FakeBundleRepo();
+      await repo.insertOrClassify(makeBundle({ asOfUnixMs: 1000, idempotencyKey: "k1" }));
+      await repo.insertOrClassify(makeBundle({ asOfUnixMs: 2000, idempotencyKey: "k2" }));
+
+      const found = await repo.findByPair("SOL/USDC", 1500);
+      expect(found).toHaveLength(1);
+      expect(found[0]?.asOfUnixMs).toBe(2000);
+    });
+
+    it("findLatestByPair returns the most recent", async () => {
+      const repo = new FakeBundleRepo();
+      await repo.insertOrClassify(
+        makeBundle({ asOfUnixMs: 1000, idempotencyKey: "k1", receivedAtUnixMs: 1001 })
+      );
+      await repo.insertOrClassify(
+        makeBundle({ asOfUnixMs: 2000, idempotencyKey: "k2", receivedAtUnixMs: 2001 })
+      );
+
+      const latest = await repo.findLatestByPair("SOL/USDC");
+      expect(latest).toBeDefined();
+      expect(latest!.asOfUnixMs).toBe(2000);
+    });
   });
 });

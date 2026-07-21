@@ -602,4 +602,106 @@ describe("NormalizedObservationRepo contract", () => {
       expect(results[2]!.rawObservationId).toBe(3);
     });
   });
+
+  describe("findByIds", () => {
+    it("findByIds returns each requested normalized row once in id order", async () => {
+      const repo = new FakeNormalizedObservationRepo();
+      const row1 = await repo.insert({
+        rawObservationId: 1,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 150.0 },
+        payloadHash: "hash-bulk-1",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1000
+      });
+      const row2 = await repo.insert({
+        rawObservationId: 2,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 151.0 },
+        payloadHash: "hash-bulk-2",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1001
+      });
+      const row3 = await repo.insert({
+        rawObservationId: 3,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 152.0 },
+        payloadHash: "hash-bulk-3",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1002
+      });
+
+      const results = await repo.findByIds([row3.id, row1.id, row2.id, row2.id]);
+
+      expect(results).toHaveLength(3);
+      expect(results[0]!.id).toBe(row1.id);
+      expect(results[1]!.id).toBe(row2.id);
+      expect(results[2]!.id).toBe(row3.id);
+    });
+
+    it("findByIds returns an empty list for an empty request", async () => {
+      const repo = new FakeNormalizedObservationRepo();
+      await repo.insert({
+        rawObservationId: 1,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 150.0 },
+        payloadHash: "hash-bulk-empty",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1000
+      });
+
+      const results = await repo.findByIds([]);
+
+      expect(results).toHaveLength(0);
+    });
+
+    it("findByIds omits unknown ids without substituting another row", async () => {
+      const repo = new FakeNormalizedObservationRepo();
+      const row1 = await repo.insert({
+        rawObservationId: 1,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 150.0 },
+        payloadHash: "hash-bulk-missing-1",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1000
+      });
+      await repo.insert({
+        rawObservationId: 2,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 151.0 },
+        payloadHash: "hash-bulk-missing-2",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1001
+      });
+
+      const results = await repo.findByIds([999, row1.id, 888]);
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.id).toBe(row1.id);
+    });
+  });
 });

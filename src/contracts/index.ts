@@ -8,3 +8,6 @@ export * from "./normalized-pool-statistics.js";
 export * from "./collection-run.js";
 export * from "./derived-feature.js";
 export * from "./normalized-observation.js";
+export * from "./raw-observation.js";
+export * from "./evidence-bundle.js";
+export * from "./generated/evidence-bundle-v1.js";

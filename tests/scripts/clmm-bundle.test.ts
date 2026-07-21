@@ -34,6 +34,7 @@ function createMockRawObservationRepo(): RawObservationRepo {
   return {
     insertOrClassify: vi.fn(),
     findById: vi.fn(),
+    findByIds: vi.fn(),
     findByIdentity: vi.fn(),
     findByHash: vi.fn(),
     findBySource: vi.fn(),
@@ -49,7 +50,8 @@ function createMockNormalizedObservationRepo(): NormalizedObservationRepo {
     findFreshByKind: vi.fn(),
     findLatestByKind: vi.fn(),
     findByRawObservation: vi.fn(),
-    listCandidates: vi.fn()
+    listCandidates: vi.fn(),
+    findByIds: vi.fn()
   };
 }
 
@@ -191,7 +193,8 @@ describe("clmm-bundle collector lifecycle", () => {
         commandRunner: createMockCommandRunner(),
         runIdFactory: { nextRunId: () => "run-123" },
         getDb: vi.fn(),
-        getPersistence: vi.fn().mockResolvedValue(persistence)
+        getPersistence: vi.fn().mockResolvedValue(persistence),
+        getContract: vi.fn()
       };
 
       const { runClmmBundleCollector } = await import("../../scripts/collectors/clmm-bundle.js");
@@ -231,7 +234,8 @@ describe("clmm-bundle collector lifecycle", () => {
         commandRunner: createMockCommandRunner(),
         runIdFactory: { nextRunId: () => "run-123" },
         getDb: vi.fn(),
-        getPersistence: vi.fn().mockResolvedValue(persistence)
+        getPersistence: vi.fn().mockResolvedValue(persistence),
+        getContract: vi.fn()
       };
 
       const { runClmmBundleCollector } = await import("../../scripts/collectors/clmm-bundle.js");
@@ -273,7 +277,8 @@ describe("clmm-bundle collector lifecycle", () => {
         commandRunner: createMockCommandRunner(),
         runIdFactory: { nextRunId: () => "run-123" },
         getDb: vi.fn(),
-        getPersistence: vi.fn().mockResolvedValue(persistence)
+        getPersistence: vi.fn().mockResolvedValue(persistence),
+        getContract: vi.fn()
       };
 
       const { runClmmBundleCollector } = await import("../../scripts/collectors/clmm-bundle.js");

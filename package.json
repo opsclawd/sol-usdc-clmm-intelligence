@@ -10,6 +10,7 @@
     "collect:clmm-bundle": "tsx scripts/collectors/clmm-bundle.ts",
     "collect:core": "tsx scripts/collectors/core-collection.ts",
     "derive:mvp": "tsx scripts/collectors/derive-mvp-features.ts",
+    "assemble:bundle": "tsx scripts/collectors/assemble-evidence-bundle.ts",
     "cron:render": "tsx scripts/openclaw/render-cron-commands.ts",
     "cron:sync": "tsx scripts/openclaw/sync-cron.ts",
     "test": "vitest run",
@@ -22,9 +23,14 @@
     "db:generate": "drizzle-kit generate",
     "db:provision-roles": "tsx scripts/db-provision-roles.ts",
     "db:migrate": "tsx scripts/db-ensure-schema.ts && drizzle-kit migrate",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "contract:evidence-bundle:check": "tsx scripts/check-evidence-bundle-contract.ts",
+    "contract:evidence-bundle:generate": "tsx scripts/generate-evidence-bundle-contract.ts"
   },
   "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-draft-04": "^1.0.0",
+    "ajv-formats": "^3.0.1",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.36.4",
     "postgres": "^3.4.9",
@@ -43,6 +49,7 @@
     "prettier": "^3.5.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
+    "json-schema-to-typescript": "^15.0.4",
     "vitest": "^2.1.9"
   },
   "lint-staged": {

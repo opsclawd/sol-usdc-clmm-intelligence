@@ -42,7 +42,9 @@ export const derivedFeatures = intelligence.table(
     rejectedObservationIds: integer("rejected_observation_ids").array().notNull().default([]),
     derivationKey: varchar("derivation_key", { length: 128 }).notNull(),
     poolId: varchar("pool_id", { length: 64 }),
-    positionId: varchar("position_id", { length: 64 })
+    positionId: varchar("position_id", { length: 64 }),
+    warnings: jsonb("warnings").$type<string[]>().notNull().default([]),
+    reasons: jsonb("reasons").$type<string[]>().notNull().default([])
   },
   (t) => [
     uniqueIndex("uniq_features_kind_derivation_key").on(t.featureKind, t.derivationKey),

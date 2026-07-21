@@ -1,17 +1,6 @@
-import type { Source, ParseStatus } from "../contracts/taxonomy.js";
+import type { Source, ParseStatus, RawObservationRow } from "../contracts/index.js";
 
-export interface RawObservationRow {
-  id: number;
-  source: Source;
-  sourceObservationKey: string;
-  observedAtUnixMs: number;
-  fetchedAtUnixMs: number;
-  payloadHash: string;
-  payloadCanonical: string;
-  parseStatus: ParseStatus;
-  sourceRequestMeta: unknown;
-  receivedAtUnixMs: number;
-}
+export type { RawObservationRow };
 
 export interface RawObservationInsert {
   source: Source;
@@ -33,6 +22,7 @@ export type RawInsertOutcome =
 export interface RawObservationRepo {
   insertOrClassify(row: RawObservationInsert): Promise<RawInsertOutcome>;
   findById(id: number): Promise<RawObservationRow | undefined>;
+  findByIds(ids: number[]): Promise<RawObservationRow[]>;
   findByIdentity(
     source: Source,
     sourceObservationKey: string

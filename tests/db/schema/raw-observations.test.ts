@@ -17,7 +17,7 @@ describe("rawObservations schema", () => {
     expect(columns).toContain("receivedAtUnixMs");
   });
 
-  it("sourceObservationKey is nullable in schema", () => {
-    expect(rawObservations.sourceObservationKey.notNull).toBe(false);
+  it("sourceObservationKey is not null in schema", () => {
+    expect(rawObservations.sourceObservationKey.notNull).toBe(true);
   });
 });

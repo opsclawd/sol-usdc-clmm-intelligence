@@ -146,4 +146,13 @@ export class FakeNormalizedObservationRepo implements NormalizedObservationRepo 
 
     return matches;
   }
+
+  async findByIds(ids: readonly number[]): Promise<NormalizedObservationRow[]> {
+    if (ids.length === 0) return [];
+
+    const uniqueAscIds = [...new Set(ids)].sort((a, b) => a - b);
+    const results = this.store.filter((r) => uniqueAscIds.includes(r.id));
+    results.sort((a, b) => a.id - b.id);
+    return results;
+  }
 }

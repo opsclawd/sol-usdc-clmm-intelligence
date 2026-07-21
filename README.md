@@ -303,11 +303,118 @@ raw observations -> normalized records -> deterministic features
              schema-constrained research brief
                           |
                           v
-       publish attempt -> regime-engine /v1/evidence/sol-usdc
+        publish attempt -> regime-engine /v1/evidence/sol-usdc
                           |
                           v
           Regime Engine canonical PolicyInsight synthesis
 ```
+
+## Evidence Bundle Assembly
+
+The `pnpm assemble:bundle` command assembles a deterministic evidence bundle from derived features and observations. It reads a JSON request file, validates it, queries the database for candidate features, assembles the bundle, validates it against the pinned contract schema, and persists the result.
+
+### Contract Provenance and Pinned Schema
+
+The evidence bundle contract is pinned at a specific schema version with verified asset hashes:
+
+- Schema file: `schemas/regime-engine/evidence-bundle.v1/schema.json`
+- Provenance manifest: `schemas/regime-engine/evidence-bundle.v1/provenance.json`
+- Schema SHA-256: `0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17`
+
+The pinned contract (`createEvidenceBundleContract()`) verifies all asset hashes before performing validation. If any asset hash mismatches, validation aborts with `ASSET_HASH_MISMATCH`.
+
+### Request File Example
+
+```json
+{
+  "pair": "SOL/USDC",
+  "poolId": "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
+  "positionId": "Pos11111111111111111111111111111111111111111",
+  "walletId": "Wallet1234567890abcdef",
+  "pipelineRunId": "run-456",
+  "correlationId": "corr-789",
+  "evaluationTimeUnixMs": 1700000000000,
+  "createdAtUnixMs": 1700000000000,
+  "acceptedCalculatorVersions": {
+    "range_location": "range-location/v1",
+    "distance_to_lower": "distance-to-lower/v1",
+    "distance_to_upper": "distance-to-upper/v1",
+    "oracle_dex_divergence": "oracle-dex-divergence/v1",
+    "oracle_confidence_width": "oracle-confidence-width/v1",
+    "realized_volatility_1h": "realized-volatility-1h/v1",
+    "volume_liquidity_ratio_24h": "volume-liquidity-ratio-24h/v1"
+  },
+  "schemaVersion": "evidence-bundle.v1",
+  "assemblySelectionVersion": "selection/v1",
+  "codeVersion": "1.0.0",
+  "gitCommit": "abc123def456",
+  "environment": "test"
+}
+```
+
+### Redacted Output
+
+The script outputs a redacted JSON summary containing only operational fields:
+
+```json
+{
+  "outcome": "persisted",
+  "rowId": 99,
+  "payloadHash": "hash-abc",
+  "slotCount": 7,
+  "warnings": []
+}
+```
+
+**Never exposed in output:** wallet ID, canonical payload, full provenance details.
+
+### Replay Behavior
+
+Replaying the same request file with identical inputs produces an `identical_replay` outcome with the same `rowId` and `payloadHash`. The idempotency key is derived from the request's identity fields (schema version, publisher, source ID, run ID, correlation ID, pair, scope, and as-of timestamp).
+
+### Seven-Slot Selection and Expiry
+
+The assembler selects up to seven canonical feature slots from candidate derived features:
+
+1. `range_location` — position range placement (PPM)
+2. `distance_to_lower` — price distance to lower tick (BPS)
+3. `distance_to_upper` — price distance to upper tick (BPS)
+4. `oracle_dex_divergence` — oracle vs DEX price divergence (BPS)
+5. `oracle_confidence_width` — oracle confidence interval width (BPS)
+6. `realized_volatility_1h` — 1-hour realized volatility (BPS)
+7. `volume_liquidity_ratio_24h` — 24h volume to TVL ratio (PPM)
+
+Features are selected based on freshness (within 1 hour of `evaluationTimeUnixMs`) and version compatibility. Selection orders by: slot descending, then `observedAtUnixMs` descending, then `receivedAtUnixMs` descending, then ID ascending.
+
+### Quality and Coverage Vocabulary
+
+- **Quality levels:** `complete` (all slots usable), `partial` (some usable), `degraded` (major gaps)
+- **Coverage statuses:** `available`, `partial`, `unavailable`, `not_applicable`
+- **Confidence:** composite score in basis points (BPS), level `high`/`medium`/`low`
+- **Warnings:** explicit codes for missing contextual evidence, unavailable research brief, expired-only slots
+
+### Lineage Verification
+
+The assembler verifies that selected features have valid lineage back to raw observations. It checks:
+
+- Raw observation existence and consistency
+- Normalized observation chain integrity
+- Wallet/position/pool consistency with CLMM canonical source
+- Feature derivation key authenticity
+
+### Canonical Hash and Idempotency Semantics
+
+The idempotency key is derived from: schema version, publisher, source ID, run ID, correlation ID, pair, scope (kind + identifiers), as-of timestamp, created timestamp, and sorted feature IDs with calculator versions.
+
+The canonical payload hash is SHA-256 of the canonicalized JSON payload (deterministic key ordering, no undefined values).
+
+### Publishing Boundary
+
+Future publishing to regime-engine must send the stored `payloadCanonical` directly without reassembly. The stored canonical form is the authoritative idempotent representation.
+
+### Migration Precondition
+
+The migration that introduces evidence bundle constraints assumes `intelligence.evidence_bundles` is empty. If any row exists, the migration aborts. Do not rewrite or delete existing rows without lead engineer approval.
 
 ## Integration contracts
 
@@ -372,6 +479,7 @@ The render step prints the OpenClaw commands needed to register cron jobs define
 pnpm collect:core         # collects CLMM, Pyth, Jupiter, and Orca telemetry to Postgres
 pnpm collect:price        # legacy command: collects Pyth and Jupiter telemetry to Postgres, updates compatibility snapshot
 pnpm collect:clmm-bundle  # legacy command: fetches and writes SOL/USDC CLMM bundle from clmm-v2
+pnpm assemble:bundle      # assembles evidence bundle from derived features and observations
 pnpm db:generate          # generates Drizzle migrations from schema changes
 pnpm db:migrate           # runs Drizzle migrations against DATABASE_URL
 pnpm db:push              # pushes schema changes directly (dev only)

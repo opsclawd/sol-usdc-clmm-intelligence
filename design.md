@@ -1,435 +1,473 @@
-# Deterministic MVP SOL/USDC Evidence Feature Tranche
+# Deterministic EvidenceBundle v1 Assembly and Persistence Design
 
-**Issue:** #25
+## Status and contract gate
 
-**Status:** Design
+This document designs the intelligence-side assembly and persistence boundary for a deterministic-only `EvidenceBundle v1`. It does not define the downstream wire shape from prose.
 
-**Date:** 2026-07-19
+Implementation remains blocked until the issue records all of the following from merged `opsclawd/regime-engine#58`:
 
-**Parent:** #8
+- the Regime Engine commit SHA;
+- the repository-relative JSON Schema path;
+- schema version `evidence-bundle.v1`;
+- the schema SHA-256;
+- the canonical valid and invalid fixture paths; and
+- the canonicalization, payload-hash, and idempotency rules exercised by those fixtures.
 
-**Dependencies:** #22, #23, and #24 are present on the current branch
-
-## Summary
-
-Add the first complete normalized-observation-to-derived-feature vertical slice. A new application use case will load bounded candidate observations, pass them to pure deterministic selectors, calculate exactly seven versioned features, propagate freshness, confidence, and complete lineage, and persist auditable `AVAILABLE`, `PARTIAL`, or `UNAVAILABLE` results.
-
-The seven canonical stored identifiers follow the repository's established lowercase snake-case convention. They map one-to-one to the issue's uppercase names:
-
-| Issue name                   | Canonical `FeatureKind`      | Scope    | Unit  |
-| ---------------------------- | ---------------------------- | -------- | ----- |
-| `RANGE_LOCATION`             | `range_location`             | position | `PPM` |
-| `DISTANCE_TO_LOWER`          | `distance_to_lower`          | position | `BPS` |
-| `DISTANCE_TO_UPPER`          | `distance_to_upper`          | position | `BPS` |
-| `ORACLE_DEX_DIVERGENCE`      | `oracle_dex_divergence`      | pair     | `BPS` |
-| `ORACLE_CONFIDENCE_WIDTH`    | `oracle_confidence_width`    | pair     | `BPS` |
-| `REALIZED_VOLATILITY_1H`     | `realized_volatility_1h`     | pair     | `BPS` |
-| `VOLUME_LIQUIDITY_RATIO_24H` | `volume_liquidity_ratio_24h` | pool     | `PPM` |
-
-The issue names are not persisted as a second alias set. One canonical spelling avoids split registries and ambiguous queries.
+The pinned schema and fixtures are the authority. If they do not permit a deterministic-only bundle with absent contextual evidence and no research brief, or do not fully define canonicalization and identity, this issue must stop rather than fill the gap with an intelligence-local convention.
 
 ## Problem and why it matters
 
-The repository now durably ingests the prerequisite facts:
+The repository can now collect normalized SOL/USDC observations and persist seven deterministic feature kinds, but it has no use case that turns a coherent set of those feature rows into the exact artifact consumed later by Regime Engine.
 
-- clmm-v2 `position_state` observations contain position range bounds and current price;
-- Pyth `oracle_price` observations contain an exact decimal price and confidence width;
-- Jupiter `executable_quote` observations contain an amount-specific implied price and route availability;
-- Orca `pool_statistics` observations contain documented 24-hour volume and TVL semantics.
+Building that artifact during an HTTP publish would couple evidence selection, contract mapping, persistence, and network retries. The resulting request would be hard to replay, inspect, or prove identical to an earlier attempt. A durable bundle boundary solves that problem:
 
-Those facts are individually auditable, but downstream systems should not repeatedly reinterpret source payloads or implement financial formulas independently. Doing so would create formula drift, inconsistent stale-data handling, fake zero fallbacks, and evidence that cannot be reproduced after code changes.
+- feature selection can be deterministic and tested independently of transport;
+- the exact schema-valid payload and canonical bytes can be audited before publication;
+- retries can later publish an existing bundle rather than rebuild evidence;
+- missing, partial, unavailable, and expired evidence remain visible instead of becoming zero values;
+- identical assembly attempts can replay safely, while logical-identity collisions with different content fail explicitly; and
+- the authority boundary remains intact: this repository emits evidence, not a `PolicyInsight` or execution instruction.
 
-The MVP tranche establishes the missing derivation boundary: source normalization remains source-specific, feature selection and arithmetic become deterministic code, and every stored result names the exact normalized rows and calculator version that produced it. This lets the later evidence-bundle stage consume stable features without making this repository a policy engine.
+This separation is especially important because contextual collectors and LLM briefs do not yet exist. The first bundle must honestly represent a deterministic-only vertical slice without overstating total evidence coverage.
 
-## Codebase findings that shape the design
+## Current codebase findings
 
-1. The layered monolith already has the correct dependency direction. Contracts belong in `src/contracts`, pure work in `src/domain`, repository orchestration in `src/application`, and Drizzle in `src/adapters/node` and `src/db`. Calculators must not import ports, clocks, environment readers, or database types.
-2. `FeatureKind` and `featureKindRegistry` are exhaustively typed with `as const satisfies Record<FeatureKind, FeatureKindEntry>`. The current four feature kinds are placeholders; no feature derivation application use case exists. The new registry should contain the seven MVP kinds, not claim that deferred placeholders such as `fee_apr` or `volatility_24h` are active.
-3. `derived_features` currently has nullable `value` and generic JSONB fields but no first-class status, unit, scope, calculator version, or normalized-input identity. Its unique key `(feature_kind, payload_hash)` is useful but insufficiently expressive for formula-version and input-set idempotency.
-4. `NormalizedObservationRepo` queries by source/kind and receipt time. Pair, pool, position, and semantic `asOf` values live inside JSON payloads. Therefore SQL can perform a coarse bounded read, but the final choice must be a pure, unit-tested selector over typed candidates.
-5. `findFreshByKind` only checks the persisted `is_stale` flag. A row that was fresh at ingestion may have expired since then. Derivation must compare `validUntilUnixMs` with the explicit evaluation time and cannot silently trust that query.
-6. Exact provider values are already normalized as decimal strings for Pyth, Jupiter, Orca, and CLMM price labels. The existing CLMM contract also carries a binary floating-point `currentPrice`, but feature math should prefer `currentPriceLabel`, `lowerPriceLabel`, and `upperPriceLabel` to avoid needless precision loss.
-7. Existing provenance can represent the required chain: feature `derivedFromRefs` can point to normalized rows, while `rawObservationRefs` and `sourceRefs` can be flattened from those rows. No new source calls or raw records are needed.
-8. Existing confidence and freshness helpers are pure and registry-driven, but they were designed around available artifacts. Feature derivation needs an explicit result envelope and status-aware provenance rules so a legitimate missing-input result can be persisted without inventing a source reference.
+The proposed design follows the existing layered modular monolith:
+
+- `src/contracts` holds runtime/data contracts;
+- `src/domain` holds pure selection, hashing, and feature logic;
+- `src/ports` defines persistence and other boundary interfaces;
+- `src/application` orchestrates use cases through ports;
+- `src/jobs` provides thin wrappers;
+- `src/adapters/node` contains Drizzle and Node implementations; and
+- `scripts` contains thin operator entrypoints.
+
+Relevant existing capabilities are:
+
+- `DerivedFeatureV1` already models the seven required feature kinds, `AVAILABLE | PARTIAL | UNAVAILABLE`, units, pair and scope, feature timestamps, confidence, freshness, input and rejected normalized-observation IDs, provenance, warnings/reasons, and calculator/selection versions.
+- `derived_features` persists the same audit fields and deduplicates by `(feature_kind, derivation_key)`.
+- `DerivedFeatureRepo.findByKind` can provide candidates, although its current API does not express an upper time bound, scope, or supported calculator versions. Those semantic filters must remain in pure code even if the persistence query is later bounded more tightly.
+- Feature scope differs by kind: range features are position- and pool-scoped; volume/liquidity is pool-scoped; oracle divergence, oracle confidence width, and volatility are pair-scoped.
+- Feature provenance already contains raw and normalized references. The bundle must add the selected derived-feature IDs and preserve the underlying references in the canonical representation required by Regime Engine.
+- Normalized position payloads do not contain `walletId`. The raw clmm-v2 bundle does, while raw request metadata contains only a wallet hash. If the canonical contract requires wallet identity, bundle assembly must resolve it from the lineage-linked raw clmm-v2 payload and verify it against the requested context; it cannot infer wallet ownership from `positionId` alone.
+- The current `evidence_bundles` table stores a JSONB payload and hash and deduplicates on `(pair, payload_hash)`. It has no canonical-payload text or logical idempotency key, so it cannot preserve the exact bytes hashed or detect “same logical identity, different content.”
+- `DrizzleBundleRepo.insert` silently returns a row on a pair/hash collision. That is sufficient for exact-content replay only, not the conflict behavior required here.
+- `src/domain/content-hash.ts` implements a repository-local sorted-key JSON serialization. It must not be assumed to match the Regime Engine contract.
+- `createNodeRuntime().getPersistence()` currently composes raw, normalized, and feature repositories but not the existing bundle repository.
+- Dependency rules allow application code to depend on ports, domain, and contracts while keeping database and Node details in adapters. The new flow should preserve those boundaries.
 
 ## Goals
 
-- Implement exactly the seven MVP feature kinds as pure, versioned calculations.
-- Make selection deterministic, visible, and independently unit-testable.
-- Persist available, degraded-but-usable, and unavailable outcomes without fake zeros.
-- Preserve exact normalized input IDs plus raw/source lineage.
-- Ensure a replay of the same derivation identity returns the existing row, while a formula/version/input change creates a new row.
-- Document enough sampling and rounding detail to reproduce golden fixtures.
+The design must enable one application operation to:
+
+1. select a deterministic evidence snapshot for one SOL/USDC wallet/position/Whirlpool context;
+2. represent all seven required feature slots without fabricating values;
+3. compute quality, coverage, freshness, confidence, warnings, and lineage only by pinned deterministic rules;
+4. map the snapshot to the exact `EvidenceBundle v1` contract, with canonical empty/unavailable contextual evidence and an absent research brief;
+5. validate and canonicalize the complete payload according to the pinned Regime Engine contract;
+6. persist the canonical payload and audit metadata; and
+7. classify an identical replay as idempotent and a same-identity/different-content replay as a conflict.
 
 ## Non-goals
 
-- No new source collectors or changes to upstream APIs.
-- No fee APR, inventory, expected fee capture, fee-to-volatility, rebalance-cost, breach-probability, wick, breakout, volume-confirmation, liquidity-cliff, route-risk, flow, perp, funding, liquidation, news, support/resistance, or LLM-derived feature.
-- No evidence-bundle construction or publication.
-- No research briefs, PolicyInsight synthesis, recommendations, or policy decisions.
-- No clmm-v2 UI or execution changes, wallet operations, quote sizing for a real trade, transaction construction, signing, or submission.
-- No general feature DSL or plugin framework.
-
-## Design decisions
-
-### 1. Introduce one typed feature result envelope
-
-Add a `DerivedFeatureV1` discriminated contract containing:
-
-- `schemaVersion: 1`;
-- canonical `featureKind`;
-- `status: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE"`;
-- `value: number | null` and `unit: "BPS" | "PPM"`;
-- `pair: "SOL/USDC"`, optional `poolId`, and position identity for the three position-scoped kinds;
-- `asOfUnixMs` and `expiresAtUnixMs`;
-- `confidence` and immutable freshness state;
-- sorted `inputObservationIds` and `rejectedObservationIds`;
-- complete `provenance`;
-- sorted warning/reason codes;
-- `calculatorVersion` and `selectionVersion`;
-- calculation metadata needed to reproduce the result, such as range classification or volatility sample coverage.
-
-The status invariant is strict:
-
-- `AVAILABLE` has a non-null finite value and all required inputs are fresh, valid, and complete.
-- `PARTIAL` has a non-null finite value, but at least one input has a nonfatal quality degradation. Examples are an Orca provider warning with both required fields present or a wide Pyth confidence interval used by divergence. `PARTIAL` never means “we guessed a missing operand.”
-- `UNAVAILABLE` always has `value: null`. Missing, expired, malformed, semantically inconsistent, insufficient-window, invalid-range, and zero/negative-denominator cases land here.
-
-Below-range and above-range positions are valid market states, not missing data. Their range features remain `AVAILABLE` unless another input defect exists, with explicit classification warnings that disambiguate a clamped zero or one.
-
-Runtime validation should parse the result before persistence and enforce the status/value, unit/kind, and scope/kind relationships. Expected data failures return an `UNAVAILABLE` result; programmer violations of the result contract throw and prevent persistence.
-
-### 2. Keep database reads coarse and final selection pure
-
-Extend `NormalizedObservationRepo` with a bounded candidate-list operation accepting source/kind pairs and a receipt-time lower bound. The Drizzle adapter may filter those indexed columns and return a stable `(receivedAtUnixMs, id)` order. It must not decide “latest,” inspect JSON scope fields, or hide tie-breaking in SQL.
-
-Pure selector functions then:
-
-1. validate and narrow the unknown payload to the expected normalized contract;
-2. match exact pair and requested pool/position identity;
-3. enforce the required canonical source;
-4. enforce persisted `isStale`, `validUntilUnixMs > evaluationAsOfUnixMs`, and payload-specific validity;
-5. order by semantic observation time, then provider slot when available, then `receivedAtUnixMs`, then normalized row ID;
-6. return both selected rows and rejected candidate IDs/reasons.
-
-The application request is explicit:
-
-```text
-pair = SOL/USDC
-poolId = configured Whirlpool address
-positionIds = non-empty caller-supplied position identities
-evaluationAsOfUnixMs = injected clock value
-```
-
-The use case derives three range features per requested position and the four pair/pool features once. Requiring position IDs is intentional: without a requested identity, the system cannot persist an auditable “position unavailable” result. A future scheduler may discover the IDs from another bounded workflow, but discovery is not part of calculator behavior.
-
-For point-in-time features, `asOf` is the maximum semantic timestamp among selected inputs and expiry is the minimum input `validUntilUnixMs`. Multi-source oracle/DEX inputs may differ by at most 30 seconds; larger skew is unavailable. Coarse query windows include a small receipt-time safety margin, but acceptance is always decided from payload time.
-
-### 3. Use exact scaled-integer arithmetic and one rounding rule
-
-Add a small pure decimal/rational helper that parses signed decimal strings into `BigInt` coefficient/scale pairs, performs rational multiplication and division, and rounds to an integer. It must reject empty strings, exponent notation, non-finite values, and division by zero.
-
-All BPS and PPM values are stored as scaled integers. The common rounding rule is **nearest integer, ties away from zero**. This rule applies only after the complete rational formula, never to intermediate operands. Outputs must remain within JavaScript's safe-integer range before conversion to `number`; otherwise the result is `UNAVAILABLE` with `numeric_overflow`. This retains the existing numeric port without silently truncating large values.
-
-Realized volatility is the one deliberate floating-point calculation because ECMAScript `Math.log` is needed. Exact decimal strings are validated as positive and converted to finite numbers only for log returns; the final nonnegative BPS result uses the same nearest-integer rule. The calculator version records this semantic explicitly.
-
-### 4. Define each calculator precisely
-
-#### Range location (`range-location/v1`)
-
-Input: one fresh clmm-v2 `position_state` matching pair and position.
-
-Use exact `currentPriceLabel`, `lowerPriceLabel`, and `upperPriceLabel` values:
-
-```text
-raw = (current - lower) / (upper - lower)
-value = clamp(raw, 0, 1) * 1_000_000 PPM
-```
-
-Require all prices positive and `upper > lower`. Validate that the payload's `rangeState` agrees with price ordering; disagreement is unavailable rather than silently trusting either representation. Emit one of `below_range_clamped`, `in_range`, `above_range_clamped`, `at_lower_boundary`, or `at_upper_boundary` in calculation metadata/warnings.
-
-#### Distance to lower (`distance-to-lower/v1`)
-
-Use the same selected position and validation:
-
-```text
-value = ((current - lower) / current) * 10_000 BPS
-```
-
-Do not clamp. A negative value explicitly represents price below the lower bound.
-
-#### Distance to upper (`distance-to-upper/v1`)
-
-Use the same selected position and validation:
-
-```text
-value = ((upper - current) / current) * 10_000 BPS
-```
-
-Do not clamp. A negative value explicitly represents price above the upper bound.
-
-#### Oracle–DEX divergence (`oracle-dex-divergence/v1`)
-
-Inputs: the latest eligible Pyth `oracle_price` and latest eligible Jupiter `executable_quote`, both for SOL/USDC and no more than 30 seconds apart.
-
-Require Pyth status `trading`, positive oracle price, `routeAvailable: true`, and a positive Jupiter implied price. Do not use clmm-v2 pool price or Jupiter Price v3 as a substitute.
-
-```text
-value = abs(dexPrice - oraclePrice) / oraclePrice * 10_000 BPS
-```
-
-A wide Pyth interval or a nonfatal Jupiter quality warning makes the result `PARTIAL`, retains the numeric value, and propagates the warning and confidence degradation. A missing route, expired input, or excessive temporal skew is `UNAVAILABLE`.
-
-#### Oracle confidence width (`oracle-confidence-width/v1`)
-
-Input: the latest eligible Pyth `oracle_price`. Require `trading`, positive price, and nonnegative confidence.
-
-```text
-value = confidence / oraclePrice * 10_000 BPS
-```
-
-The width is still a valid measurement when it is large; emit `oracle_confidence_wide`, degrade confidence, and use `PARTIAL` rather than suppressing the observed width. Halted/auction, stale, malformed, or nonpositive-price observations are unavailable.
-
-#### One-hour realized volatility (`realized-volatility-1h/v1`)
-
-Accepted series: Pyth `oracle_price` only. Jupiter executable quotes are amount- and route-specific and are not mixed into the time series.
-
-Selection and sampling policy:
-
-- Anchor `asOf` to the latest eligible fresh Pyth observation at or before evaluation time.
-- Include valid `trading`, positive-price samples in the inclusive window `[asOf - 3_600_000 ms, asOf]`.
-- Sort by Pyth observed timestamp ascending. For duplicate timestamps, retain the row with the highest slot, then highest `receivedAtUnixMs`, then highest normalized ID; record discarded IDs.
-- Out-of-order database results are harmless because sorting occurs before calculation.
-- Require at least 10 distinct samples, at least 45 minutes between the first and last sample, and no adjacent gap greater than 10 minutes.
-- Historical samples inside the window need not still be fresh at evaluation time; only the anchor must be fresh. Requiring every historical point to be currently unexpired would make a one-hour series impossible under the 60-second oracle policy.
-
-For ordered prices `p[0..n-1]`:
-
-```text
-r[i] = ln(p[i] / p[i-1])
-realizedVolatility = sqrt(sum(r[i]^2))
-value = realizedVolatility * 10_000 BPS
-```
-
-This is a non-annualized one-hour realized-volatility measure with no mean subtraction and no time-scaling factor. Insufficient samples, insufficient span, an excessive gap, or a non-finite return is unavailable. Calculation metadata records sample count, first/last timestamps, maximum gap, and duplicate IDs.
-
-#### Twenty-four-hour volume/liquidity ratio (`volume-liquidity-ratio-24h/v1`)
-
-Input: latest eligible Orca `pool_statistics` matching pair and pool, with `window: "24h"`.
-
-Use `volume24hUsdc` as rolling 24-hour swap volume and `tvlUsdc` as the Orca pool TVL/liquidity denominator documented by #24:
-
-```text
-value = volume24hUsdc / tvlUsdc * 1_000_000 PPM
-```
-
-Missing volume or TVL, or TVL less than or equal to zero, is unavailable. Zero volume with positive TVL is a legitimate available zero. A provider warning with both operands present yields `PARTIAL`; it does not replace either value.
-
-### 5. Propagate confidence and freshness conservatively
-
-Add a pure feature-confidence helper. For selected inputs it takes the component-wise minimum of source reliability, completeness, and derivation confidence, applies the feature registry policy, applies an explicit partial-quality factor where applicable, and caps the final composite at the lowest input composite. Therefore a derived feature cannot be more confident than its weakest input.
-
-For unavailable results, confidence is low with a zero derivation-confidence component and a reason such as `required_component_missing`; it is never fabricated as high confidence. If rejected rows exist, their confidence and lineage remain visible.
-
-`expiresAtUnixMs` is the feature contract name. The adapter maps it to the existing `derived_features.valid_until_unix_ms` column, whose semantics already match the required expiry. This avoids a redundant timestamp column. Available/partial results are stale when that time is reached. An unavailable result expires immediately at its deterministic evaluation time unless it is deduplicated as the same derivation outcome.
-
-Feature provenance is assembled as follows:
-
-- `derivedFromRefs`: one `normalized_observation` ref per selected or outcome-determining rejected normalized row, sorted by ID;
-- `rawObservationRefs`: de-duplicated raw refs flattened from those normalized observations;
-- `sourceRefs`: de-duplicated source refs from the same provenance;
-- `processRef`: derivation job/use-case identity, pipeline run ID, code version, and no model version;
-- `codeVersion`: repository code version;
-- calculator and selection versions: explicit feature fields, not overloaded into `codeVersion`.
-
-Provenance validation becomes status-aware. Available and partial results must meet each kind's source/ref minima. Unavailable results may have no refs when nothing was observed, but must have at least one stable reason code; when a rejected candidate exists its lineage is mandatory.
-
-### 6. Make persistence first-class and idempotent
-
-Add a migration and update the Drizzle schema/port with:
-
-- `status varchar NOT NULL` with an `AVAILABLE|PARTIAL|UNAVAILABLE` check;
-- `unit varchar NOT NULL` with a `BPS|PPM` check;
-- `pair varchar NOT NULL`;
-- `pool_id text NULL` and `position_id text NULL`;
-- `calculator_version varchar NOT NULL`;
-- `selection_version varchar NOT NULL`;
-- `input_observation_ids integer[] NOT NULL`;
-- `rejected_observation_ids integer[] NOT NULL`;
-- `derivation_key varchar(64) NOT NULL`;
-- required `structured_payload` containing reason codes and calculation metadata.
-
-Add checks that unavailable rows have null values, available/partial rows have non-null values, and position-scoped kinds have a position ID. Add a feature-kind check containing exactly the seven canonical identifiers. The migration must abort on unexpected historical feature kinds rather than delete or rewrite them; the design assumes the table has no production feature rows because no writer currently exists.
-
-`derivationKey` is the canonical hash of:
-
-```text
-schema version + feature kind + scope + calculator version + selection version
-+ sorted selected IDs + sorted outcome-determining rejected IDs + stable reason codes
-```
-
-The actual result payload is separately canonically hashed into `payloadHash`. The unique key becomes `(feature_kind, derivation_key)`. Formula or selector changes require a version change and therefore create a new row. A changed observation set creates a new row. Re-running the same versioned selection outcome returns the existing row. Scope and reasons are included so two missing positions, or missing versus expired evidence, do not collapse into one unavailable record.
-
-Add `insertMany` to `DerivedFeatureRepo` and implement it transactionally with conflict recovery in caller order, following the normalized-observation repository pattern. The application builds and validates all requested results before inserting any of them, so a programming error cannot persist half a tranche. Expected unavailable results are ordinary valid rows.
-
-### 7. Orchestrate through one application use case
-
-`deriveMvpFeatures` receives repositories, clock, run ID/code version inputs, and the explicit request scope. It performs no external HTTP calls.
-
-Data flow:
-
-```text
-bounded candidate reads from normalized_observations
-                 |
-                 v
-pure payload validation and deterministic selection
-                 |
-       +---------+--------------------+
-       |         |          |         |
-  position     Pyth      Jupiter     Orca
-   state       series      quote     24h stats
-       |         |          |         |
-       +---- seven pure calculators --+
-                 |
-       confidence/freshness/lineage
-                 |
-     runtime result-contract validation
-                 |
-       transactional idempotent insert
-                 |
-          derived_features
-```
-
-A thin job and operator script may expose the use case and print counts by status plus stable warnings. Complete calculation and partial/unavailable evidence are all successful command execution if persistence succeeds; infrastructure, validation-contract, or database failures are command failures. This command does not publish a bundle.
-
-## Alternatives considered
-
-### A. Pure selectors and calculators behind one application use case — recommended
-
-This follows the current architecture, makes every business choice testable without a database, and adds only the persistence fields needed for auditability. The trade-off is a somewhat richer result contract and a coarse candidate query, but both are explicit and bounded.
-
-### B. Put “latest valid” logic in Drizzle/SQL
-
-Postgres JSON expressions and window functions could return one row per scope efficiently. This was rejected for the MVP because pair/position/as-of fields are embedded in versioned JSON payloads and the issue explicitly requires unit-testable selection. It would also make tie-breaking and malformed-payload behavior adapter-specific. If candidate volume later becomes material, normalized identity columns can be added as a separate indexing change while retaining the pure selector as the semantic authority.
-
-### C. Have each calculator query its own inputs and persist its own row
-
-This minimizes central orchestration, but couples pure formulas to I/O, repeats source/freshness/tie-breaking rules, and makes a consistent tranche snapshot difficult. It violates the repository boundary and the issue guardrail.
-
-### D. Store only successful scalar values in the existing table
-
-The current nullable scalar and JSONB fields could technically hold the seven values. This was rejected because unavailable states, units, scopes, versions, and input identities would be convention-only and hard to query or constrain. It would preserve the exact audit gaps this issue is intended to close.
-
-## Error handling
-
-| Condition                                                    | Result                                                                        |
-| ------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| No matching normalized row                                   | `UNAVAILABLE`, `missing_input`, null value                                    |
-| Payload fails its normalized contract                        | `UNAVAILABLE`, `malformed_normalized_input`, null value, rejected-row lineage |
-| Persisted stale flag or expiry at evaluation time            | `UNAVAILABLE`, `stale_input`, null value                                      |
-| Invalid/nonpositive range denominator or current price       | `UNAVAILABLE`, stable invalid-range reason                                    |
-| Pyth halted/auction or nonpositive oracle price              | `UNAVAILABLE`, stable oracle-status reason                                    |
-| Jupiter route unavailable or implied price absent            | `UNAVAILABLE`, `route_unavailable`                                            |
-| Oracle/DEX timestamps differ by more than 30 seconds         | `UNAVAILABLE`, `input_time_skew_exceeded`                                     |
-| Wide oracle interval/provider warning but valid operands     | `PARTIAL`, numeric value retained                                             |
-| Too few volatility samples, short coverage, or excessive gap | `UNAVAILABLE`, exact coverage reason                                          |
-| Missing/zero/negative Orca TVL                               | `UNAVAILABLE`, null value; never zero                                         |
-| Exact arithmetic exceeds safe output range                   | `UNAVAILABLE`, `numeric_overflow`                                             |
-| Result contract or provenance invariant is violated          | Throw before any feature insert                                               |
-| Database transaction fails                                   | Roll back the requested batch and fail the command                            |
-| Unique-key replay                                            | Return existing feature row in deterministic caller order                     |
-
-All warning and reason arrays are sorted and de-duplicated before hashing and persistence.
-
-## Testing strategy
-
-### Contract and taxonomy tests
-
-- The seven kinds are the exhaustive canonical feature set and map to the correct family, signal class, unit, freshness policy, confidence policy, and allowed sources.
-- Runtime parsing enforces status/value, kind/unit, scope, timestamps, sorted IDs, finite safe-integer values, and calculator versions.
-- Removed placeholder kinds fail feature-kind parsing.
-
-### Selector tests
-
-- Exact pair, pool, and position matching.
-- Source allowlists: Pyth for oracle/volatility, Jupiter quote for DEX, Orca for volume/TVL, clmm-v2 for ranges.
-- Semantic as-of ordering plus slot, receipt time, and normalized-ID tie-breaks.
-- Stored-fresh-but-now-expired rows are rejected.
-- Malformed newest rows do not become valid by accident; rejection is explicit and deterministic.
-- Duplicate timestamps and out-of-order volatility rows produce the same ordered series and discarded-ID list.
-
-### Calculator and golden-fixture tests
-
-- Below-range, in-range, exact-boundary, and above-range location results and warnings.
-- Signed lower/upper distances.
-- Invalid and zero-width ranges.
-- Exact divergence and confidence-width BPS rounding.
-- Stale oracle, unavailable Jupiter route, wide oracle confidence, and excessive source time skew.
-- Non-annualized volatility golden series, inclusive boundary, minimum 10 samples, 45-minute coverage, maximum 10-minute gap, duplicate timestamps, and nonpositive prices.
-- Exact volume/TVL PPM result, legitimate zero volume, absent liquidity, and zero/negative liquidity.
-- Decimal magnitudes near rounding ties and safe-integer overflow.
-- Purity checks demonstrate that calculators depend only on arguments.
-
-### Application and persistence tests
-
-- Three results are produced per requested position and four once per pair/pool.
-- Selected and rejected IDs, flattened raw lineage, confidence cap, expiry minimum, and versions are preserved.
-- Available, partial, and unavailable rows all persist.
-- Same derivation identity is idempotent under sequential and concurrent replays.
-- Changed input IDs, scope, calculator version, selection version, or reasons produce a distinct row.
-- Batch persistence preserves request order and rolls back on failure.
-- Migration/schema tests cover all checks and the exact seven-kind allowlist.
-- Full `pnpm verify` remains the final local gate.
+This design does not include:
+
+- HTTP publication to Regime Engine;
+- endpoint configuration, authentication, retries, backoff, or publish-attempt rows;
+- contextual collectors or contextual inference;
+- LLM research-brief generation;
+- Regime Engine evidence selection, scoring, market-regime classification, or `PolicyInsight` synthesis;
+- clmm-v2 UI, wallet signing, transaction construction, or liquidity execution;
+- new deterministic feature formulas beyond the seven already implemented;
+- policy/risk-rule changes; or
+- a generic multi-pair or multi-position bundle format beyond what the canonical v1 schema requires.
 
 ## Assumptions
 
-1. The issue's uppercase names describe enum concepts; lowercase snake-case values are the canonical wire/database identifiers because that is the repository-wide taxonomy convention.
-2. The existing four feature kinds are unused placeholders. The derived feature table contains no production rows for them; the migration will fail safely rather than deleting data if this assumption is wrong.
-3. clmm-v2 price labels are canonical plain decimal strings. The current validator accepts arbitrary strings, so derivation performs stricter decimal validation and treats invalid labels as unavailable.
-4. Pyth remains the only canonical oracle series for this tranche, Jupiter executable quote remains the DEX price, and Orca TVL is the intended liquidity denominator.
-5. A 30-second maximum Pyth/Jupiter skew is appropriate because Jupiter quotes expire after 30 seconds in the current taxonomy.
-6. Pyth is collected often enough that 10 observations spanning at least 45 minutes with no gap above 10 minutes is attainable. Until that coverage exists, volatility is correctly unavailable.
-7. Non-annualized `sqrt(sum(logReturn^2))` is the intended v1 realized-volatility definition.
-8. Integer BPS/PPM outputs with nearest/ties-away-from-zero rounding are sufficient for downstream evidence. Raw operands and formula metadata remain available for audit.
-9. Caller-supplied pool and position identities are available to the derivation job. This is necessary to record scoped unavailability rather than silently omitting a missing position.
-10. Candidate volume remains small enough for bounded coarse reads and pure in-memory selection. Indexing JSON scope fields is deferred until measured query volume justifies it.
-11. Existing `valid_until_unix_ms` can represent the required feature `expiresAt` semantic without a redundant database column.
-12. Unavailable evidence is useful for audit and should be persisted, but it is not eligible for later evidence-bundle publication as a numeric fact.
+No questions were asked; the design proceeds with these explicit assumptions:
+
+1. Regime Engine issue #58 will merge a contract that permits empty or explicitly unavailable contextual sections and a nullable or explicitly unavailable research brief.
+2. The contract package will define, or its fixtures will unambiguously demonstrate, field names, canonicalization, payload hashing, idempotency identity, timestamp semantics, and quality/coverage rules. If any of these remain unspecified, the contract must be clarified upstream before implementation.
+3. A bundle represents exactly one `SOL/USDC` position context. The request therefore includes pair, wallet identity, position ID, Whirlpool/pool ID, run/correlation ID, evaluation time, creation time, and the accepted calculator versions.
+4. Run/correlation and creation-time inputs come from an immutable assembly run context. Replaying that logical run reuses the same context; a new run gets a new logical identity even when it selects the same feature rows.
+5. The pinned downstream schema and fixtures may be copied into this repository with a provenance manifest because runtime builds and tests must not depend on network access or a mutable branch in another repository.
+6. The canonical fixture license and repository policy permit that pinned copy.
+7. A feature is expired at `evaluationTime >= validUntilUnixMs`. The stored `isStale` flag is retained as audit metadata but is not sufficient for evaluating freshness later because it reflects derivation time.
+8. “Latest” means the greatest semantic `asOfUnixMs`, followed by greatest `receivedAtUnixMs`, followed by greatest database ID. The contract may replace this tie-break only if it explicitly requires another ordering.
+9. `PARTIAL` with a non-null numeric value remains usable evidence but lowers quality and emits warnings. `UNAVAILABLE`, expired, unsupported-version, and missing candidates never contribute a numeric value.
+10. Contract-invalid bundles are not persisted. Invalidity is returned as an assembly failure, not encoded as a durable bundle quality state.
+11. No intelligence-local aggregate score will be invented. If the contract requires a scalar score, its exact formula and rounding must come from the pinned rules and be covered by fixtures.
+
+## Approaches considered
+
+### A. Pinned contract gateway plus pure selection/assembly core — recommended
+
+Pin the authoritative schema and fixtures in the repository, generate or derive TypeScript types from that schema, and expose validation/canonicalization behind a narrow contract boundary. Keep feature selection, snapshot classification, quality inputs, warning construction, and lineage aggregation in small pure domain functions. Let one application use case load candidates, assemble and validate the payload, then persist it through an idempotency-aware repository.
+
+Benefits:
+
+- aligns with the current layered architecture;
+- makes semantic selection and quality rules unit-testable without Postgres;
+- prevents a handwritten TypeScript or Zod contract from drifting from the downstream schema;
+- keeps canonicalization replaceable if the contract algorithm changes by schema version;
+- produces a transport-independent durable artifact; and
+- supports exact replay and explicit conflict behavior.
+
+Trade-off: the repository must maintain a deliberate contract-sync step and provenance manifest. That maintenance is preferable to a runtime dependency on another repository or an unversioned schema fetch.
+
+### B. Recreate EvidenceBundle v1 as local Zod/types and use the existing hash helper
+
+This would match current runtime-contract patterns and require fewer new dependencies. It is rejected because the issue explicitly forbids reconstructing the downstream schema from prose. A local Zod model would become a second contract, and the existing sorted-key serializer has not been proven equivalent to the Regime Engine canonicalization algorithm.
+
+### C. Store ordinary JSONB now and assemble/validate while publishing later
+
+This would minimize this issue’s changes. It is rejected because JSONB does not preserve canonical serialized bytes, the existing pair/hash uniqueness cannot detect logical identity conflicts, and publish retries would rebuild evidence from a changing database. It also defeats the issue’s purpose of creating a stable replayable artifact before network behavior.
+
+## Recommended architecture
+
+### 1. Pinned canonical contract assets
+
+Add a versioned contract asset directory under `schemas/regime-engine/evidence-bundle.v1/` containing:
+
+- the exact JSON Schema from the recorded Regime Engine commit;
+- only the canonical fixtures needed for valid, invalid, deterministic-only, hashing, and idempotency tests; and
+- a provenance manifest recording upstream repository, commit, source paths, schema version, SHA-256 values, and copy date.
+
+Contract tests first verify every copied asset against the manifest hashes. The schema is then compiled by a standards-compliant JSON Schema validator for its declared draft. TypeScript types should be generated from the pinned schema or kept as generated checked-in output; they must not be manually broadened or narrowed.
+
+Expose a version-specific contract service with one operation conceptually equivalent to:
+
+```text
+validateCanonicalizeAndHash(candidate)
+  -> { payload, payloadCanonical, payloadHash, schemaVersion }
+  | contract validation error
+```
+
+The service owns only canonical contract mechanics. It does not select features or assign quality. The implementation must use the contract-mandated canonicalization and hash algorithm. The current `canonicalizePayload` helper may be reused only if golden contract tests establish byte-for-byte canonical string and hash equality.
+
+### 2. Explicit assembly request and immutable run context
+
+The application use case receives an explicit request rather than reading environment variables or generating identity internally. Conceptually it contains:
+
+```text
+pair = SOL/USDC
+walletId
+positionId
+poolId / whirlpoolId
+runId / correlationId
+evaluationTimeUnixMs
+createdAtUnixMs
+accepted calculator version per required feature kind
+contract schema version
+assembly selection version
+code version
+```
+
+The request is validated before database reads. Pair is fixed to `SOL/USDC` for v1. Empty identity fields, unsupported schema versions, duplicate/unknown feature version entries, or creation/evaluation times that violate canonical contract rules fail closed.
+
+The exact treatment of wallet identity—plain public key, hash, or another identifier—comes from the pinned contract. The assembly request should not log wallet values, and persistence should store only the canonical representation required downstream.
+
+### 3. Bounded candidate retrieval, pure deterministic selection
+
+Extend the feature repository with a bounded candidate query rather than embedding “latest valid” semantics in SQL. The adapter may filter by the seven kinds, pair, a lower and upper `asOf` bound, and a reasonable received-time bound for efficiency. It must return all candidates needed to make the decision.
+
+Pure selection then processes each required kind independently:
+
+1. reject rows whose pair differs from the request;
+2. reject rows whose calculator version is not the accepted version for that kind;
+3. enforce scope:
+   - range location and lower/upper distances must match pair + pool + position;
+   - volume/liquidity ratio must match pair + pool and have no position scope;
+   - oracle divergence, oracle confidence width, and realized volatility must match pair and have neither pool nor position scope;
+4. reject rows from the future (`asOfUnixMs > evaluationTimeUnixMs`);
+5. classify rows as expired when `evaluationTimeUnixMs >= validUntilUnixMs`, regardless of the stored `isStale` value;
+6. order eligible rows by `asOfUnixMs DESC`, `receivedAtUnixMs DESC`, and `id DESC`;
+7. choose the first row; and
+8. retain stable rejection reasons and the most relevant rejected IDs for warnings and audit.
+
+The selector returns exactly seven slots in canonical feature-kind order. Each slot is one of:
+
+- selected `AVAILABLE`;
+- selected `PARTIAL`;
+- selected `UNAVAILABLE`;
+- missing;
+- expired-only; or
+- unsupported-version-only.
+
+`AVAILABLE` and `PARTIAL` retain their numeric values and units. Every other slot has no numeric value. Existing unavailable reason codes and warnings are preserved; bundle-level selection warnings are added using a stable, versioned vocabulary.
+
+Selection should use the persisted feature envelope as its authority. It must not recalculate any feature from normalized observations.
+
+### 4. Scope and lineage verification
+
+Before assembly, verify that the position-scoped feature lineage actually belongs to the requested wallet, position, and pool when the canonical contract requires those identities.
+
+The selected feature rows already contain normalized observation IDs and raw provenance references. Add bounded bulk lookup methods for the referenced normalized and raw observations so the use case can:
+
+- confirm every referenced normalized ID exists and matches the feature’s provenance;
+- confirm every normalized row’s raw parent exists;
+- verify payload hashes and sources against stored provenance refs;
+- parse the lineage-linked clmm-v2 raw canonical payload with the existing clmm bundle validator;
+- confirm wallet, position, pool, and pair relationships; and
+- assemble de-duplicated raw-observation, normalized-observation, and derived-feature references in stable order.
+
+A broken, contradictory, or cross-position lineage chain is a hard assembly error. It is not ordinary “missing feature” degradation because persisting it would falsely attest provenance.
+
+If the canonical contract requires only opaque wallet identity and the raw lineage cannot supply it safely, the operation fails rather than trusting an unrelated request value.
+
+### 5. Deterministic quality, coverage, and warnings
+
+Quality is computed from the seven selection slots and contract-defined contextual/brief absence. Keep the rule set pure and versioned.
+
+The quality input always records:
+
+- counts and names of `AVAILABLE`, `PARTIAL`, `UNAVAILABLE`, missing, expired, and unsupported-version features;
+- contextual evidence as absent using the canonical representation;
+- research brief as absent using the canonical representation;
+- whether all selected evidence is deterministic;
+- the minimum expiry across usable feature rows;
+- source coverage derived from verified lineage; and
+- sorted, de-duplicated warnings and reason codes.
+
+The baseline classification is:
+
+- complete deterministic coverage only when all seven slots are fresh `AVAILABLE` rows at the accepted versions;
+- partial deterministic coverage when at least one slot is usable and any slot is partial, unavailable, missing, expired, or unsupported;
+- unavailable deterministic coverage when no slot is usable; and
+- contract invalid when mapping or schema validation fails.
+
+The use case persists complete or partial bundles only if the canonical contract permits them. Given the repository’s fail-closed default posture, a zero-usable-feature result produces no bundle unless the pinned contract explicitly requires a durable unavailable bundle.
+
+Contextual and brief absence must reduce or qualify total coverage as the canonical rules require, but must not incorrectly turn valid deterministic feature coverage into “complete overall evidence.” `researchBrief: null` or an explicit unavailable object is selected strictly from the schema.
+
+Confidence aggregation must be monotonic: the bundle cannot be more confident than the evidence it summarizes. The exact aggregate formula, weighting, rounding, and absent-evidence treatment come from Regime Engine. If no scalar is mandated, publish categorical levels and component facts only; do not add an intelligence-specific score.
+
+### 6. Pure canonical payload assembly
+
+A pure assembler maps the request, seven selected slots, quality result, verified lineage, contextual absence, and brief absence into the generated `EvidenceBundle v1` type.
+
+The assembler must populate, using the canonical field names:
+
+- schema and source identity;
+- run/correlation identity;
+- pair, wallet, position, and Whirlpool context as required;
+- `asOf`, creation, and expiry timestamps;
+- seven deterministic feature summaries in contract-defined stable order;
+- quality, freshness, confidence, coverage, and warnings;
+- source coverage and source refs;
+- raw-observation, normalized-observation, and derived-feature lineage;
+- empty/unavailable contextual collections; and
+- absent research brief.
+
+Timestamp rules must be deterministic and contract-driven. As a default semantic model, bundle `asOf` is derived from the selected evidence snapshot, expiry is the earliest expiry among usable selected inputs, and creation time comes from the immutable run context. The implementation must replace these defaults if the pinned contract specifies otherwise.
+
+The assembler does not include the payload hash inside the hashed material unless the canonical contract explicitly defines a non-recursive envelope convention. Likewise, the idempotency key is computed from exactly the canonical identity fields, not from ad hoc database columns.
+
+After assembly, the contract service validates the complete candidate, produces canonical text, and hashes those exact bytes. No persistence occurs before this succeeds.
+
+### 7. Persistence model and conflict semantics
+
+Retain JSONB `payload` for database inspection, but add fields needed for exact audit and idempotency:
+
+- `payload_canonical text NOT NULL` for the exact canonical bytes represented as text;
+- `idempotency_key` with a length/format matching the contract;
+- any canonical source/run/position identity columns required for operational lookup; and
+- an appropriate unique index on canonical schema/source identity plus `idempotency_key`, according to the pinned semantics.
+
+The migration must verify or safely handle historical bundle rows before adding `NOT NULL` fields. It must not manufacture canonical text or idempotency keys for existing rows. If production rows exist and cannot be proven canonical, the migration stops for an explicit data-migration decision.
+
+The repository operation should return a discriminated outcome rather than silently returning any conflicting row:
+
+```text
+inserted(row)
+identical_replay(row)
+conflict(existing row identity/hash, incoming identity/hash)
+```
+
+The Drizzle adapter inserts under the unique logical identity. On conflict it loads the winner and compares schema version, idempotency key, payload hash, and canonical payload text:
+
+- exact equality is `identical_replay`;
+- any difference is an explicit immutable conflict; and
+- the stored row is never overwritten.
+
+This lookup-after-conflict pattern also handles concurrent assemblers. The existing `(pair, payload_hash)` index may remain as a non-authoritative lookup or be replaced after migration analysis, but it cannot be the logical idempotency constraint.
+
+The adapter also verifies that `JSON.parse(payloadCanonical)` is structurally equal to `payload` before insert. Contract validation remains the application gate; the repository enforces storage consistency and conflict behavior.
+
+### 8. Application, job, and runtime composition
+
+Add `assembleEvidenceBundle` under `src/application`. Its flow is:
+
+```text
+validate explicit request
+        |
+        v
+load bounded feature candidates
+        |
+        v
+pure seven-slot selection
+        |
+        v
+bulk-load and verify lineage/scope
+        |
+        v
+pure quality + coverage classification
+        |
+        v
+pure canonical-contract mapping
+        |
+        v
+schema validate + canonicalize + hash
+        |
+        v
+derive canonical idempotency identity
+        |
+        v
+insert / identical replay / explicit conflict
+        |
+        v
+return bundle row and stable outcome summary
+```
+
+The use case performs no HTTP calls and no LLM calls. Expected evidence degradation is returned in bundle quality and warnings. Invalid requests, corrupt lineage, schema violations, canonicalization failures, and persistence conflicts are hard failures.
+
+A thin job binds repositories, contract service, and clock/run inputs. The composition root adds `bundleRepo` and the canonical contract implementation to persistence/runtime dependencies. A thin script may expose deterministic assembly and print only IDs, status counts, warnings, hash, and replay outcome; it must avoid logging wallet-sensitive payload content.
+
+## Identity and replay invariants
+
+The following invariants are required regardless of the exact field names chosen by the pinned contract:
+
+1. Candidate ordering is total and stable; database return order cannot affect selection.
+2. Reordering source arrays, warning inputs, or lineage refs cannot change canonical output because those collections are normalized into contract-defined stable order before canonicalization.
+3. The idempotency identity includes schema version, source identity, run/correlation identity, pair and required position scope, selection version, accepted calculator versions, and selected input identities exactly as required by Regime Engine.
+4. The payload hash is calculated over the exact persisted `payloadCanonical` text.
+5. An identical logical identity plus identical canonical content returns the original row.
+6. An identical logical identity plus different canonical content returns a conflict and never overwrites.
+7. A changed selected feature ID, calculator version, selection version, contract schema version, or logical run identity produces auditable new identity/content according to the canonical rules.
+8. Missing, unavailable, or expired evidence never becomes numeric zero.
+9. A legitimate numeric zero from an `AVAILABLE`/`PARTIAL` feature remains zero.
+10. A schema-invalid or provenance-invalid candidate never reaches `evidence_bundles`.
+11. Publication code later reads the stored canonical bundle and never reassembles it.
+
+## Error handling
+
+Errors fall into three groups:
+
+- **Expected degraded evidence:** missing, partial, unavailable, expired, or unsupported-version feature slots; absent context; absent brief. These become deterministic quality facts and warnings when the contract permits persistence.
+- **Contract/lineage failures:** schema mismatch, asset hash mismatch, invalid canonical fixture behavior, contradictory identity, missing referenced row, provenance hash mismatch, unsupported schema, or undefined canonical semantics. These fail closed before persistence.
+- **Infrastructure/integrity failures:** database errors, concurrent deletion after conflict, or logical idempotency conflict. These return explicit typed failures and do not retry or overwrite in this issue.
+
+Warnings and reasons use stable codes in canonical sorted order. Human-readable diagnostic messages may accompany them outside the hashed contract payload only if the contract permits; tests should assert codes rather than incidental prose.
+
+## Testing strategy
+
+### Contract conformance
+
+- verify pinned schema and fixture SHA-256 values against the provenance manifest;
+- compile the declared JSON Schema draft;
+- validate all canonical valid and invalid fixtures with expected outcomes;
+- prove canonical text and payload hashes byte-for-byte against Regime Engine fixtures;
+- prove deterministic-only, empty-context, absent-brief payload validity; and
+- fail tests if generated TypeScript types drift from the pinned schema.
+
+### Pure selection and quality
+
+- complete seven-feature coverage;
+- one and multiple missing kinds;
+- `PARTIAL` and `UNAVAILABLE` rows;
+- stale/expired rows evaluated after derivation;
+- future rows;
+- unsupported calculator versions;
+- pair, pool, and position mismatches;
+- deterministic tie-breaks for equal semantic timestamps;
+- legitimate numeric zero versus unavailable null;
+- stable order and de-duplication of warnings and refs;
+- no usable features; and
+- contextual and research-brief absence represented without claiming complete overall coverage.
+
+### Lineage
+
+- complete raw -> normalized -> derived lineage;
+- missing normalized or raw reference;
+- provenance payload-hash mismatch;
+- wallet/position/pool mismatch in the clmm-v2 raw payload;
+- duplicate refs collapsed in stable order; and
+- global, pool-scoped, and position-scoped feature lineage combined correctly.
+
+### Application orchestration
+
+- schema-valid bundle persists once;
+- exact replay returns the original row;
+- same idempotency key with different canonical content returns conflict;
+- schema mismatch and invalid canonical fixture persist nothing;
+- complete, missing, partial, unavailable, stale, nullable-brief, and empty-context cases map as specified;
+- contract service is called before repository insert; and
+- no HTTP, publisher, or LLM dependency is introduced.
+
+### Persistence and concurrency
+
+- migration columns, constraints, and indexes match the contract lengths/semantics;
+- insert and exact replay outcomes;
+- same-key/different-hash and same-key/different-canonical-text conflicts;
+- two concurrent identical inserts converge to one row and two replay-compatible outcomes;
+- two concurrent conflicting inserts preserve one immutable winner and report one conflict;
+- JSONB/canonical-text consistency; and
+- migration abort behavior when unconvertible historical bundles exist.
+
+## Documentation and replay example
+
+Developer/operator documentation should record:
+
+- the pinned Regime Engine contract provenance and update procedure;
+- the seven selection rules and version;
+- exact quality/coverage rules from the canonical contract;
+- timestamp, expiry, canonicalization, hash, and idempotency semantics;
+- the meaning of inserted, identical replay, and conflict outcomes;
+- an example that assembles a deterministic-only bundle from fixed feature IDs and replays it to the same persisted row; and
+- the boundary that later publication sends the stored artifact without rebuilding it.
 
 ## Risks and concerns
 
-### Normalized payload fields are not indexed
+### Missing canonical dependency
 
-Pair, pool, position, and source observation time are JSON fields. Bounded reads are correct for the MVP but may become expensive with 365-day warm retention. Query metrics should determine whether a later migration promotes these identities to columns.
+The issue does not yet contain the required Regime Engine commit, schema path/hash, or fixtures. Exact payload fields, optional-section representation, hash algorithm, and identity cannot be finalized until that pin exists. This is a hard implementation stop, not permission to infer the contract.
 
-### Freshness is partly dynamic
+### Existing bundle schema is insufficient
 
-Persisted `isStale` describes ingestion time, while expiry continues to advance. Every feature selector must check `validUntilUnixMs` against its explicit evaluation time. Reusing `findFreshByKind` would admit expired evidence and is specifically unsafe.
+JSONB does not preserve canonical bytes, and pair/hash uniqueness cannot express logical identity conflicts. A migration and repository contract change are unavoidable. Historical rows may make a safe `NOT NULL` migration impossible without an explicit data decision.
 
-### CLMM labels are weakly validated upstream
+### Wallet lineage gap
 
-The normalized CLMM contract types price labels as strings, and its source validator does not currently require decimal syntax. The derivation boundary must validate them strictly. Tightening upstream normalization may be desirable later, but this issue should not mutate historical normalized payloads.
+Normalized position observations omit `walletId`; only the raw clmm-v2 bundle retains it. If the canonical bundle requires wallet identity, assembly must hydrate and validate raw lineage. Trusting only the request value would permit a position/wallet mismatch.
 
-### Floating-point volatility reproducibility
+### Freshness drift
 
-`Math.log` cannot use the exact rational path. Versioning the formula, validating conversion, storing the selected price strings/sample metadata, and rounding only at the end bound the risk. Cross-language consumers should treat the stored integer result as canonical rather than recomputing it with another math library.
+Persisted `isStale` is a snapshot at derivation time. Assembly at a later time must recalculate expiration from `validUntilUnixMs` and its explicit evaluation time.
 
-### Confidence has multiple meanings
+### Feature-query growth
 
-Pyth's confidence interval, repository evidence confidence, and feature availability status are separate. The design preserves all three. Collapsing a wide oracle interval into `UNAVAILABLE` would hide a useful measurement; ignoring it in propagated confidence would overstate quality.
+`findByKind` can return more data than needed and does not take an upper bound or scope. A bounded candidate query is warranted, but SQL must remain only a coarse filter so deterministic semantic selection stays pure and adapter-independent.
 
-### Unavailable-result deduplication needs a complete identity
+### Duplicate contract logic
 
-An unavailable calculation may have no selected input. Scope, rejected IDs, stable reasons, and selector version must therefore be part of the derivation key. Omitting any of them could collapse distinct operational failures into one row.
+Generated types, schema validation, canonicalization, and quality rules can drift if maintained independently. The design mitigates this with pinned assets, manifest hashes, generated types, and golden cross-repository fixtures. Quality formulas absent from the contract must be clarified upstream rather than duplicated locally.
 
-### Provenance retention is logical rather than relational
+### Numeric canonicalization
 
-Provenance IDs in JSON/arrays are not foreign keys, and raw observations have shorter retention than derived features. Payload hashes and flattened references preserve audit identity after hot-row expiry, but durable raw archival policy remains a broader persistence concern.
+Feature values are safe integers today, but confidence scores and other contract fields may be decimals. Canonical JSON algorithms differ in numeric rendering. Tests must cover exact fixture bytes; ordinary `JSON.stringify`, JSONB round-trips, and the current local serializer cannot be presumed safe.
 
-### Migration compatibility
+### Ambiguous creation time and replay
 
-Adding non-null/check-constrained fields assumes the table is unused. The migration must perform a precondition check and abort with an actionable error on historical rows instead of inventing statuses, units, or versions for data it cannot classify reliably.
+If assembly uses an ambient clock inside the hashed payload, rebuilding the same logical identity can create a conflict. Creation time therefore belongs to the explicit immutable run context and must be reused for replay.
 
-## Documentation deliverables
+### Partial versus no-bundle posture
 
-Update the taxonomy and architecture documentation, README feature inventory, and operator runbook to list these seven as the implemented MVP tranche, state the exact formulas/sampling/rounding rules, show one available and one unavailable invocation/result, and repeat the deferred #8 feature list. Documentation must state that derived features are deterministic evidence only and do not authorize a rebalance or any execution action.
+The issue asks for explicit degraded coverage, while repository policy says to produce no bundle when data is stale or low confidence. This design resolves the tension by allowing schema-valid partial bundles when at least one deterministic feature is usable and refusing a zero-usable bundle unless the canonical contract explicitly requires it. The exact threshold remains subordinate to pinned canonical rules.
+
+### Sensitive identifiers
+
+Wallet and position identifiers may be sensitive operational data. Only contract-required representations should be persisted or logged, and scripts should emit bundle IDs/hashes rather than full payloads by default.
+
+## Scope summary
+
+In scope is a pinned-contract, deterministic, schema-valid, replayable `EvidenceBundle v1` persisted with complete lineage and explicit degraded coverage. Out of scope is every network, LLM, policy-synthesis, UI, and execution concern. The publisher in the parent issue must consume this persisted canonical artifact as-is.

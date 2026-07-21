@@ -4,36 +4,20 @@ import type {
   EvidenceFamily,
   Confidence,
   StaleBehavior,
-  Provenance
-} from "../contracts/taxonomy.js";
+  Provenance,
+  DerivedFeatureRow
+} from "../contracts/index.js";
 
-export interface DerivedFeatureRow {
-  id: number;
-  featureKind: FeatureKind;
-  signalClass: SignalClass;
-  evidenceFamily: EvidenceFamily;
-  value: number | null;
-  structuredPayload: unknown;
-  asOfUnixMs: number;
-  confidence: Confidence;
-  confidenceComposite: number | null;
-  confidenceLevel: string | null;
-  validUntilUnixMs: number | null;
-  isStale: boolean;
-  staleBehavior: StaleBehavior | null;
-  provenance: Provenance;
-  payloadHash: string;
-  receivedAtUnixMs: number;
-  status: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
-  unit: "BPS" | "PPM";
-  pair: string;
-  calculatorVersion: string;
-  selectionVersion: string;
-  inputObservationIds: number[];
-  rejectedObservationIds: number[];
-  derivationKey: string;
-  poolId: string | null;
-  positionId: string | null;
+export type { DerivedFeatureRow };
+
+export interface BundleFeatureCandidateQuery {
+  readonly featureKinds: readonly FeatureKind[];
+  readonly pair: "SOL/USDC";
+  readonly asOfAtOrAfterUnixMs: number;
+  readonly asOfAtOrBeforeUnixMs: number;
+  readonly receivedAtOrBeforeUnixMs: number;
+  readonly poolId?: string;
+  readonly positionId?: string;
 }
 
 export interface DerivedFeatureInsert {
@@ -74,4 +58,5 @@ export interface DerivedFeatureRepo {
     derivationKey: string
   ): Promise<DerivedFeatureRow | undefined>;
   findByKind(featureKind: FeatureKind, sinceUnixMs: number): Promise<DerivedFeatureRow[]>;
+  listBundleCandidates(query: BundleFeatureCandidateQuery): Promise<DerivedFeatureRow[]>;
 }

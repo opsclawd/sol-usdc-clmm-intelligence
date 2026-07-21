@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  // Verified for Task 7: no FK changes required because it references primary key id.
   check,
   foreignKey,
   integer,

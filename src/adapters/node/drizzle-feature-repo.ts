@@ -1,9 +1,10 @@
-import { eq, and, gte, or } from "drizzle-orm";
+import { eq, and, gte, lte, or, inArray, desc } from "drizzle-orm";
 import { derivedFeatures } from "../../db/schema/derived-features.js";
 import type {
   DerivedFeatureRepo,
   DerivedFeatureInsert,
-  DerivedFeatureRow
+  DerivedFeatureRow,
+  BundleFeatureCandidateQuery
 } from "../../ports/feature-repo.js";
 import type {
   FeatureKind,
@@ -40,7 +41,9 @@ function toPortRow(row: typeof derivedFeatures.$inferSelect): DerivedFeatureRow 
     rejectedObservationIds: row.rejectedObservationIds,
     derivationKey: row.derivationKey,
     poolId: row.poolId,
-    positionId: row.positionId
+    positionId: row.positionId,
+    warnings: row.warnings ?? [],
+    reasons: row.reasons ?? []
   };
 }
 
@@ -221,6 +224,35 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
           gte(derivedFeatures.asOfUnixMs, sinceUnixMs)
         )
       );
+    return rows.map(toPortRow);
+  }
+
+  async listBundleCandidates(query: BundleFeatureCandidateQuery): Promise<DerivedFeatureRow[]> {
+    const conditions = [
+      inArray(derivedFeatures.featureKind, [...query.featureKinds]),
+      eq(derivedFeatures.pair, query.pair),
+      gte(derivedFeatures.asOfUnixMs, query.asOfAtOrAfterUnixMs),
+      lte(derivedFeatures.asOfUnixMs, query.asOfAtOrBeforeUnixMs),
+      lte(derivedFeatures.receivedAtUnixMs, query.receivedAtOrBeforeUnixMs)
+    ];
+
+    if (query.poolId !== undefined) {
+      conditions.push(eq(derivedFeatures.poolId, query.poolId));
+    }
+    if (query.positionId !== undefined) {
+      conditions.push(eq(derivedFeatures.positionId, query.positionId));
+    }
+
+    const rows = await this.db
+      .select()
+      .from(derivedFeatures)
+      .where(and(...conditions))
+      .orderBy(
+        desc(derivedFeatures.asOfUnixMs),
+        desc(derivedFeatures.receivedAtUnixMs),
+        desc(derivedFeatures.id)
+      );
+
     return rows.map(toPortRow);
   }
 }

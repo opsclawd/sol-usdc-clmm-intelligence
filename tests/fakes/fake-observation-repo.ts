@@ -43,6 +43,18 @@ export class FakeObservationRepo implements RawObservationRepo {
     return this.store.get(id);
   }
 
+  async findByIds(ids: number[]): Promise<RawObservationRow[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const uniqueIds = [...new Set(ids)];
+    const results = uniqueIds
+      .map((id) => this.store.get(id))
+      .filter((row): row is RawObservationRow => row !== undefined)
+      .sort((a, b) => a.id - b.id);
+    return results;
+  }
+
   async findByIdentity(
     source: Source,
     sourceObservationKey: string

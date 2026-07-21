@@ -1,0 +1,5 @@
+{
+  "verdict": "done_with_fixes",
+  "summary": "Fixed Task 7 by adding `src/db/schema/research-briefs.ts` to `expected_files` in task-manifest.json and clarifying Step 3 in plan.md. The P1 findings for Tasks 2, 5, and 6 are incorrect — the manifest already contains all the cited signature declarations: `BundleSelectionRequest` and `SelectedFeatureSlot` (Task 2), `VerifyEvidenceLineageInput` and `VerifiedEvidenceLineage` (Task 5), and `AssembleEvidenceBundleInput` (Task 6). Only the Task 7 diagnostic was valid and has been addressed.",
+  "rebuttal": "Task 2 signature_changes (lines 112-118) already declares `BundleSelectionRequest` and `SelectedFeatureSlot` in `src/domain/evidence-bundle/select.ts`. Task 5 signature_changes (lines 261-273) already declares `VerifyEvidenceLineageInput` and `VerifiedEvidenceLineage` in `src/domain/evidence-bundle/lineage.ts`. Task 6 signature_changes (lines 343-352) already declares `AssembleEvidenceBundleInput` in `src/domain/evidence-bundle/assemble.ts` alongside the other Task 6 symbols. The manifest is correct for those tasks; the reviewer may have been looking at a stale version."
+}

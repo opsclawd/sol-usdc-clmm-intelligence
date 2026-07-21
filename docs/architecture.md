@@ -172,3 +172,99 @@ All seven canonical features are derived by code from normalized source observat
 **Freshness minimum:** Features are valid for one hour from `asOfUnixMs` (`expiresAtUnixMs = asOfUnixMs + 3_600_000`). Selectors also compare `validUntilUnixMs` against the single evaluation timestamp to detect expired source observations at query time.
 
 **Lineage and derivation key:** Every feature carries `inputObservationIds` (sorted, unique), `rejectedObservationIds` (sorted, unique), `calculatorVersion`, `selectionVersion`, and a `derivationKey` that is a canonical hash of the complete input identity. Unavailable outcomes include `reasons` in the derivation key identity so that distinct failure modes produce distinct keys.
+
+## Evidence Bundle Assembly
+
+The evidence bundle assembly layer combines derived features, raw observations, and contextual evidence into a canonical, signable payload for regime-engine.
+
+### Architecture
+
+```text
+derived_features ──────────────────>│
+                                   │
+raw_observations ──────────────────>├──> selectEvidenceFeatureSlots()
+                                   │
+normalized_observations ───────────>│
+                                   v
+                           classifyEvidenceBundleQuality()
+                                   │
+                                   v
+                           verifyEvidenceLineage()
+                                   │
+                                   v
+                    assembleEvidenceBundleCandidate()
+                                   │
+                                   v
+              contract.validateCanonicalizeAndHash()
+                                   │
+                                   v
+                           bundleRepo.insertOrClassify()
+```
+
+### Persistence Contract
+
+The `Persistence` interface exposes five repositories:
+
+```typescript
+interface Persistence {
+  connection: DbConnection;
+  rawObservationRepo: RawObservationRepo;
+  normalizedObservationRepo: NormalizedObservationRepo;
+  featureRepo: DerivedFeatureRepo;
+  bundleRepo: EvidenceBundleRepo; // NEW
+  briefRepo: ResearchBriefRepo; // NEW
+}
+```
+
+All repositories share a single lazy database connection initialized on first `getPersistence()` call.
+
+### Pinned Contract Adapter
+
+The `createEvidenceBundleContract()` function creates a pinned contract adapter that:
+
+1. Verifies asset hashes from `provenance.json` against known SHA-256 values
+2. Loads the JSON Schema for `evidence-bundle.v1`
+3. Validates candidate payloads against the schema
+4. Performs domain validations (duplicate feature IDs, lineage resolution, lifecycle ordering, coverage matching)
+5. Canonicalizes payloads deterministically (sorted keys, no undefined)
+6. Computes SHA-256 payload hash
+7. Derives idempotency key from identity fields
+
+### Canonical Hash and Idempotency
+
+**Idempotency key derivation:**
+
+```
+identityFields = [
+  schemaVersion, publisher, sourceId,
+  runId, correlationId, pair, scope.kind,
+  scope.identifiers...,
+  sortedFeatures.map(f => [featureId, calculator.name, calculator.version])...
+]
+idempotencyKey = SHA256(identityFields.join("|"))
+```
+
+**Canonical payload:** Deterministic JSON with sorted object keys, no undefined values, string values double-quoted.
+
+### Insert Classification
+
+`bundleRepo.insertOrClassify()` returns one of three outcomes:
+
+- **inserted:** New bundle persisted
+- **identical_replay:** Same idempotency key with identical payload hash — no new row
+- **conflict:** Same idempotency key with different payload hash — existing row returned, incoming rejected
+
+The unique index is on `(schemaVersion, pair, idempotencyKey)`.
+
+### Script Entry Point
+
+The `pnpm assemble:bundle` script:
+
+1. Reads a JSON request file
+2. Validates request structure before database access
+3. Obtains persistence lazily
+4. Invokes `assembleEvidenceBundleJob`
+5. Emits redacted JSON (outcome, rowId, payloadHash, slotCount, warnings)
+6. Sets exit code 1 on conflict or error
+
+**Never logs:** wallet ID, canonical payload, full provenance.

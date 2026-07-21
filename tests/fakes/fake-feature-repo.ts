@@ -1,7 +1,8 @@
 import type {
   DerivedFeatureRepo,
   DerivedFeatureRow,
-  DerivedFeatureInsert
+  DerivedFeatureInsert,
+  BundleFeatureCandidateQuery
 } from "../../src/ports/feature-repo.js";
 import type { FeatureKind } from "../../src/contracts/taxonomy.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
@@ -58,7 +59,9 @@ export class FakeFeatureRepo implements DerivedFeatureRepo {
           rejectedObservationIds: row.rejectedObservationIds ?? [],
           derivationKey: row.derivationKey,
           poolId: row.poolId ?? null,
-          positionId: row.positionId ?? null
+          positionId: row.positionId ?? null,
+          warnings: row.warnings ?? [],
+          reasons: row.reasons ?? []
         };
         this.store.push(result);
         batchInsertedMap.set(key, result);
@@ -80,5 +83,25 @@ export class FakeFeatureRepo implements DerivedFeatureRepo {
 
   async findByKind(featureKind: FeatureKind, sinceUnixMs: number): Promise<DerivedFeatureRow[]> {
     return this.store.filter((r) => r.featureKind === featureKind && r.asOfUnixMs >= sinceUnixMs);
+  }
+
+  async listBundleCandidates(query: BundleFeatureCandidateQuery): Promise<DerivedFeatureRow[]> {
+    const result = this.store
+      .filter(
+        (r) =>
+          query.featureKinds.includes(r.featureKind) &&
+          r.pair === query.pair &&
+          r.asOfUnixMs >= query.asOfAtOrAfterUnixMs &&
+          r.asOfUnixMs <= query.asOfAtOrBeforeUnixMs &&
+          r.receivedAtUnixMs <= query.receivedAtOrBeforeUnixMs
+      )
+      .sort((a, b) => {
+        if (b.asOfUnixMs !== a.asOfUnixMs) return b.asOfUnixMs - a.asOfUnixMs;
+        if (b.receivedAtUnixMs !== a.receivedAtUnixMs)
+          return b.receivedAtUnixMs - a.receivedAtUnixMs;
+        return b.id - a.id;
+      });
+
+    return result;
   }
 }

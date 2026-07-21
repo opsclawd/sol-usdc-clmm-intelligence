@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { FakeFeatureRepo } from "../../tests/fakes/fake-feature-repo.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
+import type { FeatureKind, StaleBehavior } from "../../src/contracts/taxonomy.js";
 
 const FEATURE_INSERT: {
-  featureKind: "range_location";
+  featureKind: FeatureKind;
   signalClass: "deterministic";
   evidenceFamily: "clmm_state";
   confidence: typeof DEFAULT_CONFIDENCE;
@@ -13,6 +14,20 @@ const FEATURE_INSERT: {
   status: "AVAILABLE";
   unit: "PPM";
   value?: number | null;
+  pair?: string;
+  poolId?: string | null;
+  positionId?: string | null;
+  calculatorVersion?: string;
+  selectionVersion?: string;
+  inputObservationIds?: number[];
+  rejectedObservationIds?: number[];
+  warnings?: readonly string[];
+  reasons?: readonly string[];
+  confidenceComposite?: number | null;
+  confidenceLevel?: string | null;
+  validUntilUnixMs?: number | null;
+  isStale?: boolean;
+  staleBehavior?: StaleBehavior | null;
 } = {
   featureKind: "range_location",
   signalClass: "deterministic",
@@ -319,5 +334,310 @@ describe("DerivedFeatureRepo insertMany", () => {
 
     expect(single.value).toBe(0.5);
     expect(single.derivationKey).toBe("single-key");
+  });
+});
+
+describe("DerivedFeatureRepo listBundleCandidates", () => {
+  it("returns only bounded SOL/USDC candidates for the seven requested kinds", async () => {
+    const repo = new FakeFeatureRepo();
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "pool=abc,position=1",
+        featureKind: "range_location",
+        value: 0.5,
+        asOfUnixMs: 1000,
+        payloadHash: "hash1",
+        receivedAtUnixMs: 1001,
+        pair: "SOL/USDC",
+        poolId: "abc",
+        positionId: "1"
+      })
+    );
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "pool=abc,position=1",
+        featureKind: "distance_to_lower",
+        value: 0.1,
+        asOfUnixMs: 1000,
+        payloadHash: "hash2",
+        receivedAtUnixMs: 1002,
+        pair: "SOL/USDC",
+        poolId: "abc",
+        positionId: "1"
+      })
+    );
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "pool=abc,position=1",
+        featureKind: "distance_to_upper",
+        value: 0.2,
+        asOfUnixMs: 1000,
+        payloadHash: "hash3",
+        receivedAtUnixMs: 1003,
+        pair: "SOL/USDC",
+        poolId: "abc",
+        positionId: "1"
+      })
+    );
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "pool=abc,position=1",
+        featureKind: "oracle_dex_divergence",
+        value: 10,
+        asOfUnixMs: 1000,
+        payloadHash: "hash4",
+        receivedAtUnixMs: 1004,
+        pair: "SOL/USDC",
+        poolId: null,
+        positionId: null
+      })
+    );
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "pool=abc,position=1",
+        featureKind: "oracle_confidence_width",
+        value: 5,
+        asOfUnixMs: 1000,
+        payloadHash: "hash5",
+        receivedAtUnixMs: 1005,
+        pair: "SOL/USDC",
+        poolId: null,
+        positionId: null
+      })
+    );
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "pool=abc,position=1",
+        featureKind: "realized_volatility_1h",
+        value: 3,
+        asOfUnixMs: 1000,
+        payloadHash: "hash6",
+        receivedAtUnixMs: 1006,
+        pair: "SOL/USDC",
+        poolId: null,
+        positionId: null
+      })
+    );
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "pool=abc",
+        featureKind: "volume_liquidity_ratio_24h",
+        value: 0.8,
+        asOfUnixMs: 1000,
+        payloadHash: "hash7",
+        receivedAtUnixMs: 1007,
+        pair: "SOL/USDC",
+        poolId: "abc",
+        positionId: null
+      })
+    );
+
+    const candidates = await repo.listBundleCandidates({
+      featureKinds: [
+        "range_location",
+        "distance_to_lower",
+        "distance_to_upper",
+        "oracle_dex_divergence",
+        "oracle_confidence_width",
+        "realized_volatility_1h",
+        "volume_liquidity_ratio_24h"
+      ],
+      pair: "SOL/USDC",
+      asOfAtOrAfterUnixMs: 900,
+      asOfAtOrBeforeUnixMs: 1100,
+      receivedAtOrBeforeUnixMs: 2000
+    });
+
+    expect(candidates).toHaveLength(7);
+    const ids = candidates.map((c) => c.id).sort((a, b) => a - b);
+    expect(ids).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it("filters by asOfUnixMs bounds", async () => {
+    const repo = new FakeFeatureRepo();
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "key1",
+        featureKind: "range_location",
+        value: 0.5,
+        asOfUnixMs: 500,
+        payloadHash: "hash1",
+        receivedAtUnixMs: 600,
+        poolId: "abc",
+        positionId: "1"
+      })
+    );
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "key2",
+        featureKind: "range_location",
+        value: 0.6,
+        asOfUnixMs: 1500,
+        payloadHash: "hash2",
+        receivedAtUnixMs: 1600,
+        poolId: "abc",
+        positionId: "1"
+      })
+    );
+
+    const candidates = await repo.listBundleCandidates({
+      featureKinds: ["range_location"],
+      pair: "SOL/USDC",
+      asOfAtOrAfterUnixMs: 1000,
+      asOfAtOrBeforeUnixMs: 2000,
+      receivedAtOrBeforeUnixMs: 3000
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.asOfUnixMs).toBe(1500);
+  });
+
+  it("filters by receivedAtUnixMs bound", async () => {
+    const repo = new FakeFeatureRepo();
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "key1",
+        featureKind: "range_location",
+        value: 0.5,
+        asOfUnixMs: 1000,
+        payloadHash: "hash1",
+        receivedAtUnixMs: 5000,
+        poolId: "abc",
+        positionId: "1"
+      })
+    );
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "key2",
+        featureKind: "range_location",
+        value: 0.6,
+        asOfUnixMs: 1000,
+        payloadHash: "hash2",
+        receivedAtUnixMs: 1500,
+        poolId: "abc",
+        positionId: "1"
+      })
+    );
+
+    const candidates = await repo.listBundleCandidates({
+      featureKinds: ["range_location"],
+      pair: "SOL/USDC",
+      asOfAtOrAfterUnixMs: 0,
+      asOfAtOrBeforeUnixMs: 2000,
+      receivedAtOrBeforeUnixMs: 2000
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.receivedAtUnixMs).toBe(1500);
+  });
+
+  it("returns results sorted by asOfUnixMs, receivedAtUnixMs, id descending", async () => {
+    const repo = new FakeFeatureRepo();
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "key1",
+        featureKind: "range_location",
+        value: 0.5,
+        asOfUnixMs: 1000,
+        payloadHash: "hash1",
+        receivedAtUnixMs: 1000,
+        poolId: "abc",
+        positionId: "1"
+      })
+    );
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "key2",
+        featureKind: "range_location",
+        value: 0.6,
+        asOfUnixMs: 2000,
+        payloadHash: "hash2",
+        receivedAtUnixMs: 2000,
+        poolId: "abc",
+        positionId: "1"
+      })
+    );
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "key3",
+        featureKind: "range_location",
+        value: 0.7,
+        asOfUnixMs: 1000,
+        payloadHash: "hash3",
+        receivedAtUnixMs: 3000,
+        poolId: "abc",
+        positionId: "1"
+      })
+    );
+
+    const candidates = await repo.listBundleCandidates({
+      featureKinds: ["range_location"],
+      pair: "SOL/USDC",
+      asOfAtOrAfterUnixMs: 0,
+      asOfAtOrBeforeUnixMs: 3000,
+      receivedAtOrBeforeUnixMs: 5000
+    });
+
+    expect(candidates).toHaveLength(3);
+    expect(candidates[0]!.id).toBe(2);
+    expect(candidates[1]!.id).toBe(3);
+    expect(candidates[2]!.id).toBe(1);
+  });
+
+  it("filters out non-SOL/USDC pairs", async () => {
+    const repo = new FakeFeatureRepo();
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "key1",
+        featureKind: "range_location",
+        value: 0.5,
+        asOfUnixMs: 1000,
+        payloadHash: "hash1",
+        receivedAtUnixMs: 1001,
+        pair: "SOL/USDC",
+        poolId: "abc",
+        positionId: "1"
+      })
+    );
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "key2",
+        featureKind: "range_location",
+        value: 0.6,
+        asOfUnixMs: 1000,
+        payloadHash: "hash2",
+        receivedAtUnixMs: 1002,
+        pair: "ETH/USDC",
+        poolId: "abc",
+        positionId: "1"
+      })
+    );
+
+    const candidates = await repo.listBundleCandidates({
+      featureKinds: ["range_location"],
+      pair: "SOL/USDC",
+      asOfAtOrAfterUnixMs: 0,
+      asOfAtOrBeforeUnixMs: 2000,
+      receivedAtOrBeforeUnixMs: 2000
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.pair).toBe("SOL/USDC");
   });
 });

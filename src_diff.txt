@@ -1,0 +1,195 @@
+diff --git a/src/adapters/node/drizzle-bundle-repo.ts b/src/adapters/node/drizzle-bundle-repo.ts
+index 862f5a9..f52df9a 100644
+--- a/src/adapters/node/drizzle-bundle-repo.ts
++++ b/src/adapters/node/drizzle-bundle-repo.ts
+@@ -17,6 +17,8 @@ function toPortRow(row: typeof evidenceBundles.$inferSelect): EvidenceBundleRow
+     expiresAtUnixMs: row.expiresAtUnixMs,
+     payload: row.payload,
+     payloadHash: row.payloadHash,
++    payloadCanonical: row.payloadCanonical,
++    idempotencyKey: row.idempotencyKey,
+     taxonomySummary: row.taxonomySummary as EvidenceBundleRow["taxonomySummary"],
+     dominantSignalClass: row.dominantSignalClass as SignalClass,
+     confidence: row.confidence as unknown as EvidenceBundleRow["confidence"],
+@@ -44,6 +46,8 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
+         expiresAtUnixMs: row.expiresAtUnixMs,
+         payload: row.payload,
+         payloadHash: row.payloadHash,
++        payloadCanonical: row.payloadCanonical,
++        idempotencyKey: row.idempotencyKey,
+         taxonomySummary: row.taxonomySummary ?? null,
+         dominantSignalClass: row.dominantSignalClass ?? "deterministic",
+         confidence: row.confidence as unknown,
+@@ -61,17 +65,30 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
+         version: row.version ?? 1,
+         receivedAtUnixMs: row.receivedAtUnixMs
+       })
+-      .onConflictDoNothing({ target: [evidenceBundles.pair, evidenceBundles.payloadHash] })
++      .onConflictDoNothing({
++        target: [
++          evidenceBundles.schemaVersion,
++          evidenceBundles.pair,
++          evidenceBundles.idempotencyKey
++        ]
++      })
+       .returning();
+     if (result) return toPortRow(result);
+     const [existing] = await this.db
+       .select()
+       .from(evidenceBundles)
+       .where(
+-        and(eq(evidenceBundles.pair, row.pair), eq(evidenceBundles.payloadHash, row.payloadHash))
++        and(
++          eq(evidenceBundles.schemaVersion, row.schemaVersion),
++          eq(evidenceBundles.pair, row.pair),
++          eq(evidenceBundles.idempotencyKey, row.idempotencyKey)
++        )
+       )
+       .limit(1);
+-    return toPortRow(existing!);
++    if (!existing) {
++      throw new Error("Failed to insert or find existing bundle on conflict");
++    }
++    return toPortRow(existing);
+   }
+ 
+   async findByPair(pair: string, sinceUnixMs: number): Promise<EvidenceBundleRow[]> {
+diff --git a/src/db/schema/evidence-bundles.ts b/src/db/schema/evidence-bundles.ts
+index 0232ce4..7bd4492 100644
+--- a/src/db/schema/evidence-bundles.ts
++++ b/src/db/schema/evidence-bundles.ts
+@@ -6,6 +6,7 @@ import {
+   jsonb,
+   numeric,
+   serial,
++  text,
+   uniqueIndex,
+   varchar,
+   index
+@@ -17,12 +18,14 @@ export const evidenceBundles = intelligence.table(
+   "evidence_bundles",
+   {
+     id: serial("id").primaryKey(),
+-    schemaVersion: varchar("schema_version", { length: 16 }).notNull(),
++    schemaVersion: varchar("schema_version", { length: 32 }).notNull(),
+     pair: varchar("pair", { length: 32 }).notNull(),
+     asOfUnixMs: bigint("as_of_unix_ms", { mode: "number" }).notNull(),
+     expiresAtUnixMs: bigint("expires_at_unix_ms", { mode: "number" }).notNull(),
+     payload: jsonb("payload").notNull(),
+     payloadHash: varchar("payload_hash", { length: 64 }).notNull(),
++    payloadCanonical: text("payload_canonical").notNull(),
++    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+     taxonomySummary: jsonb("taxonomy_summary"),
+     dominantSignalClass: varchar("dominant_signal_class", { length: 16 })
+       .notNull()
+@@ -38,7 +41,7 @@ export const evidenceBundles = intelligence.table(
+     receivedAtUnixMs: bigint("received_at_unix_ms", { mode: "number" }).notNull()
+   },
+   (t) => [
+-    uniqueIndex("uniq_bundle_pair_hash").on(t.pair, t.payloadHash),
++    uniqueIndex("uniq_bundle_source_idem").on(t.schemaVersion, t.pair, t.idempotencyKey),
+     index("idx_bundle_pair_as_of").on(t.pair, t.asOfUnixMs, t.id),
+     index("idx_bundle_pair_latest").on(t.pair, t.receivedAtUnixMs, t.id),
+     check(
+diff --git a/src/ports/bundle-repo.ts b/src/ports/bundle-repo.ts
+index deab9e8..34dd93e 100644
+--- a/src/ports/bundle-repo.ts
++++ b/src/ports/bundle-repo.ts
+@@ -14,6 +14,8 @@ export interface EvidenceBundleRow {
+   expiresAtUnixMs: number;
+   payload: unknown;
+   payloadHash: string;
++  payloadCanonical: string;
++  idempotencyKey: string;
+   taxonomySummary: TaxonomySummary | null;
+   dominantSignalClass: SignalClass;
+   confidence: Confidence;
+@@ -34,6 +36,8 @@ export interface EvidenceBundleInsert {
+   expiresAtUnixMs: number;
+   payload: unknown;
+   payloadHash: string;
++  payloadCanonical: string;
++  idempotencyKey: string;
+   taxonomySummary?: TaxonomySummary | null;
+   dominantSignalClass?: SignalClass;
+   confidence: Confidence;
+diff --git a/tests/db/schema/evidence-bundles.test.ts b/tests/db/schema/evidence-bundles.test.ts
+index bac20af..e640d5b 100644
+--- a/tests/db/schema/evidence-bundles.test.ts
++++ b/tests/db/schema/evidence-bundles.test.ts
+@@ -24,4 +24,44 @@ describe("evidenceBundles schema", () => {
+     expect(columns).toContain("version");
+     expect(columns).toContain("receivedAtUnixMs");
+   });
++
++  describe("canonical identity columns", () => {
++    it("has payloadCanonical column as text type", () => {
++      const columns = getColumnNames(evidenceBundles);
++      expect(columns).toContain("payloadCanonical");
++    });
++
++    it("has idempotencyKey column", () => {
++      const columns = getColumnNames(evidenceBundles);
++      expect(columns).toContain("idempotencyKey");
++    });
++
++    it("payloadCanonical is NOT NULL", () => {
++      const col = (evidenceBundles as unknown as Record<string, unknown>)[
++        "payloadCanonical"
++      ] as Record<string, unknown>;
++      expect(col).toBeDefined();
++      expect(col["notNull"]).toBe(true);
++    });
++
++    it("idempotencyKey is NOT NULL", () => {
++      const col = (evidenceBundles as unknown as Record<string, unknown>)[
++        "idempotencyKey"
++      ] as Record<string, unknown>;
++      expect(col).toBeDefined();
++      expect(col["notNull"]).toBe(true);
++    });
++  });
++
++  describe("payload fields retention", () => {
++    it("retains payloadHash column", () => {
++      const columns = getColumnNames(evidenceBundles);
++      expect(columns).toContain("payloadHash");
++    });
++
++    it("retains payload column", () => {
++      const columns = getColumnNames(evidenceBundles);
++      expect(columns).toContain("payload");
++    });
++  });
+ });
+diff --git a/tests/ports/bundle-repo.test.ts b/tests/ports/bundle-repo.test.ts
+index 970a1f4..ebd816a 100644
+--- a/tests/ports/bundle-repo.test.ts
++++ b/tests/ports/bundle-repo.test.ts
+@@ -18,6 +18,8 @@ describe("EvidenceBundleRepo contract", () => {
+       expiresAtUnixMs: 2000,
+       payload: { pair: "SOL/USDC" },
+       payloadHash: "hash-bundle-1",
++      payloadCanonical: "canonical-1",
++      idempotencyKey: "idem-1",
+       receivedAtUnixMs: 1001
+     });
+ 
+@@ -35,6 +37,8 @@ describe("EvidenceBundleRepo contract", () => {
+       expiresAtUnixMs: 2000,
+       payload: { pair: "SOL/USDC", v: 1 },
+       payloadHash: "hash-1",
++      payloadCanonical: "canonical-1",
++      idempotencyKey: "idem-1",
+       receivedAtUnixMs: 1001
+     });
+     await repo.insert({
+@@ -45,6 +49,8 @@ describe("EvidenceBundleRepo contract", () => {
+       expiresAtUnixMs: 2500,
+       payload: { pair: "SOL/USDC", v: 2 },
+       payloadHash: "hash-2",
++      payloadCanonical: "canonical-2",
++      idempotencyKey: "idem-2",
+       receivedAtUnixMs: 1501
+     });
+ 

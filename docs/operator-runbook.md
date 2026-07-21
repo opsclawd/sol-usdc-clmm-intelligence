@@ -366,3 +366,132 @@ Each derived feature row is stored in `intelligence.derived_features` with:
 ### Replay behavior
 
 The system uses `derivation_key` as a idempotency key. Re-running derivation with identical inputs produces a replay result with the same `derivation_key` — no duplicate rows are created. The transaction conflict recovery preserves caller order.
+
+## Evidence Bundle Assembly (`pnpm assemble:bundle`)
+
+The `assemble:bundle` command assembles deterministic evidence bundles from derived features and observations. It is a pure function: identical inputs produce bit-for-bit identical outputs.
+
+### Required Request File
+
+The script accepts one argument: a path to a JSON request file.
+
+```bash
+pnpm assemble:bundle data/assembly-request.json
+```
+
+### Request File Format
+
+```json
+{
+  "pair": "SOL/USDC",
+  "poolId": "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
+  "positionId": "Pos11111111111111111111111111111111111111111",
+  "walletId": "Wallet1234567890abcdef",
+  "pipelineRunId": "run-456",
+  "correlationId": "corr-789",
+  "evaluationTimeUnixMs": 1700000000000,
+  "createdAtUnixMs": 1700000000000,
+  "acceptedCalculatorVersions": {
+    "range_location": "range-location/v1",
+    "distance_to_lower": "distance-to-lower/v1",
+    "distance_to_upper": "distance-to-upper/v1",
+    "oracle_dex_divergence": "oracle-dex-divergence/v1",
+    "oracle_confidence_width": "oracle-confidence-width/v1",
+    "realized_volatility_1h": "realized-volatility-1h/v1",
+    "volume_liquidity_ratio_24h": "volume-liquidity-ratio-24h/v1"
+  },
+  "schemaVersion": "evidence-bundle.v1",
+  "assemblySelectionVersion": "selection/v1",
+  "codeVersion": "1.0.0",
+  "gitCommit": "abc123def456",
+  "environment": "test"
+}
+```
+
+### Successful Response Example
+
+```json
+{
+  "outcome": "persisted",
+  "rowId": 99,
+  "payloadHash": "hash-abc",
+  "slotCount": 7,
+  "warnings": []
+}
+```
+
+### Identical Replay Response
+
+```json
+{
+  "outcome": "identical_replay",
+  "rowId": 42,
+  "payloadHash": "identical-hash",
+  "slotCount": 7,
+  "warnings": []
+}
+```
+
+### Conflict Response (Exit Code 1)
+
+```json
+{
+  "outcome": "conflict",
+  "rowId": 1,
+  "incomingPayloadHash": "new-different-hash",
+  "warnings": []
+}
+```
+
+### Pre-flight Checks
+
+Before running assembly, verify:
+
+```sql
+-- Verify no existing evidence bundle rows (migration precondition)
+SELECT COUNT(*) AS bundle_count FROM intelligence.evidence_bundles;
+-- If count > 0, abort and consult lead engineer
+
+-- Verify derived features are present
+SELECT feature_kind, COUNT(*) AS cnt
+FROM intelligence.derived_features
+GROUP BY feature_kind;
+```
+
+### Seven-Slot Selection
+
+The assembler selects up to seven canonical feature slots:
+
+| Slot                       | Kind             | Unit |
+| -------------------------- | ---------------- | ---- |
+| range_location             | pool + position  | PPM  |
+| distance_to_lower          | pool + position  | BPS  |
+| distance_to_upper          | pool + position  | BPS  |
+| oracle_dex_divergence      | pool-independent | BPS  |
+| oracle_confidence_width    | pool-independent | BPS  |
+| realized_volatility_1h     | pool-independent | BPS  |
+| volume_liquidity_ratio_24h | pool only        | PPM  |
+
+### Exit Codes
+
+- **0:** Success (persisted or identical_replay)
+- **1:** Failure (conflict, validation error, malformed request, database error)
+
+### Replay Behavior
+
+The idempotency key is derived from request identity fields. Re-running with identical inputs produces `identical_replay` with the same `rowId` and `payloadHash`. The system permits identical replay — no new row is created.
+
+### Redacted Output
+
+The script never outputs:
+
+- Wallet ID
+- Canonical payload
+- Full provenance details
+
+Only operational summary fields are printed: outcome, row ID, payload hash, slot count, and warnings.
+
+### Migration Precondition
+
+> [!STOP]
+> **Migration precondition:** The migration that introduces `evidence_bundles` constraints assumes the table is empty. If any row exists, the migration aborts. Do not rewrite or delete existing rows without lead engineer approval.
