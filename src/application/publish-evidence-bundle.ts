@@ -104,7 +104,7 @@ function classifyHttpStatus(status: number): {
   if (status >= 400 && status < 500) {
     return { outcome: "unknown_failed", auditStatus: "unknown_failed" };
   }
-  return { outcome: "permanent_http_failed", auditStatus: "unknown_failed" };
+  return { outcome: "permanent_http_failed", auditStatus: "store_unavailable" };
 }
 
 export type PublishEvidenceBundleResult =
@@ -143,7 +143,8 @@ export type PublishEvidenceBundleEvent =
       readonly bundleId: number;
       readonly httpStatus: number;
     }
-  | { readonly type: "audit_persistence_failed"; readonly reason: string };
+  | { readonly type: "audit_persistence_failed"; readonly reason: string }
+  | { readonly type: "unknown_failed"; readonly bundleId: number; readonly httpStatus: number };
 
 export async function publishEvidenceBundle(
   deps: PublishEvidenceBundleDeps,
@@ -187,7 +188,8 @@ export async function publishEvidenceBundle(
       endpoint,
       receivedAtUnixMs,
       latestBundle,
-      `Unsupported schema version: ${latestBundle.schemaVersion}`
+      `Unsupported schema version: ${latestBundle.schemaVersion}`,
+      onEvent
     );
     if (insertResult !== undefined) {
       return insertResult;
@@ -204,7 +206,8 @@ export async function publishEvidenceBundle(
       endpoint,
       receivedAtUnixMs,
       latestBundle,
-      `Contract validation failed: ${err instanceof Error ? err.message : String(err)}`
+      `Contract validation failed: ${err instanceof Error ? err.message : String(err)}`,
+      onEvent
     );
     if (insertResult !== undefined) {
       return insertResult;
@@ -225,7 +228,8 @@ export async function publishEvidenceBundle(
       endpoint,
       receivedAtUnixMs,
       latestBundle,
-      "Contract validation mismatch: canonical/hash/idempotency key mismatch"
+      "Contract validation mismatch: canonical/hash/idempotency key mismatch",
+      onEvent
     );
     if (insertResult !== undefined) {
       return insertResult;
@@ -257,7 +261,7 @@ export async function publishEvidenceBundle(
       timeoutMs,
       maxAttempts: 1
     });
-  } catch {
+  } catch (err: unknown) {
     const networkFailedAuditInsert: PublishAttemptInsert = {
       target,
       targetEndpoint: endpoint,
@@ -270,24 +274,41 @@ export async function publishEvidenceBundle(
       httpStatus: null,
       responseBody: null,
       errorCode: null,
-      errorMessage: null,
+      errorMessage: err instanceof Error ? err.message : String(err),
       attemptNumber: 1,
       firstAttemptedAtUnixMs,
       completedAtUnixMs: new Date(clock.now()).getTime(),
       receivedAtUnixMs
     };
+    let networkInsertOutcome: Awaited<ReturnType<PublishAttemptRepo["insert"]>>;
     try {
-      await publishAttemptRepo.insert(networkFailedAuditInsert);
-    } catch {
+      networkInsertOutcome = await publishAttemptRepo.insert(networkFailedAuditInsert);
+    } catch (insertErr: unknown) {
       onEvent?.({
         type: "audit_persistence_failed",
-        reason: "Failed to insert network failure audit"
+        reason:
+          insertErr instanceof Error ? insertErr.message : "Failed to insert network failure audit"
       });
       return {
         outcome: "audit_store_failed",
         reason: "Failed to insert network failure audit"
       };
     }
+    if (networkInsertOutcome.outcome === "conflict") {
+      onEvent?.({
+        type: "audit_persistence_failed",
+        reason: "Network failure audit insert conflict"
+      });
+      return {
+        outcome: "audit_store_failed",
+        reason: "Network failure audit insert conflict"
+      };
+    }
+    onEvent?.({
+      type: "permanent_http_failed",
+      bundleId: latestBundle.id,
+      httpStatus: 0
+    });
     return {
       outcome: "permanent_http_failed",
       bundleId: latestBundle.id,
@@ -372,6 +393,12 @@ export async function publishEvidenceBundle(
       bundleId: latestBundle.id,
       httpStatus: response.status
     });
+  } else if (outcome === "unknown_failed") {
+    onEvent?.({
+      type: "unknown_failed",
+      bundleId: latestBundle.id,
+      httpStatus: response.status
+    });
   }
   return {
     outcome: outcome as
@@ -390,7 +417,8 @@ async function insertValidationFailedAudit(
   endpoint: string,
   receivedAtUnixMs: number,
   bundle: EvidenceBundleRow,
-  diagnosticMessage: string
+  diagnosticMessage: string,
+  onEvent?: (event: PublishEvidenceBundleEvent) => void
 ): Promise<PublishEvidenceBundleResult | undefined> {
   const { publishAttemptRepo, clock } = deps;
   const target = endpoint.replace(/^https?:\/\//, "").split("/")[0] ?? "";
@@ -418,7 +446,11 @@ async function insertValidationFailedAudit(
   let insertOutcome: Awaited<ReturnType<PublishAttemptRepo["insert"]>>;
   try {
     insertOutcome = await publishAttemptRepo.insert(auditInsert);
-  } catch {
+  } catch (err: unknown) {
+    onEvent?.({
+      type: "audit_persistence_failed",
+      reason: err instanceof Error ? err.message : "Failed to insert validation failure audit"
+    });
     return {
       outcome: "audit_store_failed",
       reason: "Failed to insert validation failure audit"
@@ -426,6 +458,10 @@ async function insertValidationFailedAudit(
   }
 
   if (insertOutcome.outcome === "conflict") {
+    onEvent?.({
+      type: "audit_persistence_failed",
+      reason: "Validation failure audit insert conflict"
+    });
     return {
       outcome: "audit_store_failed",
       reason: "Audit insert conflict"
