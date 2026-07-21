@@ -149,12 +149,9 @@ export class FetchHttpClient implements HttpClient {
             if (totalBytes > MAX_BODY_BYTES) {
               await reader.cancel();
               const excessBytes = totalBytes - MAX_BODY_BYTES;
-              const allowedChunks = chunks.slice(0, -1);
-              const lastChunk = chunks[chunks.length - 1];
-              if (lastChunk) {
-                const trimEnd = lastChunk.length - excessBytes;
-                allowedChunks.push(lastChunk.slice(0, Math.max(0, trimEnd)));
-              }
+              const allowedChunks = [...chunks];
+              const trimEnd = value.length - excessBytes;
+              allowedChunks.push(value.slice(0, Math.max(0, trimEnd)));
               const combined = new Uint8Array(allowedChunks.reduce((sum, c) => sum + c.length, 0));
               let offset = 0;
               for (const chunk of allowedChunks) {
