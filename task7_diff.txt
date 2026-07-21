@@ -1,0 +1,563 @@
+diff --git a/src/adapters/node/drizzle-bundle-repo.ts b/src/adapters/node/drizzle-bundle-repo.ts
+index 862f5a9..f52df9a 100644
+--- a/src/adapters/node/drizzle-bundle-repo.ts
++++ b/src/adapters/node/drizzle-bundle-repo.ts
+@@ -17,6 +17,8 @@ function toPortRow(row: typeof evidenceBundles.$inferSelect): EvidenceBundleRow
+     expiresAtUnixMs: row.expiresAtUnixMs,
+     payload: row.payload,
+     payloadHash: row.payloadHash,
++    payloadCanonical: row.payloadCanonical,
++    idempotencyKey: row.idempotencyKey,
+     taxonomySummary: row.taxonomySummary as EvidenceBundleRow["taxonomySummary"],
+     dominantSignalClass: row.dominantSignalClass as SignalClass,
+     confidence: row.confidence as unknown as EvidenceBundleRow["confidence"],
+@@ -44,6 +46,8 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
+         expiresAtUnixMs: row.expiresAtUnixMs,
+         payload: row.payload,
+         payloadHash: row.payloadHash,
++        payloadCanonical: row.payloadCanonical,
++        idempotencyKey: row.idempotencyKey,
+         taxonomySummary: row.taxonomySummary ?? null,
+         dominantSignalClass: row.dominantSignalClass ?? "deterministic",
+         confidence: row.confidence as unknown,
+@@ -61,17 +65,30 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
+         version: row.version ?? 1,
+         receivedAtUnixMs: row.receivedAtUnixMs
+       })
+-      .onConflictDoNothing({ target: [evidenceBundles.pair, evidenceBundles.payloadHash] })
++      .onConflictDoNothing({
++        target: [
++          evidenceBundles.schemaVersion,
++          evidenceBundles.pair,
++          evidenceBundles.idempotencyKey
++        ]
++      })
+       .returning();
+     if (result) return toPortRow(result);
+     const [existing] = await this.db
+       .select()
+       .from(evidenceBundles)
+       .where(
+-        and(eq(evidenceBundles.pair, row.pair), eq(evidenceBundles.payloadHash, row.payloadHash))
++        and(
++          eq(evidenceBundles.schemaVersion, row.schemaVersion),
++          eq(evidenceBundles.pair, row.pair),
++          eq(evidenceBundles.idempotencyKey, row.idempotencyKey)
++        )
+       )
+       .limit(1);
+-    return toPortRow(existing!);
++    if (!existing) {
++      throw new Error("Failed to insert or find existing bundle on conflict");
++    }
++    return toPortRow(existing);
+   }
+ 
+   async findByPair(pair: string, sinceUnixMs: number): Promise<EvidenceBundleRow[]> {
+diff --git a/src/contracts/derived-feature.ts b/src/contracts/derived-feature.ts
+index 151840a..5ef7268 100644
+--- a/src/contracts/derived-feature.ts
++++ b/src/contracts/derived-feature.ts
+@@ -1,5 +1,12 @@
+ import { z } from "zod";
+-import type { FeatureKind } from "./taxonomy.js";
++import type {
++  FeatureKind,
++  SignalClass,
++  EvidenceFamily,
++  Confidence,
++  StaleBehavior,
++  Provenance
++} from "./taxonomy.js";
+ 
+ export const MVP_FEATURE_KINDS = [
+   "range_location",
+@@ -243,3 +250,34 @@ export function parseDerivedFeatureV1(value: unknown): DerivedFeatureV1 {
+ 
+   return parsed as DerivedFeatureV1;
+ }
++
++export interface DerivedFeatureRow {
++  id: number;
++  featureKind: FeatureKind;
++  signalClass: SignalClass;
++  evidenceFamily: EvidenceFamily;
++  value: number | null;
++  structuredPayload: unknown;
++  asOfUnixMs: number;
++  confidence: Confidence;
++  confidenceComposite: number | null;
++  confidenceLevel: string | null;
++  validUntilUnixMs: number | null;
++  isStale: boolean;
++  staleBehavior: StaleBehavior | null;
++  provenance: Provenance;
++  payloadHash: string;
++  receivedAtUnixMs: number;
++  status: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
++  unit: "BPS" | "PPM";
++  pair: string;
++  calculatorVersion: string;
++  selectionVersion: string;
++  inputObservationIds: number[];
++  rejectedObservationIds: number[];
++  derivationKey: string;
++  poolId: string | null;
++  positionId: string | null;
++  warnings: readonly string[];
++  reasons: readonly string[];
++}
+diff --git a/src/contracts/index.ts b/src/contracts/index.ts
+index a54b2fd..6fd7a34 100644
+--- a/src/contracts/index.ts
++++ b/src/contracts/index.ts
+@@ -8,5 +8,6 @@ export * from "./normalized-pool-statistics.js";
+ export * from "./collection-run.js";
+ export * from "./derived-feature.js";
+ export * from "./normalized-observation.js";
++export * from "./raw-observation.js";
+ export * from "./evidence-bundle.js";
+ export * from "./generated/evidence-bundle-v1.js";
+diff --git a/src/contracts/raw-observation.ts b/src/contracts/raw-observation.ts
+new file mode 100644
+index 0000000..8d80e88
+--- /dev/null
++++ b/src/contracts/raw-observation.ts
+@@ -0,0 +1,14 @@
++import type { Source, ParseStatus } from "./taxonomy.js";
++
++export interface RawObservationRow {
++  id: number;
++  source: Source;
++  sourceObservationKey: string;
++  observedAtUnixMs: number;
++  fetchedAtUnixMs: number;
++  payloadHash: string;
++  payloadCanonical: string;
++  parseStatus: ParseStatus;
++  sourceRequestMeta: unknown;
++  receivedAtUnixMs: number;
++}
+diff --git a/src/db/schema/evidence-bundles.ts b/src/db/schema/evidence-bundles.ts
+index 0232ce4..7bd4492 100644
+--- a/src/db/schema/evidence-bundles.ts
++++ b/src/db/schema/evidence-bundles.ts
+@@ -6,6 +6,7 @@ import {
+   jsonb,
+   numeric,
+   serial,
++  text,
+   uniqueIndex,
+   varchar,
+   index
+@@ -17,12 +18,14 @@ export const evidenceBundles = intelligence.table(
+   "evidence_bundles",
+   {
+     id: serial("id").primaryKey(),
+-    schemaVersion: varchar("schema_version", { length: 16 }).notNull(),
++    schemaVersion: varchar("schema_version", { length: 32 }).notNull(),
+     pair: varchar("pair", { length: 32 }).notNull(),
+     asOfUnixMs: bigint("as_of_unix_ms", { mode: "number" }).notNull(),
+     expiresAtUnixMs: bigint("expires_at_unix_ms", { mode: "number" }).notNull(),
+     payload: jsonb("payload").notNull(),
+     payloadHash: varchar("payload_hash", { length: 64 }).notNull(),
++    payloadCanonical: text("payload_canonical").notNull(),
++    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+     taxonomySummary: jsonb("taxonomy_summary"),
+     dominantSignalClass: varchar("dominant_signal_class", { length: 16 })
+       .notNull()
+@@ -38,7 +41,7 @@ export const evidenceBundles = intelligence.table(
+     receivedAtUnixMs: bigint("received_at_unix_ms", { mode: "number" }).notNull()
+   },
+   (t) => [
+-    uniqueIndex("uniq_bundle_pair_hash").on(t.pair, t.payloadHash),
++    uniqueIndex("uniq_bundle_source_idem").on(t.schemaVersion, t.pair, t.idempotencyKey),
+     index("idx_bundle_pair_as_of").on(t.pair, t.asOfUnixMs, t.id),
+     index("idx_bundle_pair_latest").on(t.pair, t.receivedAtUnixMs, t.id),
+     check(
+diff --git a/src/db/schema/research-briefs.ts b/src/db/schema/research-briefs.ts
+index 5ac7aea..79a7166 100644
+--- a/src/db/schema/research-briefs.ts
++++ b/src/db/schema/research-briefs.ts
+@@ -1,6 +1,7 @@
+ import {
+   bigint,
+   boolean,
++  // Verified for Task 7: no FK changes required because it references primary key id.
+   check,
+   foreignKey,
+   integer,
+diff --git a/src/domain/evidence-bundle/lineage.ts b/src/domain/evidence-bundle/lineage.ts
+index 06ab04a..505188f 100644
+--- a/src/domain/evidence-bundle/lineage.ts
++++ b/src/domain/evidence-bundle/lineage.ts
+@@ -1,6 +1,11 @@
+-import type { FeatureKind, ProvenanceRef, Source } from "../../contracts/taxonomy.js";
+-import type { DerivedFeatureRow, NormalizedObservationRow } from "../../ports/index.js";
+-import type { RawObservationRow } from "../../ports/observation-repo.js";
++import type {
++  FeatureKind,
++  ProvenanceRef,
++  Source,
++  DerivedFeatureRow,
++  NormalizedObservationRow,
++  RawObservationRow
++} from "../../contracts/index.js";
+ import { acceptClmmBundle } from "../clmm-bundle/validate.js";
+ import type { BundleSelectionRequest } from "./select.js";
+ 
+diff --git a/src/domain/evidence-bundle/select.ts b/src/domain/evidence-bundle/select.ts
+index f15fa36..07b53fd 100644
+--- a/src/domain/evidence-bundle/select.ts
++++ b/src/domain/evidence-bundle/select.ts
+@@ -1,6 +1,10 @@
+ import { MVP_FEATURE_KINDS } from "../../contracts/derived-feature.js";
+-import type { FeatureKind, Confidence, Provenance } from "../../contracts/taxonomy.js";
+-import type { DerivedFeatureRow } from "../../ports/feature-repo.js";
++import type {
++  FeatureKind,
++  Confidence,
++  Provenance,
++  DerivedFeatureRow
++} from "../../contracts/index.js";
+ 
+ export const EVIDENCE_BUNDLE_SELECTION_VERSION = "mvp-evidence-bundle-selection/v1";
+ 
+diff --git a/src/ports/bundle-repo.ts b/src/ports/bundle-repo.ts
+index deab9e8..34dd93e 100644
+--- a/src/ports/bundle-repo.ts
++++ b/src/ports/bundle-repo.ts
+@@ -14,6 +14,8 @@ export interface EvidenceBundleRow {
+   expiresAtUnixMs: number;
+   payload: unknown;
+   payloadHash: string;
++  payloadCanonical: string;
++  idempotencyKey: string;
+   taxonomySummary: TaxonomySummary | null;
+   dominantSignalClass: SignalClass;
+   confidence: Confidence;
+@@ -34,6 +36,8 @@ export interface EvidenceBundleInsert {
+   expiresAtUnixMs: number;
+   payload: unknown;
+   payloadHash: string;
++  payloadCanonical: string;
++  idempotencyKey: string;
+   taxonomySummary?: TaxonomySummary | null;
+   dominantSignalClass?: SignalClass;
+   confidence: Confidence;
+diff --git a/src/ports/feature-repo.ts b/src/ports/feature-repo.ts
+index 48d656f..f61002d 100644
+--- a/src/ports/feature-repo.ts
++++ b/src/ports/feature-repo.ts
+@@ -4,8 +4,11 @@ import type {
+   EvidenceFamily,
+   Confidence,
+   StaleBehavior,
+-  Provenance
+-} from "../contracts/taxonomy.js";
++  Provenance,
++  DerivedFeatureRow
++} from "../contracts/index.js";
++
++export type { DerivedFeatureRow };
+ 
+ export interface BundleFeatureCandidateQuery {
+   readonly featureKinds: readonly FeatureKind[];
+@@ -15,37 +18,6 @@ export interface BundleFeatureCandidateQuery {
+   readonly receivedAtOrBeforeUnixMs: number;
+ }
+ 
+-export interface DerivedFeatureRow {
+-  id: number;
+-  featureKind: FeatureKind;
+-  signalClass: SignalClass;
+-  evidenceFamily: EvidenceFamily;
+-  value: number | null;
+-  structuredPayload: unknown;
+-  asOfUnixMs: number;
+-  confidence: Confidence;
+-  confidenceComposite: number | null;
+-  confidenceLevel: string | null;
+-  validUntilUnixMs: number | null;
+-  isStale: boolean;
+-  staleBehavior: StaleBehavior | null;
+-  provenance: Provenance;
+-  payloadHash: string;
+-  receivedAtUnixMs: number;
+-  status: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
+-  unit: "BPS" | "PPM";
+-  pair: string;
+-  calculatorVersion: string;
+-  selectionVersion: string;
+-  inputObservationIds: number[];
+-  rejectedObservationIds: number[];
+-  derivationKey: string;
+-  poolId: string | null;
+-  positionId: string | null;
+-  warnings: readonly string[];
+-  reasons: readonly string[];
+-}
+-
+ export interface DerivedFeatureInsert {
+   featureKind: FeatureKind;
+   signalClass: SignalClass;
+diff --git a/src/ports/observation-repo.ts b/src/ports/observation-repo.ts
+index 3d2c96e..d38b69a 100644
+--- a/src/ports/observation-repo.ts
++++ b/src/ports/observation-repo.ts
+@@ -1,17 +1,6 @@
+-import type { Source, ParseStatus } from "../contracts/taxonomy.js";
++import type { Source, ParseStatus, RawObservationRow } from "../contracts/index.js";
+ 
+-export interface RawObservationRow {
+-  id: number;
+-  source: Source;
+-  sourceObservationKey: string;
+-  observedAtUnixMs: number;
+-  fetchedAtUnixMs: number;
+-  payloadHash: string;
+-  payloadCanonical: string;
+-  parseStatus: ParseStatus;
+-  sourceRequestMeta: unknown;
+-  receivedAtUnixMs: number;
+-}
++export type { RawObservationRow };
+ 
+ export interface RawObservationInsert {
+   source: Source;
+diff --git a/tests/db/migrations/evidence-bundle-v1.test.ts b/tests/db/migrations/evidence-bundle-v1.test.ts
+new file mode 100644
+index 0000000..f2ea142
+--- /dev/null
++++ b/tests/db/migrations/evidence-bundle-v1.test.ts
+@@ -0,0 +1,137 @@
++import { describe, it, expect } from "vitest";
++import { readFileSync } from "fs";
++import { resolve } from "path";
++
++const MIGRATION_PATH = resolve("drizzle/0003_evidence_bundle_v1.sql");
++
++function readMigration(): string {
++  return readFileSync(MIGRATION_PATH, "utf-8");
++}
++
++describe("evidence_bundle_v1 migration", () => {
++  it("reads the migration file", () => {
++    const content = readMigration();
++    expect(content.length).toBeGreaterThan(0);
++  });
++
++  describe("aborts before schema mutation when historical bundles exist", () => {
++    it("contains precondition check that raises exception on existing rows", () => {
++      const content = readMigration();
++      expect(content).toContain("IF NOT (0 + (SELECT COUNT(*)::bigint FROM");
++      expect(content).toContain("RAISE EXCEPTION");
++      expect(content).toContain("Migration aborted");
++    });
++
++    it("checks evidence_bundles table specifically", () => {
++      const content = readMigration();
++      expect(content).toContain('FROM "intelligence"."evidence_bundles"');
++    });
++
++    it("aborts before any ALTER TABLE statements", () => {
++      const content = readMigration();
++      const preconditionIdx = content.indexOf("IF NOT (0 + (SELECT COUNT");
++      const firstAlterIdx = content.indexOf("ALTER TABLE");
++      expect(preconditionIdx).toBeLessThan(firstAlterIdx);
++    });
++  });
++
++  describe("never deletes rewrites or truncates historical bundles", () => {
++    it("contains no DELETE statements on evidence_bundles", () => {
++      const content = readMigration();
++      expect(content).not.toMatch(/DELETE FROM "intelligence"\."evidence_bundles"/);
++    });
++
++    it("contains no UPDATE statements on evidence_bundles", () => {
++      const content = readMigration();
++      expect(content).not.toMatch(/UPDATE "intelligence"\."evidence_bundles" SET/);
++    });
++
++    it("contains no TRUNCATE statements on evidence_bundles", () => {
++      const content = readMigration();
++      expect(content).not.toMatch(/TRUNCATE "intelligence"\."evidence_bundles"/);
++    });
++  });
++
++  describe("stores exact canonical payload text and idempotency identity as required fields", () => {
++    it("adds payloadCanonical as text NOT NULL", () => {
++      const content = readMigration();
++      expect(content).toMatch(
++        /ALTER TABLE "intelligence"\."evidence_bundles" ADD COLUMN "payload_canonical" text/
++      );
++      expect(content).toMatch(
++        /ALTER TABLE "intelligence"\."evidence_bundles" ALTER COLUMN "payload_canonical" SET NOT NULL/
++      );
++    });
++
++    it("adds idempotencyKey as varchar NOT NULL", () => {
++      const content = readMigration();
++      expect(content).toMatch(
++        /ALTER TABLE "intelligence"\."evidence_bundles" ADD COLUMN "idempotency_key" varchar/
++      );
++      expect(content).toMatch(
++        /ALTER TABLE "intelligence"\."evidence_bundles" ALTER COLUMN "idempotency_key" SET NOT NULL/
++      );
++    });
++  });
++
++  describe("enforces one immutable row per canonical logical identity", () => {
++    it("drops old uniq_bundle_pair_hash index", () => {
++      const content = readMigration();
++      expect(content).toContain('DROP INDEX "intelligence"."uniq_bundle_pair_hash"');
++    });
++
++    it("creates new unique index on schema/source/idempotency", () => {
++      const content = readMigration();
++      expect(content).toMatch(
++        /CREATE UNIQUE INDEX "uniq_bundle_source_idem" ON "intelligence"\."evidence_bundles" USING btree \("schema_version", "pair", "idempotency_key"\)/
++      );
++    });
++  });
++
++  describe("retains payload hash and inspectable jsonb", () => {
++    it("does not drop or alter payload_hash column", () => {
++      const content = readMigration();
++      expect(content).not.toMatch(
++        /ALTER TABLE "intelligence"\."evidence_bundles" DROP COLUMN "payload_hash"/
++      );
++      expect(content).not.toMatch(
++        /ALTER TABLE "intelligence"\."evidence_bundles" ALTER COLUMN "payload_hash"/
++      );
++    });
++
++    it("does not drop or alter payload column", () => {
++      const content = readMigration();
++      expect(content).not.toMatch(
++        /ALTER TABLE "intelligence"\."evidence_bundles" DROP COLUMN "payload"/
++      );
++      expect(content).not.toMatch(
++        /ALTER TABLE "intelligence"\."evidence_bundles" ALTER COLUMN "payload"/
++      );
++    });
++  });
++
++  describe("applies constraints only after the historical-row precondition", () => {
++    it("precondition check is first statement before all mutations", () => {
++      const content = readMigration();
++      const preconditionIdx = content.indexOf("IF NOT (0 + (SELECT COUNT");
++      const firstStatementBreakpoint = content.indexOf("--> statement-breakpoint");
++      expect(preconditionIdx).toBeLessThan(firstStatementBreakpoint);
++    });
++
++    it("all ALTER TABLE statements come after precondition", () => {
++      const content = readMigration();
++      const preconditionIdx = content.indexOf("IF NOT (0 + (SELECT COUNT");
++      const alterIdx = content.indexOf("ALTER TABLE");
++      expect(preconditionIdx).toBeLessThan(alterIdx);
++    });
++  });
++
++  describe("statement ordering", () => {
++    it("drops old index before creating new one", () => {
++      const content = readMigration();
++      const dropIdx = content.indexOf('DROP INDEX "intelligence"."uniq_bundle_pair_hash"');
++      const createIdx = content.indexOf('CREATE UNIQUE INDEX "uniq_bundle_source_idem"');
++      expect(dropIdx).toBeLessThan(createIdx);
++    });
++  });
++});
+diff --git a/tests/db/schema/evidence-bundles.test.ts b/tests/db/schema/evidence-bundles.test.ts
+index bac20af..e640d5b 100644
+--- a/tests/db/schema/evidence-bundles.test.ts
++++ b/tests/db/schema/evidence-bundles.test.ts
+@@ -24,4 +24,44 @@ describe("evidenceBundles schema", () => {
+     expect(columns).toContain("version");
+     expect(columns).toContain("receivedAtUnixMs");
+   });
++
++  describe("canonical identity columns", () => {
++    it("has payloadCanonical column as text type", () => {
++      const columns = getColumnNames(evidenceBundles);
++      expect(columns).toContain("payloadCanonical");
++    });
++
++    it("has idempotencyKey column", () => {
++      const columns = getColumnNames(evidenceBundles);
++      expect(columns).toContain("idempotencyKey");
++    });
++
++    it("payloadCanonical is NOT NULL", () => {
++      const col = (evidenceBundles as unknown as Record<string, unknown>)[
++        "payloadCanonical"
++      ] as Record<string, unknown>;
++      expect(col).toBeDefined();
++      expect(col["notNull"]).toBe(true);
++    });
++
++    it("idempotencyKey is NOT NULL", () => {
++      const col = (evidenceBundles as unknown as Record<string, unknown>)[
++        "idempotencyKey"
++      ] as Record<string, unknown>;
++      expect(col).toBeDefined();
++      expect(col["notNull"]).toBe(true);
++    });
++  });
++
++  describe("payload fields retention", () => {
++    it("retains payloadHash column", () => {
++      const columns = getColumnNames(evidenceBundles);
++      expect(columns).toContain("payloadHash");
++    });
++
++    it("retains payload column", () => {
++      const columns = getColumnNames(evidenceBundles);
++      expect(columns).toContain("payload");
++    });
++  });
+ });
+diff --git a/tests/fakes/fake-bundle-repo.ts b/tests/fakes/fake-bundle-repo.ts
+index 7a039ac..9b8c871 100644
+--- a/tests/fakes/fake-bundle-repo.ts
++++ b/tests/fakes/fake-bundle-repo.ts
+@@ -22,6 +22,8 @@ export class FakeBundleRepo implements EvidenceBundleRepo {
+       expiresAtUnixMs: row.expiresAtUnixMs,
+       payload: row.payload,
+       payloadHash: row.payloadHash,
++      payloadCanonical: row.payloadCanonical,
++      idempotencyKey: row.idempotencyKey,
+       taxonomySummary: row.taxonomySummary ?? null,
+       dominantSignalClass: row.dominantSignalClass ?? "deterministic",
+       confidence: row.confidence ?? DEFAULT_CONFIDENCE,
+diff --git a/tests/ports/bundle-repo.test.ts b/tests/ports/bundle-repo.test.ts
+index 970a1f4..ebd816a 100644
+--- a/tests/ports/bundle-repo.test.ts
++++ b/tests/ports/bundle-repo.test.ts
+@@ -18,6 +18,8 @@ describe("EvidenceBundleRepo contract", () => {
+       expiresAtUnixMs: 2000,
+       payload: { pair: "SOL/USDC" },
+       payloadHash: "hash-bundle-1",
++      payloadCanonical: "canonical-1",
++      idempotencyKey: "idem-1",
+       receivedAtUnixMs: 1001
+     });
+ 
+@@ -35,6 +37,8 @@ describe("EvidenceBundleRepo contract", () => {
+       expiresAtUnixMs: 2000,
+       payload: { pair: "SOL/USDC", v: 1 },
+       payloadHash: "hash-1",
++      payloadCanonical: "canonical-1",
++      idempotencyKey: "idem-1",
+       receivedAtUnixMs: 1001
+     });
+     await repo.insert({
+@@ -45,6 +49,8 @@ describe("EvidenceBundleRepo contract", () => {
+       expiresAtUnixMs: 2500,
+       payload: { pair: "SOL/USDC", v: 2 },
+       payloadHash: "hash-2",
++      payloadCanonical: "canonical-2",
++      idempotencyKey: "idem-2",
+       receivedAtUnixMs: 1501
+     });
+ 

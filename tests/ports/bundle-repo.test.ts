@@ -64,4 +64,36 @@ describe("EvidenceBundleRepo contract", () => {
     const latest = await repo.findLatestByPair("SOL/USDC");
     expect(latest).toBeUndefined();
   });
+
+  it("insert is idempotent by schemaVersion, pair, and idempotencyKey, ignoring payloadHash", async () => {
+    const repo = new FakeBundleRepo();
+    const first = await repo.insert({
+      ...BUNDLE_INSERT,
+      schemaVersion: "1.0",
+      pair: "SOL/USDC",
+      asOfUnixMs: 1000,
+      expiresAtUnixMs: 2000,
+      payload: { pair: "SOL/USDC" },
+      payloadHash: "hash-1",
+      payloadCanonical: "canonical-1",
+      idempotencyKey: "idem-dup",
+      receivedAtUnixMs: 1001
+    });
+
+    const second = await repo.insert({
+      ...BUNDLE_INSERT,
+      schemaVersion: "1.0",
+      pair: "SOL/USDC",
+      asOfUnixMs: 1000,
+      expiresAtUnixMs: 2000,
+      payload: { pair: "SOL/USDC" },
+      payloadHash: "hash-2", // different payloadHash
+      payloadCanonical: "canonical-2",
+      idempotencyKey: "idem-dup", // same idempotencyKey
+      receivedAtUnixMs: 1002
+    });
+
+    expect(second.id).toBe(first.id);
+    expect(second.payloadHash).toBe("hash-1");
+  });
 });

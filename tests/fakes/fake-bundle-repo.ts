@@ -11,7 +11,10 @@ export class FakeBundleRepo implements EvidenceBundleRepo {
 
   async insert(row: EvidenceBundleInsert): Promise<EvidenceBundleRow> {
     const existing = this.store.find(
-      (r) => r.pair === row.pair && r.payloadHash === row.payloadHash
+      (r) =>
+        r.schemaVersion === row.schemaVersion &&
+        r.pair === row.pair &&
+        r.idempotencyKey === row.idempotencyKey
     );
     if (existing) return existing;
     const result: EvidenceBundleRow = {
