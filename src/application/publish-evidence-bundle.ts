@@ -1,5 +1,6 @@
 import type { Clock } from "../ports/clock.js";
 import type { HttpClient, HttpResponse } from "../ports/http.js";
+import { HttpRequestError } from "../ports/http.js";
 import type { EnvReader } from "../ports/env.js";
 import type { EvidenceBundleRepo, EvidenceBundleRow } from "../ports/bundle-repo.js";
 import type { PublishAttemptRepo, PublishAttemptInsert } from "../ports/publish-attempt-repo.js";
@@ -13,7 +14,7 @@ export interface PublishEvidenceBundleDeps {
   readonly bundleRepo: EvidenceBundleRepo;
   readonly publishAttemptRepo: PublishAttemptRepo;
   readonly contract: EvidenceBundleContract;
-  readonly retry?: RetryControl;
+  readonly retry: RetryControl;
 }
 
 export interface PublishEvidenceBundleConfig {
@@ -24,6 +25,11 @@ export interface PublishEvidenceBundleConfig {
 const DEFAULT_TIMEOUT_MS = 5000;
 const ENDPOINT_PATH = "/v1/evidence/sol-usdc";
 const SUPPORTED_SCHEMA_VERSION = "evidence-bundle.v1";
+
+const RETRY_BASE_DELAY_MS = 250;
+const RETRY_MAX_DELAY_MS = 2000;
+const RETRY_JITTER_MAX_MS = 250;
+const MAX_RETRY_ATTEMPTS = 3;
 
 function buildEndpoint(baseUrl: string): string {
   const normalizedBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
@@ -107,6 +113,55 @@ function classifyHttpStatus(status: number): {
   return { outcome: "permanent_http_failed", auditStatus: "store_unavailable" };
 }
 
+function isRetryableHttpError(err: unknown): boolean {
+  if (err instanceof HttpRequestError) {
+    return err.kind === "timeout" || err.kind === "network";
+  }
+  return false;
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 429 || (status >= 500 && status < 600);
+}
+
+function parseRetryAfterHeader(headerValue: string | undefined, clockNowMs: number): number | null {
+  if (headerValue === undefined || headerValue === "") {
+    return null;
+  }
+  const trimmed = headerValue.trim();
+  const deltaSeconds = Number(trimmed);
+  if (!Number.isNaN(deltaSeconds)) {
+    if (deltaSeconds >= 0) {
+      const deltaMs = deltaSeconds * 1000;
+      return Math.min(deltaMs, RETRY_MAX_DELAY_MS);
+    }
+    return null;
+  }
+  const httpDateMs = Date.parse(trimmed);
+  if (!Number.isNaN(httpDateMs)) {
+    const deltaMs = httpDateMs - clockNowMs;
+    if (deltaMs >= 0) {
+      return Math.min(deltaMs, RETRY_MAX_DELAY_MS);
+    }
+    return 0;
+  }
+  return null;
+}
+
+function calculateRetryDelay(
+  attemptNumber: number,
+  retryControl: RetryControl,
+  retryAfterMs: number | null
+): number {
+  if (retryAfterMs !== null) {
+    return retryAfterMs;
+  }
+  const baseDelay = RETRY_BASE_DELAY_MS * attemptNumber;
+  const jitter = retryControl.jitterUnit() * RETRY_JITTER_MAX_MS;
+  const delay = baseDelay + jitter;
+  return Math.min(delay, RETRY_MAX_DELAY_MS);
+}
+
 export type PublishEvidenceBundleResult =
   | { readonly outcome: "created"; readonly bundleId: number; readonly attemptCount: 1 }
   | { readonly outcome: "idempotent_replay"; readonly bundleId: number; readonly attemptCount: 1 }
@@ -129,7 +184,12 @@ export type PublishEvidenceBundleResult =
       readonly bundleId: number;
       readonly httpStatus: number;
     }
-  | { readonly outcome: "audit_store_failed"; readonly reason: string };
+  | { readonly outcome: "audit_store_failed"; readonly reason: string }
+  | {
+      readonly outcome: "transient_failure_exhausted";
+      readonly bundleId: number;
+      readonly httpStatus: number;
+    };
 
 export type PublishEvidenceBundleEvent =
   | { readonly type: "publish_started"; readonly bundleId: number; readonly target: string }
@@ -144,7 +204,13 @@ export type PublishEvidenceBundleEvent =
       readonly httpStatus: number;
     }
   | { readonly type: "audit_persistence_failed"; readonly reason: string }
-  | { readonly type: "unknown_failed"; readonly bundleId: number; readonly httpStatus: number };
+  | { readonly type: "unknown_failed"; readonly bundleId: number; readonly httpStatus: number }
+  | { readonly type: "retry_scheduled"; readonly bundleId: number; readonly delayMs: number }
+  | {
+      readonly type: "transient_failure_exhausted";
+      readonly bundleId: number;
+      readonly httpStatus: number;
+    };
 
 export async function publishEvidenceBundle(
   deps: PublishEvidenceBundleDeps,
@@ -250,6 +316,8 @@ export async function publishEvidenceBundle(
   const requestHash = latestBundle.payloadHash;
   const firstAttemptedAtUnixMs = receivedAtUnixMs;
   const target = endpoint.replace(/^https?:\/\//, "").split("/")[0] ?? "";
+  const payload = latestBundle.payload;
+  const idempotencyKey = latestBundle.idempotencyKey;
 
   onEvent?.({
     type: "publish_started",
@@ -257,166 +325,308 @@ export async function publishEvidenceBundle(
     target
   });
 
-  let response: HttpResponse<unknown>;
-  try {
-    response = await http.postJsonRaw<unknown>(endpoint, latestBundle.payload, {
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-        "Idempotency-Key": latestBundle.idempotencyKey,
-        "Content-Type": "application/json"
-      },
-      timeoutMs,
-      maxAttempts: 1
-    });
-  } catch (err: unknown) {
-    const networkFailedAuditInsert: PublishAttemptInsert = {
+  let lastResponse: HttpResponse<unknown> | null = null;
+  let lastHttpStatus = 0;
+
+  for (let attemptNumber = 1; attemptNumber <= MAX_RETRY_ATTEMPTS; attemptNumber++) {
+    const completedAtUnixMs = new Date(clock.now()).getTime();
+
+    try {
+      lastResponse = await http.postJsonRaw<unknown>(endpoint, payload, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          "Idempotency-Key": idempotencyKey,
+          "Content-Type": "application/json"
+        },
+        timeoutMs,
+        maxAttempts: 1
+      });
+      lastHttpStatus = lastResponse.status;
+    } catch (err: unknown) {
+      lastHttpStatus = 0;
+
+      if (!isRetryableHttpError(err)) {
+        const networkFailedAuditInsert: PublishAttemptInsert = {
+          target,
+          targetEndpoint: endpoint,
+          evidenceBundleId: latestBundle.id,
+          researchBriefId: null,
+          idempotencyKey,
+          requestHash,
+          payloadHash: latestBundle.payloadHash,
+          status: "network_failed",
+          httpStatus: null,
+          responseBody: null,
+          errorCode: null,
+          errorMessage: err instanceof Error ? err.message : String(err),
+          attemptNumber,
+          firstAttemptedAtUnixMs,
+          completedAtUnixMs,
+          receivedAtUnixMs
+        };
+        let networkInsertOutcome: Awaited<ReturnType<PublishAttemptRepo["insert"]>>;
+        try {
+          networkInsertOutcome = await publishAttemptRepo.insert(networkFailedAuditInsert);
+        } catch (insertErr: unknown) {
+          onEvent?.({
+            type: "audit_persistence_failed",
+            reason:
+              insertErr instanceof Error
+                ? insertErr.message
+                : "Failed to insert network failure audit"
+          });
+          return {
+            outcome: "audit_store_failed",
+            reason: "Failed to insert network failure audit"
+          };
+        }
+        if (networkInsertOutcome.outcome === "conflict") {
+          onEvent?.({
+            type: "audit_persistence_failed",
+            reason: "Network failure audit insert conflict"
+          });
+          return {
+            outcome: "audit_store_failed",
+            reason: "Network failure audit insert conflict"
+          };
+        }
+        onEvent?.({
+          type: "permanent_http_failed",
+          bundleId: latestBundle.id,
+          httpStatus: 0
+        });
+        return {
+          outcome: "permanent_http_failed",
+          bundleId: latestBundle.id,
+          httpStatus: 0
+        };
+      }
+
+      const networkFailedAuditInsert: PublishAttemptInsert = {
+        target,
+        targetEndpoint: endpoint,
+        evidenceBundleId: latestBundle.id,
+        researchBriefId: null,
+        idempotencyKey,
+        requestHash,
+        payloadHash: latestBundle.payloadHash,
+        status: "network_failed",
+        httpStatus: null,
+        responseBody: null,
+        errorCode: null,
+        errorMessage: err instanceof Error ? err.message : String(err),
+        attemptNumber,
+        firstAttemptedAtUnixMs,
+        completedAtUnixMs,
+        receivedAtUnixMs
+      };
+      let networkInsertOutcome: Awaited<ReturnType<PublishAttemptRepo["insert"]>>;
+      try {
+        networkInsertOutcome = await publishAttemptRepo.insert(networkFailedAuditInsert);
+      } catch (insertErr: unknown) {
+        onEvent?.({
+          type: "audit_persistence_failed",
+          reason:
+            insertErr instanceof Error
+              ? insertErr.message
+              : "Failed to insert network failure audit"
+        });
+        return {
+          outcome: "audit_store_failed",
+          reason: "Failed to insert network failure audit"
+        };
+      }
+      if (networkInsertOutcome.outcome === "conflict") {
+        onEvent?.({
+          type: "audit_persistence_failed",
+          reason: "Network failure audit insert conflict"
+        });
+        return {
+          outcome: "audit_store_failed",
+          reason: "Network failure audit insert conflict"
+        };
+      }
+
+      if (attemptNumber === MAX_RETRY_ATTEMPTS) {
+        onEvent?.({
+          type: "transient_failure_exhausted",
+          bundleId: latestBundle.id,
+          httpStatus: 0
+        });
+        return {
+          outcome: "transient_failure_exhausted",
+          bundleId: latestBundle.id,
+          httpStatus: 0
+        };
+      }
+
+      const retryAfterMs = parseRetryAfterHeader(
+        lastResponse?.headers?.["Retry-After"],
+        completedAtUnixMs
+      );
+      const delayMs = calculateRetryDelay(attemptNumber, deps.retry, retryAfterMs);
+      onEvent?.({
+        type: "retry_scheduled",
+        bundleId: latestBundle.id,
+        delayMs
+      });
+      await deps.retry.sleep(delayMs);
+      continue;
+    }
+
+    if (isRetryableStatus(lastResponse.status)) {
+      const redactedResponseBody = redactSecrets(lastResponse.body);
+      const auditInsert: PublishAttemptInsert = {
+        target,
+        targetEndpoint: endpoint,
+        evidenceBundleId: latestBundle.id,
+        researchBriefId: null,
+        idempotencyKey,
+        requestHash,
+        payloadHash: latestBundle.payloadHash,
+        status: "network_failed",
+        httpStatus: lastResponse.status,
+        responseBody: redactedResponseBody,
+        errorCode: null,
+        errorMessage: null,
+        attemptNumber,
+        firstAttemptedAtUnixMs,
+        completedAtUnixMs,
+        receivedAtUnixMs
+      };
+
+      let insertOutcome: Awaited<ReturnType<PublishAttemptRepo["insert"]>>;
+      try {
+        insertOutcome = await publishAttemptRepo.insert(auditInsert);
+      } catch (err) {
+        onEvent?.({
+          type: "audit_persistence_failed",
+          reason: err instanceof Error ? err.message : "Insert failed"
+        });
+        return {
+          outcome: "audit_store_failed",
+          reason: err instanceof Error ? err.message : "Insert failed"
+        };
+      }
+
+      if (insertOutcome.outcome === "conflict") {
+        onEvent?.({ type: "audit_persistence_failed", reason: "Audit insert conflict" });
+        return {
+          outcome: "audit_store_failed",
+          reason: "Audit insert conflict"
+        };
+      }
+
+      if (attemptNumber === MAX_RETRY_ATTEMPTS) {
+        onEvent?.({
+          type: "transient_failure_exhausted",
+          bundleId: latestBundle.id,
+          httpStatus: lastResponse.status
+        });
+        return {
+          outcome: "transient_failure_exhausted",
+          bundleId: latestBundle.id,
+          httpStatus: lastResponse.status
+        };
+      }
+
+      const retryAfterMs = parseRetryAfterHeader(
+        lastResponse.headers?.["Retry-After"],
+        completedAtUnixMs
+      );
+      const delayMs = calculateRetryDelay(attemptNumber, deps.retry, retryAfterMs);
+      onEvent?.({
+        type: "retry_scheduled",
+        bundleId: latestBundle.id,
+        delayMs
+      });
+      await deps.retry.sleep(delayMs);
+      continue;
+    }
+
+    const { outcome, auditStatus } = classifyHttpStatus(lastResponse.status);
+    const redactedResponseBody = redactSecrets(lastResponse.body);
+
+    const auditInsert: PublishAttemptInsert = {
       target,
       targetEndpoint: endpoint,
       evidenceBundleId: latestBundle.id,
       researchBriefId: null,
-      idempotencyKey: latestBundle.idempotencyKey,
+      idempotencyKey,
       requestHash,
       payloadHash: latestBundle.payloadHash,
-      status: "network_failed",
-      httpStatus: null,
-      responseBody: null,
+      status: auditStatus,
+      httpStatus: lastResponse.status,
+      responseBody: redactedResponseBody,
       errorCode: null,
-      errorMessage: err instanceof Error ? err.message : String(err),
-      attemptNumber: 1,
+      errorMessage: null,
+      attemptNumber,
       firstAttemptedAtUnixMs,
-      completedAtUnixMs: new Date(clock.now()).getTime(),
+      completedAtUnixMs,
       receivedAtUnixMs
     };
-    let networkInsertOutcome: Awaited<ReturnType<PublishAttemptRepo["insert"]>>;
+
+    let insertOutcome: Awaited<ReturnType<PublishAttemptRepo["insert"]>>;
     try {
-      networkInsertOutcome = await publishAttemptRepo.insert(networkFailedAuditInsert);
-    } catch (insertErr: unknown) {
+      insertOutcome = await publishAttemptRepo.insert(auditInsert);
+    } catch (err) {
       onEvent?.({
         type: "audit_persistence_failed",
-        reason:
-          insertErr instanceof Error ? insertErr.message : "Failed to insert network failure audit"
+        reason: err instanceof Error ? err.message : "Insert failed"
       });
       return {
         outcome: "audit_store_failed",
-        reason: "Failed to insert network failure audit"
+        reason: err instanceof Error ? err.message : "Insert failed"
       };
     }
-    if (networkInsertOutcome.outcome === "conflict") {
-      onEvent?.({
-        type: "audit_persistence_failed",
-        reason: "Network failure audit insert conflict"
-      });
+
+    if (insertOutcome.outcome === "conflict") {
+      onEvent?.({ type: "audit_persistence_failed", reason: "Audit insert conflict" });
       return {
         outcome: "audit_store_failed",
-        reason: "Network failure audit insert conflict"
+        reason: "Audit insert conflict"
       };
     }
-    onEvent?.({
-      type: "permanent_http_failed",
-      bundleId: latestBundle.id,
-      httpStatus: 0
-    });
-    return {
-      outcome: "permanent_http_failed",
-      bundleId: latestBundle.id,
-      httpStatus: 0
-    };
+
+    return mapOutcomeToResult(outcome, latestBundle.id, lastResponse.status, attemptNumber);
   }
 
-  const { outcome, auditStatus } = classifyHttpStatus(response.status);
-
-  const redactedResponseBody = redactSecrets(response.body);
-
-  const auditInsert: PublishAttemptInsert = {
-    target,
-    targetEndpoint: endpoint,
-    evidenceBundleId: latestBundle.id,
-    researchBriefId: null,
-    idempotencyKey: latestBundle.idempotencyKey,
-    requestHash,
-    payloadHash: latestBundle.payloadHash,
-    status: auditStatus,
-    httpStatus: response.status,
-    responseBody: redactedResponseBody,
-    errorCode: null,
-    errorMessage: null,
-    attemptNumber: 1,
-    firstAttemptedAtUnixMs,
-    completedAtUnixMs: new Date(clock.now()).getTime(),
-    receivedAtUnixMs
-  };
-
-  let insertOutcome: Awaited<ReturnType<PublishAttemptRepo["insert"]>>;
-  try {
-    insertOutcome = await publishAttemptRepo.insert(auditInsert);
-  } catch (err) {
-    onEvent?.({
-      type: "audit_persistence_failed",
-      reason: err instanceof Error ? err.message : "Insert failed"
-    });
-    return {
-      outcome: "audit_store_failed",
-      reason: err instanceof Error ? err.message : "Insert failed"
-    };
-  }
-
-  if (insertOutcome.outcome === "conflict") {
-    onEvent?.({ type: "audit_persistence_failed", reason: "Audit insert conflict" });
-    return {
-      outcome: "audit_store_failed",
-      reason: "Audit insert conflict"
-    };
-  }
-
-  if (outcome === "created") {
-    onEvent?.({ type: "created", bundleId: latestBundle.id, httpStatus: response.status });
-    return { outcome: "created" as const, bundleId: latestBundle.id, attemptCount: 1 as const };
-  }
-  if (outcome === "idempotent_replay") {
-    onEvent?.({
-      type: "idempotent_replay",
-      bundleId: latestBundle.id,
-      httpStatus: response.status
-    });
-    return {
-      outcome: "idempotent_replay" as const,
-      bundleId: latestBundle.id,
-      attemptCount: 1 as const
-    };
-  }
-  if (outcome === "validation_failed") {
-    onEvent?.({
-      type: "validation_failed",
-      bundleId: latestBundle.id,
-      httpStatus: response.status
-    });
-  } else if (outcome === "auth_failed") {
-    onEvent?.({ type: "auth_failed", bundleId: latestBundle.id, httpStatus: response.status });
-  } else if (outcome === "conflict") {
-    onEvent?.({ type: "conflict", bundleId: latestBundle.id, httpStatus: response.status });
-  } else if (outcome === "permanent_http_failed") {
-    onEvent?.({
-      type: "permanent_http_failed",
-      bundleId: latestBundle.id,
-      httpStatus: response.status
-    });
-  } else if (outcome === "unknown_failed") {
-    onEvent?.({
-      type: "unknown_failed",
-      bundleId: latestBundle.id,
-      httpStatus: response.status
-    });
-  }
   return {
-    outcome: outcome as
-      | "validation_failed"
-      | "auth_failed"
-      | "conflict"
-      | "unknown_failed"
-      | "permanent_http_failed",
+    outcome: "transient_failure_exhausted",
     bundleId: latestBundle.id,
-    httpStatus: response.status
+    httpStatus: lastHttpStatus
   };
+}
+
+function mapOutcomeToResult(
+  outcome:
+    | "created"
+    | "idempotent_replay"
+    | "validation_failed"
+    | "auth_failed"
+    | "conflict"
+    | "unknown_failed"
+    | "permanent_http_failed",
+  bundleId: number,
+  httpStatus: number,
+  attemptCount: number
+): PublishEvidenceBundleResult {
+  switch (outcome) {
+    case "created":
+      return { outcome: "created", bundleId, attemptCount: attemptCount as 1 | 2 | 3 };
+    case "idempotent_replay":
+      return { outcome: "idempotent_replay", bundleId, attemptCount: attemptCount as 1 | 2 | 3 };
+    case "validation_failed":
+      return { outcome: "validation_failed", bundleId, httpStatus };
+    case "auth_failed":
+      return { outcome: "auth_failed", bundleId, httpStatus };
+    case "conflict":
+      return { outcome: "conflict", bundleId, httpStatus };
+    case "unknown_failed":
+      return { outcome: "unknown_failed", bundleId, httpStatus };
+    case "permanent_http_failed":
+      return { outcome: "permanent_http_failed", bundleId, httpStatus };
+  }
 }
 
 async function insertValidationFailedAudit(

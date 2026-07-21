@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import type { Clock } from "../../src/ports/clock.js";
 import type { HttpClient, HttpResponse } from "../../src/ports/http.js";
+import { HttpRequestError } from "../../src/ports/http.js";
 import type { EnvReader } from "../../src/ports/env.js";
 import type { EvidenceBundleRepo, EvidenceBundleRow } from "../../src/ports/bundle-repo.js";
 import type {
@@ -18,6 +19,7 @@ import type {
   PublishEvidenceBundleEvent
 } from "../../src/application/publish-evidence-bundle.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
+import { FakeRetry } from "../fakes/fake-retry.js";
 
 const EPOCH = "2024-01-01T00:00:00.000Z";
 const EVAL_MS = new Date(EPOCH).getTime();
@@ -303,6 +305,7 @@ describe("publishEvidenceBundle", () => {
   let bundleRepo: FakeBundleRepo;
   let publishAttemptRepo: FakePublishAttemptRepo;
   let contract: FakeContract;
+  let retry: FakeRetry;
 
   beforeEach(() => {
     clock = new RecordingClock(EPOCH);
@@ -311,6 +314,7 @@ describe("publishEvidenceBundle", () => {
     bundleRepo = new FakeBundleRepo();
     publishAttemptRepo = new FakePublishAttemptRepo();
     contract = createFakeContract();
+    retry = new FakeRetry([]);
 
     env.store = {
       REGIME_ENGINE_BASE_URL: "https://regime-engine.example.com",
@@ -326,8 +330,8 @@ describe("publishEvidenceBundle", () => {
       await import("../../src/application/publish-evidence-bundle.js");
     const events: PublishEvidenceBundleEvent[] = [];
     const result = await publishEvidenceBundle(
-      { clock, http, env, bundleRepo, publishAttemptRepo, contract },
-      {}
+      { clock, http, env, bundleRepo, publishAttemptRepo, contract, retry },
+      { onEvent: (e) => events.push(e) }
     );
     return { result, events };
   }
@@ -815,6 +819,410 @@ describe("publishEvidenceBundle", () => {
       http.nextResponse = { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
       await publish();
       expect(http.callLog[0]!.options.maxAttempts).toBe(1);
+    });
+  });
+
+  describe("transient failures retry at most three total attempts", () => {
+    it("network error retries up to three times", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+      http.nextResponse = { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      await publish();
+      expect(http.callLog.length).toBe(3);
+    });
+
+    it("timeout error retries up to three times", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextError = new HttpRequestError("timeout", "Request timed out", null, true);
+      http.nextResponse = { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      await publish();
+      expect(http.callLog.length).toBe(3);
+    });
+
+    it("408 status retries up to three times", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextResponse = { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      let callCount = 0;
+      const originalPostJsonRaw = http.postJsonRaw.bind(http);
+      http.postJsonRaw = async (...args: Parameters<typeof originalPostJsonRaw>) => {
+        await originalPostJsonRaw(...args);
+        callCount++;
+        if (callCount < 3) {
+          return { status: 408, ok: false, body: {}, headers: {} };
+        }
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      };
+      const { result } = await publish();
+      expect(http.callLog.length).toBe(3);
+      expect(result.outcome).toBe("created");
+    });
+
+    it("429 status retries up to three times", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextResponse = { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      let callCount = 0;
+      const originalPostJsonRaw = http.postJsonRaw.bind(http);
+      http.postJsonRaw = async (...args: Parameters<typeof originalPostJsonRaw>) => {
+        await originalPostJsonRaw(...args);
+        callCount++;
+        if (callCount < 3) {
+          return { status: 429, ok: false, body: {}, headers: {} };
+        }
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      };
+      const { result } = await publish();
+      expect(http.callLog.length).toBe(3);
+      expect(result.outcome).toBe("created");
+    });
+
+    it("500 status retries up to three times", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextResponse = { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      let callCount = 0;
+      const originalPostJsonRaw = http.postJsonRaw.bind(http);
+      http.postJsonRaw = async (...args: Parameters<typeof originalPostJsonRaw>) => {
+        await originalPostJsonRaw(...args);
+        callCount++;
+        if (callCount < 3) {
+          return { status: 500, ok: false, body: {}, headers: {} };
+        }
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      };
+      const { result } = await publish();
+      expect(http.callLog.length).toBe(3);
+      expect(result.outcome).toBe("created");
+    });
+
+    it("503 status retries up to three times", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      let callCount = 0;
+      http.postJsonRaw = async (url, body, options) => {
+        http.callLog.push({ url, body, options: options ?? {} });
+        callCount++;
+        if (callCount < 3) {
+          return { status: 503, ok: false, body: {}, headers: {} };
+        }
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      };
+      const { result } = await publish();
+      expect(http.callLog.length).toBe(3);
+      expect(result.outcome).toBe("created");
+    });
+
+    it("returns transient_failure_exhausted after three failed attempts", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+      const { result } = await publish();
+      expect(result.outcome).toBe("transient_failure_exhausted");
+    });
+  });
+
+  describe("unknown outcome retries reuse exact key hash and payload", () => {
+    it("same idempotency key is sent on all retry attempts", async () => {
+      const bundle = makeBundleRow({ idempotencyKey: "unique-key-123" });
+      bundleRepo.store.push(bundle);
+      const canonical = buildCanonicalFromPayload(bundle.payload);
+      contract.overrideResult = { ...canonical, idempotencyKey: "unique-key-123" };
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+      await publish();
+      expect(http.callLog.length).toBe(3);
+      for (const call of http.callLog) {
+        expect(call.options.headers?.["Idempotency-Key"]).toBe("unique-key-123");
+      }
+    });
+
+    it("same payload reference is sent on all retry attempts", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      const canonical = buildCanonicalFromPayload(bundle.payload);
+      contract.overrideResult = canonical;
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+      await publish();
+      expect(http.callLog.length).toBe(3);
+      for (const call of http.callLog) {
+        expect(call.body).toBe(bundle.payload);
+      }
+    });
+
+    it("same request hash is recorded in all attempt audits", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+      await publish();
+      const hashes = publishAttemptRepo.store.map((r) => r.requestHash);
+      expect(new Set(hashes).size).toBe(1);
+    });
+  });
+
+  describe("retry delay is bounded and deterministic", () => {
+    it("base delay is 250ms", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+      retry = new FakeRetry([0, 0, 0]);
+      const { result } = await publish();
+      expect(result.outcome).toBe("transient_failure_exhausted");
+      expect(retry.delays[0]).toBe(250);
+    });
+
+    it("exponential backoff factors are 1 and 2", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+      retry = new FakeRetry([0, 0, 0]);
+      await publish();
+      expect(retry.delays[0]).toBe(250);
+      expect(retry.delays[1]).toBe(500);
+    });
+
+    it("jitter up to 250ms is added", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+      retry = new FakeRetry([0.5, 0.5, 0.5]);
+      await publish();
+      expect(retry.delays[0]).toBe(375);
+      expect(retry.delays[1]).toBe(625);
+    });
+
+    it("hard cap of 2000ms is never exceeded", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+      retry = new FakeRetry([1, 1, 1]);
+      await publish();
+      for (const delay of retry.delays) {
+        expect(delay).toBeLessThanOrEqual(2000);
+      }
+    });
+
+    it("excessive jitter is clamped to 2000ms cap", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+      retry = new FakeRetry([1, 1, 1]);
+      await publish();
+      expect(retry.delays[0]).toBeLessThanOrEqual(2000);
+      expect(retry.delays[1]).toBeLessThanOrEqual(2000);
+    });
+  });
+
+  describe("valid Retry-After is honored within maximum", () => {
+    it("Retry-After delta-seconds is honored", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      let callCount = 0;
+      http.postJsonRaw = async () => {
+        callCount++;
+        if (callCount === 1) {
+          return { status: 429, ok: false, body: {}, headers: { "Retry-After": "1" } };
+        }
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      };
+      retry = new FakeRetry([0]);
+      await publish();
+      expect(retry.delays[0]).toBe(1000);
+    });
+
+    it("Retry-After http date is honored", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      const futureDate = new Date(EPOCH).getTime() + 5000;
+      let callCount = 0;
+      http.postJsonRaw = async () => {
+        callCount++;
+        if (callCount === 1) {
+          const httpDate = new Date(futureDate).toUTCString();
+          return { status: 429, ok: false, body: {}, headers: { "Retry-After": httpDate } };
+        }
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      };
+      retry = new FakeRetry([0]);
+      await publish();
+      expect(retry.delays[0]).toBeLessThanOrEqual(2000);
+    });
+  });
+
+  describe("invalid or excessive Retry-After falls back or clamps", () => {
+    it("negative Retry-After falls back to exponential", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      let callCount = 0;
+      http.postJsonRaw = async () => {
+        callCount++;
+        if (callCount === 1) {
+          return { status: 429, ok: false, body: {}, headers: { "Retry-After": "-1" } };
+        }
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      };
+      retry = new FakeRetry([0]);
+      await publish();
+      expect(retry.delays[0]).toBe(250);
+    });
+
+    it("excessive Retry-After is clamped to 2000ms", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      let callCount = 0;
+      http.postJsonRaw = async () => {
+        callCount++;
+        if (callCount === 1) {
+          return { status: 429, ok: false, body: {}, headers: { "Retry-After": "5000" } };
+        }
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      };
+      retry = new FakeRetry([0]);
+      await publish();
+      expect(retry.delays[0]).toBeLessThanOrEqual(2000);
+    });
+
+    it("non-numeric Retry-After falls back to exponential", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      let callCount = 0;
+      http.postJsonRaw = async () => {
+        callCount++;
+        if (callCount === 1) {
+          return { status: 429, ok: false, body: {}, headers: { "Retry-After": "invalid" } };
+        }
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      };
+      retry = new FakeRetry([0]);
+      await publish();
+      expect(retry.delays[0]).toBe(250);
+    });
+  });
+
+  describe("audit occurs before every retry delay", () => {
+    it("audit is persisted before sleep on first retry", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+      retry = new FakeRetry([0, 0, 0]);
+      await publish();
+      expect(publishAttemptRepo.store.filter((r) => r.status === "network_failed")).toHaveLength(3);
+    });
+
+    it("no second request is made before first audit is persisted", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      let firstRequestComplete = false;
+      http.postJsonRaw = async () => {
+        firstRequestComplete = true;
+        throw new Error("ECONNRESET");
+      };
+      publishAttemptRepo.insertShouldFail = false;
+      retry = new FakeRetry([0, 0, 0]);
+      void publish();
+      await new Promise((r) => setTimeout(r, 10));
+      expect(firstRequestComplete).toBe(true);
+    });
+  });
+
+  describe("audit failure stops publication before another request", () => {
+    it("when insert fails, no more requests are made", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      let callCount = 0;
+      http.postJsonRaw = async () => {
+        callCount++;
+        throw new Error("ECONNRESET");
+      };
+      publishAttemptRepo.insertShouldFail = true;
+      retry = new FakeRetry([0, 0, 0]);
+      const { result } = await publish();
+      expect(result.outcome).toBe("audit_store_failed");
+      expect(callCount).toBe(1);
+    });
+
+    it("audit insert conflict prevents further requests", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      let callCount = 0;
+      http.postJsonRaw = async () => {
+        callCount++;
+        throw new Error("ECONNRESET");
+      };
+      publishAttemptRepo.insertConflict = true;
+      retry = new FakeRetry([0, 0, 0]);
+      const { result } = await publish();
+      expect(result.outcome).toBe("audit_store_failed");
+      expect(callCount).toBe(1);
+    });
+  });
+
+  describe("exhausted transient failure is terminal and observable", () => {
+    it("transient_failure_exhausted is returned after three failures", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+      retry = new FakeRetry([0, 0, 0]);
+      const { result } = await publish();
+      expect(result.outcome).toBe("transient_failure_exhausted");
+    });
+
+    it("transient_failure_exhausted event is emitted", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+      retry = new FakeRetry([0, 0, 0]);
+      const { events } = await publish();
+      expect(events.some((e) => e.type === "transient_failure_exhausted")).toBe(true);
+    });
+  });
+
+  describe("concurrent duplicate audit conflict is not reported as success", () => {
+    it("when concurrent insert conflict occurs, audit_store_failed is returned", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextResponse = { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      publishAttemptRepo.insertConflict = true;
+      retry = new FakeRetry([]);
+      const { result } = await publish();
+      expect(result.outcome).toBe("audit_store_failed");
+    });
+
+    it("the losing invocation cannot report remote success", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
+      http.nextResponse = { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      publishAttemptRepo.insertConflict = true;
+      retry = new FakeRetry([]);
+      const { result } = await publish();
+      expect(result.outcome).not.toBe("created");
     });
   });
 });
