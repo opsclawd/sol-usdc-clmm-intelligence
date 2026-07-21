@@ -57,9 +57,9 @@ export class DrizzlePublishAttemptRepo implements PublishAttemptRepo {
         errorCode: row.errorCode ?? null,
         errorMessage: row.errorMessage ?? null,
         attemptNumber: row.attemptNumber,
-        firstAttemptedAtUnixMs: BigInt(row.firstAttemptedAtUnixMs),
-        completedAtUnixMs: row.completedAtUnixMs != null ? BigInt(row.completedAtUnixMs) : null,
-        receivedAtUnixMs: BigInt(row.receivedAtUnixMs)
+        firstAttemptedAtUnixMs: row.firstAttemptedAtUnixMs,
+        completedAtUnixMs: row.completedAtUnixMs ?? null,
+        receivedAtUnixMs: row.receivedAtUnixMs
       })
       .onConflictDoNothing({
         target: [
@@ -123,10 +123,7 @@ export class DrizzlePublishAttemptRepo implements PublishAttemptRepo {
       .select()
       .from(publishAttempts)
       .where(
-        and(
-          eq(publishAttempts.status, status),
-          gte(publishAttempts.receivedAtUnixMs, BigInt(sinceUnixMs))
-        )
+        and(eq(publishAttempts.status, status), gte(publishAttempts.receivedAtUnixMs, sinceUnixMs))
       )
       .orderBy(desc(publishAttempts.receivedAtUnixMs), desc(publishAttempts.id))
       .limit(limit);

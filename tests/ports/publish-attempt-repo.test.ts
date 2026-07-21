@@ -3,7 +3,8 @@ import { describe, it, expect } from "vitest";
 import type {
   PublishAttemptInsert,
   PublishAttemptRepo,
-  PublishAttemptInsertOutcome
+  PublishAttemptInsertOutcome,
+  PublishAttemptStatus
 } from "../../src/ports/publish-attempt-repo.js";
 
 function makeAttempt(
@@ -15,7 +16,7 @@ function makeAttempt(
     idempotencyKey: string;
     requestHash: string;
     payloadHash: string;
-    status: string;
+    status: PublishAttemptStatus;
     httpStatus: number | null;
     responseBody: unknown | null;
     errorCode: string | null;
@@ -173,9 +174,9 @@ describe("PublishAttemptRepo contract", () => {
       const found = await repo.findByTargetAndKey(target, key);
 
       expect(found).toHaveLength(3);
-      expect(found[0].attemptNumber).toBe(1);
-      expect(found[1].attemptNumber).toBe(2);
-      expect(found[2].attemptNumber).toBe(3);
+      expect(found[0]!.attemptNumber).toBe(1);
+      expect(found[1]!.attemptNumber).toBe(2);
+      expect(found[2]!.attemptNumber).toBe(3);
     });
   });
 
@@ -199,9 +200,9 @@ describe("PublishAttemptRepo contract", () => {
       const found = await repo.findByBundle(bundleId);
 
       expect(found).toHaveLength(3);
-      expect(found[0].receivedAtUnixMs).toBe(1003);
-      expect(found[1].receivedAtUnixMs).toBe(1002);
-      expect(found[2].receivedAtUnixMs).toBe(1001);
+      expect(found[0]!.receivedAtUnixMs).toBe(1003);
+      expect(found[1]!.receivedAtUnixMs).toBe(1002);
+      expect(found[2]!.receivedAtUnixMs).toBe(1001);
     });
   });
 
@@ -262,9 +263,9 @@ describe("PublishAttemptRepo contract", () => {
       const result = await repo.findRecentByStatus("sent", 1002, 3);
 
       expect(result).toHaveLength(3);
-      expect(result[0].receivedAtUnixMs).toBe(1005);
-      expect(result[1].receivedAtUnixMs).toBe(1004);
-      expect(result[2].receivedAtUnixMs).toBe(1003);
+      expect(result[0]!.receivedAtUnixMs).toBe(1005);
+      expect(result[1]!.receivedAtUnixMs).toBe(1004);
+      expect(result[2]!.receivedAtUnixMs).toBe(1003);
     });
 
     it("includes the since time boundary", async () => {
@@ -305,8 +306,8 @@ describe("PublishAttemptRepo contract", () => {
       const result = await repo.findRecentByStatus("pending", 1000, 10);
 
       expect(result).toHaveLength(2);
-      expect(result[0].receivedAtUnixMs).toBe(1001);
-      expect(result[1].receivedAtUnixMs).toBe(1000);
+      expect(result[0]!.receivedAtUnixMs).toBe(1001);
+      expect(result[1]!.receivedAtUnixMs).toBe(1000);
     });
   });
 
