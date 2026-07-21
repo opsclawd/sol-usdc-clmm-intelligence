@@ -268,3 +268,30 @@ The `pnpm assemble:bundle` script:
 6. Sets exit code 1 on conflict or error
 
 **Never logs:** wallet ID, canonical payload, full provenance.
+
+## Publish-attempt persistence
+
+The `publish_attempts` table records audit evidence for every HTTP delivery attempt to regime-engine. It is append-only: rows are never updated or deleted.
+
+### Identity and ordering
+
+- One immutable row represents one HTTP attempt.
+- `(target, idempotency_key, attempt_number)` is the unique attempt identity.
+- The same `(target, idempotency_key)` with a greater `attempt_number` is a retry, not a conflict.
+- `attempt_number ASC, id ASC` is the canonical read order; database-natural order is not used.
+
+### Logical references without foreign keys
+
+- `evidence_bundle_id` and nullable `research_brief_id` are indexed logical references.
+- No foreign keys or cascades are defined.
+- Out-of-order replay and restore are supported.
+- Application consumers must tolerate temporarily unresolved references during replay.
+
+### Authority boundary
+
+The repository records audit outcomes only. It does not decide policy, implement transport logic, or manage retry loops.
+
+```
+evidence_bundles/research_briefs  ...logical reference...>  publish_attempts
+                                      (no DB foreign key)
+```

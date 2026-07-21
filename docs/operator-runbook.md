@@ -495,3 +495,46 @@ Only operational summary fields are printed: outcome, row ID, payload hash, slot
 
 > [!STOP]
 > **Migration precondition:** The migration that introduces `evidence_bundles` constraints assumes the table is empty. If any row exists, the migration aborts. Do not rewrite or delete existing rows without lead engineer approval.
+
+## Publish-attempt persistence
+
+All SQL queries below are read-only. Do not manually mutate immutable publish-attempt audit rows.
+
+### Inspect attempts by target and idempotency key
+
+```sql
+SELECT target, idempotency_key, attempt_number, status, http_status, received_at_unix_ms
+FROM intelligence.publish_attempts
+WHERE target = '<target>' AND idempotency_key = '<idempotency-key>'
+ORDER BY attempt_number ASC, id ASC;
+```
+
+### Volume summary by status since timestamp
+
+```sql
+SELECT status, COUNT(*) AS attempts
+FROM intelligence.publish_attempts
+WHERE received_at_unix_ms >= <since-unix-ms>
+GROUP BY status
+ORDER BY status;
+```
+
+### Diagnostic: temporarily unresolved logical references
+
+```sql
+SELECT pa.id, pa.evidence_bundle_id, pa.research_brief_id
+FROM intelligence.publish_attempts AS pa
+LEFT JOIN intelligence.evidence_bundles AS eb ON eb.id = pa.evidence_bundle_id
+LEFT JOIN intelligence.research_briefs AS rb ON rb.id = pa.research_brief_id
+WHERE eb.id IS NULL OR (pa.research_brief_id IS NOT NULL AND rb.id IS NULL);
+```
+
+This query is diagnostic, not proof of corruption: logical references may be temporarily unresolved during out-of-order replay. Do not add foreign keys, cascades, repair updates, or deletes to resolve these. To retry a failed attempt, append a new row with a higher `attempt_number` for the same `(target, idempotency_key)` pair.
+
+### Normal migration command
+
+```bash
+pnpm db:migrate
+```
+
+Do not execute migrations or any write/delete SQL against shared infrastructure without explicit operator authorization.
