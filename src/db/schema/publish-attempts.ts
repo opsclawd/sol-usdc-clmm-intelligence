@@ -38,6 +38,7 @@ export const publishAttempts = intelligence.table(
   },
   (t) => [
     uniqueIndex("uniq_pub_attempt_idem").on(t.target, t.idempotencyKey, t.attemptNumber),
+    index("idx_pub_attempt_target_idem").on(t.target, t.idempotencyKey),
     index("idx_pub_attempt_bundle").on(t.evidenceBundleId),
     index("idx_pub_attempt_brief").on(t.researchBriefId),
     index("idx_pub_attempt_status_recency").on(t.status, t.receivedAtUnixMs),

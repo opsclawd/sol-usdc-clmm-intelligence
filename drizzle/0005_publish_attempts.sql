@@ -29,6 +29,7 @@ CREATE TABLE "intelligence"."publish_attempts" (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX "uniq_pub_attempt_idem" ON "intelligence"."publish_attempts" USING btree ("target","idempotency_key","attempt_number");--> statement-breakpoint
+CREATE INDEX "idx_pub_attempt_target_idem" ON "intelligence"."publish_attempts" USING btree ("target","idempotency_key");--> statement-breakpoint
 CREATE INDEX "idx_pub_attempt_bundle" ON "intelligence"."publish_attempts" USING btree ("evidence_bundle_id");--> statement-breakpoint
 CREATE INDEX "idx_pub_attempt_brief" ON "intelligence"."publish_attempts" USING btree ("research_brief_id");--> statement-breakpoint
 CREATE INDEX "idx_pub_attempt_status_recency" ON "intelligence"."publish_attempts" USING btree ("status","received_at_unix_ms");
