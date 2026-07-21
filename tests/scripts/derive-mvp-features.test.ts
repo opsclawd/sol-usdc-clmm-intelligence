@@ -3,7 +3,15 @@ import type { Clock } from "../../src/ports/clock.js";
 import type { RunIdFactory } from "../../src/ports/run-id.js";
 import type { EnvReader } from "../../src/ports/env.js";
 import type { NodeRuntime } from "../../src/adapters/node/composition-root.js";
+import type { RetryControl } from "../../src/ports/retry.js";
 import { runDeriveMvpFeaturesScript } from "../../scripts/collectors/derive-mvp-features.js";
+
+function createMockRetryControl(): RetryControl {
+  return {
+    sleep: vi.fn().mockResolvedValue(undefined),
+    jitterUnit: vi.fn().mockReturnValue(0)
+  };
+}
 
 function createMockClock(now?: string): Clock {
   return {
@@ -257,6 +265,7 @@ describe("derive-mvp-features script", () => {
         clock: createMockClock(),
         commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
         runIdFactory: createMockRunIdFactory(),
+        retryControl: createMockRetryControl(),
         getDb: vi.fn(),
         getPersistence: vi.fn().mockResolvedValue({
           connection: { close: vi.fn().mockResolvedValue(undefined) },
@@ -286,6 +295,7 @@ describe("derive-mvp-features script", () => {
         clock: createMockClock(),
         commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
         runIdFactory: createMockRunIdFactory(),
+        retryControl: createMockRetryControl(),
         getDb: vi.fn(),
         getPersistence: vi.fn().mockResolvedValue({
           connection: { close: vi.fn().mockResolvedValue(undefined) },
@@ -328,6 +338,7 @@ describe("derive-mvp-features script", () => {
         clock: createMockClock(),
         commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
         runIdFactory: createMockRunIdFactory(),
+        retryControl: createMockRetryControl(),
         getDb: vi.fn(),
         getPersistence: vi.fn().mockResolvedValue({
           connection: { close: vi.fn().mockResolvedValue(undefined) },
@@ -366,6 +377,7 @@ describe("derive-mvp-features script", () => {
         clock: createMockClock(),
         commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
         runIdFactory: createMockRunIdFactory(),
+        retryControl: createMockRetryControl(),
         getDb: vi.fn(),
         getPersistence: vi.fn().mockResolvedValue({
           connection: { close: vi.fn().mockResolvedValue(undefined) },
@@ -402,6 +414,7 @@ describe("derive-mvp-features script", () => {
         clock: createMockClock(),
         commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
         runIdFactory: createMockRunIdFactory(),
+        retryControl: createMockRetryControl(),
         getDb: vi.fn(),
         getPersistence: vi.fn().mockResolvedValue({
           connection: { close: vi.fn().mockRejectedValue(new Error("Connection close failed")) },
