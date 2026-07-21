@@ -156,6 +156,13 @@ export async function publishEvidenceBundle(
   const baseUrl = env.get("REGIME_ENGINE_BASE_URL");
   const authToken = env.get("REGIME_ENGINE_AUTH_TOKEN");
 
+  if (!authToken) {
+    return {
+      outcome: "local_validation_failed",
+      reason: "REGIME_ENGINE_AUTH_TOKEN is not set"
+    };
+  }
+
   let endpoint: string;
   try {
     validateUrl(baseUrl);

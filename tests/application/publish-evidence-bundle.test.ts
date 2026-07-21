@@ -773,6 +773,31 @@ describe("publishEvidenceBundle", () => {
     });
   });
 
+  describe("auth token validation", () => {
+    it("rejects missing auth token", async () => {
+      env.store.REGIME_ENGINE_AUTH_TOKEN = "";
+      bundleRepo.store.push(makeBundleRow({}));
+      const { result } = await publish();
+      expect(result.outcome).toBe("local_validation_failed");
+      expect("reason" in result && result.reason).toBe("REGIME_ENGINE_AUTH_TOKEN is not set");
+    });
+
+    it("rejects undefined auth token", async () => {
+      delete env.store.REGIME_ENGINE_AUTH_TOKEN;
+      bundleRepo.store.push(makeBundleRow({}));
+      const { result } = await publish();
+      expect(result.outcome).toBe("local_validation_failed");
+      expect("reason" in result && result.reason).toBe("REGIME_ENGINE_AUTH_TOKEN is not set");
+    });
+
+    it("no HTTP call is made when auth token is missing", async () => {
+      env.store.REGIME_ENGINE_AUTH_TOKEN = "";
+      bundleRepo.store.push(makeBundleRow({}));
+      await publish();
+      expect(http.callLog).toHaveLength(0);
+    });
+  });
+
   describe("timeout and maxAttempts", () => {
     it("uses 5000ms timeout", async () => {
       const bundle = makeBundleRow({});
