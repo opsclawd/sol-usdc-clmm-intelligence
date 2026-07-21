@@ -33,41 +33,64 @@ const DEFAULT_PAYLOAD: EvidenceBundleV1 = {
   asOf: EPOCH,
   freshUntil: EPOCH,
   expiresAt: EPOCH,
-  deterministicFeatures: [],
-  contextualEvidence: {},
+  deterministicFeatures: [
+    {
+      featureId: "feat-1",
+      family: "market_state",
+      featureKind: "number",
+      status: "unavailable",
+      value: null,
+      unit: null,
+      observedAt: null,
+      freshUntil: null,
+      confidenceBps: 0,
+      calculator: { name: "test-calc", version: "v1" },
+      inputLineage: ["input-1"],
+      warnings: ["warn-1"]
+    }
+  ],
+  contextualEvidence: {
+    supportResistance: [],
+    flows: [],
+    derivatives: [],
+    events: [],
+    newsRegulatory: []
+  },
   researchBrief: null,
-  sourceReferences: [],
+  sourceReferences: [
+    {
+      referenceId: "ref-1",
+      sourceType: "internal_bundle",
+      locator: "internal://test",
+      observedAt: EPOCH
+    }
+  ],
   assessment: {
-    summary: "test",
-    confidence: {
-      compositeScore: 100,
-      level: "high",
-      components: {},
-      weightingVersion: "v1",
-      reasons: []
+    overallConfidenceBps: 100,
+    quality: "complete",
+    coverage: {
+      deterministic: "available",
+      supportResistance: "not_applicable",
+      flows: "not_applicable",
+      derivatives: "not_applicable",
+      events: "not_applicable",
+      newsRegulatory: "not_applicable",
+      researchBrief: "not_applicable"
     },
-    signalClass: "deterministic"
+    warnings: []
   },
   provenance: {
-    sourceRefs: [],
-    rawObservationRefs: [],
-    derivedFromRefs: [],
-    processRef: {
-      collector: "",
-      jobName: "",
-      pipelineRunId: null,
-      codeVersion: null,
-      modelVersion: null
-    },
-    codeVersion: "1.0.0",
-    runId: null
+    pipelineVersion: "v1",
+    gitCommit: "abc123",
+    environment: "test",
+    upstreamRunIds: []
   }
 };
 
-function buildCanonicalFromPayload(payload: EvidenceBundleV1): CanonicalEvidenceBundle {
+function buildCanonicalFromPayload(payload: unknown): CanonicalEvidenceBundle {
   const payloadCanonical = JSON.stringify(payload);
   return {
-    payload,
+    payload: payload as EvidenceBundleV1,
     payloadCanonical,
     payloadHash: `hash-${payloadCanonical.length}`,
     idempotencyKey: "test-idempotency-key",
@@ -85,7 +108,11 @@ class RecordingClock implements Clock {
 class FakeHttp implements HttpClient {
   nextResponse: HttpResponse<unknown> | null = null;
   nextError: Error | null = null;
-  callLog: { url: string; body: unknown; options: Record<string, unknown> }[] = [];
+  callLog: {
+    url: string;
+    body: unknown;
+    options: { headers?: Record<string, string>; timeoutMs?: number; maxAttempts?: number };
+  }[] = [];
 
   async postJsonRaw<T>(
     url: string,
@@ -228,7 +255,6 @@ function createFakeContract(): FakeContract {
   return {
     validateShouldFail: false,
     validateError: null,
-    overrideResult: undefined,
     async validateCanonicalizeAndHash(candidate: unknown): Promise<CanonicalEvidenceBundle> {
       if (this.validateShouldFail) {
         throw this.validateError ?? new Error("Contract validation failed");
@@ -244,7 +270,7 @@ function createFakeContract(): FakeContract {
 function makeBundleRow(
   overrides: Partial<EvidenceBundleRow> & { payload?: EvidenceBundleV1; idempotencyKey?: string }
 ): EvidenceBundleRow {
-  const payload = overrides.payload ?? { ...DEFAULT_PAYLOAD };
+  const payload: EvidenceBundleV1 = overrides.payload ?? { ...DEFAULT_PAYLOAD };
   const canonical = buildCanonicalFromPayload(payload);
   return {
     id: overrides.id ?? 1,
@@ -252,7 +278,7 @@ function makeBundleRow(
     pair: overrides.pair ?? "SOL/USDC",
     asOfUnixMs: overrides.asOfUnixMs ?? EVAL_MS,
     expiresAtUnixMs: overrides.expiresAtUnixMs ?? EVAL_MS + 7200000,
-    payload,
+    payload: payload as unknown,
     payloadHash: canonical.payloadHash,
     payloadCanonical: canonical.payloadCanonical,
     idempotencyKey: overrides.idempotencyKey ?? canonical.idempotencyKey,

@@ -298,10 +298,18 @@ export async function publishEvidenceBundle(
     };
   }
 
+  if (outcome === "created") {
+    return { outcome: "created" as const, bundleId: latestBundle.id, attemptCount: 1 as const };
+  }
+  if (outcome === "idempotent_replay") {
+    return {
+      outcome: "idempotent_replay" as const,
+      bundleId: latestBundle.id,
+      attemptCount: 1 as const
+    };
+  }
   return {
     outcome: outcome as
-      | "created"
-      | "idempotent_replay"
       | "validation_failed"
       | "auth_failed"
       | "conflict"
