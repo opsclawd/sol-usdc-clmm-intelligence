@@ -334,6 +334,7 @@ export async function publishEvidenceBundle(
 
   for (let attemptNumber = 1; attemptNumber <= MAX_RETRY_ATTEMPTS; attemptNumber++) {
     const completedAtUnixMs = new Date(clock.now()).getTime();
+    lastResponse = null;
 
     try {
       lastResponse = await http.postJsonRaw<unknown>(endpoint, payload, {
@@ -348,63 +349,6 @@ export async function publishEvidenceBundle(
       lastHttpStatus = lastResponse.status;
     } catch (err: unknown) {
       lastHttpStatus = 0;
-
-      if (!isRetryableHttpError(err)) {
-        const networkFailedAuditInsert: PublishAttemptInsert = {
-          target,
-          targetEndpoint: endpoint,
-          evidenceBundleId: latestBundle.id,
-          researchBriefId: null,
-          idempotencyKey,
-          requestHash,
-          payloadHash: latestBundle.payloadHash,
-          status: "network_failed",
-          httpStatus: null,
-          responseBody: null,
-          errorCode: null,
-          errorMessage: err instanceof Error ? err.message : String(err),
-          attemptNumber,
-          firstAttemptedAtUnixMs,
-          completedAtUnixMs,
-          receivedAtUnixMs
-        };
-        let networkInsertOutcome: Awaited<ReturnType<PublishAttemptRepo["insert"]>>;
-        try {
-          networkInsertOutcome = await publishAttemptRepo.insert(networkFailedAuditInsert);
-        } catch (insertErr: unknown) {
-          onEvent?.({
-            type: "audit_persistence_failed",
-            reason:
-              insertErr instanceof Error
-                ? insertErr.message
-                : "Failed to insert network failure audit"
-          });
-          return {
-            outcome: "audit_store_failed",
-            reason: "Failed to insert network failure audit"
-          };
-        }
-        if (networkInsertOutcome.outcome === "conflict") {
-          onEvent?.({
-            type: "audit_persistence_failed",
-            reason: "Network failure audit insert conflict"
-          });
-          return {
-            outcome: "audit_store_failed",
-            reason: "Network failure audit insert conflict"
-          };
-        }
-        onEvent?.({
-          type: "permanent_http_failed",
-          bundleId: latestBundle.id,
-          httpStatus: 0
-        });
-        return {
-          outcome: "permanent_http_failed",
-          bundleId: latestBundle.id,
-          httpStatus: 0
-        };
-      }
 
       const networkFailedAuditInsert: PublishAttemptInsert = {
         target,
@@ -451,6 +395,19 @@ export async function publishEvidenceBundle(
         };
       }
 
+      if (!isRetryableHttpError(err)) {
+        onEvent?.({
+          type: "permanent_http_failed",
+          bundleId: latestBundle.id,
+          httpStatus: 0
+        });
+        return {
+          outcome: "permanent_http_failed",
+          bundleId: latestBundle.id,
+          httpStatus: 0
+        };
+      }
+
       if (attemptNumber === MAX_RETRY_ATTEMPTS) {
         onEvent?.({
           type: "transient_failure_exhausted",
@@ -480,6 +437,7 @@ export async function publishEvidenceBundle(
 
     if (isRetryableStatus(lastResponse.status)) {
       const redactedResponseBody = redactSecrets(lastResponse.body);
+      const { auditStatus } = classifyHttpStatus(lastResponse.status);
       const auditInsert: PublishAttemptInsert = {
         target,
         targetEndpoint: endpoint,
@@ -488,7 +446,7 @@ export async function publishEvidenceBundle(
         idempotencyKey,
         requestHash,
         payloadHash: latestBundle.payloadHash,
-        status: "network_failed",
+        status: auditStatus,
         httpStatus: lastResponse.status,
         responseBody: redactedResponseBody,
         errorCode: null,
