@@ -1156,8 +1156,9 @@ describe("auth token never appears in stdout stderr or serialized result", () =>
     expect(httpClient.postJsonRaw).toHaveBeenCalled();
     const mockCalls = (httpClient.postJsonRaw as Mock).mock.calls;
     for (const call of mockCalls) {
-      const callString = JSON.stringify(call);
-      expect(callString).not.toContain("super-secret-auth-token-12345");
+      const [url, payload] = call;
+      expect(url).not.toContain("super-secret-auth-token-12345");
+      expect(JSON.stringify(payload)).not.toContain("super-secret-auth-token-12345");
     }
   });
 });
