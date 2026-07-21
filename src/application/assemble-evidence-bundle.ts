@@ -214,10 +214,7 @@ function buildBundleInsert(
   };
 }
 
-function collectLineageIds(
-  slots: readonly SelectedFeatureSlot[],
-  normalizedRows: readonly NormalizedObservationRow[] = []
-): {
+function collectLineageIds(slots: readonly SelectedFeatureSlot[]): {
   rawObservationIds: Set<number>;
   normalizedObservationIds: Set<number>;
 } {
@@ -243,10 +240,6 @@ function collectLineageIds(
         rawObservationIds.add(ref.id);
       }
     }
-  }
-
-  for (const normRow of normalizedRows) {
-    rawObservationIds.add(normRow.rawObservationId);
   }
 
   return { rawObservationIds, normalizedObservationIds };
@@ -284,7 +277,7 @@ export async function assembleEvidenceBundle(
     environment
   } = request;
 
-  const asOfAtOrAfterUnixMs = 0;
+  const asOfAtOrAfterUnixMs = evaluationTimeUnixMs - 24 * 3600000;
   const asOfAtOrBeforeUnixMs = evaluationTimeUnixMs;
 
   let candidates: DerivedFeatureRow[];
@@ -294,7 +287,9 @@ export async function assembleEvidenceBundle(
       pair: request.pair,
       asOfAtOrAfterUnixMs,
       asOfAtOrBeforeUnixMs,
-      receivedAtOrBeforeUnixMs: evaluationTimeUnixMs
+      receivedAtOrBeforeUnixMs: evaluationTimeUnixMs,
+      poolId,
+      positionId
     };
     candidates = await featureRepo.listBundleCandidates(query);
   } catch (err) {
@@ -359,10 +354,7 @@ export async function assembleEvidenceBundle(
 
   const clmmRawRow = rawRows.find((row) => row.source === "clmm-v2-bundle");
   if (!clmmRawRow) {
-    return {
-      code: "LINEAGE_ERROR",
-      message: "clmm-v2-bundle raw observation not found for lineage verification"
-    };
+    return { outcome: "no_bundle" };
   }
   const clmmCanonical = clmmRawRow.payloadCanonical;
 

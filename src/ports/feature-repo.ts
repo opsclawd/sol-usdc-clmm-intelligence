@@ -16,6 +16,8 @@ export interface BundleFeatureCandidateQuery {
   readonly asOfAtOrAfterUnixMs: number;
   readonly asOfAtOrBeforeUnixMs: number;
   readonly receivedAtOrBeforeUnixMs: number;
+  readonly poolId?: string;
+  readonly positionId?: string;
 }
 
 export interface DerivedFeatureInsert {

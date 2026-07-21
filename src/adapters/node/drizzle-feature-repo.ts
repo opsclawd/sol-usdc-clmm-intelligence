@@ -228,18 +228,25 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
   }
 
   async listBundleCandidates(query: BundleFeatureCandidateQuery): Promise<DerivedFeatureRow[]> {
+    const conditions = [
+      inArray(derivedFeatures.featureKind, [...query.featureKinds]),
+      eq(derivedFeatures.pair, query.pair),
+      gte(derivedFeatures.asOfUnixMs, query.asOfAtOrAfterUnixMs),
+      lte(derivedFeatures.asOfUnixMs, query.asOfAtOrBeforeUnixMs),
+      lte(derivedFeatures.receivedAtUnixMs, query.receivedAtOrBeforeUnixMs)
+    ];
+
+    if (query.poolId !== undefined) {
+      conditions.push(eq(derivedFeatures.poolId, query.poolId));
+    }
+    if (query.positionId !== undefined) {
+      conditions.push(eq(derivedFeatures.positionId, query.positionId));
+    }
+
     const rows = await this.db
       .select()
       .from(derivedFeatures)
-      .where(
-        and(
-          inArray(derivedFeatures.featureKind, [...query.featureKinds]),
-          eq(derivedFeatures.pair, query.pair),
-          gte(derivedFeatures.asOfUnixMs, query.asOfAtOrAfterUnixMs),
-          lte(derivedFeatures.asOfUnixMs, query.asOfAtOrBeforeUnixMs),
-          lte(derivedFeatures.receivedAtUnixMs, query.receivedAtOrBeforeUnixMs)
-        )
-      )
+      .where(and(...conditions))
       .orderBy(
         desc(derivedFeatures.asOfUnixMs),
         desc(derivedFeatures.receivedAtUnixMs),
