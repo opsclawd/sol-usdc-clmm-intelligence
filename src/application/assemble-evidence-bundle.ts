@@ -77,6 +77,7 @@ export type AssembleEvidenceBundleSuccess =
 export type AssembleEvidenceBundleError =
   | { readonly code: "VALIDATION_ERROR"; readonly errors: readonly unknown[] }
   | { readonly code: "LINEAGE_ERROR"; readonly message: string }
+  | { readonly code: "PERSISTENCE_ERROR"; readonly message: string }
   | { readonly code: "CONTRACT_ERROR"; readonly error: EvidenceBundleContractError }
   | { readonly code: "REQUEST_VALIDATION_ERROR"; readonly message: string }
   | { readonly code: "UNSUPPORTED_SCHEMA_VERSION"; readonly schemaVersion: string };
@@ -463,7 +464,7 @@ export async function assembleEvidenceBundle(
   try {
     insertOutcome = await bundleRepo.insertOrClassify(bundleInsert);
   } catch (err) {
-    return { code: "LINEAGE_ERROR", message: `Bundle persistence failed: ${err}` };
+    return { code: "PERSISTENCE_ERROR", message: `Bundle persistence failed: ${err}` };
   }
 
   if (insertOutcome.outcome === "inserted") {

@@ -9,6 +9,31 @@ import type {
 import type { SignalClass, StaleBehavior } from "../../contracts/taxonomy.js";
 import type { Db } from "../../db/db.js";
 
+function isDeepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== typeof b) return false;
+  if (a === null || b === null) return a === b;
+  if (typeof a !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!isDeepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  const aObj = a as Record<string, unknown>;
+  const bObj = b as Record<string, unknown>;
+  const aKeys = Object.keys(aObj);
+  const bKeys = Object.keys(bObj);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    if (!Object.hasOwn(bObj, key)) return false;
+    if (!isDeepEqual(aObj[key], bObj[key])) return false;
+  }
+  return true;
+}
+
 function toPortRow(row: typeof evidenceBundles.$inferSelect): EvidenceBundleRow {
   return {
     id: row.id,
@@ -40,7 +65,7 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
   async insertOrClassify(row: EvidenceBundleInsert): Promise<EvidenceBundleInsertOutcome> {
     const parsedPayload = JSON.parse(JSON.stringify(row.payload));
     const parsedCanonical = JSON.parse(row.payloadCanonical);
-    if (JSON.stringify(parsedPayload) !== JSON.stringify(parsedCanonical)) {
+    if (!isDeepEqual(parsedPayload, parsedCanonical)) {
       throw new Error(
         `Canonical text does not match payload: canonical=${row.payloadCanonical}, payload=${JSON.stringify(row.payload)}`
       );
