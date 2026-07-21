@@ -163,8 +163,12 @@ function calculateRetryDelay(
 }
 
 export type PublishEvidenceBundleResult =
-  | { readonly outcome: "created"; readonly bundleId: number; readonly attemptCount: 1 }
-  | { readonly outcome: "idempotent_replay"; readonly bundleId: number; readonly attemptCount: 1 }
+  | { readonly outcome: "created"; readonly bundleId: number; readonly attemptCount: 1 | 2 | 3 }
+  | {
+      readonly outcome: "idempotent_replay";
+      readonly bundleId: number;
+      readonly attemptCount: 1 | 2 | 3;
+    }
   | { readonly outcome: "bundle_not_found" }
   | { readonly outcome: "local_validation_failed"; readonly reason: string }
   | {
@@ -588,7 +592,19 @@ export async function publishEvidenceBundle(
       };
     }
 
-    return mapOutcomeToResult(outcome, latestBundle.id, lastResponse.status, attemptNumber);
+    return mapOutcomeToResult(
+      outcome as
+        | "created"
+        | "idempotent_replay"
+        | "validation_failed"
+        | "auth_failed"
+        | "conflict"
+        | "unknown_failed"
+        | "permanent_http_failed",
+      latestBundle.id,
+      lastResponse.status,
+      attemptNumber
+    );
   }
 
   return {

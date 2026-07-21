@@ -850,13 +850,15 @@ describe("publishEvidenceBundle", () => {
       http.nextResponse = { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
       let callCount = 0;
       const originalPostJsonRaw = http.postJsonRaw.bind(http);
-      http.postJsonRaw = async (...args: Parameters<typeof originalPostJsonRaw>) => {
+      (http as unknown as Record<string, unknown>).postJsonRaw = async (
+        ...args: Parameters<typeof originalPostJsonRaw>
+      ) => {
         await originalPostJsonRaw(...args);
         callCount++;
         if (callCount < 3) {
-          return { status: 408, ok: false, body: {}, headers: {} };
+          return { status: 408, ok: false, body: {}, headers: {} } as unknown;
         }
-        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} } as unknown;
       };
       const { result } = await publish();
       expect(http.callLog.length).toBe(3);
@@ -870,13 +872,15 @@ describe("publishEvidenceBundle", () => {
       http.nextResponse = { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
       let callCount = 0;
       const originalPostJsonRaw = http.postJsonRaw.bind(http);
-      http.postJsonRaw = async (...args: Parameters<typeof originalPostJsonRaw>) => {
+      (http as unknown as Record<string, unknown>).postJsonRaw = async (
+        ...args: Parameters<typeof originalPostJsonRaw>
+      ) => {
         await originalPostJsonRaw(...args);
         callCount++;
         if (callCount < 3) {
-          return { status: 429, ok: false, body: {}, headers: {} };
+          return { status: 429, ok: false, body: {}, headers: {} } as unknown;
         }
-        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} } as unknown;
       };
       const { result } = await publish();
       expect(http.callLog.length).toBe(3);
@@ -890,13 +894,15 @@ describe("publishEvidenceBundle", () => {
       http.nextResponse = { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
       let callCount = 0;
       const originalPostJsonRaw = http.postJsonRaw.bind(http);
-      http.postJsonRaw = async (...args: Parameters<typeof originalPostJsonRaw>) => {
+      (http as unknown as Record<string, unknown>).postJsonRaw = async (
+        ...args: Parameters<typeof originalPostJsonRaw>
+      ) => {
         await originalPostJsonRaw(...args);
         callCount++;
         if (callCount < 3) {
-          return { status: 500, ok: false, body: {}, headers: {} };
+          return { status: 500, ok: false, body: {}, headers: {} } as unknown;
         }
-        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} } as unknown;
       };
       const { result } = await publish();
       expect(http.callLog.length).toBe(3);
@@ -908,13 +914,17 @@ describe("publishEvidenceBundle", () => {
       bundleRepo.store.push(bundle);
       contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
       let callCount = 0;
-      http.postJsonRaw = async (url, body, options) => {
+      (http as unknown as Record<string, unknown>).postJsonRaw = async (
+        url: string,
+        body: unknown,
+        options?: { headers?: Record<string, string>; timeoutMs?: number; maxAttempts?: number }
+      ) => {
         http.callLog.push({ url, body, options: options ?? {} });
         callCount++;
         if (callCount < 3) {
-          return { status: 503, ok: false, body: {}, headers: {} };
+          return { status: 503, ok: false, body: {}, headers: {} } as unknown;
         }
-        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} } as unknown;
       };
       const { result } = await publish();
       expect(http.callLog.length).toBe(3);
@@ -1033,12 +1043,12 @@ describe("publishEvidenceBundle", () => {
       bundleRepo.store.push(bundle);
       contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
       let callCount = 0;
-      http.postJsonRaw = async () => {
+      (http as unknown as Record<string, unknown>).postJsonRaw = async () => {
         callCount++;
         if (callCount === 1) {
-          return { status: 429, ok: false, body: {}, headers: { "Retry-After": "1" } };
+          return { status: 429, ok: false, body: {}, headers: { "Retry-After": "1" } } as unknown;
         }
-        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} } as unknown;
       };
       retry = new FakeRetry([0]);
       await publish();
@@ -1051,13 +1061,18 @@ describe("publishEvidenceBundle", () => {
       contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
       const futureDate = new Date(EPOCH).getTime() + 5000;
       let callCount = 0;
-      http.postJsonRaw = async () => {
+      (http as unknown as Record<string, unknown>).postJsonRaw = async () => {
         callCount++;
         if (callCount === 1) {
           const httpDate = new Date(futureDate).toUTCString();
-          return { status: 429, ok: false, body: {}, headers: { "Retry-After": httpDate } };
+          return {
+            status: 429,
+            ok: false,
+            body: {},
+            headers: { "Retry-After": httpDate }
+          } as unknown;
         }
-        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} } as unknown;
       };
       retry = new FakeRetry([0]);
       await publish();
@@ -1071,12 +1086,12 @@ describe("publishEvidenceBundle", () => {
       bundleRepo.store.push(bundle);
       contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
       let callCount = 0;
-      http.postJsonRaw = async () => {
+      (http as unknown as Record<string, unknown>).postJsonRaw = async () => {
         callCount++;
         if (callCount === 1) {
-          return { status: 429, ok: false, body: {}, headers: { "Retry-After": "-1" } };
+          return { status: 429, ok: false, body: {}, headers: { "Retry-After": "-1" } } as unknown;
         }
-        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} } as unknown;
       };
       retry = new FakeRetry([0]);
       await publish();
@@ -1088,12 +1103,17 @@ describe("publishEvidenceBundle", () => {
       bundleRepo.store.push(bundle);
       contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
       let callCount = 0;
-      http.postJsonRaw = async () => {
+      (http as unknown as Record<string, unknown>).postJsonRaw = async () => {
         callCount++;
         if (callCount === 1) {
-          return { status: 429, ok: false, body: {}, headers: { "Retry-After": "5000" } };
+          return {
+            status: 429,
+            ok: false,
+            body: {},
+            headers: { "Retry-After": "5000" }
+          } as unknown;
         }
-        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} } as unknown;
       };
       retry = new FakeRetry([0]);
       await publish();
@@ -1105,12 +1125,17 @@ describe("publishEvidenceBundle", () => {
       bundleRepo.store.push(bundle);
       contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
       let callCount = 0;
-      http.postJsonRaw = async () => {
+      (http as unknown as Record<string, unknown>).postJsonRaw = async () => {
         callCount++;
         if (callCount === 1) {
-          return { status: 429, ok: false, body: {}, headers: { "Retry-After": "invalid" } };
+          return {
+            status: 429,
+            ok: false,
+            body: {},
+            headers: { "Retry-After": "invalid" }
+          } as unknown;
         }
-        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+        return { status: 201, ok: true, body: { id: "new-123" }, headers: {} } as unknown;
       };
       retry = new FakeRetry([0]);
       await publish();
@@ -1134,7 +1159,7 @@ describe("publishEvidenceBundle", () => {
       bundleRepo.store.push(bundle);
       contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
       let firstRequestComplete = false;
-      http.postJsonRaw = async () => {
+      (http as unknown as Record<string, unknown>).postJsonRaw = async () => {
         firstRequestComplete = true;
         throw new Error("ECONNRESET");
       };
@@ -1152,7 +1177,7 @@ describe("publishEvidenceBundle", () => {
       bundleRepo.store.push(bundle);
       contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
       let callCount = 0;
-      http.postJsonRaw = async () => {
+      (http as unknown as Record<string, unknown>).postJsonRaw = async () => {
         callCount++;
         throw new Error("ECONNRESET");
       };
@@ -1168,7 +1193,7 @@ describe("publishEvidenceBundle", () => {
       bundleRepo.store.push(bundle);
       contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
       let callCount = 0;
-      http.postJsonRaw = async () => {
+      (http as unknown as Record<string, unknown>).postJsonRaw = async () => {
         callCount++;
         throw new Error("ECONNRESET");
       };
