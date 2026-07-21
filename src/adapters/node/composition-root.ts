@@ -18,6 +18,7 @@ import type { RunIdFactory } from "../../ports/run-id.js";
 import type { EvidenceBundleRepo } from "../../ports/bundle-repo.js";
 import type { ResearchBriefRepo } from "../../ports/brief-repo.js";
 import type { EvidenceBundleContract } from "../../ports/evidence-bundle-contract.js";
+import type { PublishAttemptRepo } from "../../ports/publish-attempt-repo.js";
 import { UuidRunIdFactory } from "./uuid-run-id-factory.js";
 
 export interface Persistence {
@@ -27,6 +28,7 @@ export interface Persistence {
   featureRepo: DerivedFeatureRepo;
   bundleRepo: EvidenceBundleRepo;
   briefRepo: ResearchBriefRepo;
+  publishAttemptRepo: PublishAttemptRepo;
 }
 
 export interface NodeRuntime {
@@ -75,6 +77,7 @@ export function createNodeRuntime(): NodeRuntime {
           const { DrizzleFeatureRepo } = await import("./drizzle-feature-repo.js");
           const { DrizzleBundleRepo } = await import("./drizzle-bundle-repo.js");
           const { DrizzleBriefRepo } = await import("./drizzle-brief-repo.js");
+          const { DrizzlePublishAttemptRepo } = await import("./drizzle-publish-attempt-repo.js");
 
           type DrizzlePgAdapterInstance = InstanceType<typeof DrizzlePgAdapter>;
           const connection = (await this.getDb()) as DrizzlePgAdapterInstance;
@@ -83,6 +86,7 @@ export function createNodeRuntime(): NodeRuntime {
           const featureRepo = new DrizzleFeatureRepo(connection.db);
           const bundleRepo = new DrizzleBundleRepo(connection.db);
           const briefRepo = new DrizzleBriefRepo(connection.db);
+          const publishAttemptRepo = new DrizzlePublishAttemptRepo(connection.db);
 
           return {
             connection,
@@ -90,7 +94,8 @@ export function createNodeRuntime(): NodeRuntime {
             normalizedObservationRepo,
             featureRepo,
             bundleRepo,
-            briefRepo
+            briefRepo,
+            publishAttemptRepo
           };
         })();
       }

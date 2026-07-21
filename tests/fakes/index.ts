@@ -10,4 +10,5 @@ export { FakeNormalizedObservationRepo } from "./fake-normalized-observation-rep
 export { FakeFeatureRepo } from "./fake-feature-repo.js";
 export { FakeBundleRepo } from "./fake-bundle-repo.js";
 export { FakeBriefRepo } from "./fake-brief-repo.js";
+export { FakePublishAttemptRepo } from "./fake-publish-attempt-repo.js";
 export { FakeRunIdFactory } from "./fake-run-id-factory.js";
