@@ -357,4 +357,163 @@ describe("FetchHttpClient", () => {
       });
     });
   });
+
+  describe("postJsonRaw", () => {
+    it("postJsonRaw sends one JSON POST with caller headers and no implicit retry", async () => {
+      const mockFetch = vi.fn().mockImplementation(async (): Promise<Response> => {
+        return {
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          headers: new Map([["content-type", "application/json"]]),
+          json: async () => ({ success: true }),
+          text: async () => '{"success":true}'
+        } as unknown as Response;
+      });
+
+      const client = new FetchHttpClient(mockFetch);
+      const result = await client.postJsonRaw(
+        "http://example.com/data",
+        { foo: "bar" },
+        {
+          headers: { Authorization: "Bearer token123", "Idempotency-Key": "key456" }
+        }
+      );
+
+      expect(result.ok).toBe(true);
+      expect(result.status).toBe(200);
+      expect(result.body).toEqual({ success: true });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://example.com/data",
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            "Content-Type": "application/json",
+            Authorization: "Bearer token123",
+            "Idempotency-Key": "key456"
+          })
+        })
+      );
+    });
+
+    it("postJsonRaw returns non-2xx status body and headers without throwing", async () => {
+      const mockFetch = vi.fn().mockImplementation(async (): Promise<Response> => {
+        return {
+          ok: false,
+          status: 429,
+          statusText: "Too Many Requests",
+          headers: new Map([["retry-after", "60"]]),
+          json: async () => ({}),
+          text: async () => "Rate limited"
+        } as unknown as Response;
+      });
+
+      const client = new FetchHttpClient(mockFetch);
+      const result = await client.postJsonRaw("http://example.com/data", {});
+
+      expect(result.ok).toBe(false);
+      expect(result.status).toBe(429);
+      expect(result.headers["retry-after"]).toBe("60");
+      expect(result.body).toBe("Rate limited");
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("postJsonRaw bounds UTF-8 response capture to 10240 bytes", async () => {
+      const longBody = "x".repeat(15000);
+      const mockFetch = vi.fn().mockImplementation(async (): Promise<Response> => {
+        const encoder = new TextEncoder();
+        const chunk1 = encoder.encode(longBody.slice(0, 8000));
+        const chunk2 = encoder.encode(longBody.slice(8000, 12000));
+        const chunk3 = encoder.encode(longBody.slice(12000));
+        let sent = 0;
+        const stream = new ReadableStream({
+          async start(controller) {
+            if (sent < 3) {
+              controller.enqueue(chunk1);
+              sent++;
+            }
+            if (sent < 3) {
+              controller.enqueue(chunk2);
+              sent++;
+            }
+            if (sent < 3) {
+              controller.enqueue(chunk3);
+              sent++;
+            }
+            controller.close();
+          }
+        });
+        return {
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          headers: new Map(),
+          body: stream,
+          text: async () => longBody
+        } as unknown as Response;
+      });
+
+      const client = new FetchHttpClient(mockFetch);
+      const result = await client.postJsonRaw<string>("http://example.com/data", {});
+
+      expect(result.body.length).toBeLessThanOrEqual(10240);
+      expect(result.ok).toBe(true);
+      expect(result.status).toBe(200);
+    });
+
+    it("postJsonRaw timeout covers response body reading", async () => {
+      const mockFetch = vi
+        .fn()
+        .mockImplementation(async (url: string, options?: RequestInit): Promise<Response> => {
+          const signal = options?.signal as AbortSignal | undefined;
+          const stream = new ReadableStream({
+            async pull(controller) {
+              if (signal?.aborted) {
+                controller.error(new DOMException("Aborted", "AbortError"));
+                return;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 80));
+              if (signal?.aborted) {
+                controller.error(new DOMException("Aborted", "AbortError"));
+                return;
+              }
+              controller.enqueue(new TextEncoder().encode("chunk"));
+              await new Promise((resolve) => setTimeout(resolve, 80));
+              if (signal?.aborted) {
+                controller.error(new DOMException("Aborted", "AbortError"));
+                return;
+              }
+              controller.enqueue(new TextEncoder().encode("data"));
+              controller.close();
+            }
+          });
+          return {
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            headers: new Map(),
+            body: stream
+          } as unknown as Response;
+        });
+
+      const client = new FetchHttpClient(mockFetch);
+      await expect(
+        client.postJsonRaw("http://example.com/data", {}, { timeoutMs: 50 })
+      ).rejects.toMatchObject({ kind: "timeout", retryable: true });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("postJsonRaw converts fetch and body-read transport failures to HttpRequestError", async () => {
+      const mockFetch = vi.fn().mockImplementation(async (): Promise<Response> => {
+        throw new TypeError("network error");
+      });
+
+      const client = new FetchHttpClient(mockFetch);
+      await expect(client.postJsonRaw("http://example.com/data", {})).rejects.toMatchObject({
+        kind: "network",
+        retryable: true
+      });
+    });
+  });
 });

@@ -4,6 +4,7 @@ import { FsTextReader } from "./fs-text-reader.js";
 import { ProcessEnvReader } from "./process-env.js";
 import { SystemClock } from "./system-clock.js";
 import { SpawnCommandRunner } from "./spawn-command-runner.js";
+import { SystemRetryControl } from "./system-retry.js";
 import type { HttpClient } from "../../ports/http.js";
 import type { JsonStore } from "../../ports/json-store.js";
 import type { TextReader } from "../../ports/text-reader.js";
@@ -19,6 +20,7 @@ import type { EvidenceBundleRepo } from "../../ports/bundle-repo.js";
 import type { ResearchBriefRepo } from "../../ports/brief-repo.js";
 import type { EvidenceBundleContract } from "../../ports/evidence-bundle-contract.js";
 import type { PublishAttemptRepo } from "../../ports/publish-attempt-repo.js";
+import type { RetryControl } from "../../ports/retry.js";
 import { UuidRunIdFactory } from "./uuid-run-id-factory.js";
 
 export interface Persistence {
@@ -39,6 +41,7 @@ export interface NodeRuntime {
   clock: Clock;
   commandRunner: CommandRunner;
   runIdFactory: RunIdFactory;
+  retryControl: RetryControl;
   getDb(): Promise<DbConnection>;
   getPersistence(): Promise<Persistence>;
   getContract(): Promise<EvidenceBundleContract>;
@@ -47,6 +50,7 @@ export interface NodeRuntime {
 export function createNodeRuntime(): NodeRuntime {
   const env = new ProcessEnvReader();
   const runIdFactory = new UuidRunIdFactory();
+  const retryControl: RetryControl = new SystemRetryControl();
   let dbPromise: Promise<DbConnection> | undefined;
   let persistencePromise: Promise<Persistence> | undefined;
   let contractPromise: Promise<EvidenceBundleContract> | undefined;
@@ -59,6 +63,7 @@ export function createNodeRuntime(): NodeRuntime {
     clock: new SystemClock(),
     commandRunner: new SpawnCommandRunner(),
     runIdFactory,
+    retryControl,
 
     async getDb() {
       if (!dbPromise) {
