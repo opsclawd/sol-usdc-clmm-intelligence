@@ -1,22 +1,69 @@
 import type {
   EvidenceBundleRepo,
   EvidenceBundleRow,
-  EvidenceBundleInsert
+  EvidenceBundleInsert,
+  EvidenceBundleInsertOutcome
 } from "../../src/ports/bundle-repo.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 
+interface IdentityKey {
+  schemaVersion: string;
+  pair: string;
+  idempotencyKey: string;
+}
+
 export class FakeBundleRepo implements EvidenceBundleRepo {
-  private readonly store: EvidenceBundleRow[] = [];
+  readonly store: EvidenceBundleRow[] = [];
+  readonly deletedIdentityKeys: Set<string> = new Set();
   private nextId = 1;
 
-  async insert(row: EvidenceBundleInsert): Promise<EvidenceBundleRow> {
+  private identityKeyString(key: IdentityKey): string {
+    return `${key.schemaVersion}:${key.pair}:${key.idempotencyKey}`;
+  }
+
+  async insertOrClassify(row: EvidenceBundleInsert): Promise<EvidenceBundleInsertOutcome> {
+    const parsedPayload = JSON.parse(JSON.stringify(row.payload));
+    const parsedCanonical = JSON.parse(row.payloadCanonical);
+    if (JSON.stringify(parsedPayload) !== JSON.stringify(parsedCanonical)) {
+      throw new Error(
+        `Canonical text does not match payload: canonical=${row.payloadCanonical}, payload=${JSON.stringify(row.payload)}`
+      );
+    }
+
+    const identityKey: IdentityKey = {
+      schemaVersion: row.schemaVersion,
+      pair: row.pair,
+      idempotencyKey: row.idempotencyKey
+    };
+    const identityStr = this.identityKeyString(identityKey);
+
+    if (this.deletedIdentityKeys.has(identityStr)) {
+      throw new Error(
+        "Evidence bundle row was deleted after conflict classification - integrity violation"
+      );
+    }
+
     const existing = this.store.find(
       (r) =>
         r.schemaVersion === row.schemaVersion &&
         r.pair === row.pair &&
         r.idempotencyKey === row.idempotencyKey
     );
-    if (existing) return existing;
+
+    if (existing) {
+      if (
+        existing.payloadHash === row.payloadHash &&
+        existing.payloadCanonical === row.payloadCanonical
+      ) {
+        return { outcome: "identical_replay", row: existing };
+      }
+      return {
+        outcome: "conflict",
+        row: existing,
+        incomingPayloadHash: row.payloadHash
+      };
+    }
+
     const result: EvidenceBundleRow = {
       id: this.nextId++,
       schemaVersion: row.schemaVersion,
@@ -40,7 +87,7 @@ export class FakeBundleRepo implements EvidenceBundleRepo {
       receivedAtUnixMs: row.receivedAtUnixMs
     };
     this.store.push(result);
-    return result;
+    return { outcome: "inserted", row: result };
   }
 
   async findByPair(pair: string, sinceUnixMs: number): Promise<EvidenceBundleRow[]> {

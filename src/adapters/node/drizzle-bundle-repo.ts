@@ -3,7 +3,8 @@ import { evidenceBundles } from "../../db/schema/evidence-bundles.js";
 import type {
   EvidenceBundleRepo,
   EvidenceBundleInsert,
-  EvidenceBundleRow
+  EvidenceBundleRow,
+  EvidenceBundleInsertOutcome
 } from "../../ports/bundle-repo.js";
 import type { SignalClass, StaleBehavior } from "../../contracts/taxonomy.js";
 import type { Db } from "../../db/db.js";
@@ -36,7 +37,15 @@ function toPortRow(row: typeof evidenceBundles.$inferSelect): EvidenceBundleRow 
 export class DrizzleBundleRepo implements EvidenceBundleRepo {
   constructor(private readonly db: Db) {}
 
-  async insert(row: EvidenceBundleInsert): Promise<EvidenceBundleRow> {
+  async insertOrClassify(row: EvidenceBundleInsert): Promise<EvidenceBundleInsertOutcome> {
+    const parsedPayload = JSON.parse(JSON.stringify(row.payload));
+    const parsedCanonical = JSON.parse(row.payloadCanonical);
+    if (JSON.stringify(parsedPayload) !== JSON.stringify(parsedCanonical)) {
+      throw new Error(
+        `Canonical text does not match payload: canonical=${row.payloadCanonical}, payload=${JSON.stringify(row.payload)}`
+      );
+    }
+
     const [result] = await this.db
       .insert(evidenceBundles)
       .values({
@@ -73,7 +82,11 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
         ]
       })
       .returning();
-    if (result) return toPortRow(result);
+
+    if (result) {
+      return { outcome: "inserted", row: toPortRow(result) };
+    }
+
     const [existing] = await this.db
       .select()
       .from(evidenceBundles)
@@ -85,10 +98,25 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
         )
       )
       .limit(1);
+
     if (!existing) {
-      throw new Error("Failed to insert or find existing bundle on conflict");
+      throw new Error(
+        "Failed to insert or find existing bundle on conflict - row not found after insert attempt"
+      );
     }
-    return toPortRow(existing);
+
+    if (
+      existing.payloadHash === row.payloadHash &&
+      existing.payloadCanonical === row.payloadCanonical
+    ) {
+      return { outcome: "identical_replay", row: toPortRow(existing) };
+    }
+
+    return {
+      outcome: "conflict",
+      row: toPortRow(existing),
+      incomingPayloadHash: row.payloadHash
+    };
   }
 
   async findByPair(pair: string, sinceUnixMs: number): Promise<EvidenceBundleRow[]> {

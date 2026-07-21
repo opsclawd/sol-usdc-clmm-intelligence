@@ -6,6 +6,15 @@ import type {
   TaxonomySummary
 } from "../contracts/taxonomy.js";
 
+export type EvidenceBundleInsertOutcome =
+  | { readonly outcome: "inserted"; readonly row: EvidenceBundleRow }
+  | { readonly outcome: "identical_replay"; readonly row: EvidenceBundleRow }
+  | {
+      readonly outcome: "conflict";
+      readonly row: EvidenceBundleRow;
+      readonly incomingPayloadHash: string;
+    };
+
 export interface EvidenceBundleRow {
   id: number;
   schemaVersion: string;
@@ -52,7 +61,7 @@ export interface EvidenceBundleInsert {
 }
 
 export interface EvidenceBundleRepo {
-  insert(row: EvidenceBundleInsert): Promise<EvidenceBundleRow>;
+  insertOrClassify(row: EvidenceBundleInsert): Promise<EvidenceBundleInsertOutcome>;
   findByPair(pair: string, sinceUnixMs: number): Promise<EvidenceBundleRow[]>;
   findLatestByPair(pair: string): Promise<EvidenceBundleRow | undefined>;
 }
