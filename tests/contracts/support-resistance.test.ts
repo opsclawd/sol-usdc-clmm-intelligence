@@ -344,8 +344,8 @@ describe("SupportResistanceRawSnapshot", () => {
       ]
     };
     expect(snapshot.claims).toHaveLength(1);
-    expect(snapshot.claims[0].levelUsdcPerSol).toBe(150.0);
-    expect(snapshot.claims[0].zoneLowerUsdcPerSol).toBeUndefined();
+    expect(snapshot.claims[0]!.levelUsdcPerSol).toBe(150.0);
+    expect(snapshot.claims[0]!.zoneLowerUsdcPerSol).toBeUndefined();
   });
 
   it("accepts raw snapshot with zone claim", () => {
@@ -363,8 +363,8 @@ describe("SupportResistanceRawSnapshot", () => {
         }
       ]
     };
-    expect(snapshot.claims[0].zoneLowerUsdcPerSol).toBe(148.0);
-    expect(snapshot.claims[0].zoneUpperUsdcPerSol).toBe(152.0);
+    expect(snapshot.claims[0]!.zoneLowerUsdcPerSol).toBe(148.0);
+    expect(snapshot.claims[0]!.zoneUpperUsdcPerSol).toBe(152.0);
   });
 
   it("accepts raw snapshot with mixed claims", () => {
@@ -404,7 +404,7 @@ describe("SupportResistanceRawSnapshot", () => {
       ]
     };
     expect(snapshot.claims).toHaveLength(1);
-    expect(snapshot.claims[0].levelUsdcPerSol).toBeUndefined();
-    expect(snapshot.claims[0].zoneLowerUsdcPerSol).toBeUndefined();
+    expect(snapshot.claims[0]!.levelUsdcPerSol).toBeUndefined();
+    expect(snapshot.claims[0]!.zoneLowerUsdcPerSol).toBeUndefined();
   });
 });
