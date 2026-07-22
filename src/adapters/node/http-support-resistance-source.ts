@@ -49,22 +49,18 @@ export class HttpSupportResistanceSource implements SupportResistanceSourcePort 
       } catch (e) {
         lastError = e instanceof Error ? e : new Error(String(e));
 
+        let httpError: HttpRequestError;
+
         if (e instanceof DOMException && e.name === "AbortError") {
-          throw mapToSupportResistanceSourceError(
-            new HttpRequestError("timeout", lastError.message, null, true),
-            this.options.apiKey
-          );
+          httpError = new HttpRequestError("timeout", lastError.message, null, true);
+        } else if (e instanceof HttpRequestError) {
+          httpError = e;
+        } else {
+          httpError = new HttpRequestError("network", lastError.message, null, true);
         }
 
-        if (e instanceof HttpRequestError) {
-          if (!e.retryable || attempt >= this.maxAttempts - 1) {
-            throw mapToSupportResistanceSourceError(e, this.options.apiKey);
-          }
-        } else {
-          throw mapToSupportResistanceSourceError(
-            new HttpRequestError("network", lastError.message, null, true),
-            this.options.apiKey
-          );
+        if (!httpError.retryable || attempt >= this.maxAttempts - 1) {
+          throw mapToSupportResistanceSourceError(httpError, this.options.apiKey);
         }
       }
     }

@@ -50,4 +50,3 @@ export type {
   SupportResistanceSourceError,
   SupportResistanceSourceClaim
 } from "./support-resistance-source.js";
-export { HttpSupportResistanceSource } from "../adapters/node/http-support-resistance-source.js";

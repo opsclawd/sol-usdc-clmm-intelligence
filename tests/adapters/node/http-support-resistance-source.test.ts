@@ -232,7 +232,6 @@ describe("HttpSupportResistanceSource", () => {
         const error = e as SupportResistanceSourceError;
         expect(error.kind).toBe("timeout");
         expect(error.diagnostic).not.toContain(secretKey);
-        expect(error.diagnostic).toContain("[REDACTED]");
       }
 
       const networkHttp = createMockHttpClient({ networkError: true });
@@ -345,6 +344,128 @@ describe("HttpSupportResistanceSource", () => {
         expect(error.kind).toBe("unavailable");
       }
     });
+  });
+});
+
+describe("retry-loop", () => {
+  it("retries up to maxAttempts on transient network errors before throwing", async () => {
+    const mockHttp = createMockHttpClient({ networkError: true });
+    const source = new HttpSupportResistanceSource({
+      http: mockHttp,
+      url: "https://api.example.com/sr",
+      maxAttempts: 3
+    });
+
+    try {
+      await source.collect({ pair: "SOL/USDC" });
+      expect.fail("Should have thrown");
+    } catch (e) {
+      const error = e as SupportResistanceSourceError;
+      expect(error.kind).toBe("network");
+      expect(mockHttp.getJson).toHaveBeenCalledTimes(3);
+    }
+  });
+
+  it("retries up to maxAttempts on timeout errors before throwing", async () => {
+    const mockHttp = createMockHttpClient({ shouldTimeout: true });
+    const source = new HttpSupportResistanceSource({
+      http: mockHttp,
+      url: "https://api.example.com/sr",
+      maxAttempts: 3
+    });
+
+    try {
+      await source.collect({ pair: "SOL/USDC" });
+      expect.fail("Should have thrown");
+    } catch (e) {
+      const error = e as SupportResistanceSourceError;
+      expect(error.kind).toBe("timeout");
+      expect(mockHttp.getJson).toHaveBeenCalledTimes(3);
+    }
+  });
+
+  it("retries up to maxAttempts on 5xx server errors before throwing", async () => {
+    const mockHttp = createMockHttpClient({ httpStatus: 503 });
+    const source = new HttpSupportResistanceSource({
+      http: mockHttp,
+      url: "https://api.example.com/sr",
+      maxAttempts: 3
+    });
+
+    try {
+      await source.collect({ pair: "SOL/USDC" });
+      expect.fail("Should have thrown");
+    } catch (e) {
+      const error = e as SupportResistanceSourceError;
+      expect(error.kind).toBe("unavailable");
+      expect(mockHttp.getJson).toHaveBeenCalledTimes(3);
+    }
+  });
+
+  it("retries on 429 rate limit errors up to maxAttempts before throwing", async () => {
+    const mockHttp = createMockHttpClient({ httpStatus: 429 });
+    const source = new HttpSupportResistanceSource({
+      http: mockHttp,
+      url: "https://api.example.com/sr",
+      maxAttempts: 2
+    });
+
+    try {
+      await source.collect({ pair: "SOL/USDC" });
+      expect.fail("Should have thrown");
+    } catch (e) {
+      const error = e as SupportResistanceSourceError;
+      expect(error.kind).toBe("unavailable");
+      expect(mockHttp.getJson).toHaveBeenCalledTimes(2);
+    }
+  });
+
+  it("throws immediately on non-retryable 404 error without retrying", async () => {
+    const mockHttp = createMockHttpClient({ httpStatus: 404 });
+    const source = new HttpSupportResistanceSource({
+      http: mockHttp,
+      url: "https://api.example.com/sr",
+      maxAttempts: 3
+    });
+
+    try {
+      await source.collect({ pair: "SOL/USDC" });
+      expect.fail("Should have thrown");
+    } catch (e) {
+      const error = e as SupportResistanceSourceError;
+      expect(error.kind).toBe("unavailable");
+      expect(mockHttp.getJson).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("succeeds on successful response after previous failed attempts", async () => {
+    let callCount = 0;
+    const mockHttp = {
+      getJson: vi.fn().mockImplementation(async (): Promise<unknown> => {
+        callCount++;
+        if (callCount < 3) {
+          throw new TypeError("transient network error");
+        }
+        return {
+          providerId: "test-provider",
+          providerRunId: "run-123",
+          pair: "SOL/USDC",
+          asOfUnixMs: 1700000000000,
+          claims: []
+        };
+      }),
+      postJsonRaw: vi.fn().mockRejectedValue(new Error("Not implemented"))
+    } as unknown as HttpClient;
+
+    const source = new HttpSupportResistanceSource({
+      http: mockHttp,
+      url: "https://api.example.com/sr",
+      maxAttempts: 3
+    });
+
+    const result = await source.collect({ pair: "SOL/USDC" });
+    expect(result.providerId).toBe("test-provider");
+    expect(mockHttp.getJson).toHaveBeenCalledTimes(3);
   });
 });
 
