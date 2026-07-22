@@ -88,8 +88,6 @@ export async function enrichSupportResistanceClaim(
 ): Promise<EnrichedSupportResistanceObservation> {
   const entry = getObservationKindEntry("support_resistance_level");
 
-  const { payloadHash } = await canonicalizePayload(input.payload);
-
   const freshness = computeFreshness(
     {
       observedAtUnixMs: input.payload.asOfUnixMs,
@@ -142,6 +140,18 @@ export async function enrichSupportResistanceClaim(
     };
   }
 
+  const warnings = [...input.payload.warnings];
+  if (freshness.isStale && !warnings.includes("stale_observation")) {
+    warnings.push("stale_observation");
+  }
+
+  const enrichedPayload: SupportResistancePayloadV1 = {
+    ...input.payload,
+    warnings
+  };
+
+  const { payloadHash } = await canonicalizePayload(enrichedPayload);
+
   const provenance = buildDirectProvenance(input, payloadHash);
 
   const provenanceResult = validateProvenance(
@@ -153,16 +163,6 @@ export async function enrichSupportResistanceClaim(
   if (!provenanceResult.valid) {
     throw new Error(`Provenance validation failed: ${provenanceResult.reasons.join(", ")}`);
   }
-
-  const warnings = [...input.payload.warnings];
-  if (freshness.isStale && !warnings.includes("stale_observation")) {
-    warnings.push("stale_observation");
-  }
-
-  const enrichedPayload: SupportResistancePayloadV1 = {
-    ...input.payload,
-    warnings
-  };
 
   return {
     payload: enrichedPayload,

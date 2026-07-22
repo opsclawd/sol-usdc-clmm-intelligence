@@ -4,6 +4,7 @@ import type {
   SupportResistanceLevel
 } from "../../contracts/support-resistance.js";
 import type { BoundedSupportResistanceSnapshot } from "./validate.js";
+import { deriveSupportResistanceEquivalenceKey } from "./identity.js";
 
 export interface ClaimRejection {
   readonly index: number;
@@ -115,9 +116,9 @@ function normalizeClaimLevel(
   };
 }
 
-export function normalizeSupportResistanceClaims(
+export async function normalizeSupportResistanceClaims(
   snapshot: BoundedSupportResistanceSnapshot
-): NormalizationResult {
+): Promise<NormalizationResult> {
   const accepted: SupportResistancePayloadV1[] = [];
   const rejected: ClaimRejection[] = [];
   const warningsSet = new Set<SupportResistanceWarning>();
@@ -179,9 +180,92 @@ export function normalizeSupportResistanceClaims(
     warningsSet.add("missing_invalidation_conditions");
   }
 
+  const dedupedAccepted = await deduplicateByEquivalence(accepted, snapshot.providerRunId);
+
   return {
-    accepted,
+    accepted: dedupedAccepted,
     rejected,
     warnings: [...warningsSet]
   };
+}
+
+async function deduplicateByEquivalence(
+  accepted: SupportResistancePayloadV1[],
+  providerRunId: string
+): Promise<SupportResistancePayloadV1[]> {
+  if (accepted.length <= 1) {
+    return accepted;
+  }
+
+  const claimIdentities = accepted.map((claim) => {
+    const identity: {
+      providerId: string;
+      providerRunId: string;
+      pair: string;
+      evidenceSide: "SUPPORT" | "RESISTANCE";
+      levelType: "point" | "zone";
+      levelUsdcPerSol: number | undefined;
+      zoneLowerUsdcPerSol: number | undefined;
+      zoneUpperUsdcPerSol: number | undefined;
+      timeframe: string;
+      thesisCodes: readonly string[];
+    } = {
+      providerId: claim.sourceQuality.providerId,
+      providerRunId,
+      pair: claim.pair,
+      evidenceSide: claim.evidenceSide,
+      levelType: claim.levelType,
+      levelUsdcPerSol: claim.levelType === "point" ? claim.levelUsdcPerSol : undefined,
+      zoneLowerUsdcPerSol: claim.levelType === "zone" ? claim.zoneLowerUsdcPerSol : undefined,
+      zoneUpperUsdcPerSol: claim.levelType === "zone" ? claim.zoneUpperUsdcPerSol : undefined,
+      timeframe: claim.timeframe,
+      thesisCodes: claim.thesisCodes
+    };
+    return identity;
+  });
+
+  const keys = await Promise.all(
+    claimIdentities.map((identity) => deriveSupportResistanceEquivalenceKey(identity))
+  );
+
+  const equivalenceKeyToFirstIndex = new Map<string, number>();
+  const duplicateKeys = new Set<string>();
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i]!;
+    if (equivalenceKeyToFirstIndex.has(key)) {
+      duplicateKeys.add(key);
+    } else {
+      equivalenceKeyToFirstIndex.set(key, i);
+    }
+  }
+
+  if (duplicateKeys.size === 0) {
+    return accepted;
+  }
+
+  const result: SupportResistancePayloadV1[] = [];
+  const seenKeys = new Set<string>();
+
+  for (let i = 0; i < accepted.length; i++) {
+    const claim = accepted[i]!;
+    const key = keys[i]!;
+
+    if (seenKeys.has(key)) {
+      continue;
+    }
+
+    if (duplicateKeys.has(key)) {
+      result.push({
+        ...claim,
+        warnings: [...claim.warnings, "duplicate_equivalent_claim"]
+      });
+    } else {
+      result.push(claim);
+    }
+
+    seenKeys.add(key);
+  }
+
+  return result;
 }

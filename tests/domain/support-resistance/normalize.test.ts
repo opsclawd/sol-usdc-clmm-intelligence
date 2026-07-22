@@ -10,13 +10,13 @@ import { normalizeSupportResistanceClaims } from "../../../src/domain/support-re
 
 describe("normalizeSupportResistanceClaims", () => {
   describe("point-preservation", () => {
-    it("normalizes an explicit point without zone fields", () => {
+    it("normalizes an explicit point without zone fields", async () => {
       const rawSnapshot = makeSupportResistanceRawSnapshot({
         claims: [makeSupportResistancePointClaim(150.5, "RESISTANCE")]
       });
 
       const snapshot = acceptSupportResistanceSnapshot(rawSnapshot);
-      const result = normalizeSupportResistanceClaims(snapshot);
+      const result = await normalizeSupportResistanceClaims(snapshot);
 
       expect(result.accepted).toHaveLength(1);
       const claim = result.accepted[0]!;
@@ -28,13 +28,13 @@ describe("normalizeSupportResistanceClaims", () => {
   });
 
   describe("zone-preservation", () => {
-    it("normalizes ordered zone bounds without a point field", () => {
+    it("normalizes ordered zone bounds without a point field", async () => {
       const rawSnapshot = makeSupportResistanceRawSnapshot({
         claims: [makeSupportResistanceZoneClaim(145.0, 155.0, "SUPPORT")]
       });
 
       const snapshot = acceptSupportResistanceSnapshot(rawSnapshot);
-      const result = normalizeSupportResistanceClaims(snapshot);
+      const result = await normalizeSupportResistanceClaims(snapshot);
 
       expect(result.accepted).toHaveLength(1);
       const claim = result.accepted[0]!;
@@ -46,7 +46,7 @@ describe("normalizeSupportResistanceClaims", () => {
   });
 
   describe("missing-level-unavailable", () => {
-    it("does not fabricate a normalized claim when a source claim has no numeric level", () => {
+    it("does not fabricate a normalized claim when a source claim has no numeric level", async () => {
       const rawSnapshot = makeSupportResistanceRawSnapshot({
         claims: [
           makeSupportResistanceRawClaim({
@@ -56,14 +56,14 @@ describe("normalizeSupportResistanceClaims", () => {
       });
 
       const snapshot = acceptSupportResistanceSnapshot(rawSnapshot);
-      const result = normalizeSupportResistanceClaims(snapshot);
+      const result = await normalizeSupportResistanceClaims(snapshot);
 
       expect(result.accepted).toHaveLength(0);
       expect(result.rejected).toHaveLength(1);
       expect(result.rejected[0]?.reason).toBe("missing_level");
     });
 
-    it("does not fabricate a normalized claim when zone has only one bound", () => {
+    it("does not fabricate a normalized claim when zone has only one bound", async () => {
       const rawSnapshot = makeSupportResistanceRawSnapshot({
         claims: [
           makeSupportResistanceRawClaim({
@@ -74,7 +74,7 @@ describe("normalizeSupportResistanceClaims", () => {
       });
 
       const snapshot = acceptSupportResistanceSnapshot(rawSnapshot);
-      const result = normalizeSupportResistanceClaims(snapshot);
+      const result = await normalizeSupportResistanceClaims(snapshot);
 
       expect(result.accepted).toHaveLength(0);
       expect(result.rejected).toHaveLength(1);
@@ -82,7 +82,7 @@ describe("normalizeSupportResistanceClaims", () => {
   });
 
   describe("malformed-level-rejection", () => {
-    it("rejects mixed point and zone fields", () => {
+    it("rejects mixed point and zone fields", async () => {
       const rawSnapshot = makeSupportResistanceRawSnapshot({
         claims: [
           makeSupportResistanceRawClaim({
@@ -95,43 +95,43 @@ describe("normalizeSupportResistanceClaims", () => {
       });
 
       const snapshot = acceptSupportResistanceSnapshot(rawSnapshot);
-      const result = normalizeSupportResistanceClaims(snapshot);
+      const result = await normalizeSupportResistanceClaims(snapshot);
 
       expect(result.accepted).toHaveLength(0);
       expect(result.rejected).toHaveLength(1);
     });
 
-    it("rejects inverted zone bounds", () => {
+    it("rejects inverted zone bounds", async () => {
       const rawSnapshot = makeSupportResistanceRawSnapshot({
         claims: [makeSupportResistanceZoneClaim(155.0, 145.0, "RESISTANCE")]
       });
 
       const snapshot = acceptSupportResistanceSnapshot(rawSnapshot);
-      const result = normalizeSupportResistanceClaims(snapshot);
+      const result = await normalizeSupportResistanceClaims(snapshot);
 
       expect(result.accepted).toHaveLength(0);
       expect(result.rejected).toHaveLength(1);
     });
 
-    it("rejects non-positive point value", () => {
+    it("rejects non-positive point value", async () => {
       const rawSnapshot = makeSupportResistanceRawSnapshot({
         claims: [makeSupportResistancePointClaim(0, "RESISTANCE")]
       });
 
       const snapshot = acceptSupportResistanceSnapshot(rawSnapshot);
-      const result = normalizeSupportResistanceClaims(snapshot);
+      const result = await normalizeSupportResistanceClaims(snapshot);
 
       expect(result.accepted).toHaveLength(0);
       expect(result.rejected).toHaveLength(1);
     });
 
-    it("rejects negative point value", () => {
+    it("rejects negative point value", async () => {
       const rawSnapshot = makeSupportResistanceRawSnapshot({
         claims: [makeSupportResistancePointClaim(-10, "RESISTANCE")]
       });
 
       const snapshot = acceptSupportResistanceSnapshot(rawSnapshot);
-      const result = normalizeSupportResistanceClaims(snapshot);
+      const result = await normalizeSupportResistanceClaims(snapshot);
 
       expect(result.accepted).toHaveLength(0);
       expect(result.rejected).toHaveLength(1);
@@ -139,31 +139,31 @@ describe("normalizeSupportResistanceClaims", () => {
   });
 
   describe("explicit-ambiguity", () => {
-    it("adds explicit warnings for missing references", () => {
+    it("adds explicit warnings for missing references", async () => {
       const rawSnapshot = makeSupportResistanceRawSnapshot({
         claims: [makeSupportResistancePointClaim(150.5, "RESISTANCE")],
         sourceReferences: []
       });
 
       const snapshot = acceptSupportResistanceSnapshot(rawSnapshot);
-      const result = normalizeSupportResistanceClaims(snapshot);
+      const result = await normalizeSupportResistanceClaims(snapshot);
 
       expect(result.warnings).toContain("missing_source_reference");
     });
 
-    it("adds explicit warnings for missing invalidation conditions", () => {
+    it("adds explicit warnings for missing invalidation conditions", async () => {
       const rawSnapshot = makeSupportResistanceRawSnapshot({
         claims: [makeSupportResistancePointClaim(150.5, "RESISTANCE")],
         sourceReferences: ["https://example.com"]
       });
 
       const snapshot = acceptSupportResistanceSnapshot(rawSnapshot);
-      const result = normalizeSupportResistanceClaims(snapshot);
+      const result = await normalizeSupportResistanceClaims(snapshot);
 
       expect(result.warnings).toContain("missing_invalidation_conditions");
     });
 
-    it("adds explicit warnings for ambiguous source claims", () => {
+    it("adds explicit warnings for ambiguous source claims", async () => {
       const rawSnapshot = makeSupportResistanceRawSnapshot({
         claims: [
           makeSupportResistancePointClaim(150.5, "RESISTANCE"),
@@ -173,19 +173,19 @@ describe("normalizeSupportResistanceClaims", () => {
       });
 
       const snapshot = acceptSupportResistanceSnapshot(rawSnapshot);
-      const result = normalizeSupportResistanceClaims(snapshot);
+      const result = await normalizeSupportResistanceClaims(snapshot);
 
       expect(result.warnings).toContain("ambiguous_source_claim");
     });
 
-    it("normalizes duplicate thesis codes by sorting and deduplication", () => {
+    it("normalizes duplicate thesis codes by sorting and deduplication", async () => {
       const rawSnapshot = makeSupportResistanceRawSnapshot({
         claims: [makeSupportResistancePointClaim(150.5, "RESISTANCE")],
         sourceReferences: ["https://example.com"]
       });
 
       const snapshot = acceptSupportResistanceSnapshot(rawSnapshot);
-      const result = normalizeSupportResistanceClaims(snapshot);
+      const result = await normalizeSupportResistanceClaims(snapshot);
 
       const claim = result.accepted[0] as { thesisCodes: readonly string[] };
       const sortedCodes = [...claim.thesisCodes].sort();

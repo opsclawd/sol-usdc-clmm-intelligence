@@ -101,7 +101,7 @@ describe("deriveSupportResistanceEquivalenceKey", () => {
     });
 
     const bounded = acceptSupportResistanceSnapshot(snapshot);
-    const normalized = normalizeSupportResistanceClaims(bounded);
+    const normalized = await normalizeSupportResistanceClaims(bounded);
 
     const keys = await Promise.all(
       normalized.accepted.map((claim) =>

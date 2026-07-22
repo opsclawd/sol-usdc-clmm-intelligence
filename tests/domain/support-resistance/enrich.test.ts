@@ -27,7 +27,7 @@ describe("enrichSupportResistanceClaim", () => {
     });
 
     const bounded = acceptSupportResistanceSnapshot(snapshot);
-    const normalized = normalizeSupportResistanceClaims(bounded);
+    const normalized = await normalizeSupportResistanceClaims(bounded);
 
     expect(normalized.accepted).toHaveLength(1);
 
@@ -62,7 +62,7 @@ describe("enrichSupportResistanceClaim", () => {
     });
 
     const bounded = acceptSupportResistanceSnapshot(snapshot);
-    const normalized = normalizeSupportResistanceClaims(bounded);
+    const normalized = await normalizeSupportResistanceClaims(bounded);
 
     const input: SupportResistanceEnrichmentInput = {
       payload: normalized.accepted[0] as SupportResistancePayloadV1,
@@ -89,7 +89,7 @@ describe("enrichSupportResistanceClaim", () => {
     });
 
     const bounded = acceptSupportResistanceSnapshot(snapshot);
-    const normalized = normalizeSupportResistanceClaims(bounded);
+    const normalized = await normalizeSupportResistanceClaims(bounded);
 
     const input: SupportResistanceEnrichmentInput = {
       payload: normalized.accepted[0] as SupportResistancePayloadV1,
@@ -119,7 +119,7 @@ describe("enrichSupportResistanceClaim", () => {
     });
 
     const bounded = acceptSupportResistanceSnapshot(snapshot);
-    const normalized = normalizeSupportResistanceClaims(bounded);
+    const normalized = await normalizeSupportResistanceClaims(bounded);
 
     const input: SupportResistanceEnrichmentInput = {
       payload: normalized.accepted[0] as SupportResistancePayloadV1,
@@ -145,7 +145,7 @@ describe("enrichSupportResistanceClaim", () => {
     });
 
     const bounded = acceptSupportResistanceSnapshot(snapshot);
-    const normalized = normalizeSupportResistanceClaims(bounded);
+    const normalized = await normalizeSupportResistanceClaims(bounded);
 
     const input: SupportResistanceEnrichmentInput = {
       payload: normalized.accepted[0] as SupportResistancePayloadV1,
@@ -172,7 +172,7 @@ describe("enrichSupportResistanceClaim", () => {
     });
 
     const bounded = acceptSupportResistanceSnapshot(snapshot);
-    const normalized = normalizeSupportResistanceClaims(bounded);
+    const normalized = await normalizeSupportResistanceClaims(bounded);
 
     const input: SupportResistanceEnrichmentInput = {
       payload: normalized.accepted[0] as SupportResistancePayloadV1,
@@ -201,7 +201,7 @@ describe("enrichSupportResistanceClaim", () => {
     });
 
     const bounded = acceptSupportResistanceSnapshot(snapshot);
-    const normalized = normalizeSupportResistanceClaims(bounded);
+    const normalized = await normalizeSupportResistanceClaims(bounded);
 
     const input: SupportResistanceEnrichmentInput = {
       payload: normalized.accepted[0] as SupportResistancePayloadV1,
@@ -230,7 +230,7 @@ describe("enrichSupportResistanceClaim", () => {
     });
 
     const bounded = acceptSupportResistanceSnapshot(snapshot);
-    const normalized = normalizeSupportResistanceClaims(bounded);
+    const normalized = await normalizeSupportResistanceClaims(bounded);
 
     const input: SupportResistanceEnrichmentInput = {
       payload: normalized.accepted[0] as SupportResistancePayloadV1,
