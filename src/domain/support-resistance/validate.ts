@@ -17,7 +17,10 @@ const supportResistanceRawClaimSchema = z.object({
   zoneLowerUsdcPerSol: z.number().optional(),
   zoneUpperUsdcPerSol: z.number().optional(),
   evidenceSide: z.enum(["SUPPORT", "RESISTANCE"]).optional(),
-  sourceExtract: z.string().optional()
+  sourceExtract: z.string().optional(),
+  thesisCodes: z.array(z.string()).optional(),
+  invalidationConditions: z.array(z.string()).optional(),
+  expiresAtUnixMs: finiteInteger().optional()
 });
 
 function finiteInteger(): z.ZodType<number> {
@@ -65,6 +68,9 @@ export interface BoundedSupportResistanceClaim {
   readonly zoneUpperUsdcPerSol?: number | undefined;
   readonly evidenceSide: "SUPPORT" | "RESISTANCE";
   readonly sourceExtract?: string | undefined;
+  readonly thesisCodes?: readonly string[] | undefined;
+  readonly invalidationConditions?: readonly string[] | undefined;
+  readonly expiresAtUnixMs?: number | undefined;
 }
 
 function trimExtract(extract: string | undefined): string | undefined {
@@ -82,7 +88,10 @@ export function acceptSupportResistanceSnapshot(input: unknown): BoundedSupportR
       zoneLowerUsdcPerSol: claim.zoneLowerUsdcPerSol,
       zoneUpperUsdcPerSol: claim.zoneUpperUsdcPerSol,
       evidenceSide: claim.evidenceSide ?? "RESISTANCE",
-      sourceExtract: trimExtract(claim.sourceExtract)
+      sourceExtract: trimExtract(claim.sourceExtract),
+      thesisCodes: claim.thesisCodes,
+      invalidationConditions: claim.invalidationConditions,
+      expiresAtUnixMs: claim.expiresAtUnixMs
     };
   });
 

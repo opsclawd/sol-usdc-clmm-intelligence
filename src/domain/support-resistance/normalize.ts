@@ -17,6 +17,12 @@ export interface NormalizationResult {
   readonly warnings: readonly SupportResistanceWarning[];
 }
 
+function normalizeStringArray(arr: readonly string[] | undefined): string[] {
+  if (!arr || arr.length === 0) return [];
+  const trimmed = arr.map((s) => s.trim()).filter((s) => s.length > 0);
+  return [...new Set(trimmed)].sort();
+}
+
 function normalizeClaimLevel(
   claim: BoundedSupportResistanceSnapshot["claims"][number],
   index: number
@@ -139,6 +145,10 @@ export function normalizeSupportResistanceClaims(
       levelKeys.add(levelKey);
     }
 
+    const thesisCodes = normalizeStringArray(claim.thesisCodes);
+    const invalidationConditions = normalizeStringArray(claim.invalidationConditions);
+    const sourceReferences = normalizeStringArray(snapshot.sourceReferences);
+
     accepted.push({
       kind: "support_resistance_level",
       schemaVersion: 1,
@@ -146,12 +156,12 @@ export function normalizeSupportResistanceClaims(
       unit: "USDC_PER_SOL",
       evidenceSide: claim.evidenceSide,
       timeframe: "1h",
-      thesisCodes: [],
+      thesisCodes,
       asOfUnixMs: snapshot.asOfUnixMs,
-      expiresAtUnixMs: snapshot.asOfUnixMs + 86400000,
-      invalidationConditions: [],
+      expiresAtUnixMs: claim.expiresAtUnixMs ?? snapshot.asOfUnixMs + 86400000,
+      invalidationConditions,
       warnings: [...result.warnings],
-      sourceReferences: [...snapshot.sourceReferences],
+      sourceReferences,
       sourceQuality: {
         providerId: snapshot.providerId,
         reliability: snapshot.sourceReliability,

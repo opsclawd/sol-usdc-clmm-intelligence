@@ -1,5 +1,5 @@
 {
-  "verdict": "done_no_fixes_needed",
-  "summary": "The P1 boundary violation is already addressed in the plan. The P1 fix section (lines 243-245) explicitly moves RetryControl to Task 1 so it is available as an optional dependency in Task 2's PublishEvidenceBundleDeps, and Task 3 makes it required. The task-manifest.json already reflects this structure: Task 1 introduces RetryControl, Task 2 declares retry as optional, and Task 3 signature_changes correctly notes 'Changes retry from optional to required; RetryControl port was introduced in Task 1.' The JSON parses correctly. No structural changes were needed.",
-  "rebuttal": "The P1 finding references task-manifest.json:Task 3, but the plan already contains a P1 fix section that moves RetryControl to Task 1. The manifest correctly reflects this: Task 1 adds the RetryControl port (signature_changes entry at line 38-42), Task 2's PublishEvidenceBundleDeps uses optional retry (signature_changes note at line 67), and Task 3's signature_changes at line 143 correctly describes changing retry from optional to required. The green-boundary concern is fully addressed in both the prose plan and the synchronized manifest."
+  "verdict": "done_with_fixes",
+  "summary": "Added `tests/domain/taxonomy/confidence.test.ts` to Task 1's `expected_files` (and the Affected files list in plan.md) because Task 1 modifies `ConfidenceReason` in `src/contracts/taxonomy.ts`, and the diagnostic confirmed this test file references `ConfidenceReason` at line 335:75. The file requires no code changes — only explicit declaration so the type-system boundary is tracked. Also updated task-manifest.json to sync the new expected_file entry.",
+  "rebuttal": null
 }
