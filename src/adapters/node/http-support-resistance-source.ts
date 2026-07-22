@@ -81,11 +81,7 @@ function mapToSupportResistanceSourceError(
   apiKey?: string
 ): SupportResistanceSourceError {
   const diagnostic = e.message;
-  let redactedDiagnostic = apiKey ? diagnostic.replace(apiKey, "[REDACTED]") : diagnostic;
-
-  if (apiKey) {
-    redactedDiagnostic = redactedDiagnostic + " [REDACTED]";
-  }
+  const redactedDiagnostic = apiKey ? diagnostic.split(apiKey).join("[REDACTED]") : diagnostic;
 
   switch (e.kind) {
     case "timeout":
@@ -160,7 +156,10 @@ function acceptSupportResistanceSnapshot(response: unknown): SupportResistanceSo
         false
       );
     }
-    if (!Array.isArray(c.sourceReferences)) {
+    if (
+      !Array.isArray(c.sourceReferences) ||
+      !c.sourceReferences.every((s) => typeof s === "string")
+    ) {
       throw new HttpRequestError(
         "invalid_json",
         "Invalid claim: missing or invalid sourceReferences",
