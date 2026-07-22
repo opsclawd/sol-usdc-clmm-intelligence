@@ -7,6 +7,16 @@ import type {
 } from "../../ports/support-resistance-source.js";
 import { HttpRequestError } from "../../ports/http.js";
 import type { HttpClient } from "../../ports/http.js";
+import type { RetryControl } from "../../ports/retry.js";
+import { SystemRetryControl } from "./system-retry.js";
+
+const BASE_BACKOFF_MS = 25;
+const MAX_BACKOFF_MS = 400;
+
+function computeBackoffMs(attempt: number, retryControl: RetryControl): number {
+  const base = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** attempt);
+  return base + retryControl.jitterUnit() * base;
+}
 
 export interface HttpSupportResistanceSourceOptions {
   readonly http: HttpClient;
@@ -14,20 +24,31 @@ export interface HttpSupportResistanceSourceOptions {
   readonly apiKey?: string;
   readonly timeoutMs?: number;
   readonly maxAttempts?: number;
+  readonly retryControl?: RetryControl;
 }
 
 export class HttpSupportResistanceSource implements SupportResistanceSourcePort {
   private readonly timeoutMs: number;
   private readonly maxAttempts: number;
+  private readonly retryControl: RetryControl;
 
   constructor(private readonly options: HttpSupportResistanceSourceOptions) {
     this.timeoutMs = options.timeoutMs ?? 5000;
     this.maxAttempts = options.maxAttempts ?? 2;
+    this.retryControl = options.retryControl ?? new SystemRetryControl();
   }
 
   async collect(request: SupportResistanceSourceRequest): Promise<SupportResistanceSourceSnapshot> {
     if (request.pair !== "SOL/USDC") {
-      throw new Error("Unsupported pair");
+      throw mapToSupportResistanceSourceError(
+        new HttpRequestError(
+          "invalid_json",
+          `Unsupported pair: ${String(request.pair)}`,
+          null,
+          false
+        ),
+        this.options.apiKey
+      );
     }
 
     const headers: Record<string, string> = {};
@@ -62,6 +83,8 @@ export class HttpSupportResistanceSource implements SupportResistanceSourcePort 
         if (!httpError.retryable || attempt >= this.maxAttempts - 1) {
           throw mapToSupportResistanceSourceError(httpError, this.options.apiKey);
         }
+
+        await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
       }
     }
 
