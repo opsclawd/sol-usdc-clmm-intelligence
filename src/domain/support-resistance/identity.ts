@@ -11,9 +11,9 @@ export interface SupportResistanceEquivalenceIdentity {
   readonly pair: string;
   readonly evidenceSide: "SUPPORT" | "RESISTANCE";
   readonly levelType: "point" | "zone";
-  readonly levelUsdcPerSol?: number;
-  readonly zoneLowerUsdcPerSol?: number;
-  readonly zoneUpperUsdcPerSol?: number;
+  readonly levelUsdcPerSol?: number | undefined;
+  readonly zoneLowerUsdcPerSol?: number | undefined;
+  readonly zoneUpperUsdcPerSol?: number | undefined;
   readonly timeframe: string;
   readonly thesisCodes: readonly string[];
 }

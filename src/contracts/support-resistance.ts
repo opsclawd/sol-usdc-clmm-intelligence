@@ -42,11 +42,11 @@ export type SupportResistancePayloadV1 = SupportResistanceLevel & {
 };
 
 export type SupportResistanceRawClaim = {
-  readonly levelUsdcPerSol?: number;
-  readonly zoneLowerUsdcPerSol?: number;
-  readonly zoneUpperUsdcPerSol?: number;
-  readonly evidenceSide?: "SUPPORT" | "RESISTANCE";
-  readonly sourceExtract?: string;
+  readonly levelUsdcPerSol?: number | undefined;
+  readonly zoneLowerUsdcPerSol?: number | undefined;
+  readonly zoneUpperUsdcPerSol?: number | undefined;
+  readonly evidenceSide?: "SUPPORT" | "RESISTANCE" | undefined;
+  readonly sourceExtract?: string | undefined;
 };
 
 export type SupportResistanceRawSnapshot = {

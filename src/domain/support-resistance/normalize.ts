@@ -124,7 +124,7 @@ export function normalizeSupportResistanceClaims(
   const levelKeys = new Set<string>();
 
   for (let i = 0; i < snapshot.claims.length; i++) {
-    const claim = snapshot.claims[i];
+    const claim = snapshot.claims[i]!;
     const result = normalizeClaimLevel(claim, i);
 
     if ("rejected" in result) {

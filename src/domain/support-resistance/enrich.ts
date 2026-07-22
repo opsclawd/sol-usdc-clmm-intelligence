@@ -18,7 +18,7 @@ export interface SupportResistanceEnrichmentInput {
   readonly codeVersion: string;
   readonly runId: string | null;
   readonly rawId: number;
-  readonly sourceValidUntilUnixMs?: number;
+  readonly sourceValidUntilUnixMs?: number | undefined;
 }
 
 export interface EnrichedSupportResistanceObservation {
@@ -54,12 +54,15 @@ function computeDataCompleteness(payload: SupportResistancePayloadV1): number {
   return presentCount / totalCount;
 }
 
-function buildDirectProvenance(input: SupportResistanceEnrichmentInput): Provenance {
+function buildDirectProvenance(
+  input: SupportResistanceEnrichmentInput,
+  payloadHash: string
+): Provenance {
   const rawRef: ProvenanceRef = {
     refType: "raw_observation",
     id: input.rawId,
     source: "technical-analysis-api",
-    payloadHash: ""
+    payloadHash
   };
 
   const processRef: ProcessRef = {
@@ -92,7 +95,9 @@ export async function enrichSupportResistanceClaim(
       observedAtUnixMs: input.payload.asOfUnixMs,
       fetchedAtUnixMs: input.payload.asOfUnixMs,
       receivedAtUnixMs: input.nowMs,
-      sourceValidUntilUnixMs: input.sourceValidUntilUnixMs
+      ...(input.sourceValidUntilUnixMs !== undefined
+        ? { sourceValidUntilUnixMs: input.sourceValidUntilUnixMs }
+        : {})
     },
     entry.freshnessPolicy,
     input.nowMs,
@@ -137,8 +142,7 @@ export async function enrichSupportResistanceClaim(
     };
   }
 
-  const provenance = buildDirectProvenance(input);
-  provenance.sourceRefs[0]!.payloadHash = payloadHash;
+  const provenance = buildDirectProvenance(input, payloadHash);
 
   const provenanceResult = validateProvenance(
     provenance,

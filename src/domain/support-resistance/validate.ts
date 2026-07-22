@@ -1,5 +1,4 @@
 import { z } from "zod";
-import type { SupportResistanceRawClaim } from "../../contracts/support-resistance.js";
 
 const MAX_EXTRACT_LENGTH = 500;
 
@@ -50,63 +49,6 @@ const supportResistanceRawSnapshotInputSchema = z.object({
   sourceReliability: reliability().optional()
 });
 
-function validateClaimLevel(claim: SupportResistanceRawClaim): void {
-  const hasPoint = claim.levelUsdcPerSol !== undefined;
-  const hasZone =
-    claim.zoneLowerUsdcPerSol !== undefined || claim.zoneUpperUsdcPerSol !== undefined;
-
-  if (hasPoint && hasZone) {
-    throw new SupportResistanceValidationError(
-      "claims",
-      "cannot supply both point and zone fields in same claim"
-    );
-  }
-
-  if (hasPoint) {
-    const level = claim.levelUsdcPerSol;
-    if (!Number.isFinite(level) || level <= 0) {
-      throw new SupportResistanceValidationError(
-        "claims",
-        "point level must be a finite positive number"
-      );
-    }
-  }
-
-  if (hasZone) {
-    const lower = claim.zoneLowerUsdcPerSol;
-    const upper = claim.zoneUpperUsdcPerSol;
-
-    if (lower === undefined || upper === undefined) {
-      throw new SupportResistanceValidationError(
-        "claims",
-        "zone requires both lower and upper bounds"
-      );
-    }
-
-    if (!Number.isFinite(lower) || !Number.isFinite(upper)) {
-      throw new SupportResistanceValidationError("claims", "zone bounds must be finite numbers");
-    }
-
-    if (lower <= 0 || upper <= 0) {
-      throw new SupportResistanceValidationError("claims", "zone bounds must be positive");
-    }
-
-    if (lower >= upper) {
-      throw new SupportResistanceValidationError(
-        "claims",
-        "zone lower bound must be less than upper bound"
-      );
-    }
-  }
-
-  if (!hasPoint && !hasZone) {
-    throw new SupportResistanceValidationError(
-      "claims",
-      "claim must have either point or zone level"
-    );
-  }
-}
-
 export interface BoundedSupportResistanceSnapshot {
   readonly providerId: string;
   readonly providerRunId: string;
@@ -118,11 +60,11 @@ export interface BoundedSupportResistanceSnapshot {
 }
 
 export interface BoundedSupportResistanceClaim {
-  readonly levelUsdcPerSol?: number;
-  readonly zoneLowerUsdcPerSol?: number;
-  readonly zoneUpperUsdcPerSol?: number;
+  readonly levelUsdcPerSol?: number | undefined;
+  readonly zoneLowerUsdcPerSol?: number | undefined;
+  readonly zoneUpperUsdcPerSol?: number | undefined;
   readonly evidenceSide: "SUPPORT" | "RESISTANCE";
-  readonly sourceExtract?: string;
+  readonly sourceExtract?: string | undefined;
 }
 
 function trimExtract(extract: string | undefined): string | undefined {
@@ -135,8 +77,6 @@ export function acceptSupportResistanceSnapshot(input: unknown): BoundedSupportR
   const parsed = supportResistanceRawSnapshotInputSchema.parse(input);
 
   const claims: BoundedSupportResistanceClaim[] = parsed.claims.map((claim) => {
-    validateClaimLevel(claim);
-
     return {
       levelUsdcPerSol: claim.levelUsdcPerSol,
       zoneLowerUsdcPerSol: claim.zoneLowerUsdcPerSol,

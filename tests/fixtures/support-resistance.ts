@@ -7,11 +7,6 @@ export function makeSupportResistanceRawClaim(
   overrides?: Partial<SupportResistanceRawClaim>
 ): SupportResistanceRawClaim {
   return {
-    levelUsdcPerSol: undefined,
-    zoneLowerUsdcPerSol: undefined,
-    zoneUpperUsdcPerSol: undefined,
-    evidenceSide: undefined,
-    sourceExtract: undefined,
     ...overrides
   };
 }
@@ -48,7 +43,9 @@ export function makeSupportResistanceRawSnapshot(
     asOfUnixMs,
     sourceReferences,
     claims,
-    sourceReliability: overrides?.sourceReliability,
+    ...(overrides?.sourceReliability !== undefined
+      ? { sourceReliability: overrides.sourceReliability }
+      : {}),
     ...(overrides?.extraField !== undefined ? { extraField: overrides.extraField } : {})
   };
 }

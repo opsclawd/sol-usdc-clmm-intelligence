@@ -34,7 +34,7 @@ describe("acceptSupportResistanceSnapshot", () => {
 
       const result = acceptSupportResistanceSnapshot(snapshot);
 
-      expect((result as Record<string, unknown>).extraField).toBeUndefined();
+      expect((result as unknown as Record<string, unknown>).extraField).toBeUndefined();
     });
   });
 
