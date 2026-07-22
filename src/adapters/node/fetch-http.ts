@@ -1,8 +1,14 @@
-import type { HttpClient, HttpRequestOptions, HttpFailureKind } from "../../ports/http.js";
+import type {
+  HttpClient,
+  HttpRequestOptions,
+  HttpFailureKind,
+  HttpResponse
+} from "../../ports/http.js";
 import { HttpRequestError } from "../../ports/http.js";
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_MAX_ATTEMPTS = 2;
+const MAX_BODY_BYTES = 10_240;
 
 function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 429 || (status >= 500 && status < 600);
@@ -92,5 +98,148 @@ export class FetchHttpClient implements HttpClient {
       lastError ??
       new HttpRequestError("network", `GET ${url} failed after ${maxAttempts} attempts`, null, true)
     );
+  }
+
+  async postJsonRaw<T = unknown>(
+    url: string,
+    body: unknown,
+    options?: HttpRequestOptions
+  ): Promise<HttpResponse<T>> {
+    const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    let response: Response | null = null;
+    try {
+      const fetchOptions: RequestInit = {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(options?.headers ?? {})
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      };
+
+      response = await this.fetchFn(url, fetchOptions);
+
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+
+      let responseBody: T;
+      let bodyText = "";
+
+      try {
+        const reader = response.body?.getReader();
+        if (reader) {
+          let totalBytes = 0;
+          const chunks: Uint8Array[] = [];
+
+          let finished = false;
+          while (!finished) {
+            const { done: isDone, value } = await reader.read();
+            if (isDone) {
+              finished = true;
+              break;
+            }
+
+            totalBytes += value.length;
+            if (totalBytes > MAX_BODY_BYTES) {
+              await reader.cancel();
+              const excessBytes = totalBytes - MAX_BODY_BYTES;
+              const allowedChunks = [...chunks];
+              const trimEnd = value.length - excessBytes;
+              allowedChunks.push(value.slice(0, Math.max(0, trimEnd)));
+              const combined = new Uint8Array(allowedChunks.reduce((sum, c) => sum + c.length, 0));
+              let offset = 0;
+              for (const chunk of allowedChunks) {
+                combined.set(chunk, offset);
+                offset += chunk.length;
+              }
+              bodyText = new TextDecoder("utf-8", { fatal: false }).decode(combined);
+              break;
+            }
+            chunks.push(value);
+          }
+
+          if (totalBytes <= MAX_BODY_BYTES) {
+            const combined = new Uint8Array(chunks.reduce((sum, c) => sum + c.length, 0));
+            let offset = 0;
+            for (const chunk of chunks) {
+              combined.set(chunk, offset);
+              offset += chunk.length;
+            }
+            bodyText = new TextDecoder("utf-8", { fatal: false }).decode(combined);
+          }
+        } else {
+          bodyText = await response.text();
+          if (bodyText.length > MAX_BODY_BYTES) {
+            bodyText = bodyText.slice(0, MAX_BODY_BYTES);
+          }
+        }
+
+        try {
+          responseBody = JSON.parse(bodyText) as T;
+        } catch {
+          responseBody = bodyText as unknown as T;
+        }
+      } catch (e) {
+        if (e instanceof DOMException && e.name === "AbortError") {
+          throw new HttpRequestError("timeout", `POST ${url} timed out`, null, true);
+        }
+        if (
+          e instanceof TypeError &&
+          (e.message.includes("network") || e.message.includes("fetch"))
+        ) {
+          throw new HttpRequestError(
+            "network",
+            `POST ${url} network error: ${e.message}`,
+            null,
+            true
+          );
+        }
+        throw new HttpRequestError(
+          "network",
+          `POST ${url} body read error: ${e instanceof Error ? e.message : String(e)}`,
+          response.status,
+          true
+        );
+      }
+
+      return {
+        status: response.status,
+        ok: response.ok,
+        body: responseBody,
+        headers
+      };
+    } catch (e) {
+      if (e instanceof HttpRequestError) {
+        throw e;
+      }
+      if (e instanceof DOMException && e.name === "AbortError") {
+        throw new HttpRequestError("timeout", `POST ${url} timed out`, null, true);
+      }
+      if (
+        e instanceof TypeError &&
+        (e.message.includes("network") || e.message.includes("fetch"))
+      ) {
+        throw new HttpRequestError(
+          "network",
+          `POST ${url} network error: ${e.message}`,
+          null,
+          true
+        );
+      }
+      throw new HttpRequestError(
+        "network",
+        `POST ${url} failed: ${e instanceof Error ? e.message : String(e)}`,
+        response?.status ?? null,
+        true
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 }

@@ -1,4 +1,5 @@
 export { FakeHttp } from "./fake-http.js";
+export { FakeRetry } from "./fake-retry.js";
 export { FakeJsonStore } from "./fake-json-store.js";
 export { FakeTextReader } from "./fake-text-reader.js";
 export { FakeEnv } from "./fake-env.js";

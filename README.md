@@ -17,7 +17,8 @@ This repo currently provides:
 - local JSON outputs under `data/` and `outputs/` for agent consumption and operator review;
 - Drizzle/Postgres support under the `intelligence` schema;
 - dependency-cruiser boundaries that keep domain/application logic separated from Node adapters;
-- a hard no-execution boundary: analysis is allowed, direct execution is not.
+- a hard no-execution boundary: analysis is allowed, direct execution is not;
+- evidence bundle assembly and publication to Regime Engine via `POST /v1/evidence/sol-usdc`.
 
 The pipeline is allowed to collect, normalize, derive, summarize, score, remember, and publish evidence. It is not allowed to bypass the product's user-approval flow.
 
@@ -183,18 +184,18 @@ Invalid model output should fail closed or enter a clear degraded state.
 
 Tracked by #13 and #21.
 
-The future outbound publisher should target Regime Engine's evidence-ingest endpoint, not the legacy final-insight route.
+The outbound publisher targets Regime Engine's evidence-ingest endpoint (`POST /v1/evidence/sol-usdc`), not the legacy final-insight route. This repo publishes canonical evidence bundles to Regime Engine and never publishes final `PolicyInsight` or executes transactions.
 
-Expected payload content:
+Payload content:
 
 - deterministic feature summaries;
 - contextual evidence summaries;
-- LLM research brief;
+- LLM research brief (if available);
 - freshness/confidence/provenance metadata;
 - source refs;
 - versioning and idempotency fields.
 
-Publish attempts should be persisted with target endpoint, evidence bundle ID, optional research brief ID, idempotency key, request/payload hashes, status, HTTP status, response body, error information, attempt number, and timestamps.
+Publish attempts are persisted with target endpoint, evidence bundle ID, idempotency key, request/payload hashes, status, HTTP status, response body, error information, attempt number, and timestamps. All audit rows redact authorization headers and never contain `REGIME_ENGINE_AUTH_TOKEN`.
 
 ## Mature system vision
 
@@ -287,7 +288,7 @@ Orca `pool_statistics` metrics are defined as:
 
 Solana network-health/status ingestion is identified as a separate backlog gap after the deterministic vertical slice; it is not part of the core source count, and issue #24 completion does not depend on it.
 
-## Future evidence flow
+## Evidence flow (current)
 
 ```text
 raw source adapters
@@ -300,7 +301,7 @@ raw observations -> normalized records -> deterministic features
                   evidence bundle
                           |
                           v
-             schema-constrained research brief
+         schema-constrained research brief
                           |
                           v
         publish attempt -> regime-engine /v1/evidence/sol-usdc
@@ -308,6 +309,8 @@ raw observations -> normalized records -> deterministic features
                           v
           Regime Engine canonical PolicyInsight synthesis
 ```
+
+The intelligence pipeline never publishes final `PolicyInsight` or executes transactions. It publishes canonical evidence bundles to Regime Engine, which owns final policy synthesis.
 
 ## Evidence Bundle Assembly
 

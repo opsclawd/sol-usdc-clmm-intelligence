@@ -496,6 +496,106 @@ Only operational summary fields are printed: outcome, row ID, payload hash, slot
 > [!STOP]
 > **Migration precondition:** The migration that introduces `evidence_bundles` constraints assumes the table is empty. If any row exists, the migration aborts. Do not rewrite or delete existing rows without lead engineer approval.
 
+## Evidence Bundle Publishing (`pnpm publish:evidence`)
+
+The `publish:evidence` command publishes the latest evidence bundle to Regime Engine via `POST /v1/evidence/sol-usdc`. It never publishes final `PolicyInsight` or executes transactions.
+
+### Configuration
+
+Required environment variables:
+
+- `REGIME_ENGINE_BASE_URL`: Base URL for Regime Engine (e.g., `http://localhost:4000`).
+- `REGIME_ENGINE_AUTH_TOKEN`: Shared secret for authentication with Regime Engine.
+
+### Exit codes
+
+- **0**: Success — `created` (new bundle accepted) or `idempotent_replay` (duplicate detected by Regime Engine).
+- **1**: Failure — any other outcome.
+
+### Outcomes and meanings
+
+| Outcome                       | Meaning                                                                                     |
+| ----------------------------- | ------------------------------------------------------------------------------------------- |
+| `created`                     | Bundle accepted by Regime Engine on attempt 1, 2, or 3.                                     |
+| `idempotent_replay`           | Bundle already accepted; Regime Engine returned 200.                                        |
+| `bundle_not_found`            | No evidence bundle exists to publish.                                                       |
+| `local_validation_failed`     | Local config/URL validation failed (e.g., missing `REGIME_ENGINE_AUTH_TOKEN`, invalid URL). |
+| `validation_failed`           | Regime Engine returned 400/422; bundle payload failed remote validation.                    |
+| `auth_failed`                 | Regime Engine returned 401/403; authentication or authorization failed.                     |
+| `conflict`                    | Regime Engine returned 409; idempotency key mismatch or concurrent conflict.                |
+| `unknown_failed`              | Regime Engine returned another 4xx error.                                                   |
+| `permanent_http_failed`       | Non-retryable HTTP error (e.g., DNS failure, connection refused).                           |
+| `audit_store_failed`          | Local audit insert failed or conflicted; publishing outcome is unknown.                     |
+| `transient_failure_exhausted` | Retryable error exhausted all 3 attempts without success.                                   |
+
+### Retry bounds
+
+The publisher retries transient failures up to **3 attempts** with an exponential delay capped at **2,000 ms** plus jitter. The scheduler should NOT implement its own retry loop — scheduler-level retries must remain bounded and operator-controlled to avoid unbounded backoff.
+
+### Notification behavior
+
+A **nonzero exit code** plus a structured **terminal event** (e.g., `created`, `idempotent_replay`, `transient_failure_exhausted`) is the repository's operator-visible failure mechanism. Scheduled OpenClaw delivery should alert on nonzero exit.
+
+> [!SECRET]
+> Logs and audit rows must never contain `REGIME_ENGINE_AUTH_TOKEN`. Authorization headers are redacted before persistence.
+
+### Audit queries
+
+All SQL queries below are read-only. Do not manually mutate immutable publish-attempt audit rows.
+
+#### Inspect attempts by bundle ID and idempotency key
+
+```sql
+SELECT id, evidence_bundle_id, idempotency_key, attempt_number, status,
+       http_status, error_message, received_at_unix_ms, completed_at_unix_ms
+FROM intelligence.publish_attempts
+WHERE evidence_bundle_id = $1
+  AND idempotency_key = $2
+ORDER BY attempt_number ASC, id ASC;
+```
+
+#### Recent failures by status
+
+```sql
+SELECT status, COUNT(*) AS attempts,
+       MIN(received_at_unix_ms) AS oldest,
+       MAX(received_at_unix_ms) AS newest
+FROM intelligence.publish_attempts
+WHERE status IN ('validation_failed', 'auth_failed', 'conflict', 'network_failed', 'unknown_failed')
+  AND received_at_unix_ms >= $1
+GROUP BY status
+ORDER BY status;
+```
+
+#### Exhausted attempt 3 (transient failures)
+
+```sql
+SELECT pa.id, pa.evidence_bundle_id, pa.idempotency_key, pa.status,
+       pa.http_status, pa.error_message, pa.first_attempted_at_unix_ms,
+       pa.completed_at_unix_ms
+FROM intelligence.publish_attempts AS pa
+WHERE pa.attempt_number = 3
+  AND pa.status IN ('network_failed', 'unknown_failed')
+ORDER BY pa.received_at_unix_ms DESC
+LIMIT 20;
+```
+
+### Recovery procedures
+
+| Failure                       | Recovery                                                                                                                                |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth_failed`                 | Verify `REGIME_ENGINE_AUTH_TOKEN` matches the shared secret in Regime Engine. Correct the config and rerun.                             |
+| `validation_failed`           | Inspect `error_message` for details. Correct the upstream bundle assembly or schema version before rerunning.                           |
+| `conflict`                    | Investigate idempotency payload mismatch. Rerun with the **same idempotency key** (same bundle) only after transient or store recovery. |
+| `network_failed`              | Check network connectivity between this service and `REGIME_ENGINE_BASE_URL`.                                                           |
+| `audit_store_failed`          | Check database connectivity and disk space. Resolve the store issue, then rerun with the same bundle identity.                          |
+| `transient_failure_exhausted` | Check Regime Engine health. If healthy, rerun with the same bundle identity after the transient issue resolves.                         |
+
+### Migration Precondition
+
+> [!STOP]
+> **Migration precondition:** The migration that introduces `publish_attempts` constraints assumes the table is empty. If any row exists, the migration aborts. Do not rewrite or delete existing rows without lead engineer approval.
+
 ## Publish-attempt persistence
 
 All SQL queries below are read-only. Do not manually mutate immutable publish-attempt audit rows.

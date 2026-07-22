@@ -9,7 +9,15 @@ import type { DerivedFeatureRepo, DerivedFeatureRow } from "../../src/ports/feat
 import type { NormalizedObservationRepo } from "../../src/ports/normalized-observation-repo.js";
 import type { RawObservationRepo } from "../../src/ports/observation-repo.js";
 import type { AssembleEvidenceBundleJobRequest } from "../../src/jobs/assemble-evidence-bundle-job.js";
+import type { RetryControl } from "../../src/ports/retry.js";
 import { makeClmmBundle, makePoolData, makePositionData } from "../fixtures/clmm-bundle.js";
+
+function createMockRetryControl(): RetryControl {
+  return {
+    sleep: vi.fn().mockResolvedValue(undefined),
+    jitterUnit: vi.fn().mockReturnValue(0)
+  };
+}
 
 function createMockClock(now?: string): Clock {
   return {
@@ -760,6 +768,7 @@ describe("script parses required inputs and prints a redacted outcome summary", 
       clock,
       commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
       runIdFactory: createMockRunIdFactory(),
+      retryControl: createMockRetryControl(),
       getDb: vi.fn(),
       getPersistence: vi.fn().mockResolvedValue({
         connection: { close: vi.fn().mockResolvedValue(undefined) },
@@ -856,6 +865,7 @@ describe("script parses required inputs and prints a redacted outcome summary", 
       clock,
       commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
       runIdFactory: createMockRunIdFactory(),
+      retryControl: createMockRetryControl(),
       getDb: vi.fn(),
       getPersistence: vi.fn().mockResolvedValue({
         connection: { close: vi.fn().mockResolvedValue(undefined) },
@@ -1071,6 +1081,7 @@ describe("replaying the same input file preserves run and creation identity", ()
       clock,
       commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
       runIdFactory: createMockRunIdFactory(),
+      retryControl: createMockRetryControl(),
       getDb: vi.fn(),
       getPersistence: vi.fn().mockResolvedValue({
         connection: { close: vi.fn().mockResolvedValue(undefined) },
@@ -1133,6 +1144,7 @@ describe("invalid input exits before database composition", () => {
       clock,
       commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
       runIdFactory: createMockRunIdFactory(),
+      retryControl: createMockRetryControl(),
       getDb: vi.fn(),
       getPersistence: vi.fn().mockResolvedValue({
         connection: { close: vi.fn().mockResolvedValue(undefined) },
@@ -1179,6 +1191,7 @@ describe("invalid input exits before database composition", () => {
       clock,
       commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
       runIdFactory: createMockRunIdFactory(),
+      retryControl: createMockRetryControl(),
       getDb: vi.fn(),
       getPersistence: vi.fn().mockResolvedValue({
         connection: { close: vi.fn().mockResolvedValue(undefined) },
@@ -1231,6 +1244,7 @@ describe("invalid input exits before database composition", () => {
       clock,
       commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
       runIdFactory: createMockRunIdFactory(),
+      retryControl: createMockRetryControl(),
       getDb: vi.fn(),
       getPersistence: vi.fn().mockResolvedValue({
         connection: { close: vi.fn().mockResolvedValue(undefined) },

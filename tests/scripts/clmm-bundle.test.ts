@@ -9,6 +9,14 @@ import type { RawObservationRepo } from "../../src/ports/observation-repo.js";
 import type { NormalizedObservationRepo } from "../../src/ports/normalized-observation-repo.js";
 import type { DbConnection } from "../../src/ports/db.js";
 import type { NodeRuntime } from "../../src/adapters/node/composition-root.js";
+import type { RetryControl } from "../../src/ports/retry.js";
+
+function createMockRetryControl(): RetryControl {
+  return {
+    sleep: vi.fn().mockResolvedValue(undefined),
+    jitterUnit: vi.fn().mockReturnValue(0)
+  };
+}
 
 function createMockEnvReader(envMap?: Record<string, string>): EnvReader {
   const map = envMap ?? {};
@@ -192,6 +200,7 @@ describe("clmm-bundle collector lifecycle", () => {
         clock,
         commandRunner: createMockCommandRunner(),
         runIdFactory: { nextRunId: () => "run-123" },
+        retryControl: createMockRetryControl(),
         getDb: vi.fn(),
         getPersistence: vi.fn().mockResolvedValue(persistence),
         getContract: vi.fn()
@@ -233,6 +242,7 @@ describe("clmm-bundle collector lifecycle", () => {
         clock,
         commandRunner: createMockCommandRunner(),
         runIdFactory: { nextRunId: () => "run-123" },
+        retryControl: createMockRetryControl(),
         getDb: vi.fn(),
         getPersistence: vi.fn().mockResolvedValue(persistence),
         getContract: vi.fn()
@@ -276,6 +286,7 @@ describe("clmm-bundle collector lifecycle", () => {
         clock,
         commandRunner: createMockCommandRunner(),
         runIdFactory: { nextRunId: () => "run-123" },
+        retryControl: createMockRetryControl(),
         getDb: vi.fn(),
         getPersistence: vi.fn().mockResolvedValue(persistence),
         getContract: vi.fn()
