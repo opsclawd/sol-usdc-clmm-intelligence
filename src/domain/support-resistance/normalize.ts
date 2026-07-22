@@ -244,28 +244,14 @@ async function deduplicateByEquivalence(
     return accepted;
   }
 
-  const result: SupportResistancePayloadV1[] = [];
-  const seenKeys = new Set<string>();
-
-  for (let i = 0; i < accepted.length; i++) {
-    const claim = accepted[i]!;
+  return accepted.map((claim, i) => {
     const key = keys[i]!;
-
-    if (seenKeys.has(key)) {
-      continue;
+    if (!duplicateKeys.has(key)) {
+      return claim;
     }
-
-    if (duplicateKeys.has(key)) {
-      result.push({
-        ...claim,
-        warnings: [...claim.warnings, "duplicate_equivalent_claim"]
-      });
-    } else {
-      result.push(claim);
-    }
-
-    seenKeys.add(key);
-  }
-
-  return result;
+    return {
+      ...claim,
+      warnings: [...claim.warnings, "duplicate_equivalent_claim"]
+    };
+  });
 }

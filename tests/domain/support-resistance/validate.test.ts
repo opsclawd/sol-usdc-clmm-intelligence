@@ -6,6 +6,7 @@ import {
   makeLongExtract
 } from "../../fixtures/support-resistance.js";
 import { acceptSupportResistanceSnapshot } from "../../../src/domain/support-resistance/validate.js";
+import { normalizeSupportResistanceClaims } from "../../../src/domain/support-resistance/normalize.js";
 
 describe("acceptSupportResistanceSnapshot", () => {
   describe("bounded-retention", () => {
@@ -81,18 +82,24 @@ describe("acceptSupportResistanceSnapshot", () => {
       expect(() => acceptSupportResistanceSnapshot(snapshot)).toThrow();
     });
 
-    it("rejects zone with lower >= upper", () => {
+    it("rejects zone with lower >= upper", async () => {
       const snapshot = makeSupportResistanceRawSnapshot({
         claims: [makeSupportResistanceZoneClaim(160, 150)]
       });
-      expect(() => acceptSupportResistanceSnapshot(snapshot)).toThrow();
+      const bounded = acceptSupportResistanceSnapshot(snapshot);
+      const result = await normalizeSupportResistanceClaims(bounded);
+      expect(result.accepted).toHaveLength(0);
+      expect(result.rejected).toHaveLength(1);
     });
 
-    it("rejects zone with non-positive bounds", () => {
+    it("rejects zone with non-positive bounds", async () => {
       const snapshot = makeSupportResistanceRawSnapshot({
         claims: [makeSupportResistanceZoneClaim(-10, 150)]
       });
-      expect(() => acceptSupportResistanceSnapshot(snapshot)).toThrow();
+      const bounded = acceptSupportResistanceSnapshot(snapshot);
+      const result = await normalizeSupportResistanceClaims(bounded);
+      expect(result.accepted).toHaveLength(0);
+      expect(result.rejected).toHaveLength(1);
     });
   });
 });
