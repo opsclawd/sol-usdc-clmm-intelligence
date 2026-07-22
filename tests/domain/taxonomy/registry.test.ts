@@ -36,7 +36,8 @@ describe("observationKindRegistry", () => {
     "volume_metrics",
     "trigger_event",
     "data_quality",
-    "pool_statistics"
+    "pool_statistics",
+    "support_resistance_level"
   ];
 
   it("has an entry for every ObservationKind union member", () => {
@@ -275,5 +276,54 @@ describe("pool_statistics registry", () => {
   it("allows only orca public api provenance for pool statistics", () => {
     const entry = getObservationKindEntry("pool_statistics");
     expect(entry.provenanceRequirements.allowedSourceRefs).toEqual(["orca-public-api"]);
+  });
+});
+
+describe("registers support resistance as contextual support_resistance evidence", () => {
+  const entry = getObservationKindEntry("support_resistance_level");
+
+  it("support_resistance_level is registered", () => {
+    expect(entry).toBeDefined();
+    expect(entry.kind).toBe("support_resistance_level");
+  });
+
+  it("evidence family is support_resistance", () => {
+    expect(entry.evidenceFamily).toBe("support_resistance");
+  });
+
+  it("signal class is contextual", () => {
+    expect(entry.signalClass).toBe("contextual");
+  });
+
+  it("stale behavior is allow_context_only", () => {
+    expect(entry.freshnessPolicy.staleBehavior).toBe("allow_context_only");
+  });
+
+  it("schema version is 1", () => {
+    expect(entry.schemaVersion).toBe(1);
+  });
+
+  it("only technical-analysis-api is allowed as direct source ref", () => {
+    expect(entry.provenanceRequirements.allowedSourceRefs).toEqual(["technical-analysis-api"]);
+  });
+
+  it("is active", () => {
+    expect(entry.active).toBe(true);
+  });
+
+  it("has 24-hour maximum observed age", () => {
+    expect(entry.freshnessPolicy.maxObservedAgeMs).toBe(86_400_000);
+  });
+
+  it("has source-expiry-aware freshness with null maxFetchLag", () => {
+    expect(entry.freshnessPolicy.maxFetchLagMs).toBeNull();
+    expect(entry.freshnessPolicy.validForMs).toBeNull();
+  });
+
+  it("has confidence weights sourceReliability 0.45, completeness 0.35, derivation 0.20, llm 0", () => {
+    expect(entry.confidencePolicy.weights.sourceReliability).toBe(0.45);
+    expect(entry.confidencePolicy.weights.dataCompleteness).toBe(0.35);
+    expect(entry.confidencePolicy.weights.derivationConfidence).toBe(0.2);
+    expect(entry.confidencePolicy.weights.llmConfidence).toBe(0);
   });
 });

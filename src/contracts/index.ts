@@ -11,3 +11,4 @@ export * from "./normalized-observation.js";
 export * from "./raw-observation.js";
 export * from "./evidence-bundle.js";
 export * from "./generated/evidence-bundle-v1.js";
+export * from "./support-resistance.js";

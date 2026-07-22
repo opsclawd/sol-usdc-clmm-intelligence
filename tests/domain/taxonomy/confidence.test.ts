@@ -341,4 +341,28 @@ describe("computeConfidence", () => {
     expect(result.reasons).toContain("high_price_impact");
     expect(result.components.dataCompleteness).toBe(0.9);
   });
+
+  it("accepts contextual_source_quality_cap_applied reason", () => {
+    const components = {
+      sourceReliability: 0.8,
+      dataCompleteness: 0.9,
+      derivationConfidence: 0.7,
+      llmConfidence: null as number | null
+    };
+    const policy = {
+      weights: {
+        sourceReliability: 0.4,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    };
+    const additionalReasons: import("../../../src/contracts/taxonomy.js").ConfidenceReason[] = [
+      "contextual_source_quality_cap_applied"
+    ];
+    const result = computeConfidence(components, policy, "v1", undefined, additionalReasons);
+    expect(result.reasons).toContain("contextual_source_quality_cap_applied");
+  });
 });

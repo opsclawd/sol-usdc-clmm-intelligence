@@ -24,7 +24,8 @@ export type ObservationKind =
   | "volume_metrics"
   | "trigger_event"
   | "data_quality"
-  | "pool_statistics";
+  | "pool_statistics"
+  | "support_resistance_level";
 
 export type FeatureKind =
   | "range_location"
@@ -43,7 +44,8 @@ export type Source =
   | "defillama"
   | "pyth-hermes"
   | "jupiter-quote"
-  | "orca-public-api";
+  | "orca-public-api"
+  | "technical-analysis-api";
 
 export type ParseStatus = "pending" | "parsed" | "failed";
 
@@ -112,7 +114,8 @@ export type ConfidenceReason =
   | "required_component_missing"
   | "llm_confidence_required_but_null"
   | "oracle_confidence_wide"
-  | "high_price_impact";
+  | "high_price_impact"
+  | "contextual_source_quality_cap_applied";
 
 export interface Confidence {
   readonly components: ConfidenceComponents;
