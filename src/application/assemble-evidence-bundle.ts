@@ -5,7 +5,8 @@ import type {
   RawObservationRepo,
   EvidenceBundleRepo,
   EvidenceBundleContract,
-  EvidenceBundleInsert
+  EvidenceBundleInsert,
+  NormalizedObservationCandidateQuery
 } from "../ports/index.js";
 import type { EvidenceBundleInsertOutcome } from "../ports/bundle-repo.js";
 import type { BundleFeatureCandidateQuery } from "../ports/feature-repo.js";
@@ -38,6 +39,10 @@ import {
   type AssembleEvidenceBundleInput
 } from "../domain/evidence-bundle/assemble.js";
 import { MVP_FEATURE_KINDS } from "../contracts/derived-feature.js";
+import {
+  selectCurrentContextEvents,
+  type SelectedContextEvent
+} from "../domain/context-events/select.js";
 
 export interface AssembleEvidenceBundleRequest {
   readonly pair: "SOL/USDC";
@@ -318,6 +323,33 @@ export async function assembleEvidenceBundle(
 
   const { rawObservationIds, normalizedObservationIds } = collectLineageIds(slots);
 
+  const contextualCandidateQuery: NormalizedObservationCandidateQuery = {
+    sourceKinds: [
+      { source: "macro-calendar-api", observationKind: "scheduled_event" },
+      { source: "solana-status-api", observationKind: "protocol_incident" }
+    ],
+    receivedAtOrAfterUnixMs: evaluationTimeUnixMs - 7 * 24 * 60 * 60 * 1000
+  };
+
+  let contextualCandidates: NormalizedObservationRow[] = [];
+  let selectedContextEvents: readonly SelectedContextEvent[] = [];
+
+  try {
+    contextualCandidates = await normalizedRepo.listCandidates(contextualCandidateQuery);
+    selectedContextEvents = selectCurrentContextEvents({
+      evaluationTimeUnixMs,
+      candidates: contextualCandidates,
+      maxItems: 64
+    });
+  } catch (err) {
+    selectedContextEvents = [];
+  }
+
+  for (const selectedEvent of selectedContextEvents) {
+    normalizedObservationIds.add(selectedEvent.row.id);
+    rawObservationIds.add(selectedEvent.row.rawObservationId);
+  }
+
   const normalizedIdArray = [...normalizedObservationIds];
   let normalizedRows: NormalizedObservationRow[] = [];
   if (normalizedIdArray.length > 0) {
@@ -380,7 +412,8 @@ export async function assembleEvidenceBundle(
     clmmCanonical,
     walletId,
     positionId,
-    poolId
+    poolId,
+    contextualObservations: selectedContextEvents.map((e) => e.row)
   };
 
   const lineageResult = verifyEvidenceLineage(lineageInput);
@@ -390,6 +423,7 @@ export async function assembleEvidenceBundle(
 
   const freshUntil = evaluationTimeUnixMs + 3600000;
   const expiresAt = evaluationTimeUnixMs + 7200000;
+  const contextPresent = selectedContextEvents.length > 0;
 
   const qualityInput = {
     slots,
@@ -399,7 +433,7 @@ export async function assembleEvidenceBundle(
     asOf: evaluationTimeUnixMs,
     freshUntil,
     expiresAt,
-    contextPresent: false,
+    contextPresent,
     briefPresent: false,
     allowNoUsableFeatures: false
   };
@@ -419,11 +453,12 @@ export async function assembleEvidenceBundle(
     asOf: evaluationTimeUnixMs,
     freshUntil,
     expiresAt,
-    contextPresent: false,
+    contextPresent,
     briefPresent: false,
     pipelineVersion: codeVersion,
     gitCommit,
-    environment
+    environment,
+    contextualEvents: selectedContextEvents
   };
 
   const assembledCandidate = assembleEvidenceBundleCandidate(assembleInput);
