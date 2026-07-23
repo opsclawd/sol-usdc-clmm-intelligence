@@ -465,17 +465,23 @@ export function verifyEvidenceLineage(
     rawObservations
   );
 
+  const seenSourceReferenceIds = new Set(sourceReferences.map((sr) => sr.referenceId));
+
   for (const ctxRow of contextualObservations) {
     rawObservationIds.add(ctxRow.rawObservationId);
     normalizedObservationIds.add(ctxRow.id);
     const rawRow = rawObservations.get(ctxRow.rawObservationId);
     if (rawRow) {
-      sourceReferences.push({
-        referenceId: `raw-${rawRow.id}`,
-        sourceType: sourceToSourceType(rawRow.source),
-        locator: rawRow.sourceObservationKey,
-        observedAt: String(rawRow.observedAtUnixMs)
-      });
+      const referenceId = `raw-${rawRow.id}`;
+      if (!seenSourceReferenceIds.has(referenceId)) {
+        seenSourceReferenceIds.add(referenceId);
+        sourceReferences.push({
+          referenceId,
+          sourceType: sourceToSourceType(rawRow.source),
+          locator: rawRow.sourceObservationKey,
+          observedAt: String(rawRow.observedAtUnixMs)
+        });
+      }
     }
   }
 

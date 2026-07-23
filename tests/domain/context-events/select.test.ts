@@ -42,7 +42,7 @@ function makeContextRow(
 
 describe("context-events/select", () => {
   describe("selection invariants", () => {
-    it("cancellation becomes the latest state and suppresses older scheduled evidence", () => {
+    it("cancellation becomes the latest state and is included as explicit evidence", () => {
       const now = 1000000000000;
       const evaluationTime = now + 100;
 
@@ -122,7 +122,10 @@ describe("context-events/select", () => {
         maxItems: 64
       });
 
-      expect(result).toHaveLength(0);
+      expect(result).toHaveLength(1);
+      expect(result[0]?.payload).toMatchObject({
+        status: "CANCELLED"
+      });
     });
 
     it("incident resolution replaces active state until recovery expiry", () => {

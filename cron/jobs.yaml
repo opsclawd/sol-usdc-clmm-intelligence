@@ -7,4 +7,7 @@ exactEnv: OPENCLAW_EXACT
 delivery:
   channelEnv: OPENCLAW_DELIVERY_CHANNEL
   toEnv: OPENCLAW_DELIVERY_TO
-jobs: []
+jobs:
+  - name: context-events
+    cron: "0 */4 * * *"
+    messageFile: cron/routines/context-events.md
