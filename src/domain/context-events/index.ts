@@ -26,3 +26,9 @@ export {
 } from "./normalize.js";
 
 export { enrichContextEvent, type EnrichedContextEventObservation } from "./enrich.js";
+
+export {
+  selectCurrentContextEvents,
+  type ContextEventSelectionRequest,
+  type SelectedContextEvent
+} from "./select.js";
