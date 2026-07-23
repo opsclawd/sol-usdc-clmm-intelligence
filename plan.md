@@ -1,514 +1,611 @@
 <!-- plan-review-required -->
 
-# SOL/USDC Support/Resistance Evidence Implementation Plan
+# Scheduled Events and Protocol Incidents Evidence Collection Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Collect provider-neutral SOL/USDC support/resistance point and zone assertions, retain a bounded auditable source snapshot, normalize them into contextual evidence with freshness/confidence/provenance, and persist exact replays idempotently without merging distinct sources or disagreements.
+**Goal:** Collect bounded scheduled-event and Solana protocol-incident source records, retain them raw-first, normalize them into auditable append-only lifecycle evidence, and include only the latest eligible state of each event in SOL/USDC evidence bundles.
 
-**Architecture:** Add one contextual observation kind and a strict v1 payload contract, then keep provider response shaping, pure validation/normalization/enrichment, and raw-first persistence in separate layers. A source port and its Node HTTP adapter return a licensing-safe bounded snapshot; the application use case feeds that snapshot through the existing `ingestRawObservation` state machine and existing JSONB repositories. A thin job and CLI expose the collector without publishing policy or changing Regime Engine contracts.
+**Architecture:** Add two contextual observation kinds and two source ports with bounded HTTP adapters. Pure domain functions validate, normalize, classify severity, enrich metadata, and select the latest state by `(source, observationKind, sourceEventId)`; application use cases persist a bounded source snapshot before normalized rows, and bundle assembly maps selected rows to the existing `contextualEvidence.events` contract with direction fixed to `unknown`. Existing raw-observation identity semantics remain unchanged: a source snapshot uses a deterministic version key derived from the source, provider identity, source timestamp, and canonical snapshot hash, while stable event correlation is carried by `sourceEventId` in every normalized payload.
 
-**Tech Stack:** TypeScript 5.7, Vitest 2, existing `HttpClient`/environment/clock ports, Drizzle-backed raw and normalized observation repositories, Node/tsx CLI, ESLint, Prettier.
+**Tech Stack:** TypeScript, Zod, Vitest, Drizzle-backed repository ports already present in the runtime, Node HTTP adapter abstractions, and the generated `evidence-bundle.v1` contract.
 
 ---
 
-### Goal
+## Goal
 
-Deliver the first PR-sized contextual-evidence slice from issue #27: one configurable technical-analysis source, strict point/zone normalization, bounded raw retention, deterministic within-run equivalence grouping, exact replay handling, explicit stale/degraded outcomes, and an operator-facing command.
+Deliver a complete vertical slice for scheduled events and incidents:
 
-### Non-goals
+- strict normalized contracts and taxonomy entries;
+- bounded, licensed source extracts behind ports and HTTP adapters;
+- raw-first persistence and append-only lifecycle updates;
+- deterministic severity, confidence, provenance, freshness, and warnings;
+- exact replay idempotency without overwriting event history;
+- latest-state selection that excludes expired or stale evidence;
+- evidence-bundle `contextualEvidence.events` population and verified lineage;
+- operator commands and documentation.
 
-- Do not publish an evidence bundle to Regime Engine or change the canonical `PolicyInsight` contract.
-- Do not alter clmm-v2 guards, execution rules, rebalance logic, transaction code, or user-facing UI.
-- Do not create macro, incident, news, regulatory, on-chain-flow, perp, liquidation, or LLM-brief collectors.
-- Do not infer numeric levels from prose, convert points into zones, combine distinct providers into consensus, or overwrite historical normalized evidence.
-- Do not add a database migration: the existing raw and normalized JSONB payload columns and uniqueness constraints are sufficient.
-- Do not add retries beyond the existing `HttpClient` request options; unavailable sources produce an explicit non-persisting outcome.
+## Non-goals
 
-### Affected files
+- General ecosystem news or regulatory-headline scraping.
+- Support/resistance, on-chain flow, perp, funding, or liquidation collection.
+- LLM research briefs.
+- Bullish/bearish inference; bundle event direction is always `unknown`.
+- Final policy synthesis, UI behavior, trading decisions, or transaction execution.
+- Cross-provider entity resolution. Records are isolated by source; a provider may explicitly report disagreement, but this work does not merge events from different providers.
+- New database tables or changes to the existing raw/normalized repository interfaces. Existing JSONB payloads and repository methods are sufficient.
+
+## Assumptions and deterministic rules
+
+- `macro-calendar-api` and `solana-status-api` are configurable bounded JSON providers, not hard-coded vendors. Their response projections contain only factual fields needed by the contracts, source references, provider reliability, confirmation evidence, and retention metadata.
+- A bounded raw snapshot is safe to retain only when it declares `retentionMode: "bounded_factual_extract"` and a non-empty `license`; arbitrary response fields and long-form source text are dropped by adapters.
+- `sourceEventId` is stable within one provider. The normalized correlation key is `(source, observationKind, sourceEventId)`.
+- Raw snapshots remain append-only by deriving `sourceObservationKey` from the source, provider ID, provider source timestamp, and canonical snapshot hash. The same snapshot produces the same key and hash (`identical_replay`); any changed snapshot produces a new raw row and therefore cannot overwrite prior lifecycle states.
+- Scheduled severity is deterministic: explicit high-impact macro releases/central-bank decisions, mainnet upgrades or maintenance, and token unlocks at or above 1% circulating supply are `HIGH`; medium-impact events or unlocks at or above 0.25% are `MEDIUM`; remaining accepted events are `LOW`. Scheduled evidence never emits `CRITICAL`.
+- Incident severity is deterministic: confirmed network outage or active security exploit is `CRITICAL`; confirmed degradation or material protocol security incident is `HIGH`; scoped protocol degradation is `MEDIUM`; informational/recovery-only incidents are `LOW`.
+- A provider status of `ACTIVE` or `RESOLVED` is accepted as confirmed only when at least one official or primary confirmation reference is present. Otherwise normalization emits `UNCONFIRMED` and `missing_qualifying_confirmation`.
+- Scheduled defaults: `expiresAtUnixMs = max(scheduledEndUnixMs ?? scheduledStartUnixMs, scheduledStartUnixMs) + 1 hour`. Incident defaults: active evidence expires 15 minutes after `asOfUnixMs`, unconfirmed evidence after 10 minutes, and resolved evidence 1 hour after `resolvedAtUnixMs`. Provider expiry may shorten, never extend, these bounds.
+- A source may provide alternate timestamps for the same source event. Differing alternates produce `conflicting_times`; incomplete required context produces `incomplete_information`; explicit provider disagreement produces `source_disagreement`.
+- `CANCELLED` scheduled events and stale/expired rows remain queryable but are not current bundle evidence. A latest `RESOLVED` incident remains eligible only through its short recovery expiry. Selection never falls back to an older active row when the latest row is cancelled, resolved-and-expired, stale, or otherwise ineligible.
+
+## Affected files
+
+Create:
+
+- `src/contracts/context-events.ts`
+- `src/ports/scheduled-event-source.ts`
+- `src/ports/protocol-incident-source.ts`
+- `src/adapters/node/http-scheduled-event-source.ts`
+- `src/adapters/node/http-protocol-incident-source.ts`
+- `src/domain/context-events/validate.ts`
+- `src/domain/context-events/identity.ts`
+- `src/domain/context-events/normalize.ts`
+- `src/domain/context-events/enrich.ts`
+- `src/domain/context-events/select.ts`
+- `src/domain/context-events/index.ts`
+- `src/application/collect-context-events.ts`
+- `src/application/collect-scheduled-events.ts`
+- `src/application/collect-protocol-incidents.ts`
+- `src/jobs/context-events-job.ts`
+- `scripts/collectors/context-events.ts`
+- `tests/fixtures/context-events.ts`
+- `tests/fakes/fake-scheduled-event-source.ts`
+- `tests/fakes/fake-protocol-incident-source.ts`
+- `tests/contracts/context-events.test.ts`
+- `tests/domain/context-events/validate.test.ts`
+- `tests/domain/context-events/identity.test.ts`
+- `tests/domain/context-events/normalize.test.ts`
+- `tests/domain/context-events/enrich.test.ts`
+- `tests/domain/context-events/select.test.ts`
+- `tests/adapters/node/http-scheduled-event-source.test.ts`
+- `tests/adapters/node/http-protocol-incident-source.test.ts`
+- `tests/application/collect-context-events.test.ts`
+- `tests/jobs/context-events-job.test.ts`
+- `tests/scripts/context-events.test.ts`
+- `tests/domain/evidence-bundle/context-events-lineage.test.ts`
+- `tests/domain/evidence-bundle/context-events-assemble.test.ts`
+- `tests/application/assemble-context-events.test.ts`
+
+Modify:
 
 - `src/contracts/taxonomy.ts`
-- `src/contracts/support-resistance.ts` (new)
 - `src/contracts/index.ts`
-- `src/domain/taxonomy/registry.ts`
-- `tests/contracts/support-resistance.test.ts` (new)
-- `tests/domain/taxonomy/registry.test.ts`
-- `tests/domain/taxonomy/confidence.test.ts`
-- `src/domain/support-resistance/validate.ts` (new)
-- `src/domain/support-resistance/normalize.ts` (new)
-- `src/domain/support-resistance/identity.ts` (new)
-- `src/domain/support-resistance/enrich.ts` (new)
-- `src/domain/support-resistance/index.ts` (new)
-- `tests/fixtures/support-resistance.ts` (new)
-- `tests/domain/support-resistance/validate.test.ts` (new)
-- `tests/domain/support-resistance/normalize.test.ts` (new)
-- `tests/domain/support-resistance/identity.test.ts` (new)
-- `tests/domain/support-resistance/enrich.test.ts` (new)
-- `src/ports/support-resistance-source.ts` (new)
 - `src/ports/index.ts`
-- `src/adapters/node/http-support-resistance-source.ts` (new)
-- `tests/fakes/fake-support-resistance-source.ts` (new)
-- `tests/fakes/index.ts`
-- `tests/adapters/node/http-support-resistance-source.test.ts` (new)
-- `src/application/collect-support-resistance.ts` (new)
-- `tests/application/collect-support-resistance.test.ts` (new)
-- `tests/adapters/node/drizzle-support-resistance.integration.test.ts` (new)
-- `src/jobs/support-resistance-job.ts` (new)
+- `src/domain/taxonomy/registry.ts`
+- `src/domain/evidence-bundle/lineage.ts`
+- `src/domain/evidence-bundle/assemble.ts`
+- `src/application/assemble-evidence-bundle.ts`
 - `src/jobs/index.ts`
-- `scripts/collectors/support-resistance.ts` (new)
-- `tests/jobs/support-resistance-job.test.ts` (new)
-- `tests/scripts/support-resistance.test.ts` (new)
+- `tests/fakes/index.ts`
+- `tests/domain/taxonomy/registry.test.ts`
 - `package.json`
-- `.env.example`
 - `README.md`
 - `docs/architecture.md`
 - `docs/operator-runbook.md`
 
-### Behavioral model and invariants
+## Behavioral invariants
 
-The collection flow reuses `ingestRawObservation` and must preserve these transitions:
+The named test cases below must be written before their implementation.
 
-| Input / current state                                                 | Required transition and observable result                                                                                                                             |
-| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Source timeout/network/unavailable                                    | Return an unavailable outcome; create no raw or normalized row.                                                                                                       |
-| Adapter payload cannot be bounded/validated                           | Return malformed; create no raw or normalized row.                                                                                                                    |
-| New source-run identity + valid retained snapshot                     | Insert raw as `pending`, normalize accepted claims, then set raw to `parsed`.                                                                                         |
-| New raw row + no claim with an explicit point or complete zone        | Retain raw material, insert no normalized claim for the missing level, set raw to `parsed`, and return degraded with `missing_level`.                                 |
-| Normalization/persistence throws after raw insert                     | Best-effort transition raw from `pending` to `failed`; preserve the original error as the diagnostic.                                                                 |
-| Existing `parsed` identity + identical raw hash                       | Return `identical_replay`, reuse the raw row, and insert no additional normalized rows.                                                                               |
-| Existing `pending` or `failed` identity + identical raw hash          | Revalidate stored canonical content, insert missing normalized rows idempotently, and transition to `parsed`.                                                         |
-| Existing identity + different raw hash                                | Return conflict; do not overwrite raw or normalized history.                                                                                                          |
-| Same provider/run contains deterministically equivalent claims        | Retain both claims in raw material but emit one normalized claim with a `duplicate_equivalent_claim` warning.                                                         |
-| Same level comes from different providers or different run identities | Persist independently; never merge into consensus.                                                                                                                    |
-| Claim is expired/stale at collection time                             | Persist as contextual evidence with `isStale=true`, `allow_context_only`, a stale warning, and freshness-degraded confidence; never expose it as execution authority. |
+1. `normalizes a first scheduled state as SCHEDULED`: no previous state plus a valid scheduled source record produces one `SCHEDULED` payload with stable identity and bounded expiry.
+2. `appends a postponed scheduled state without changing sourceEventId`: a later snapshot with the same source event and a changed start time produces a distinct normalized payload linked by the same `sourceEventId`, with `postponed` and `conflicting_times` warnings where applicable.
+3. `cancellation becomes the latest state and suppresses older scheduled evidence`: `SCHEDULED -> CANCELLED` keeps both rows historically but selects neither as current.
+4. `unconfirmed incident cannot become active without qualifying confirmation`: `UNCONFIRMED -> provider ACTIVE` without official/primary evidence remains `UNCONFIRMED`.
+5. `qualified incident activation preserves history`: `UNCONFIRMED -> ACTIVE` with official/primary evidence creates a new state and leaves the earlier row intact.
+6. `incident resolution replaces active state until recovery expiry`: `ACTIVE -> RESOLVED` selects only the resolved row before expiry and none after expiry.
+7. `exact source snapshot replay writes no duplicate normalized rows`: identical canonical source input returns the original raw identity and zero new normalized rows.
+8. `changed snapshot appends raw and normalized history`: the same stable event identity with changed payload creates a new raw row and a new normalized row.
+9. `latest ineligible state never revives older active state`: when the newest row is cancelled, stale, or expired, selection returns no older state from that identity group.
+10. `unavailable source creates no absence claim`: timeout, network, rate-limit, or unavailable source outcomes persist no fabricated “no events” observation and return a degraded/unavailable result.
+11. `bundle event direction is always unknown`: every scheduled or incident row maps to an event claim with `direction: "unknown"` regardless of title, severity, or status.
+12. `bundle event lineage resolves to retained raw source`: each emitted event claim references a verified raw parent and source reference; missing or mismatched parents fail bundle assembly.
 
-The exact invariant names and test case names are repeated in `task-manifest.json`; implementers write those tests before implementation.
-
-## Task 1: Define the support/resistance contract and taxonomy policy
+## Task 1: Add contextual event contracts and taxonomy entries
 
 **Files:**
 
+- Create: `src/contracts/context-events.ts`
+- Create: `tests/contracts/context-events.test.ts`
 - Modify: `src/contracts/taxonomy.ts`
-- Create: `src/contracts/support-resistance.ts`
 - Modify: `src/contracts/index.ts`
 - Modify: `src/domain/taxonomy/registry.ts`
-- Create: `tests/contracts/support-resistance.test.ts`
-- Modify: `tests/domain/taxonomy/registry.test.ts` only in the `observationKindRegistry` kind list and a new dedicated `support_resistance_level` describe block
-- Modify: `tests/domain/taxonomy/confidence.test.ts` only to account for the extended `ConfidenceReason` union in type-checking contexts
+- Modify: `tests/domain/taxonomy/registry.test.ts`
 
-**Exported API changes:** extend `ObservationKind` with `"support_resistance_level"`, extend `Source` with `"technical-analysis-api"`, and export the new raw snapshot, claim, normalized payload, warning, and collection-result types from `src/contracts/support-resistance.ts` through `src/contracts/index.ts`. No existing repository-port method changes in this task.
+- [ ] **Step 1: Write failing contract and registry tests**
 
-- [ ] **Step 1: Write the contract and registry tests first.**
+Cover strict scheduled/incident payload shapes, lifecycle enums, warnings, severity, source quality, raw provenance, required temporal fields, and rejection of unknown fields. Add registry assertions that both kinds use `macro_protocol_risk`, `contextual`, `exclude`, schema version 1, and only their matching source.
 
-  Add exact test cases named `represents point and zone levels without silent conversion` and `registers support resistance as contextual support_resistance evidence`. The contract test should compile representative payloads with the following discriminated shape and assert that point-only fields do not appear on a zone and zone bounds do not appear on a point:
+Use these exported shapes:
 
-  ```ts
-  export type SupportResistanceLevel =
-    | {
-        readonly levelType: "point";
-        readonly levelUsdcPerSol: number;
-      }
-    | {
-        readonly levelType: "zone";
-        readonly zoneLowerUsdcPerSol: number;
-        readonly zoneUpperUsdcPerSol: number;
-      };
+```ts
+export type ContextEventStatus = "SCHEDULED" | "ACTIVE" | "RESOLVED" | "CANCELLED" | "UNCONFIRMED";
+export type ContextEventSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+export type ContextEventWarning =
+  | "conflicting_times"
+  | "source_disagreement"
+  | "incomplete_information"
+  | "missing_qualifying_confirmation"
+  | "postponed"
+  | "stale_observation";
+export type ContextEventSourceQuality = {
+  readonly providerId: string;
+  readonly reliability: number;
+  readonly completeness: "complete" | "partial";
+  readonly confirmation: "official" | "primary" | "secondary" | "none";
+};
+export type ContextEventRawProvenance = {
+  readonly sourceObservedAtUnixMs: number;
+  readonly retrievedAtUnixMs: number;
+  readonly retentionMode: "bounded_factual_extract";
+  readonly license: string;
+};
+```
 
-  export type SupportResistancePayloadV1 = SupportResistanceLevel & {
-    readonly kind: "support_resistance_level";
-    readonly schemaVersion: 1;
-    readonly pair: "SOL/USDC";
-    readonly unit: "USDC_PER_SOL";
-    readonly evidenceSide: "SUPPORT" | "RESISTANCE";
-    readonly timeframe: string;
-    readonly thesisCodes: readonly string[];
-    readonly asOfUnixMs: number;
-    readonly expiresAtUnixMs: number;
-    readonly invalidationConditions: readonly string[];
-    readonly warnings: readonly SupportResistanceWarning[];
-    readonly sourceReferences: readonly string[];
-    readonly sourceQuality: {
-      readonly providerId: string;
-      readonly reliability: number;
-      readonly completeness: "complete" | "partial";
-    };
-  };
-  ```
+Define `ScheduledEventPayloadV1` and `ProtocolIncidentPayloadV1` as strict discriminated schemas/types. Both include `sourceEventId`, `eventFamily`, `eventType`, `title`, `description`, `asOfUnixMs`, `expiresAtUnixMs`, `severity`, `status`, `affectedScope`, `sourceReferences`, `sourceQuality`, `rawProvenance`, and `warnings`; scheduled events require `scheduledStartUnixMs` and nullable `scheduledEndUnixMs`, while incidents require `detectedAtUnixMs` and nullable `resolvedAtUnixMs`.
 
-  The registry test must assert evidence family `support_resistance`, signal class `contextual`, stale behavior `allow_context_only`, schema version `1`, and only `technical-analysis-api` in allowed direct source refs.
+- [ ] **Step 2: Confirm the new tests fail**
 
-- [ ] **Step 2: Run the focused tests and confirm the expected red state.**
+Run: `pnpm exec vitest run tests/contracts/context-events.test.ts tests/domain/taxonomy/registry.test.ts`
 
-  Run: `pnpm exec vitest run tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts`
+Expected: FAIL because the contracts, kinds, sources, and registry entries do not exist.
 
-  Expected: FAIL because the new contract exports and registry entry do not exist.
+- [ ] **Step 3: Implement contracts and taxonomy**
 
-- [ ] **Step 3: Add the minimal contracts and policy.**
+Add `"scheduled_event" | "protocol_incident"` to `ObservationKind` and `"macro-calendar-api" | "solana-status-api"` to `Source`. Export the new contracts from `src/contracts/index.ts`. Add registry entries with contextual confidence weights, source allowlists, and freshness policies of 24 hours for scheduled feed refreshes and 15 minutes for incident feed refreshes; both use source-provided expiry as the tighter bound and `staleBehavior: "exclude"`.
 
-  Define a provider-neutral retained snapshot with `providerId`, `providerRunId`, `pair`, `asOfUnixMs`, `sourceReferences`, and `claims`. Each raw claim permits optional point/zone fields so missing-level source material can be retained, and includes bounded `sourceExtract?: string`; the strict normalized union above must not permit an absent or mixed level. Add warning codes:
+- [ ] **Step 4: Verify and commit**
 
-  ```ts
-  export type SupportResistanceWarning =
-    | "ambiguous_source_claim"
-    | "conflicting_source_claim"
-    | "duplicate_equivalent_claim"
-    | "missing_invalidation_conditions"
-    | "missing_level"
-    | "missing_source_reference"
-    | "stale_observation";
-  ```
+Run: `pnpm exec vitest run tests/contracts/context-events.test.ts tests/domain/taxonomy/registry.test.ts`
 
-  Add `SupportResistanceCollectionResult` with statuses `accepted | degraded | stale | identical_replay | conflict | malformed | timeout | network | unavailable | failed`, `hasUsableEvidence`, raw ID/count, warnings, freshness, confidence level, and diagnostic. Extend `ConfidenceReason` with `contextual_source_quality_cap_applied` so a contextual cap is auditable. Register a 24-hour maximum observed age, source-expiry-aware freshness, `allow_context_only`, and confidence weights of source reliability `0.45`, completeness `0.35`, derivation confidence `0.20`, and LLM confidence `0`.
+Run: `pnpm exec eslint src/contracts/context-events.ts src/contracts/taxonomy.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/context-events.test.ts tests/domain/taxonomy/registry.test.ts`
 
-- [ ] **Step 4: Run focused verification.**
+Expected: all selected tests and lint checks pass.
 
-  Run: `pnpm exec vitest run tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts`
+Commit: `git add src/contracts/context-events.ts src/contracts/taxonomy.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/context-events.test.ts tests/domain/taxonomy/registry.test.ts && git commit -m "feat: define contextual event evidence contracts"`
 
-  Expected: PASS, including the two named cases.
-
-  Run: `pnpm exec eslint src/contracts/taxonomy.ts src/contracts/support-resistance.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts --max-warnings 0`
-
-  Expected: exit 0.
-
-  Run: `pnpm exec prettier --check src/contracts/taxonomy.ts src/contracts/support-resistance.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts`
-
-  Expected: all listed files use Prettier formatting.
-
-- [ ] **Step 5: Commit the contract slice.**
-
-  ```bash
-  git add src/contracts/taxonomy.ts src/contracts/support-resistance.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts
-  git commit -m "feat: define support resistance evidence contract"
-  ```
-
-## Task 2: Implement pure validation, normalization, equivalence, and enrichment
+## Task 2: Implement bounded validation, identity, normalization, and enrichment
 
 **Files:**
 
-- Create: `src/domain/support-resistance/validate.ts`
-- Create: `src/domain/support-resistance/normalize.ts`
-- Create: `src/domain/support-resistance/identity.ts`
-- Create: `src/domain/support-resistance/enrich.ts`
-- Create: `src/domain/support-resistance/index.ts`
-- Create: `tests/fixtures/support-resistance.ts`
-- Create: `tests/domain/support-resistance/validate.test.ts`
-- Create: `tests/domain/support-resistance/normalize.test.ts`
-- Create: `tests/domain/support-resistance/identity.test.ts`
-- Create: `tests/domain/support-resistance/enrich.test.ts`
+- Create: `src/domain/context-events/validate.ts`
+- Create: `src/domain/context-events/identity.ts`
+- Create: `src/domain/context-events/normalize.ts`
+- Create: `src/domain/context-events/enrich.ts`
+- Create: `src/domain/context-events/index.ts`
+- Create: `tests/fixtures/context-events.ts`
+- Create: `tests/domain/context-events/validate.test.ts`
+- Create: `tests/domain/context-events/identity.test.ts`
+- Create: `tests/domain/context-events/normalize.test.ts`
+- Create: `tests/domain/context-events/enrich.test.ts`
 
-**Exported API changes:** add pure exported functions `acceptSupportResistanceSnapshot`, `normalizeSupportResistanceClaims`, `deriveSupportResistanceSourceObservationKey`, `deriveSupportResistanceEquivalenceKey`, and `enrichSupportResistanceClaim`, plus their input/output/error types. Existing signatures remain unchanged.
+- [ ] **Step 1: Write invariant-first domain tests**
 
-- [ ] **Step 1: Add fixtures and failing validation/normalization tests.**
+Write the exact named cases:
 
-  Build one reusable snapshot fixture containing a support point and resistance zone. Write these exact cases first:
-  - `accepts a bounded SOL/USDC snapshot and trims retained extracts to 500 characters`
-  - `rejects the wrong pair invalid timestamps and out-of-range source reliability`
-  - `normalizes an explicit point without zone fields`
-  - `normalizes ordered zone bounds without a point field`
-  - `does not fabricate a normalized claim when a source claim has no numeric level`
-  - `rejects mixed point and zone fields and inverted or non-positive bounds`
-  - `adds explicit warnings for missing references invalidation rules and ambiguity`
+- `normalizes a first scheduled state as SCHEDULED`
+- `appends a postponed scheduled state without changing sourceEventId`
+- `unconfirmed incident cannot become active without qualifying confirmation`
+- `qualified incident activation preserves history`
+- `incident resolution replaces active state until recovery expiry`
 
-  Validation must clone only the allowlisted fields from the unknown response. It must never retain arbitrary provider keys or a full article body. Normalize strings by trimming, deduplicate/sort thesis codes, invalidation conditions, warnings, and references, while preserving explicit point-versus-zone semantics.
+Also test bounded strings/arrays, strict projection, source and retrieval timestamps remaining separate, deterministic output ordering, severity threshold boundaries, token unlock and upgrade examples, time conflicts, explicit source disagreement, incomplete data, expiry defaults, confidence caps for unconfirmed/partial evidence, stale warnings, and provenance validation.
 
-- [ ] **Step 2: Run validation/normalization tests and confirm they fail.**
+- [ ] **Step 2: Confirm domain tests fail**
 
-  Run: `pnpm exec vitest run tests/domain/support-resistance/validate.test.ts tests/domain/support-resistance/normalize.test.ts`
+Run: `pnpm exec vitest run tests/domain/context-events/validate.test.ts tests/domain/context-events/identity.test.ts tests/domain/context-events/normalize.test.ts tests/domain/context-events/enrich.test.ts`
 
-  Expected: FAIL because the pure domain modules do not exist.
+Expected: FAIL because the context-event domain modules do not exist.
 
-- [ ] **Step 3: Implement strict acceptance and normalization.**
+- [ ] **Step 3: Implement pure domain functions**
 
-  `acceptSupportResistanceSnapshot(input: unknown)` must require a non-empty provider/run identity, `SOL/USDC`, finite integer timestamps, an array of claims, arrays for source references whose present entries are non-empty strings, and reliability in `[0, 1]`; return a newly built bounded snapshot rather than the original object. Empty reference arrays remain representable and produce `missing_source_reference` during normalization. `normalizeSupportResistanceClaims(snapshot)` must return both accepted payloads and rejected claim diagnostics so a missing level becomes unavailable/degraded rather than fabricated.
+Provide these stable APIs:
 
-  Use the following deterministic level validation:
+```ts
+export function acceptScheduledEventSnapshot(input: unknown): BoundedScheduledEventSnapshot;
+export function acceptProtocolIncidentSnapshot(input: unknown): BoundedProtocolIncidentSnapshot;
+export function deriveContextSnapshotObservationKey(input: {
+  source: "macro-calendar-api" | "solana-status-api";
+  providerId: string;
+  sourceObservedAtUnixMs: number;
+  payloadHash: string;
+}): Promise<string>;
+export function normalizeScheduledEvents(
+  snapshot: BoundedScheduledEventSnapshot,
+  retrievedAtUnixMs: number
+): readonly ScheduledEventPayloadV1[];
+export function normalizeProtocolIncidents(
+  snapshot: BoundedProtocolIncidentSnapshot,
+  retrievedAtUnixMs: number
+): readonly ProtocolIncidentPayloadV1[];
+export function enrichContextEvent(input: {
+  payload: ScheduledEventPayloadV1 | ProtocolIncidentPayloadV1;
+  source: "macro-calendar-api" | "solana-status-api";
+  rawId: number;
+  nowMs: number;
+  codeVersion: string;
+  runId: string | null;
+}): Promise<EnrichedContextEventObservation>;
+```
 
-  ```ts
-  if (claim.levelType === "point") {
-    accept only Number.isFinite(levelUsdcPerSol) && levelUsdcPerSol > 0;
-    reject any supplied zone bound;
-  }
-  if (claim.levelType === "zone") {
-    accept only finite positive lower/upper bounds with lower < upper;
-    reject any supplied point value;
-  }
-  otherwise reject with "missing_level";
-  ```
+Use Zod `.strict()` schemas, finite integer timestamp validation, bounded descriptions and reference arrays, sorted/deduplicated string arrays, the deterministic severity/confirmation/expiry rules above, `computeFreshness`, `computeConfidence`, `validateProvenance`, and canonical payload hashing. Do not inspect headlines for direction.
 
-  Preserve a source-supplied expiry even when already expired; do not rewrite it to a future time.
+- [ ] **Step 4: Verify and commit**
 
-- [ ] **Step 4: Add failing identity/equivalence tests.**
+Run: `pnpm exec vitest run tests/domain/context-events/validate.test.ts tests/domain/context-events/identity.test.ts tests/domain/context-events/normalize.test.ts tests/domain/context-events/enrich.test.ts`
 
-  Write exact cases:
-  - `derives a source observation key from provider and provider run identity`
-  - `groups only materially equivalent claims from the same provider run`
-  - `keeps point and zone assertions distinct`
-  - `keeps different sides timeframes theses providers and runs distinct`
+Run: `pnpm exec eslint src/domain/context-events tests/domain/context-events tests/fixtures/context-events.ts`
 
-  The equivalence key must canonicalize exactly: provider ID, provider run ID, pair, side, level type, point or both zone bounds, timeframe, and sorted thesis codes. Do not include warnings, prose extract, source URL order, or invalidation prose, because those do not change the asserted technical level; do include provider/run so cross-source claims remain independent.
+Expected: all selected tests and lint checks pass.
 
-- [ ] **Step 5: Implement deterministic identity and within-run grouping.**
+Commit: `git add src/domain/context-events tests/domain/context-events tests/fixtures/context-events.ts && git commit -m "feat: normalize contextual event evidence"`
 
-  Hash canonical identity objects with the existing `canonicalizePayload`; group duplicates in original claim order, retain one normalized payload, and append `duplicate_equivalent_claim`. The source observation key must be a stable hash-derived `providerId:providerRunId` identity and must not include fetched time, so exact source-run replays hit the existing raw uniqueness boundary.
-
-- [ ] **Step 6: Add failing enrichment tests.**
-
-  Write exact cases:
-  - `enriches a fresh claim with contextual taxonomy confidence and direct raw provenance`
-  - `caps confidence at source quality and completeness`
-  - `marks an expired claim stale and degrades confidence for context-only use`
-
-  Assert `sourceValidUntilUnixMs` is passed to `computeFreshness`, provenance contains the raw observation ref and process metadata, stale payloads gain `stale_observation`, and normalized payload hashes are computed after warnings are finalized.
-
-- [ ] **Step 7: Implement enrichment with existing taxonomy primitives.**
-
-  Build direct provenance from the raw row using source `technical-analysis-api`, collector `http-support-resistance-source`, job `support-resistance-enrichment`, code version, and pipeline run ID. Compute completeness from presence of references and invalidation conditions; use the source reliability directly, derivation confidence `1`, and no LLM confidence. After `computeConfidence`, cap the composite at `Math.min(sourceReliability, dataCompleteness)`, rederive the level with the registry thresholds, and add `contextual_source_quality_cap_applied` when the cap changes the score. Apply the stale factor before that cap so expiry can only reduce confidence. Pass `{ factor: 0.5 }` for stale claims and validate provenance against the new taxonomy entry.
-
-- [ ] **Step 8: Run focused verification.**
-
-  Run: `pnpm exec vitest run tests/domain/support-resistance/validate.test.ts tests/domain/support-resistance/normalize.test.ts tests/domain/support-resistance/identity.test.ts tests/domain/support-resistance/enrich.test.ts`
-
-  Expected: PASS for all named point, zone, missing, equivalence, freshness, confidence, and provenance cases.
-
-  Run: `pnpm exec eslint src/domain/support-resistance tests/domain/support-resistance tests/fixtures/support-resistance.ts --max-warnings 0`
-
-  Expected: exit 0.
-
-  Run: `pnpm exec prettier --check src/domain/support-resistance tests/domain/support-resistance tests/fixtures/support-resistance.ts`
-
-  Expected: all listed paths use Prettier formatting.
-
-- [ ] **Step 9: Commit the pure domain slice.**
-
-  ```bash
-  git add src/domain/support-resistance tests/domain/support-resistance tests/fixtures/support-resistance.ts
-  git commit -m "feat: normalize support resistance claims"
-  ```
-
-## Task 3: Add the source port and Node HTTP adapter together
+## Task 3: Add source ports and bounded HTTP adapters
 
 **Files:**
 
-- Create: `src/ports/support-resistance-source.ts`
+- Create: `src/ports/scheduled-event-source.ts`
+- Create: `src/ports/protocol-incident-source.ts`
+- Create: `src/adapters/node/http-scheduled-event-source.ts`
+- Create: `src/adapters/node/http-protocol-incident-source.ts`
+- Create: `tests/fakes/fake-scheduled-event-source.ts`
+- Create: `tests/fakes/fake-protocol-incident-source.ts`
+- Create: `tests/adapters/node/http-scheduled-event-source.test.ts`
+- Create: `tests/adapters/node/http-protocol-incident-source.test.ts`
 - Modify: `src/ports/index.ts`
-- Create: `src/adapters/node/http-support-resistance-source.ts`
-- Create: `tests/fakes/fake-support-resistance-source.ts`
 - Modify: `tests/fakes/index.ts`
-- Create: `tests/adapters/node/http-support-resistance-source.test.ts`
 
-**Port/interface atomicity:** this task adds `SupportResistanceSourcePort.collect` and includes both concrete implementations in the same task: `HttpSupportResistanceSource` for Node and `FakeSupportResistanceSource` for tests. Do not commit the port without both implementations; the automatic workspace `pnpm -r typecheck` gate must pass after this task.
+- [ ] **Step 1: Write adapter contract tests**
 
-**Exported API changes:** export `SupportResistanceSourcePort`, `SupportResistanceSourceRequest`, `SupportResistanceSourceError`, and `HttpSupportResistanceSource`. The required method shape is `collect(request: SupportResistanceSourceRequest): Promise<SupportResistanceSourceSnapshot>`.
+Test a bounded look-ahead request for scheduled events and a Solana-mainnet request for incidents; optional bearer auth; unknown-field removal; retention/license enforcement; timeout, network, malformed, 404/429/5xx classification; secret redaction; and bounded retry timing.
 
-- [ ] **Step 1: Write adapter contract tests first.**
+Define complete port/implementation pairs in this task:
 
-  Add exact cases:
-  - `fetches SOL/USDC claims with bounded request options and an optional bearer credential`
-  - `returns only the validated bounded snapshot and never retains unknown provider fields`
-  - `classifies timeout network http status and malformed payload failures without leaking credentials`
-
-  Configure the adapter through a constructor object containing `http`, `url`, optional `apiKey`, `timeoutMs: 5000`, and `maxAttempts: 2`. Assert the credential is sent only in the request header and no thrown diagnostic contains it.
-
-- [ ] **Step 2: Run the adapter test and confirm it fails.**
-
-  Run: `pnpm exec vitest run tests/adapters/node/http-support-resistance-source.test.ts`
-
-  Expected: FAIL because the port, fake, and adapter do not exist.
-
-- [ ] **Step 3: Define the port and both implementations in one change.**
-
-  Use a narrow request:
-
-  ```ts
-  export interface SupportResistanceSourceRequest {
+```ts
+export interface ScheduledEventSourcePort {
+  collect(request: {
     readonly pair: "SOL/USDC";
-  }
+    readonly fromUnixMs: number;
+    readonly toUnixMs: number;
+  }): Promise<ScheduledEventSourceSnapshot>;
+}
+export interface ProtocolIncidentSourcePort {
+  collect(request: { readonly network: "solana-mainnet" }): Promise<ProtocolIncidentSourceSnapshot>;
+}
+```
 
-  export interface SupportResistanceSourcePort {
-    collect(request: SupportResistanceSourceRequest): Promise<SupportResistanceSourceSnapshot>;
-  }
-  ```
+Each snapshot exposes provider/source timestamps, reliability, license/retention metadata, bounded records, factual source references, and explicit confirmation level. Use the shared source error union `timeout | network | unavailable | malformed`.
 
-  The HTTP adapter calls `getJson<unknown>`, passes the unknown response through `acceptSupportResistanceSnapshot`, and maps `HttpRequestError` to `SupportResistanceSourceError` kinds `timeout | network | unavailable | malformed`. Treat HTTP 404, 429, and 5xx as unavailable; invalid JSON or domain-validation failure as malformed; other transport failures as network. Store only configured fake responses in the test fake and record requests for assertions.
+- [ ] **Step 2: Confirm adapter tests fail**
 
-- [ ] **Step 4: Run focused verification.**
+Run: `pnpm exec vitest run tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts`
 
-  Run: `pnpm exec vitest run tests/adapters/node/http-support-resistance-source.test.ts`
+Expected: FAIL because the ports and adapters do not exist.
 
-  Expected: PASS for request shaping, bounded response projection, failure classification, and secret redaction.
+- [ ] **Step 3: Implement both ports and all implementations**
 
-  Run: `pnpm exec eslint src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts --max-warnings 0`
+Implement both adapters with the existing `HttpClient` and `RetryControl`. Use at most two attempts, one adapter-level request per attempt, exponential backoff capped at 400 ms plus injected jitter, and no retries for malformed responses or non-retryable 4xx responses. Project accepted responses into frozen bounded snapshots and redact the configured credential from diagnostics.
 
-  Expected: exit 0.
+- [ ] **Step 4: Verify and commit**
 
-  Run: `pnpm exec prettier --check src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts`
+Run: `pnpm exec vitest run tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts`
 
-  Expected: all listed files use Prettier formatting.
+Run: `pnpm exec eslint src/ports/scheduled-event-source.ts src/ports/protocol-incident-source.ts src/ports/index.ts src/adapters/node/http-scheduled-event-source.ts src/adapters/node/http-protocol-incident-source.ts tests/fakes/fake-scheduled-event-source.ts tests/fakes/fake-protocol-incident-source.ts tests/fakes/index.ts tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts`
 
-- [ ] **Step 5: Commit the complete port/adapter slice.**
+Expected: all selected tests and lint checks pass.
 
-  ```bash
-  git add src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts
-  git commit -m "feat: add support resistance source adapter"
-  ```
+Commit: `git add src/ports src/adapters/node/http-scheduled-event-source.ts src/adapters/node/http-protocol-incident-source.ts tests/fakes tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts && git commit -m "feat: add contextual event source adapters"`
 
-## Task 4: Orchestrate raw-first collection and durable idempotency
-
-**Files:**
-
-- Create: `src/application/collect-support-resistance.ts`
-- Create: `tests/application/collect-support-resistance.test.ts`
-- Create: `tests/adapters/node/drizzle-support-resistance.integration.test.ts`
-
-**Exported API changes:** add `CollectSupportResistanceDeps` and `collectSupportResistance(deps, context): Promise<SupportResistanceCollectionResult>`. Existing raw and normalized repository ports and adapters are deliberately unchanged.
-
-- [ ] **Step 1: Write collection state-transition tests first.**
-
-  Add these exact test cases before the use case:
-  - `persists bounded raw material before normalized claims and marks the raw row parsed`
-  - `returns unavailable without persistence when the source cannot be collected`
-  - `returns malformed without persistence when the bounded source payload is invalid`
-  - `retains a missing-level claim as raw degraded evidence without fabricating a normalized level`
-  - `marks the raw row failed when normalization persistence fails`
-  - `collapses an identical parsed replay without duplicate normalized rows`
-  - `recovers an identical pending or failed replay and transitions it to parsed`
-  - `rejects a conflicting replay without overwriting history`
-  - `groups equivalent same-provider-run claims and records a duplicate warning`
-  - `preserves different providers runs sides timeframes and theses independently`
-  - `persists expired evidence as stale context-only evidence with degraded confidence`
-
-  Use `FakeSupportResistanceSource`, `FakeObservationRepo`, `FakeNormalizedObservationRepo`, and a fixed `CollectionRunContext`. Assert raw canonical JSON contains only the accepted bounded snapshot and request metadata contains provider ID, provider run ID, pair, code version, and pipeline run ID but never an API key, bearer header, or arbitrary provider response field.
-
-- [ ] **Step 2: Run the application test and confirm it fails.**
-
-  Run: `pnpm exec vitest run tests/application/collect-support-resistance.test.ts`
-
-  Expected: FAIL because `collectSupportResistance` does not exist.
-
-- [ ] **Step 3: Implement collection by composing existing ingestion behavior.**
-
-  Dependencies are the source port, clock/env metadata, raw repository, and normalized repository. The use case must:
-  1. call the source port for `SOL/USDC` and map `SupportResistanceSourceError` without persistence;
-  2. canonicalize the already-bounded snapshot and derive the provider/run source identity;
-  3. call `ingestRawObservation` with source `technical-analysis-api` and parse status `pending`;
-  4. revalidate stored canonical content for pending/failed replay recovery;
-  5. normalize, group equivalent claims, enrich each accepted claim, and call `insertMany` once;
-  6. rely on `ingestRawObservation` to classify identical/conflicting raw identities and finalize `parsed`/`failed` status;
-  7. derive result status as stale when every usable row is stale, degraded when any claim was rejected or warned, identical replay only after recovering existing normalized rows, and accepted otherwise.
-
-  When an already parsed replay returns `normalizedCount: 0`, call existing `findBySource(SOURCE, "support_resistance_level", rawRow.receivedAtUnixMs)` and filter the returned rows by `rawObservationId` for the result summary; `findByRawObservation` returns only one row and is insufficient for a multi-claim snapshot. Do not interpret zero new rows as zero usable evidence. The use case writes no compatibility JSON file.
-
-- [ ] **Step 4: Add database-backed tests for the unchanged persistence boundary.**
-
-  In the new integration file, follow the existing `DATABASE_URL` skip/cleanup pattern from `tests/adapters/node/drizzle-observation-repos.integration.test.ts`. Add exact cases:
-  - `persists support resistance JSONB confidence freshness and provenance without a schema migration`
-  - `returns the existing normalized row for an identical payload hash and keeps distinct payloads independent`
-
-  Exercise only `DrizzleObservationRepo` and `DrizzleNormalizedObservationRepo`. Verify point and zone payloads round-trip, `validUntilUnixMs`, `isStale`, `allow_context_only`, confidence, and raw provenance survive mapping. Use unique provider/run keys so the test remains isolated.
-
-- [ ] **Step 5: Run focused verification.**
-
-  Run: `pnpm exec vitest run tests/application/collect-support-resistance.test.ts tests/adapters/node/drizzle-support-resistance.integration.test.ts`
-
-  Expected: PASS; when `DATABASE_URL` is absent, only the integration cases are explicitly skipped by their existing test-environment guard.
-
-  Run: `pnpm exec eslint src/application/collect-support-resistance.ts tests/application/collect-support-resistance.test.ts tests/adapters/node/drizzle-support-resistance.integration.test.ts --max-warnings 0`
-
-  Expected: exit 0.
-
-  Run: `pnpm exec prettier --check src/application/collect-support-resistance.ts tests/application/collect-support-resistance.test.ts tests/adapters/node/drizzle-support-resistance.integration.test.ts`
-
-  Expected: all listed files use Prettier formatting.
-
-- [ ] **Step 6: Commit the durable collection slice.**
-
-  ```bash
-  git add src/application/collect-support-resistance.ts tests/application/collect-support-resistance.test.ts tests/adapters/node/drizzle-support-resistance.integration.test.ts
-  git commit -m "feat: collect durable support resistance evidence"
-  ```
-
-## Task 5: Expose the collector through a job, CLI, configuration, and documentation
+## Task 4: Implement raw-first event collection and append-only lifecycle persistence
 
 **Files:**
 
-- Create: `src/jobs/support-resistance-job.ts`
+- Create: `src/application/collect-context-events.ts`
+- Create: `src/application/collect-scheduled-events.ts`
+- Create: `src/application/collect-protocol-incidents.ts`
+- Create: `tests/application/collect-context-events.test.ts`
+
+- [ ] **Step 1: Write persistence and lifecycle tests first**
+
+Write the exact named cases:
+
+- `exact source snapshot replay writes no duplicate normalized rows`
+- `changed snapshot appends raw and normalized history`
+- `unavailable source creates no absence claim`
+
+Also prove that accepted bounded source data is inserted into `raw_observations` before normalized inserts, each normalized row points to its raw parent, multiple events from one snapshot insert atomically through `insertMany`, malformed snapshots write nothing, partial-invalid records retain the accepted bounded snapshot and return warnings without fabricating normalized data, and source timestamps differ from retrieval timestamps.
+
+- [ ] **Step 2: Confirm application tests fail**
+
+Run: `pnpm exec vitest run tests/application/collect-context-events.test.ts`
+
+Expected: FAIL because the collection use cases do not exist.
+
+- [ ] **Step 3: Implement the collection use cases**
+
+Use a private generic orchestration helper plus explicit wrappers:
+
+```ts
+export async function collectScheduledEvents(
+  deps: CollectScheduledEventsDeps,
+  context: CollectionRunContext
+): Promise<ContextEventCollectionResult>;
+export async function collectProtocolIncidents(
+  deps: CollectProtocolIncidentsDeps,
+  context: CollectionRunContext
+): Promise<ContextEventCollectionResult>;
+```
+
+The helper must canonicalize the bounded snapshot, derive its version-specific raw key, call `ingestRawObservation`, build/enrich all normalized candidates, and call `normalizedObservationRepo.insertMany`. Return `accepted`, `degraded`, `stale`, `identical_replay`, `malformed`, `timeout`, `network`, `unavailable`, or `failed` with counts and redacted diagnostics. A changed provider snapshot gets a changed version key and appends history; stable event linkage remains the normalized `sourceEventId`.
+
+- [ ] **Step 4: Verify and commit**
+
+Run: `pnpm exec vitest run tests/application/collect-context-events.test.ts`
+
+Run: `pnpm exec eslint src/application/collect-context-events.ts src/application/collect-scheduled-events.ts src/application/collect-protocol-incidents.ts tests/application/collect-context-events.test.ts`
+
+Expected: all selected tests and lint checks pass.
+
+Commit: `git add src/application/collect-context-events.ts src/application/collect-scheduled-events.ts src/application/collect-protocol-incidents.ts tests/application/collect-context-events.test.ts && git commit -m "feat: persist contextual event lifecycle history"`
+
+## Task 5: Add the combined job and operator entrypoint
+
+**Files:**
+
+- Create: `src/jobs/context-events-job.ts`
+- Create: `scripts/collectors/context-events.ts`
+- Create: `tests/jobs/context-events-job.test.ts`
+- Create: `tests/scripts/context-events.test.ts`
 - Modify: `src/jobs/index.ts`
-- Create: `scripts/collectors/support-resistance.ts`
-- Create: `tests/jobs/support-resistance-job.test.ts`
-- Create: `tests/scripts/support-resistance.test.ts`
 - Modify: `package.json`
-- Modify: `.env.example`
-- Modify: `README.md` only in scripts/configuration/contextual-collector sections
-- Modify: `docs/architecture.md` only in pipeline/component-flow sections
-- Modify: `docs/operator-runbook.md` only in collector commands and degraded-outcome guidance
 
-**Exported API changes:** add `SupportResistanceJobDeps`, `supportResistanceJob`, and `runSupportResistanceJob` exports. The Node runtime interface remains unchanged; the CLI constructs `HttpSupportResistanceSource` from `runtime.http` and non-secret environment configuration, then supplies existing persistence/runtime dependencies to the job.
+- [ ] **Step 1: Write job and CLI tests**
 
-- [ ] **Step 1: Write job and CLI tests first.**
+Test one shared collection run context, independent execution of both sources, complete/partial/unavailable/failed aggregate outcomes, missing URL configuration, persistence initialization/closure, API-key redaction, and exit codes. One source succeeding while the other is unavailable is `PARTIAL` with exit code 0; both unavailable or no usable evidence is exit code 1.
 
-  Add exact cases:
-  - `creates one collection run context and delegates to the support resistance use case`
-  - `prints a structured accepted result and exits zero when usable contextual evidence exists`
-  - `prints a structured degraded result and exits zero when raw evidence is retained but no level is usable`
-  - `exits nonzero for conflict malformed timeout network unavailable and failed outcomes without printing secrets`
+- [ ] **Step 2: Confirm entrypoint tests fail**
 
-  Mock the job in the script test and mock `createNodeRuntime` with HTTP, env, clock, run-ID factory, and persistence. Assert the adapter reads `SUPPORT_RESISTANCE_API_URL` and optional `SUPPORT_RESISTANCE_API_KEY`, but structured output redacts secret-looking keys and values using the established collector redaction pattern.
+Run: `pnpm exec vitest run tests/jobs/context-events-job.test.ts tests/scripts/context-events.test.ts`
 
-- [ ] **Step 2: Run job/CLI tests and confirm they fail.**
+Expected: FAIL because the job, script, and package command do not exist.
 
-  Run: `pnpm exec vitest run tests/jobs/support-resistance-job.test.ts tests/scripts/support-resistance.test.ts`
+- [ ] **Step 3: Implement job and CLI wiring**
 
-  Expected: FAIL because the job and script do not exist.
+Export:
 
-- [ ] **Step 3: Implement the job and thin script.**
+```ts
+export interface ContextEventsJobDeps {
+  readonly scheduledEventSource: ScheduledEventSourcePort;
+  readonly protocolIncidentSource: ProtocolIncidentSourcePort;
+  readonly rawObservationRepo: RawObservationRepo;
+  readonly normalizedObservationRepo: NormalizedObservationRepo;
+  readonly env: EnvReader;
+  readonly clock: Clock;
+  readonly runIdFactory: RunIdFactory;
+}
+export async function runContextEventsJob(
+  deps: ContextEventsJobDeps
+): Promise<ContextEventsJobResult>;
+```
 
-  `runSupportResistanceJob` creates one context with `createCollectionRunContext` and delegates. Add package script `collect:support-resistance` with command `tsx scripts/collectors/support-resistance.ts`. The CLI prints the result as formatted JSON, sets exit code `0` for accepted, identical replay, stale, or degraded outcomes, and `1` for conflict, malformed, timeout, network, unavailable, or failed outcomes. It must not publish, retry in a loop, or write local snapshots.
+The script constructs both HTTP adapters from `MACRO_CALENDAR_API_URL`, optional `MACRO_CALENDAR_API_KEY`, `SOLANA_STATUS_API_URL`, and optional `SOLANA_STATUS_API_KEY`; obtains persistence from `createNodeRuntime`; prints one redacted JSON result; and closes the connection in `finally`. Add `"collect:context-events": "tsx scripts/collectors/context-events.ts"` to `package.json`.
 
-- [ ] **Step 4: Document configuration, operation, and authority boundary.**
+- [ ] **Step 4: Verify and commit**
 
-  Add these environment entries with blank safe defaults:
+Run: `pnpm exec vitest run tests/jobs/context-events-job.test.ts tests/scripts/context-events.test.ts`
 
-  ```dotenv
-  SUPPORT_RESISTANCE_API_URL=
-  SUPPORT_RESISTANCE_API_KEY=
-  ```
+Run: `pnpm exec eslint src/jobs/context-events-job.ts src/jobs/index.ts scripts/collectors/context-events.ts tests/jobs/context-events-job.test.ts tests/scripts/context-events.test.ts`
 
-  Update the scoped README sections with the raw-to-normalized flow, point/zone distinction, bounded extracts, exact replay behavior, `allow_context_only` semantics, and `pnpm collect:support-resistance`. Update architecture documentation to place the source port/adapter and new application use case in their proper layers. Update the operator runbook with accepted/degraded/stale/failure exit behavior and the instruction that missing or expired levels never become execution authority.
+Run: `pnpm exec prettier --check package.json`
 
-- [ ] **Step 5: Run focused verification.**
+Expected: all selected tests, lint checks, and formatting checks pass.
 
-  Run: `pnpm exec vitest run tests/jobs/support-resistance-job.test.ts tests/scripts/support-resistance.test.ts`
+Commit: `git add src/jobs/context-events-job.ts src/jobs/index.ts scripts/collectors/context-events.ts tests/jobs/context-events-job.test.ts tests/scripts/context-events.test.ts package.json && git commit -m "feat: expose contextual event collection job"`
 
-  Expected: PASS for context creation, dependency wiring, exit status, structured output, and secret redaction.
+## Task 6: Select only the latest eligible lifecycle state
 
-  Run: `pnpm exec eslint src/jobs/support-resistance-job.ts src/jobs/index.ts scripts/collectors/support-resistance.ts tests/jobs/support-resistance-job.test.ts tests/scripts/support-resistance.test.ts --max-warnings 0`
+**Files:**
 
-  Expected: exit 0.
+- Create: `src/domain/context-events/select.ts`
+- Create: `tests/domain/context-events/select.test.ts`
+- Modify: `src/domain/context-events/index.ts`
 
-  Run: `pnpm exec prettier --check src/jobs/support-resistance-job.ts src/jobs/index.ts scripts/collectors/support-resistance.ts tests/jobs/support-resistance-job.test.ts tests/scripts/support-resistance.test.ts package.json .env.example README.md docs/architecture.md docs/operator-runbook.md`
+- [ ] **Step 1: Write selection invariants first**
 
-  Expected: all listed files use Prettier formatting.
+Write the exact named cases:
 
-- [ ] **Step 6: Commit the runnable/documented slice.**
+- `cancellation becomes the latest state and suppresses older scheduled evidence`
+- `incident resolution replaces active state until recovery expiry`
+- `latest ineligible state never revives older active state`
 
-  ```bash
-  git add src/jobs/support-resistance-job.ts src/jobs/index.ts scripts/collectors/support-resistance.ts tests/jobs/support-resistance-job.test.ts tests/scripts/support-resistance.test.ts package.json .env.example README.md docs/architecture.md docs/operator-runbook.md
-  git commit -m "feat: expose support resistance collector"
-  ```
+Also cover deterministic grouping by source/kind/sourceEventId, tie-breaking by `asOfUnixMs`, then `receivedAtUnixMs`, then row ID; strict provider isolation; future observations; stale flags; expiry at the exact evaluation boundary; resolved recovery evidence; a maximum of 64 selected events; and stable output ordering.
 
-### Tests to add or update
+- [ ] **Step 2: Confirm selection tests fail**
 
-- Contract/type tests for strict point/zone discrimination and explicit `USDC_PER_SOL` units.
-- Taxonomy registry tests for contextual classification, freshness, confidence, and allowed source provenance.
-- Pure domain tests for bounded retention, validation, normalization, missing/malformed levels, deterministic equivalence, stale behavior, confidence, and provenance.
-- Adapter tests for request shaping, optional credentials, bounded projection, error classification, and secret-safe diagnostics.
-- Application state-transition tests covering accepted, degraded, stale, replay recovery, conflict, unavailable, failed normalization, same-run equivalence, and cross-provider independence.
-- Drizzle integration tests demonstrating that existing JSONB tables round-trip the new payload and keep idempotent versus distinct rows correctly.
-- Job and CLI tests for run-context wiring, structured output, exit behavior, and redaction.
+Run: `pnpm exec vitest run tests/domain/context-events/select.test.ts`
 
-### Validation commands after all implementation tasks
+Expected: FAIL because the selector does not exist.
 
-The orchestrator automatically runs workspace-wide `pnpm -r typecheck` after each task. After all five implementation tasks, the dedicated validate phase should run the repository-standard commands; these are not a standalone implementation task:
+- [ ] **Step 3: Implement selection**
+
+Export:
+
+```ts
+export interface ContextEventSelectionRequest {
+  readonly evaluationTimeUnixMs: number;
+  readonly candidates: readonly NormalizedObservationRow[];
+  readonly maxItems: number;
+}
+export interface SelectedContextEvent {
+  readonly row: NormalizedObservationRow;
+  readonly payload: ScheduledEventPayloadV1 | ProtocolIncidentPayloadV1;
+}
+export function selectCurrentContextEvents(
+  request: ContextEventSelectionRequest
+): readonly SelectedContextEvent[];
+```
+
+Validate payload discriminants before grouping. Determine the latest row for every identity first, then apply eligibility; this ordering enforces the no-revival invariant. Sort selected rows by severity rank, event time, source, source event ID, and row ID before applying `maxItems`.
+
+- [ ] **Step 4: Verify and commit**
+
+Run: `pnpm exec vitest run tests/domain/context-events/select.test.ts`
+
+Run: `pnpm exec eslint src/domain/context-events/select.ts src/domain/context-events/index.ts tests/domain/context-events/select.test.ts`
+
+Expected: all selected tests and lint checks pass.
+
+Commit: `git add src/domain/context-events/select.ts src/domain/context-events/index.ts tests/domain/context-events/select.test.ts && git commit -m "feat: select current contextual event states"`
+
+## Task 7: Extend lineage verification for contextual event rows
+
+**Files:**
+
+- Modify: `src/domain/evidence-bundle/lineage.ts`
+- Create: `tests/domain/evidence-bundle/context-events-lineage.test.ts`
+
+- [ ] **Step 1: Write contextual lineage tests**
+
+Write the exact named case `bundle event lineage resolves to retained raw source`. Add failures for missing raw parent, source mismatch, payload-hash mismatch, and an unsupported contextual kind. Verify `macro-calendar-api` and `solana-status-api` map to source type `api`, and source locators use retained raw observation keys.
+
+- [ ] **Step 2: Confirm lineage tests fail**
+
+Run: `pnpm exec vitest run tests/domain/evidence-bundle/context-events-lineage.test.ts`
+
+Expected: FAIL because `VerifyEvidenceLineageInput` cannot accept contextual rows.
+
+- [ ] **Step 3: Implement contextual lineage verification**
+
+Modify `VerifyEvidenceLineageInput` to accept `contextualObservations: readonly NormalizedObservationRow[]`. Reuse `verifyProvenanceRef` for every selected contextual row, require its direct raw parent, include normalized/raw IDs and source references in the verified lineage, and reject any contextual row outside `scheduled_event | protocol_incident`. Preserve all existing deterministic-feature and CLMM scope verification.
+
+- [ ] **Step 4: Verify and commit**
+
+Run: `pnpm exec vitest run tests/domain/evidence-bundle/context-events-lineage.test.ts`
+
+Run: `pnpm exec eslint src/domain/evidence-bundle/lineage.ts tests/domain/evidence-bundle/context-events-lineage.test.ts`
+
+Expected: all selected tests and lint checks pass.
+
+Commit: `git add src/domain/evidence-bundle/lineage.ts tests/domain/evidence-bundle/context-events-lineage.test.ts && git commit -m "feat: verify contextual event lineage"`
+
+## Task 8: Populate evidence bundles with selected contextual events
+
+**Files:**
+
+- Modify: `src/domain/evidence-bundle/assemble.ts`
+- Modify: `src/application/assemble-evidence-bundle.ts`
+- Create: `tests/domain/evidence-bundle/context-events-assemble.test.ts`
+- Create: `tests/application/assemble-context-events.test.ts`
+
+- [ ] **Step 1: Write bundle mapping and orchestration tests**
+
+Write the exact named case `bundle event direction is always unknown`. Test scheduled and protocol mappings, severity/status appearing only as factual claim text, confidence conversion to bounded basis points, canonical timestamps, expiry, source reference IDs, a 64-event cap, no stale/cancelled events, resolved recovery evidence, and empty events when feeds are unavailable.
+
+At the application boundary, assert `normalizedRepo.listCandidates` requests exactly:
+
+```ts
+{
+  sourceKinds: [
+    { source: "macro-calendar-api", observationKind: "scheduled_event" },
+    { source: "solana-status-api", observationKind: "protocol_incident" }
+  ],
+  receivedAtOrAfterUnixMs: evaluationTimeUnixMs - 7 * 24 * 60 * 60 * 1000
+}
+```
+
+Also prove contextual raw/normalized rows are loaded into lineage before contract validation and that contextual-query failure degrades to an empty event list plus an assembly warning instead of fabricating evidence.
+
+- [ ] **Step 2: Confirm bundle tests fail**
+
+Run: `pnpm exec vitest run tests/domain/evidence-bundle/context-events-assemble.test.ts tests/application/assemble-context-events.test.ts`
+
+Expected: FAIL because bundle assembly always emits an empty event list.
+
+- [ ] **Step 3: Implement contextual bundle assembly**
+
+Change `AssembleEvidenceBundleInput` to include `contextualEvents: readonly SelectedContextEvent[]`. Map each selected row to the existing generated `EventClaim`:
+
+```ts
+{
+  evidenceId: `normalized-${row.id}`,
+  kind: payload.kind,
+  claim: `${payload.status}: ${payload.title} — ${payload.description}`,
+  direction: "unknown",
+  confidenceBps: Math.round(row.confidence.compositeScore * 10_000),
+  observedAt: String(payload.asOfUnixMs),
+  expiresAt: String(payload.expiresAtUnixMs),
+  sourceReferenceIds: [`raw-${row.rawObservationId}`],
+  provenanceMethod: "collected"
+}
+```
+
+In `assembleEvidenceBundle`, query contextual candidates, call `selectCurrentContextEvents`, add their normalized/raw IDs to lineage loading, pass them to `verifyEvidenceLineage`, set `contextPresent` from the selected count, and pass them to domain assembly. Keep deterministic-feature availability as the gate for whether a bundle is emitted; contextual evidence supplements but never independently authorizes a bundle.
+
+- [ ] **Step 4: Verify and commit**
+
+Run: `pnpm exec vitest run tests/domain/evidence-bundle/context-events-assemble.test.ts tests/application/assemble-context-events.test.ts`
+
+Run: `pnpm exec eslint src/domain/evidence-bundle/assemble.ts src/application/assemble-evidence-bundle.ts tests/domain/evidence-bundle/context-events-assemble.test.ts tests/application/assemble-context-events.test.ts`
+
+Expected: all selected tests and lint checks pass.
+
+Commit: `git add src/domain/evidence-bundle/assemble.ts src/application/assemble-evidence-bundle.ts tests/domain/evidence-bundle/context-events-assemble.test.ts tests/application/assemble-context-events.test.ts && git commit -m "feat: include current events in evidence bundles"`
+
+## Task 9: Document operation, retention, and authority boundaries
+
+**Files:**
+
+- Modify: `README.md`
+- Modify: `docs/architecture.md`
+- Modify: `docs/operator-runbook.md`
+
+- [ ] **Step 1: Update operator-facing documentation**
+
+Document `pnpm collect:context-events`, all four environment variables, bounded factual-extract retention and licensing requirements, raw-first append-only lifecycle behavior, exact replay semantics, latest-state selection, exit statuses, freshness windows, source-unavailable behavior, and troubleshooting. State explicitly that severity/materiality is deterministic evidence metadata, missing feeds do not imply no risk, unconfirmed reports remain unconfirmed, event direction is always unknown, and only regime-engine can synthesize final policy.
+
+- [ ] **Step 2: Verify and commit**
+
+Run: `pnpm exec prettier --check README.md docs/architecture.md docs/operator-runbook.md`
+
+Expected: all three documents are formatted.
+
+Commit: `git add README.md docs/architecture.md docs/operator-runbook.md && git commit -m "docs: explain contextual event evidence collection"`
+
+## Tests to add or update
+
+- Contract validation: strict payloads, discriminants, lifecycle timestamps, status, severity, warnings, source quality, raw provenance, and unknown-field rejection.
+- Taxonomy: new kinds/sources, contextual family/class, source allowlists, freshness, confidence, and stale exclusion.
+- Domain validation/normalization: bounded extracts, deterministic severity, confirmation guard, postponement, cancellation, resolution, time conflicts, source disagreement, incomplete information, and expiry defaults.
+- Identity: deterministic snapshot replay keys and changed-snapshot keys.
+- Enrichment: freshness, confidence caps/degradation, provenance, and canonical hashes.
+- HTTP adapters: bounded projection, auth, retries, failure classification, retention/license enforcement, and redaction.
+- Application collection: raw-before-normalized ordering, exact replay, append-only updates, atomic normalized batches, stale/degraded results, and unavailable sources.
+- Job/CLI: shared context, aggregate outcomes, env configuration, persistence lifecycle, redaction, and exit codes.
+- Selection: latest-state grouping, no older-state revival, stale/expiry boundary, cancellation, resolved recovery window, source isolation, ordering, and cap.
+- Bundle lineage and assembly: verified contextual parents, source references, mapping to `EventClaim`, `unknown` direction, query degradation, and 64-item cap.
+
+## Validation commands
+
+The implementation loop automatically runs the workspace-wide `pnpm -r typecheck` gate after each task. Each task above also names path-scoped tests and static checks. After all implementation tasks complete, the dedicated validation phase runs:
 
 ```bash
 pnpm typecheck
@@ -516,38 +613,39 @@ pnpm lint
 pnpm format
 pnpm test
 pnpm boundaries
+pnpm verify
 ```
 
-Expected: all commands exit 0. The database integration file may report its cases skipped when `DATABASE_URL` is not configured; with a test database configured, those cases must pass.
+Expected: every command exits 0. `pnpm verify` is the final aggregate confirmation, not a standalone implementation task.
 
-### Risk areas
+## Risk areas
 
-- **Licensing/retention:** retaining arbitrary response objects could copy prohibited source content. The adapter/domain boundary must rebuild an allowlisted snapshot and hard-cap each extract at 500 characters before canonical persistence.
-- **False consensus:** omitting provider/run, side, timeframe, type, or thesis from equivalence identity could merge distinct assertions. Identity tests lock each dimension.
-- **Numeric ambiguity:** coercing prose or malformed strings into numbers could fabricate levels. Only finite positive explicit numeric fields are accepted; mixed point/zone and inverted zone shapes are rejected.
-- **Replay semantics:** a parsed replay reports zero newly inserted rows, so the result must recover its linked normalized evidence rather than report no usable data.
-- **State recovery:** raw rows can remain pending/failed after downstream persistence errors. Replay must validate stored bounded canonical content and rely on normalized uniqueness for safe recovery.
-- **Freshness/confidence:** source expiry must participate in `computeFreshness`, and stale confidence must degrade while remaining contextual-only.
-- **Credential leakage:** API credentials may appear only in outbound headers and must be absent from canonical payloads, request metadata, diagnostics, and CLI output.
-- **Provider specificity:** the first adapter assumes a provider-neutral response contract. Provider-specific field mapping beyond that contract is a later adapter, not permissive parsing in this slice.
+- Retry behavior can multiply requests if the adapter accidentally delegates retries to `HttpClient`; tests must require `maxAttempts: 1` at the HTTP call and enforce the adapter's two-attempt bound.
+- Raw snapshot identity must distinguish lifecycle changes while replaying byte-equivalent bounded snapshots. Including both source timestamp and canonical hash avoids overwriting history; exact duplicates remain idempotent.
+- Provider timestamps may be contradictory or future-dated. Strict validation and clock-skew rules must fail closed or warn without inventing corrected times.
+- Unconfirmed incidents can be accidentally promoted by trusting provider status. Confirmation evidence, not status text, controls the normalized state.
+- Latest-state selection can incorrectly revive an older active row after cancellation/expiry if filtering occurs before grouping. Group/latest must happen before eligibility filtering.
+- Bundle lineage currently centers deterministic features. Contextual rows must be loaded and verified without weakening CLMM scope or provenance checks.
+- Generated bundle identifiers and claim lengths are bounded by the canonical contract; mapping must use stable short IDs and bounded descriptions.
+- A source outage is ambiguous. It must produce a diagnostic outcome, never a normalized “no upcoming events/no incidents” fact.
+- Database writes are irreversible append-only evidence. Collector tests must establish raw-first ordering, replay behavior, and no write on malformed/unavailable input.
 
-### Stop conditions
+## Stop conditions
 
-Abort implementation and report the blocker instead of broadening scope if any of these occur:
+Abort implementation and escalate instead of continuing if:
 
-- The target provider cannot legally supply/store the proposed bounded fields or references under its license.
-- The real provider response cannot supply explicit numeric point/zone values, timeframe, provider/run identity, source references, as-of time, and expiry without inference.
-- Regime Engine requires a different canonical evidence/publish contract in this PR; that is cross-repo scope and needs a separate design decision.
-- Existing database constraints cannot persist multiple normalized claims from one raw observation without migration. Do not silently change identity semantics or add a migration without revisiting the design.
-- Implementing the port reveals another production adapter or fake required by the compiler beyond the two listed in Task 3. Keep the interface and every implementation in one atomic task before continuing.
-- A planned task would require storing credentials, full copyrighted articles, or unbounded provider payloads.
-- The automatic workspace typecheck fails because of an unrelated pre-existing worktree change; preserve user changes and report the exact failure rather than modifying unrelated files.
+- the configured provider cannot legally permit bounded factual-extract retention or cannot supply a non-empty license/retention declaration;
+- a provider cannot supply stable `sourceEventId` values or original source timestamps;
+- the canonical regime-engine bundle contract no longer supports `contextualEvidence.events` with scheduled/protocol incident kinds;
+- implementing append-only lifecycle history would require weakening or rewriting existing raw-observation uniqueness/history semantics;
+- historical production rows would need destructive migration or mutation;
+- confirmed incident status cannot be tied to official/primary qualifying references;
+- tests reveal that contextual rows can bypass deterministic-feature bundle gating or become execution authority;
+- API credentials or unbounded copyrighted source text appear in logs, diagnostics, or persisted metadata;
+- target-branch dependencies for taxonomy, persistence, or bundle v1 are absent.
 
-### Assumptions
+## Self-review
 
-- `issue-comments.md` is intentionally empty and adds no requirements.
-- One configurable provider-neutral `technical-analysis-api` adapter is the first PR-sized source implementation; additional concrete providers can implement the same port later.
-- The existing `raw_observations` and `normalized_observations` JSONB columns and normalized uniqueness key are authoritative and need no migration.
-- Source reliability is provider-supplied configuration/data constrained to `[0, 1]`; it is metadata, not a deterministic fact, and confidence cannot exceed it.
-- Distinct provider runs are historical observations that expire naturally; this slice does not add a supersession column.
-- Missing-level claims are retained in bounded raw evidence and surfaced as degraded warnings, but never become normalized numeric evidence.
+- Spec coverage: all issue acceptance cases map to Tasks 1–9, including scheduled macro/token unlock/upgrade fixtures, active/unconfirmed/resolved incidents, replay/update history, conflicts, stale/expired selection, unavailable sources, raw provenance, bundle output, and operator guidance.
+- Placeholder scan: every task names concrete files, APIs, tests, commands, expected outcomes, and commit boundaries.
+- Type consistency: the two observation kinds and sources use the same literal values across contracts, registry, ports, collectors, selector, lineage, and bundle mapping; no shared repository-port signature changes are required.

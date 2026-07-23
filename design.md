@@ -1,91 +1,76 @@
-# Design: SOL/USDC Support/Resistance Evidence
+# Design: Scheduled Events and Protocol Incidents Evidence Collection
 
-## 1. Problem Statement
+## 1. The Problem Being Solved and Why It Matters
 
-The regime-engine requires contextual market evidence to make informed policy decisions, moving beyond purely deterministic pool and oracle facts. This issue implements the collection, normalization, and deduplication of SOL/USDC support and resistance levels. By retaining source evidence, tracking provenance, and standardizing levels with explicit timeframes and confidence metrics, this contextual intelligence can be safely consumed by the regime engine. Crucially, this evidence remains probabilistic and contextual, ensuring it cannot silently override deterministic execution rules or hard guards.
+The SOL/USDC CLMM Intelligence agent currently lacks structured context regarding exogenous time-bounded market events (e.g., macro releases, token unlocks) and operational incidents (e.g., Solana network degradation, protocol hacks). Without this, the downstream `regime-engine` cannot defensively adjust policies (e.g., pausing liquidity provision or widening spreads) around known high-volatility windows or network instability. This issue introduces the deterministic collection, normalization, and lifecycle management of these contextual risk events so they can be bundled as structured evidence.
 
-## 2. Key Design Decisions & Trade-offs
+## 2. Key Design Decisions and Trade-offs Considered
 
-- **Point Levels vs. Bounded Zones**
-  - _Trade-off_: Creating distinct normalized types for points vs. zones vs. a single unified type.
-  - _Decision_: Use a single unified payload schema (`SupportResistancePayload`) containing a `levelType` discriminant (`point` or `zone`). This ensures one is not silently converted into the other, and standardizes parsing while accommodating explicit `USDC_PER_SOL` units.
-- **Deduplication vs. Consensus Merging**
-  - _Trade-off_: Grouping similar levels from different sources into a single "consensus" level vs. preserving all distinct assertions.
-  - _Decision_: Preserve distinct sources and disagreements. Exact replays from the same source will be idempotently collapsed using deterministic payload hashing, but materially distinct levels will not be merged into a false consensus.
-- **Handling Ambiguity and Missing Data**
-  - _Trade-off_: Discarding ambiguous data vs. retaining it with metadata.
-  - _Decision_: Ambiguous data will be normalized but flagged explicitly via a `warnings` array in the payload. Missing levels will not be fabricated; they will remain unavailable to prevent hallucinatory technical levels.
-- **Raw Material Retention and Compliance**
-  - _Trade-off_: Storing entire raw source payloads vs. storing parsed snippets/references.
-  - _Decision_: Retain bounded source extracts or references within `raw_observations`. This complies with licensing constraints while preserving auditability and replayability.
+**Decision 1: Unified vs. Distinct Normalized Contracts**
 
-## 3. Proposed Approach & Rationale
+- _Option A (Unified):_ A single `NormalizedEvent` contract handling both macro events and protocol incidents.
+- _Option B (Distinct):_ Separate payload contracts (`ScheduledEventPayload` and `ProtocolIncidentPayload`) mapped to separate `ObservationKind`s.
+- _Trade-off:_ Option A reduces schema duplication for common fields like `status`, `severity`, and `title`. Option B allows strict typing for domain-specific fields (e.g., `scheduledStart` vs `detectedAt`).
+- _Selected Approach:_ **Distinct payload types with shared standard metadata**. The taxonomy will add two new `ObservationKind`s: `scheduled_event` and `protocol_incident`. The payload schemas will share common fields (status, severity, references) but strictly require their respective temporal fields.
 
-### Taxonomy Updates
+**Decision 2: State Lifecycle and Deduplication**
 
-In `src/contracts/taxonomy.ts`:
+- _Option A (Mutable State):_ Update existing normalized rows in the DB when an incident resolves or an event is postponed.
+- _Option B (Append-Only):_ Insert new `normalized_observations` for every state change with the same stable source identity, using `receivedAtUnixMs` to establish the current state.
+- _Trade-off:_ Mutable state is easier to query but destroys point-in-time historical reconstruction. Append-only is required by the intelligence pipeline's immutable architecture.
+- _Selected Approach:_ **Append-Only with Deterministic Identity**. We will correlate updates using a stable `sourceEventId` provided by the source. The latest observation per `sourceEventId` represents the current state. Exact replays will be deduplicated idempotently by comparing the `payloadHash`.
 
-- Add `ObservationKind`: `"support_resistance_level"`
-- Add applicable generic sources to `Source` (e.g., `"technical_analysis_api"`, `"market_feed"`, depending on the implemented adapters).
-- Leverage existing `EvidenceFamily`: `"support_resistance"` and `SignalClass`: `"contextual"`.
+**Decision 3: Severity and Confidence Scoring**
 
-### Normalized Contract Schema
+- _Trade-off:_ Hardcoding severity rules into the collector vs. passing raw severity from sources.
+- _Selected Approach:_ Sources will map their internal severities to a standard deterministic classification (e.g., `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`). The Intelligence agent does NOT infer market direction, only the materiality of the event.
 
-Create a new schema defining the structure of the normalized payload stored within `NormalizedObservationRow`:
+## 3. Proposed Approach with Rationale
 
-```typescript
-export interface SupportResistancePayload {
-  pair: "SOL/USDC";
-  evidenceSide: "SUPPORT" | "RESISTANCE";
-  levelType: "point" | "zone";
-  levelUsdcPerSol?: number;
-  zoneLowerUsdcPerSol?: number;
-  zoneUpperUsdcPerSol?: number;
-  timeframe: string; // e.g., "1H", "4H", "1D"
-  thesisCodes: string[];
-  asOfUnixMs: number;
-  expiresAtUnixMs: number;
-  invalidationConditions: string[]; // Explicit array for source invalidation rules
-  warnings: string[]; // Captures ambiguity or disagreement signals
-  sourceReferences: string[]; // Links to retained raw material / URLs
-}
-```
+1. **Taxonomy Additions (`src/contracts/taxonomy.ts`)**:
+   - Add new `ObservationKind`s: `"scheduled_event" | "protocol_incident"`.
+   - Add new `Source`s: `"macro-calendar-api" | "solana-status-api"` (or generalized equivalent names).
+   - Both will map to `EvidenceFamily = "macro_protocol_risk"` and `SignalClass = "contextual"`.
 
-### Pipeline Flow
+2. **Normalized Contracts (`src/contracts/normalized-events.ts`)**:
+   - Create standard TypeScript interfaces for `ScheduledEventPayload` and `ProtocolIncidentPayload`.
+   - Required fields will include: `sourceEventId`, `eventType`, `title`, `description`, `status` (`SCHEDULED`, `ACTIVE`, `RESOLVED`, `CANCELLED`, `UNCONFIRMED`), `severity`, `affectedScope`, and `warnings`.
+   - Temporal fields: `scheduledStart` / `scheduledEnd` for events; `detectedAt` / `resolvedAt` for incidents.
 
-1. **Collection (Ports/Adapters)**: Implement source adapters implementing a standard collector port to fetch raw technical levels.
-2. **Raw Persistence**: Store bounded extracts and references in the existing `raw_observations` Drizzle schema.
-3. **Normalization**: Implement an application use case to map `raw_observations` to `normalized_observations`. This layer validates units, extracts timeframes, and calculates confidence components.
-4. **Deduplication**: Calculate a deterministic `payloadHash` based on the source, pair, side, level bounds, timeframe, and thesis. Identical hashes are treated as exact replays and collapsed. Superseded historical evidence is preserved explicitly (new rows added, previous ones expire naturally based on `validUntilUnixMs`).
+3. **Lifecycle & Persistence**:
+   - Adapters fetch data periodically.
+   - Raw observations are persisted to `raw_observations`.
+   - The normalizer maps raw data to the new payload types, generating a stable `payloadHash`.
+   - If the hash and source match an existing record (exact replay), the insert is skipped (idempotent).
+   - If a status change occurs (e.g., `ACTIVE` -> `RESOLVED`), a new `normalized_observations` row is inserted. Expired events will stop being selected as active evidence based on their `expiresAt` or `validUntilUnixMs` values.
 
 ## 4. Assumptions Made
 
-- The existing JSONB payload columns in `raw_observations` and `normalized_observations` can store the new schema without a database migration.
-- Specific source APIs will be implemented behind generic port adapters; the exact providers are implementation details not strictly defined in the taxonomy yet.
-- The default stale behavior for this contextual evidence will be either `exclude` or `degrade_confidence` depending on downstream regime-engine requirements.
-- The `clmm-v2` deterministic guards will completely ignore this data. It is only routed to the `regime-engine` via evidence bundles.
+- **Adapter Implementations**: Specific external APIs (e.g., ForexFactory, Solana Status RSS) are not strictly mandated by this design phase, but the system assumes the existence of adapter interfaces that can provide this data. Mock adapters will be implemented for tests if live ones aren't defined yet.
+- **Drizzle Schema**: The existing `raw_observations` and `normalized_observations` tables use JSONB for `payload`. We do not need new database tables, just new Zod schemas and TypeScript interfaces for the JSONB payload.
+- **Evidence Bundle Integration**: The `regime-engine` expects these events as part of the standard `v1/evidence/sol-usdc` payload under a contextual section; we will supply this via our standard normalization flow.
 
 ## 5. Scope
 
-**In Scope:**
+**In Scope**:
 
-- Creating support/resistance source adapters and port interfaces.
-- Persisting raw retention extracts and source references.
-- Defining the normalized contracts and taxonomy additions.
-- Implementing rules for freshness, confidence, provenance, deduplication, and conflicts.
-- Adding comprehensive tests (point levels, zones, duplicates, stale data, malformed data).
-- Updating documentation to reinforce that this is contextual evidence.
+- Definition of normalized event/incident contracts.
+- Taxonomy additions (`ObservationKind`, `Source`).
+- Normalizer logic handling lifecycle (deduplication, state transitions).
+- Zod schema validation for payloads.
+- Persistence integration (inserting to JSONB payloads).
+- Comprehensive unit tests covering status transitions, stale events, and exact replays.
+- Operator documentation updates.
 
-**Out of Scope:**
+**Out of Scope**:
 
-- Macro calendars or scheduled events.
-- Solana protocol incidents, ecosystem news, or regulatory headlines.
-- On-chain flow or perp/liquidation evidence.
-- LLM research-brief generation.
-- Final policy synthesis or regime-engine decision logic.
+- General ecosystem news or regulatory headline scraping.
+- Evaluating the actual directional impact (bullish/bearish) of an event.
+- Final policy synthesis, UI, or execution behavior.
+- On-chain flow, perp, funding, or liquidation evidence (handled separately).
 
-## 6. Risks and Concerns from Code Analysis
+## 6. Risks or Concerns Identified
 
-- **Loss of Nuance in Normalization**: If the `SupportResistancePayload` is too rigid, prose-heavy source material may be poorly parsed. The `warnings` array is critical for flagging when a level is inferred or lacks strict numeric boundaries.
-- **Copyright and Licensing Constraints**: We must be careful that `raw_observations.payloadCanonical` does not ingest full copyrighted articles, only the legally permissible bounded extracts or metadata references.
-- **Deduplication Conflicts**: Defining "materially equivalent" levels can be tricky. A strict hash on the rounded numeric level and timeframe is the safest way to achieve idempotency without accidentally merging conflicting assertions from different analysts on the same platform.
+- **Stale/Stuck State**: If an incident adapter fails to fetch the `RESOLVED` state (e.g., source goes offline), an incident might remain permanently `ACTIVE`. The normalizer should enforce an `expiresAt` or rely on `FreshnessPolicy` to degrade/exclude events that haven't received an update within a reasonable timeout.
+- **Conflicting Sources**: Different sources might report different times for the same macro event. The normalizer needs to tag these with a `warning` in the payload if correlation is attempted across sources, or simply rely on strict source isolation to avoid cross-source contamination.
+- **Event Mutability vs Append-Only**: Guaranteeing that the latest row accurately overrides earlier states without confusing downstream consumers relies on strict querying rules. Downstream bundle generation must use `PARTITION BY sourceEventId ORDER BY receivedAtUnixMs DESC` (or equivalent) to only surface the most recent state.
