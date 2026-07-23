@@ -5,7 +5,8 @@ import type { EnrichedContextEventObservation } from "../domain/context-events/e
 import {
   normalizeScheduledEvents,
   enrichContextEvent,
-  deriveContextSnapshotObservationKey
+  deriveContextSnapshotObservationKey,
+  computeScheduledEventSeverity
 } from "../domain/context-events/index.js";
 import { canonicalizePayload } from "../domain/content-hash.js";
 import {
@@ -110,7 +111,7 @@ export async function collectScheduledEvents(
       description: `Scheduled event from ${snapshot.providerId}`,
       scheduledStartUnixMs: event.scheduledUnixMs,
       scheduledEndUnixMs: null,
-      severity: "MEDIUM" as const,
+      severity: computeScheduledEventSeverity({ eventType: event.eventType }),
       status: "SCHEDULED" as const,
       sourceReferences: [...event.sourceReferences] as unknown[],
       affectedScope: ["SOL/USDC"],

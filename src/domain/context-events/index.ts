@@ -18,6 +18,11 @@ export {
   type ContextSnapshotObservationKeyInput
 } from "./identity.js";
 
-export { normalizeScheduledEvents, normalizeProtocolIncidents } from "./normalize.js";
+export {
+  normalizeScheduledEvents,
+  normalizeProtocolIncidents,
+  computeScheduledEventSeverity,
+  type ScheduledEventSeverityInput
+} from "./normalize.js";
 
 export { enrichContextEvent, type EnrichedContextEventObservation } from "./enrich.js";

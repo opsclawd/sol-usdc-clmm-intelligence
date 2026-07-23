@@ -9,6 +9,41 @@ const MAX_EXPIRY_MS = 86400000;
 const RECOVERY_EXPIRY_MS = 900000;
 const STALE_THRESHOLD_MS = 900000;
 
+const HIGH_IMPACT_EVENT_TYPES = new Set([
+  "token_unlock",
+  "macro",
+  "central_bank",
+  "maintenance",
+  "upgrade"
+]);
+
+export type ScheduledEventSeverityInput = {
+  readonly eventType: string;
+  readonly circulatingSupplyPercent?: number;
+};
+
+export function computeScheduledEventSeverity(
+  input: ScheduledEventSeverityInput
+): "HIGH" | "MEDIUM" | "LOW" {
+  const { eventType, circulatingSupplyPercent } = input;
+  const normalizedEventType = eventType.toLowerCase();
+
+  if (HIGH_IMPACT_EVENT_TYPES.has(normalizedEventType)) {
+    return "HIGH";
+  }
+
+  if (normalizedEventType === "token_unlock" && circulatingSupplyPercent !== undefined) {
+    if (circulatingSupplyPercent >= 1) {
+      return "HIGH";
+    }
+    if (circulatingSupplyPercent >= 0.25) {
+      return "MEDIUM";
+    }
+  }
+
+  return "MEDIUM";
+}
+
 function sortAndDeduplicateStrings(arr: readonly string[]): readonly string[] {
   return [...new Set(arr)].sort();
 }
