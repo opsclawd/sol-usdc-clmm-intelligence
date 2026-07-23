@@ -91,18 +91,26 @@ vi.mock("../../src/adapters/node/composition-root.js", () => {
             },
             featureRepo: {
               insert: vi.fn(),
-              findById: vi.fn(),
-              findByIds: vi.fn()
+              insertMany: vi.fn(),
+              findByDerivationKey: vi.fn(),
+              findByKind: vi.fn(),
+              listBundleCandidates: vi.fn()
             },
             bundleRepo: {
-              insert: vi.fn(),
-              findById: vi.fn()
+              insertOrClassify: vi.fn(),
+              findByPair: vi.fn(),
+              findLatestByPair: vi.fn()
             },
             briefRepo: {
-              insert: vi.fn()
+              insert: vi.fn(),
+              findByBundleId: vi.fn(),
+              findByHash: vi.fn()
             },
             publishAttemptRepo: {
-              insert: vi.fn()
+              insert: vi.fn(),
+              findByTargetAndKey: vi.fn(),
+              findByBundle: vi.fn(),
+              findRecentByStatus: vi.fn()
             }
           })
         ),
