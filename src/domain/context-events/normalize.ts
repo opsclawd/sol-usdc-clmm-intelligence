@@ -96,6 +96,11 @@ function determineIncidentStatus(
     }
     return "UNCONFIRMED";
   }
+  if (snapshotStatus === "ACTIVE") {
+    if (confirmation !== "official" && confirmation !== "primary") {
+      return "UNCONFIRMED";
+    }
+  }
   return snapshotStatus;
 }
 
@@ -160,16 +165,16 @@ function normalizeProtocolIncident(
 
 export function normalizeScheduledEvents(
   snapshot: BoundedScheduledEventSnapshot,
-  retrievedAtUnixMs: number
+  retrievedAtUnixMs: number,
+  nowMs: number
 ): readonly ScheduledEventPayloadV1[] {
-  const nowMs = Date.now();
   return [normalizeScheduledEvent(snapshot, retrievedAtUnixMs, nowMs)];
 }
 
 export function normalizeProtocolIncidents(
   snapshot: BoundedProtocolIncidentSnapshot,
-  retrievedAtUnixMs: number
+  retrievedAtUnixMs: number,
+  nowMs: number
 ): readonly ProtocolIncidentPayloadV1[] {
-  const nowMs = Date.now();
   return [normalizeProtocolIncident(snapshot, retrievedAtUnixMs, nowMs)];
 }

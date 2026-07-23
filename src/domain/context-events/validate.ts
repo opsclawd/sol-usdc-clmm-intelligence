@@ -161,11 +161,13 @@ function validateScheduledEventSnapshotInternal(data: unknown): BoundedScheduled
   return parsed as BoundedScheduledEventSnapshot;
 }
 
-function validateProtocolIncidentSnapshotInternal(data: unknown): BoundedProtocolIncidentSnapshot {
+function validateProtocolIncidentSnapshotInternal(
+  data: unknown,
+  nowMs: number
+): BoundedProtocolIncidentSnapshot {
   const parsed = boundedProtocolIncidentSnapshotInputSchema.strict().parse(data);
-  const now = Date.now();
   const clockSkewToleranceMs = 300000;
-  if (parsed.snapshot.detectedAtUnixMs > now + clockSkewToleranceMs) {
+  if (parsed.snapshot.detectedAtUnixMs > nowMs + clockSkewToleranceMs) {
     throw new ContextEventValidationError(
       "detectedAtUnixMs",
       "detectedAtUnixMs cannot be in the future beyond clock skew tolerance"
@@ -204,9 +206,13 @@ export function acceptScheduledEventSnapshot(input: unknown): BoundedScheduledEv
   }
 }
 
-export function acceptProtocolIncidentSnapshot(input: unknown): BoundedProtocolIncidentSnapshot {
+export function acceptProtocolIncidentSnapshot(
+  input: unknown,
+  nowMs?: number
+): BoundedProtocolIncidentSnapshot {
+  const effectiveNowMs = nowMs ?? Date.now();
   try {
-    return validateProtocolIncidentSnapshotInternal(input);
+    return validateProtocolIncidentSnapshotInternal(input, effectiveNowMs);
   } catch (err) {
     if (err instanceof ContextEventValidationError) {
       throw err;
