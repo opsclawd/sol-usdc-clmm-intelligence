@@ -91,7 +91,7 @@ function getLatestByIdentity(
       if (a.receivedAtUnixMs !== b.receivedAtUnixMs) {
         return b.receivedAtUnixMs - a.receivedAtUnixMs;
       }
-      return a.id - b.id;
+      return b.id - a.id;
     });
     latestMap.set(identityKey, rows[0]!);
   }
@@ -115,6 +115,14 @@ function isEligible(row: NormalizedObservationRow, evaluationTimeUnixMs: number)
   }
 
   if (row.validUntilUnixMs !== null && row.validUntilUnixMs <= evaluationTimeUnixMs) {
+    return false;
+  }
+
+  if (
+    "expiresAtUnixMs" in payload &&
+    typeof payload.expiresAtUnixMs === "number" &&
+    payload.expiresAtUnixMs <= evaluationTimeUnixMs
+  ) {
     return false;
   }
 
