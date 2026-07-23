@@ -19,7 +19,8 @@ export type LineageVerificationErrorCode =
   | "POSITION_MISMATCH"
   | "POOL_MISMATCH"
   | "PAIR_MISMATCH"
-  | "INVALID_CLMM_PAYLOAD";
+  | "INVALID_CLMM_PAYLOAD"
+  | "UNSUPPORTED_CONTEXTUAL_KIND";
 
 export interface LineageVerificationError {
   readonly code: LineageVerificationErrorCode;
@@ -56,6 +57,7 @@ export type VerifyEvidenceLineageInput = {
   readonly walletId: string;
   readonly positionId: string;
   readonly poolId: string;
+  readonly contextualObservations?: readonly NormalizedObservationRow[];
 };
 
 export interface VerifiedLineageSourceRef {
@@ -263,6 +265,9 @@ function sourceToSourceType(source: Source): VerifiedLineageSourceRef["sourceTyp
     case "defillama":
     case "pyth-hermes":
     case "orca-public-api":
+    case "macro-calendar-api":
+    case "solana-status-api":
+    case "technical-analysis-api":
       return "api";
     default:
       return "internal_bundle";
@@ -340,7 +345,8 @@ export function verifyEvidenceLineage(
     clmmCanonical,
     walletId,
     positionId,
-    poolId
+    poolId,
+    contextualObservations = []
   } = input;
 
   const clmmResult = validateClmmCanonical(clmmCanonical);
@@ -388,11 +394,90 @@ export function verifyEvidenceLineage(
     }
   }
 
+  for (const ctxRow of contextualObservations) {
+    if (
+      ctxRow.observationKind !== "scheduled_event" &&
+      ctxRow.observationKind !== "protocol_incident"
+    ) {
+      return {
+        ok: false,
+        error: {
+          code: "UNSUPPORTED_CONTEXTUAL_KIND",
+          message: `Contextual observation kind '${ctxRow.observationKind}' is not supported. Only scheduled_event and protocol_incident are allowed.`
+        }
+      };
+    }
+
+    const rawRow = rawObservations.get(ctxRow.rawObservationId);
+    if (!rawRow) {
+      return {
+        ok: false,
+        error: {
+          code: "MISSING_RAW_PARENT",
+          message: `Raw observation ${ctxRow.rawObservationId} not found for contextual normalized ${ctxRow.id}`
+        }
+      };
+    }
+
+    if (rawRow.source !== ctxRow.source) {
+      return {
+        ok: false,
+        error: {
+          code: "PROVENANCE_SOURCE_MISMATCH",
+          message: `Contextual observation source mismatch: expected ${rawRow.source}, got ${ctxRow.source}`
+        }
+      };
+    }
+
+    const ref = ctxRow.provenance.rawObservationRefs.find(
+      (r) => r.refType === "raw_observation" && r.id === rawRow.id
+    );
+    const expectedHash = ref?.payloadHash ?? rawRow.payloadHash;
+
+    if (rawRow.payloadHash !== expectedHash) {
+      return {
+        ok: false,
+        error: {
+          code: "PROVENANCE_HASH_MISMATCH",
+          message: `Contextual observation hash mismatch for normalized ${ctxRow.id}`
+        }
+      };
+    }
+
+    const rawRefResult = verifyProvenanceRef(
+      {
+        refType: "raw_observation",
+        id: rawRow.id,
+        source: rawRow.source,
+        payloadHash: rawRow.payloadHash
+      },
+      normalizedObservations,
+      rawObservations
+    );
+    if (!rawRefResult.ok) {
+      return rawRefResult;
+    }
+  }
+
   const { rawObservationIds, normalizedObservationIds, sourceReferences } = collectLineage(
     slots,
     normalizedObservations,
     rawObservations
   );
+
+  for (const ctxRow of contextualObservations) {
+    rawObservationIds.add(ctxRow.rawObservationId);
+    normalizedObservationIds.add(ctxRow.id);
+    const rawRow = rawObservations.get(ctxRow.rawObservationId);
+    if (rawRow) {
+      sourceReferences.push({
+        referenceId: `raw-${rawRow.id}`,
+        sourceType: sourceToSourceType(rawRow.source),
+        locator: rawRow.sourceObservationKey,
+        observedAt: String(rawRow.observedAtUnixMs)
+      });
+    }
+  }
 
   const sortedRawIds = [...rawObservationIds].sort((a, b) => a - b);
   const sortedNormIds = [...normalizedObservationIds].sort((a, b) => a - b);
