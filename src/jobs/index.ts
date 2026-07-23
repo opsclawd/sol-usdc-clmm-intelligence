@@ -8,3 +8,8 @@ export { coreCollectionJob, runCoreCollectionJob } from "./core-collection-job.j
 export { deriveMvpFeaturesJob } from "./derive-mvp-features-job.js";
 export { assembleEvidenceBundleJob } from "./assemble-evidence-bundle-job.js";
 export { publishEvidenceBundleJob } from "./publish-evidence-bundle-job.js";
+export {
+  supportResistanceJob,
+  runSupportResistanceJob,
+  type SupportResistanceJobDeps
+} from "./support-resistance-job.js";

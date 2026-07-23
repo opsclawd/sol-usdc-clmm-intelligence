@@ -143,6 +143,10 @@ Every feature should carry input lineage, as-of time, freshness, and confidence.
 
 Tracked by #9, #10, and #11.
 
+Research collector packs add:
+
+- **support/resistance** (`technical-analysis-api`): Collects SOL/USDC support and resistance levels from a technical analysis API provider. Produces `support_resistance_level` observations with explicit numeric point/zone values in USDC_PER_SOL units. Raw-to-normalized flow validates bounded snapshots, normalizes claims, deduplicates equivalent claims within a provider run, and surfaces degraded warnings for missing/malformed levels. Expiry-gated levels never become execution authority.
+
 Research collector packs should add:
 
 - support/resistance theses;
@@ -482,6 +486,7 @@ The render step prints the OpenClaw commands needed to register cron jobs define
 pnpm collect:core         # collects CLMM, Pyth, Jupiter, and Orca telemetry to Postgres
 pnpm collect:price        # legacy command: collects Pyth and Jupiter telemetry to Postgres, updates compatibility snapshot
 pnpm collect:clmm-bundle  # legacy command: fetches and writes SOL/USDC CLMM bundle from clmm-v2
+pnpm collect:support-resistance  # collects support/resistance levels from technical-analysis-api provider
 pnpm assemble:bundle      # assembles evidence bundle from derived features and observations
 pnpm db:generate          # generates Drizzle migrations from schema changes
 pnpm db:migrate           # runs Drizzle migrations against DATABASE_URL
@@ -514,6 +519,13 @@ OPENCLAW_DELIVERY_CHANNEL=telegram
 OPENCLAW_DELIVERY_TO=<chat-id-or-channel-id>
 OPENCLAW_MODEL=opus
 OPENCLAW_THINKING=high
+```
+
+For Support Resistance collection:
+
+```bash
+SUPPORT_RESISTANCE_API_URL=<technical-analysis-api-provider-url>
+SUPPORT_RESISTANCE_API_KEY=<optional-api-key>
 ```
 
 For Postgres:
