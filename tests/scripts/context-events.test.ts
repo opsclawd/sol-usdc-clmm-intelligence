@@ -33,7 +33,8 @@ vi.mock("../../src/adapters/node/composition-root.js", () => {
     createNodeRuntime: vi.fn(
       (): NodeRuntime => ({
         http: {
-          getJson: vi.fn()
+          getJson: vi.fn(),
+          postJsonRaw: vi.fn()
         },
         jsonStore: {
           readJson: vi.fn(),
@@ -206,13 +207,13 @@ describe("context-events collector script", () => {
       await runContextEventsCollect();
 
       expect(mockCollectScheduledEvents).toHaveBeenCalledTimes(1);
-      const scheduledCall = mockCollectScheduledEvents.mock.calls[0];
+      const scheduledCall = mockCollectScheduledEvents.mock.calls[0]!;
       expect(scheduledCall[0]).toHaveProperty("eventSource");
       expect(scheduledCall[0]).toHaveProperty("rawObservationRepo");
       expect(scheduledCall[0]).toHaveProperty("normalizedObservationRepo");
 
       expect(mockCollectProtocolIncidents).toHaveBeenCalledTimes(1);
-      const incidentCall = mockCollectProtocolIncidents.mock.calls[0];
+      const incidentCall = mockCollectProtocolIncidents.mock.calls[0]!;
       expect(incidentCall[0]).toHaveProperty("incidentSource");
     });
   });

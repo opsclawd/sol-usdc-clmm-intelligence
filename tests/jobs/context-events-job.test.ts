@@ -136,14 +136,14 @@ describe("contextEventsJob", () => {
       const job = contextEventsJob(deps);
       await job();
 
-      const scheduledCall = mockCollectScheduledEvents.mock.calls[0];
+      const scheduledCall = mockCollectScheduledEvents.mock.calls[0]!;
       expect(scheduledCall).toBeDefined();
       expect(scheduledCall[0]).toHaveProperty("eventSource");
       expect(scheduledCall[0]).toHaveProperty("rawObservationRepo");
       expect(scheduledCall[0]).toHaveProperty("normalizedObservationRepo");
       expect(scheduledCall[1]).toBe(VALID_CONTEXT);
 
-      const incidentCall = mockCollectProtocolIncidents.mock.calls[0];
+      const incidentCall = mockCollectProtocolIncidents.mock.calls[0]!;
       expect(incidentCall).toBeDefined();
       expect(incidentCall[0]).toHaveProperty("incidentSource");
       expect(incidentCall[0]).toHaveProperty("rawObservationRepo");
