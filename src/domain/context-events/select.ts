@@ -133,6 +133,13 @@ function isEligible(row: NormalizedObservationRow, evaluationTimeUnixMs: number)
     }
   }
 
+  if (
+    payload.eventType === "scheduled_event" &&
+    (payload as ScheduledEventPayloadV1).status === "CANCELLED"
+  ) {
+    return false;
+  }
+
   return true;
 }
 

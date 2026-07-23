@@ -122,10 +122,7 @@ describe("context-events/select", () => {
         maxItems: 64
       });
 
-      expect(result).toHaveLength(1);
-      expect(result[0]!.row.id).toBe(2);
-      const payload = result[0]!.payload as ScheduledEventPayloadV1;
-      expect(payload.status).toBe("CANCELLED");
+      expect(result).toHaveLength(0);
     });
 
     it("incident resolution replaces active state until recovery expiry", () => {
