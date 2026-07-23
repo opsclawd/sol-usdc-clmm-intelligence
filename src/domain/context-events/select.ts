@@ -3,9 +3,17 @@ import type {
   ScheduledEventPayloadV1,
   ProtocolIncidentPayloadV1
 } from "../../contracts/index.js";
-import type { ContextEventSelectionRequest, SelectedContextEvent } from "./index.js";
 
-export { ContextEventSelectionRequest, SelectedContextEvent };
+export interface ContextEventSelectionRequest {
+  readonly evaluationTimeUnixMs: number;
+  readonly candidates: readonly NormalizedObservationRow[];
+  readonly maxItems: number;
+}
+
+export interface SelectedContextEvent {
+  readonly row: NormalizedObservationRow;
+  readonly payload: ScheduledEventPayloadV1 | ProtocolIncidentPayloadV1;
+}
 
 const SEVERITY_RANK: Record<string, number> = {
   CRITICAL: 1,
