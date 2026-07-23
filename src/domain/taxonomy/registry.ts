@@ -299,6 +299,62 @@ export const observationKindRegistry = {
     },
     active: true,
     schemaVersion: 1
+  },
+  scheduled_event: {
+    kind: "scheduled_event",
+    evidenceFamily: "macro_protocol_risk",
+    signalClass: "contextual",
+    freshnessPolicy: {
+      maxObservedAgeMs: 86_400_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "exclude"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.45,
+        dataCompleteness: 0.35,
+        derivationConfidence: 0.2,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      ...DEFAULT_PROVENANCE_REQUIREMENTS,
+      allowedSourceRefs: ["macro-calendar-api"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  protocol_incident: {
+    kind: "protocol_incident",
+    evidenceFamily: "macro_protocol_risk",
+    signalClass: "contextual",
+    freshnessPolicy: {
+      maxObservedAgeMs: 900_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "exclude"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.45,
+        dataCompleteness: 0.35,
+        derivationConfidence: 0.2,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      ...DEFAULT_PROVENANCE_REQUIREMENTS,
+      allowedSourceRefs: ["solana-status-api"]
+    },
+    active: true,
+    schemaVersion: 1
   }
 } as const satisfies Record<ObservationKind, ObservationKindEntry>;
 

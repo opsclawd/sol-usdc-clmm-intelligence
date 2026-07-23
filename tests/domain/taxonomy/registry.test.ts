@@ -327,3 +327,99 @@ describe("registers support resistance as contextual support_resistance evidence
     expect(entry.confidencePolicy.weights.llmConfidence).toBe(0);
   });
 });
+
+describe("registers scheduled_event as contextual macro_protocol_risk evidence", () => {
+  const entry = getObservationKindEntry("scheduled_event");
+
+  it("scheduled_event is registered", () => {
+    expect(entry).toBeDefined();
+    expect(entry.kind).toBe("scheduled_event");
+  });
+
+  it("evidence family is macro_protocol_risk", () => {
+    expect(entry.evidenceFamily).toBe("macro_protocol_risk");
+  });
+
+  it("signal class is contextual", () => {
+    expect(entry.signalClass).toBe("contextual");
+  });
+
+  it("stale behavior is exclude", () => {
+    expect(entry.freshnessPolicy.staleBehavior).toBe("exclude");
+  });
+
+  it("schema version is 1", () => {
+    expect(entry.schemaVersion).toBe(1);
+  });
+
+  it("only macro-calendar-api is allowed as direct source ref", () => {
+    expect(entry.provenanceRequirements.allowedSourceRefs).toEqual(["macro-calendar-api"]);
+  });
+
+  it("is active", () => {
+    expect(entry.active).toBe(true);
+  });
+
+  it("has 24-hour maximum observed age for scheduled feed refresh", () => {
+    expect(entry.freshnessPolicy.maxObservedAgeMs).toBe(86_400_000);
+  });
+
+  it("has source-provided expiry as tighter bound with null maxFetchLag", () => {
+    expect(entry.freshnessPolicy.maxFetchLagMs).toBeNull();
+    expect(entry.freshnessPolicy.validForMs).toBeNull();
+  });
+
+  it("has confidence weights summing to 1.0", () => {
+    const w = entry.confidencePolicy.weights;
+    const sum = w.sourceReliability + w.dataCompleteness + w.derivationConfidence + w.llmConfidence;
+    expect(Math.abs(sum - 1.0)).toBeLessThan(1e-9);
+  });
+});
+
+describe("registers protocol_incident as contextual macro_protocol_risk evidence", () => {
+  const entry = getObservationKindEntry("protocol_incident");
+
+  it("protocol_incident is registered", () => {
+    expect(entry).toBeDefined();
+    expect(entry.kind).toBe("protocol_incident");
+  });
+
+  it("evidence family is macro_protocol_risk", () => {
+    expect(entry.evidenceFamily).toBe("macro_protocol_risk");
+  });
+
+  it("signal class is contextual", () => {
+    expect(entry.signalClass).toBe("contextual");
+  });
+
+  it("stale behavior is exclude", () => {
+    expect(entry.freshnessPolicy.staleBehavior).toBe("exclude");
+  });
+
+  it("schema version is 1", () => {
+    expect(entry.schemaVersion).toBe(1);
+  });
+
+  it("only solana-status-api is allowed as direct source ref", () => {
+    expect(entry.provenanceRequirements.allowedSourceRefs).toEqual(["solana-status-api"]);
+  });
+
+  it("is active", () => {
+    expect(entry.active).toBe(true);
+  });
+
+  it("has 15-minute maximum observed age for incident feed refresh", () => {
+    expect(entry.freshnessPolicy.maxObservedAgeMs).toBe(900_000);
+  });
+
+  it("has source-provided expiry as tighter bound with null maxFetchLag", () => {
+    expect(entry.freshnessPolicy.maxFetchLagMs).toBeNull();
+    expect(entry.freshnessPolicy.validForMs).toBeNull();
+  });
+
+  it("has confidence weights summing to 1.0", () => {
+    const w = entry.confidencePolicy.weights;
+    const sum = w.sourceReliability + w.dataCompleteness + w.derivationConfidence + w.llmConfidence;
+    expect(Math.abs(sum - 1.0)).toBeLessThan(1e-9);
+  });
+});
