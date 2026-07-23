@@ -2,11 +2,13 @@ import type { Source } from "../contracts/taxonomy.js";
 import type { ScheduledEventSourcePort } from "../ports/scheduled-event-source.js";
 import type { CollectionRunContext } from "./create-collection-run-context.js";
 import type { EnrichedContextEventObservation } from "../domain/context-events/enrich.js";
+import type { BoundedScheduledEventSnapshot } from "../domain/context-events/validate.js";
 import {
   normalizeScheduledEvents,
   enrichContextEvent,
   deriveContextSnapshotObservationKey,
-  computeScheduledEventSeverity
+  computeScheduledEventSeverity,
+  acceptScheduledEventSnapshot
 } from "../domain/context-events/index.js";
 import { canonicalizePayload } from "../domain/content-hash.js";
 import {
@@ -100,7 +102,7 @@ export async function collectScheduledEvents(
 
   const snapshot = collectedSnapshot;
 
-  const boundedSnapshots = snapshot.events.map((event) => ({
+  const boundedSnapshotsWithoutHash = snapshot.events.map((event) => ({
     providerId: snapshot.providerId,
     providerSourceEventId: event.eventId,
     source: "macro-calendar-api" as const,
@@ -127,16 +129,14 @@ export async function collectScheduledEvents(
     retrievedAtUnixMs: context.startedAtUnixMs
   }));
 
-  const stablePayloads = boundedSnapshots.map((bounded) => ({
-    providerId: bounded.providerId,
-    providerSourceEventId: bounded.providerSourceEventId,
-    source: bounded.source,
-    snapshot: bounded.snapshot,
-    sourceObservedAtUnixMs: bounded.sourceObservedAtUnixMs
-  }));
+  const boundedSnapshots: BoundedScheduledEventSnapshot[] = await Promise.all(
+    boundedSnapshotsWithoutHash.map(async (bounded) => {
+      const { payloadHash: eventPayloadHash } = await canonicalizePayload(bounded.snapshot);
+      return { ...bounded, payloadHash: eventPayloadHash };
+    })
+  );
 
-  const payloadCanonical = JSON.stringify(stablePayloads);
-  const { payloadHash } = await canonicalizePayload(stablePayloads);
+  const { payloadCanonical, payloadHash } = await canonicalizePayload(boundedSnapshots);
 
   const sourceObservationKey = await deriveContextSnapshotObservationKey({
     source: "macro-calendar-api",
@@ -145,7 +145,7 @@ export async function collectScheduledEvents(
     payloadHash
   });
 
-  const result = await collectContextEvents(
+  const result = await collectContextEvents<readonly BoundedScheduledEventSnapshot[]>(
     { rawObservationRepo, normalizedObservationRepo },
     context,
     {
@@ -155,17 +155,16 @@ export async function collectScheduledEvents(
       fetchedAtUnixMs: context.startedAtUnixMs,
       payloadCanonical,
       payloadHash,
-      buildCandidates: () => {
-        return stablePayloads.flatMap((bounded) =>
-          normalizeScheduledEvents(
-            {
-              ...bounded,
-              payloadHash: "",
-              retrievedAtUnixMs: context.startedAtUnixMs
-            },
-            context.startedAtUnixMs,
-            context.startedAtUnixMs
-          )
+      validatePayload: (canonical) => {
+        const parsed: unknown = JSON.parse(canonical);
+        if (!Array.isArray(parsed)) {
+          throw new Error("Expected an array of bounded scheduled event snapshots");
+        }
+        return parsed.map((item) => acceptScheduledEventSnapshot(item));
+      },
+      buildCandidates: (accepted) => {
+        return accepted.flatMap((bounded) =>
+          normalizeScheduledEvents(bounded, bounded.retrievedAtUnixMs, context.startedAtUnixMs)
         );
       },
       enrichCandidates: async (candidates, rawRow) => {

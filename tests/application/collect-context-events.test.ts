@@ -406,6 +406,7 @@ describe("collectContextEvents", () => {
           fetchedAtUnixMs: 1704067200000,
           payloadCanonical: "{}",
           payloadHash: "hash123",
+          validatePayload: (canonical: string) => JSON.parse(canonical) as unknown,
           buildCandidates: () => [
             {
               sourceEventId: "event-001",

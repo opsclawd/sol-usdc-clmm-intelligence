@@ -2,10 +2,12 @@ import type { Source } from "../contracts/taxonomy.js";
 import type { ProtocolIncidentSourcePort } from "../ports/protocol-incident-source.js";
 import type { CollectionRunContext } from "./create-collection-run-context.js";
 import type { EnrichedContextEventObservation } from "../domain/context-events/enrich.js";
+import type { BoundedProtocolIncidentSnapshot } from "../domain/context-events/validate.js";
 import {
   normalizeProtocolIncidents,
   enrichContextEvent,
-  deriveContextSnapshotObservationKey
+  deriveContextSnapshotObservationKey,
+  acceptProtocolIncidentSnapshot
 } from "../domain/context-events/index.js";
 import { canonicalizePayload } from "../domain/content-hash.js";
 import {
@@ -93,7 +95,7 @@ export async function collectProtocolIncidents(
 
   const snapshot = collectedSnapshot;
 
-  const boundedSnapshots = snapshot.incidents.map((incident) => ({
+  const boundedSnapshotsWithoutHash = snapshot.incidents.map((incident) => ({
     providerId: snapshot.providerId,
     providerSourceEventId: incident.incidentId,
     source: "solana-status-api" as const,
@@ -120,16 +122,14 @@ export async function collectProtocolIncidents(
     retrievedAtUnixMs: context.startedAtUnixMs
   }));
 
-  const stablePayloads = boundedSnapshots.map((bounded) => ({
-    providerId: bounded.providerId,
-    providerSourceEventId: bounded.providerSourceEventId,
-    source: bounded.source,
-    snapshot: bounded.snapshot,
-    sourceObservedAtUnixMs: bounded.sourceObservedAtUnixMs
-  }));
+  const boundedSnapshots: BoundedProtocolIncidentSnapshot[] = await Promise.all(
+    boundedSnapshotsWithoutHash.map(async (bounded) => {
+      const { payloadHash: eventPayloadHash } = await canonicalizePayload(bounded.snapshot);
+      return { ...bounded, payloadHash: eventPayloadHash };
+    })
+  );
 
-  const payloadCanonical = JSON.stringify(stablePayloads);
-  const { payloadHash } = await canonicalizePayload(stablePayloads);
+  const { payloadCanonical, payloadHash } = await canonicalizePayload(boundedSnapshots);
 
   const sourceObservationKey = await deriveContextSnapshotObservationKey({
     source: "solana-status-api",
@@ -138,7 +138,7 @@ export async function collectProtocolIncidents(
     payloadHash
   });
 
-  const result = await collectContextEvents(
+  const result = await collectContextEvents<readonly BoundedProtocolIncidentSnapshot[]>(
     { rawObservationRepo, normalizedObservationRepo },
     context,
     {
@@ -148,17 +148,16 @@ export async function collectProtocolIncidents(
       fetchedAtUnixMs: context.startedAtUnixMs,
       payloadCanonical,
       payloadHash,
-      buildCandidates: () => {
-        return stablePayloads.flatMap((bounded) =>
-          normalizeProtocolIncidents(
-            {
-              ...bounded,
-              payloadHash: "",
-              retrievedAtUnixMs: context.startedAtUnixMs
-            },
-            context.startedAtUnixMs,
-            context.startedAtUnixMs
-          )
+      validatePayload: (canonical) => {
+        const parsed: unknown = JSON.parse(canonical);
+        if (!Array.isArray(parsed)) {
+          throw new Error("Expected an array of bounded protocol incident snapshots");
+        }
+        return parsed.map((item) => acceptProtocolIncidentSnapshot(item, context.startedAtUnixMs));
+      },
+      buildCandidates: (accepted) => {
+        return accepted.flatMap((bounded) =>
+          normalizeProtocolIncidents(bounded, bounded.retrievedAtUnixMs, context.startedAtUnixMs)
         );
       },
       enrichCandidates: async (candidates, rawRow) => {

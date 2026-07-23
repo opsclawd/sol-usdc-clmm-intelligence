@@ -41,7 +41,7 @@ function redactDiagnostic(diagnostic: string): string {
     .replace(/password/gi, "[REDACTED]");
 }
 
-export async function collectContextEvents(
+export async function collectContextEvents<TAccepted>(
   deps: CollectContextEventsDeps,
   context: CollectionRunContext,
   input: {
@@ -51,7 +51,9 @@ export async function collectContextEvents(
     fetchedAtUnixMs: number;
     payloadCanonical: string;
     payloadHash: string;
+    validatePayload: (canonical: string) => TAccepted;
     buildCandidates: (
+      accepted: TAccepted,
       rawRow: RawObservationRow
     ) => readonly ScheduledEventPayloadV1[] | readonly ProtocolIncidentPayloadV1[];
     enrichCandidates: (
@@ -67,7 +69,7 @@ export async function collectContextEvents(
 
   try {
     const ingestResult = await ingestRawObservation<
-      string,
+      TAccepted,
       ScheduledEventPayloadV1 | ProtocolIncidentPayloadV1,
       EnrichedContextEventObservation
     >(
@@ -85,9 +87,9 @@ export async function collectContextEvents(
         payloadHash: input.payloadHash,
         sourceRequestMeta: null,
         receivedAtUnixMs: context.startedAtUnixMs,
-        validatePayload: (canonical: string) => ({ accepted: canonical }),
-        buildCandidates: (_accepted: string, rawRow: RawObservationRow) => {
-          const candidates = input.buildCandidates(rawRow);
+        validatePayload: (canonical: string) => ({ accepted: input.validatePayload(canonical) }),
+        buildCandidates: (accepted: TAccepted, rawRow: RawObservationRow) => {
+          const candidates = input.buildCandidates(accepted, rawRow);
           for (const candidate of candidates) {
             for (const warning of candidate.warnings) {
               collectedWarnings.push(warning);
