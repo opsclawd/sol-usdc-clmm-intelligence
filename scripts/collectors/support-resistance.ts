@@ -29,9 +29,15 @@ export async function runSupportResistanceCollect(): Promise<void> {
     return;
   }
 
-  const sourceOptions: { http: typeof runtime.http; url: string; apiKey?: string } = {
+  const sourceOptions: {
+    http: typeof runtime.http;
+    url: string;
+    apiKey?: string;
+    retryControl?: typeof runtime.retryControl;
+  } = {
     http: runtime.http,
-    url: apiUrl
+    url: apiUrl,
+    retryControl: runtime.retryControl
   };
   if (apiKey) {
     sourceOptions.apiKey = apiKey;
