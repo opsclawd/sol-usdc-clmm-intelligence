@@ -84,7 +84,7 @@ describe("HttpScheduledEventSource", () => {
       expect(result.pair).toBe("SOL/USDC");
       expect(mockHttp.getJson).toHaveBeenCalledTimes(1);
       expect(mockHttp.getJson).toHaveBeenCalledWith(
-        "https://api.example.com/events",
+        "https://api.example.com/events?fromUnixMs=1700000000000&toUnixMs=1700010000000",
         expect.objectContaining({
           timeoutMs: 5000,
           maxAttempts: 1,
@@ -123,7 +123,7 @@ describe("HttpScheduledEventSource", () => {
       });
 
       expect(mockHttp.getJson).toHaveBeenCalledWith(
-        "https://api.example.com/events",
+        "https://api.example.com/events?fromUnixMs=1700000000000&toUnixMs=1700010000000",
         expect.objectContaining({
           headers: expect.not.objectContaining({
             Authorization: expect.anything()
@@ -450,7 +450,7 @@ describe("retry-loop", () => {
     expect(result.providerId).toBe("test-provider");
     expect(mockHttp.getJson).toHaveBeenCalledTimes(2);
     expect(mockHttp.getJson).toHaveBeenCalledWith(
-      "https://api.example.com/events",
+      "https://api.example.com/events?fromUnixMs=1700000000000&toUnixMs=1700010000000",
       expect.objectContaining({
         maxAttempts: 1
       })
