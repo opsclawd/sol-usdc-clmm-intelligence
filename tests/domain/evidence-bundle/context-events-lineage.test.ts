@@ -509,7 +509,7 @@ describe("contextual event lineage verification", () => {
       const contextualNormObs = makeNormalizedRow({
         id: 300,
         rawObservationId: 200,
-        source: "different-source",
+        source: "different-source" as NormalizedObservationRow["source"],
         observationKind: "scheduled_event",
         signalClass: "contextual",
         evidenceFamily: "macro_protocol_risk",
