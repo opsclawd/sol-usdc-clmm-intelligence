@@ -146,9 +146,25 @@ Key Architectural Invariants:
 
 Contextual research collectors provide lower-confidence contextual evidence that supplements core telemetry. They follow the same raw-first persistence pattern as core collectors.
 
+### Contextual Events Collector (`macro-calendar-api`, `solana-status-api`)
+
+The contextual events collector (`pnpm collect:context-events`) collects two event families:
+
+- **Scheduled events** (`macro-calendar-api`): Token unlocks, protocol upgrades, governance votes, and other scheduled macro events. Query window is ±24 hours from collection time.
+- **Protocol incidents** (`solana-status-api`): Solana network incidents, service disruptions, and security events.
+
+**Key architectural invariants:**
+
+1. **Bounded factual extract retention:** All events carry `retentionMode: "bounded_factual_extract"` and a provider-supplied `license` string. Providers must supply stable `sourceEventId` values and original source timestamps.
+2. **Raw-first append-only lifecycle:** Raw observations are persisted before normalization. Lifecycle state transitions (SCHEDULED → ACTIVE → RESOLVED, or CANCELLED) are recorded as new rows, never mutations.
+3. **Exact replay detection:** Identity key derives from `${source}::${observationKind}::${sourceEventId}` plus `sourceObservedAtUnixMs` and `payloadHash`. Identical replays produce no new rows.
+4. **Latest-state selection:** Group by identity, pick latest per group, then apply eligibility filters. This prevents older ACTIVE rows from being revived after cancellation/expiry.
+5. **Severity as deterministic metadata:** Severity ranks (CRITICAL > HIGH > MEDIUM > LOW) are provider-supplied facts, not LLM determinations.
+6. **Authority boundaries:** Missing feeds do not imply no risk; unconfirmed reports remain unconfirmed; event direction is always unknown; only regime-engine can synthesize final policy.
+
 ### Support Resistance Collector (`technical-analysis-api`)
 
-The support resistance collector (`pnpm collect:support-resistance`) collects SOL/USDC support and resistance levels from a technical analysis API provider.
+The support resistance collector (`pnpm collect:collect:support-resistance`) collects SOL/USDC support and resistance levels from a technical analysis API provider.
 
 **Source port**: `SupportResistanceSourcePort` in `src/ports/support-resistance-source.ts`
 **HTTP adapter**: `HttpSupportResistanceSource` in `src/adapters/node/http-support-resistance-source.ts`
