@@ -60,7 +60,10 @@ export class HttpScheduledEventSource implements ScheduledEventSourcePort {
 
     for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
       try {
-        const response = await this.options.http.getJson<unknown>(this.options.url, {
+        const url = new URL(this.options.url);
+        url.searchParams.set("fromUnixMs", String(request.fromUnixMs));
+        url.searchParams.set("toUnixMs", String(request.toUnixMs));
+        const response = await this.options.http.getJson<unknown>(url.toString(), {
           headers,
           timeoutMs: this.timeoutMs,
           maxAttempts: 1
