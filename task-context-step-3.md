@@ -1,6 +1,6 @@
 # Task Context: Task 3
 
-Title: Add deterministic bounded retry transitions and make retry required
+Title: Add the source port and Node HTTP adapter together
 
 ## Workspace & Scope Constraints
 
@@ -10,55 +10,101 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-13
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-27
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-13
-Start Commit: 6abbf0c97574a6b795be47dfb1e295226f6085bf
+Branch: ai/issue-27
+Start Commit: 8d258115c27c92c40909384db9d08dca77ae3750
 
 ## Task Requirements
 
 **Files:**
 
-- Modify: `src/application/publish-evidence-bundle.ts`
-- Modify: `tests/application/publish-evidence-bundle.test.ts` (only add retry/audit/concurrency describe blocks)
-- Modify: `src/adapters/node/composition-root.ts` (only if needed for retry wiring changes)
+- Create: `src/ports/support-resistance-source.ts`
+- Modify: `src/ports/index.ts`
+- Create: `src/adapters/node/http-support-resistance-source.ts`
+- Create: `tests/fakes/fake-support-resistance-source.ts`
+- Modify: `tests/fakes/index.ts`
+- Create: `tests/adapters/node/http-support-resistance-source.test.ts`
 
-**Signature changes:** Change `retry` in `PublishEvidenceBundleDeps` from optional to required; extend the existing exported publisher result/event unions with retry exhaustion and scheduling variants. The `RetryControl` port, `SystemRetryControl`, and `FakeRetry` are already introduced in Task 1.
+**Port/interface atomicity:** this task adds `SupportResistanceSourcePort.collect` and includes both concrete implementations in the same task: `HttpSupportResistanceSource` for Node and `FakeSupportResistanceSource` for tests. Do not commit the port without both implementations; the automatic workspace `pnpm -r typecheck` gate must pass after this task.
 
-- [ ] Write failing tests named `transient failures retry at most three total attempts`, `unknown outcome retries reuse exact key hash and payload`, `retry delay is bounded and deterministic`, `valid Retry-After is honored within maximum`, `invalid or excessive Retry-After falls back or clamps`, `audit occurs before every retry delay`, `audit failure stops publication before another request`, `exhausted transient failure is terminal and observable`, and `concurrent duplicate audit conflict is not reported as success`.
-- [ ] Replace the single HTTP action with attempts 1..3. Retry only `HttpRequestError` timeout/network, 408, 429, and 500..599. After each failed request, persist `network_failed`; only after successful audit emit `retry_scheduled`, sleep, and transition to the next attempt. On attempt 3 return `transient_failure_exhausted`.
-- [ ] Use base delay 250 ms, exponential factors 1 and 2, jitter up to 250 ms, and a hard 2,000 ms sleep cap. Parse `Retry-After` as non-negative delta-seconds or an HTTP date relative to `Clock`; clamp it to 2,000 ms. Invalid/missing values use exponential+jitter.
-- [ ] Keep one immutable request context outside the loop (payload reference, verified hash, idempotency key, endpoint, safe target), and create timestamps/attempt rows inside the loop. Emit `publish_started`, `retry_scheduled`, `created`, `idempotent_replay`, classified terminal failure, `transient_failure_exhausted`, and `audit_persistence_failed` events.
-- [ ] Run only the newly added behavior groups:
+**Exported API changes:** export `SupportResistanceSourcePort`, `SupportResistanceSourceRequest`, `SupportResistanceSourceError`, and `HttpSupportResistanceSource`. The required method shape is `collect(request: SupportResistanceSourceRequest): Promise<SupportResistanceSourceSnapshot>`.
 
-  ```bash
-  pnpm vitest run tests/application/publish-evidence-bundle.test.ts -t 'retry|Retry-After|audit failure|exhausted|concurrent'
-  pnpm exec eslint src/application/publish-evidence-bundle.ts tests/application/publish-evidence-bundle.test.ts --max-warnings 0
+- [ ] **Step 1: Write adapter contract tests first.**
+
+  Add exact cases:
+  - `fetches SOL/USDC claims with bounded request options and an optional bearer credential`
+  - `returns only the validated bounded snapshot and never retains unknown provider fields`
+  - `classifies timeout network http status and malformed payload failures without leaking credentials`
+
+  Configure the adapter through a constructor object containing `http`, `url`, optional `apiKey`, `timeoutMs: 5000`, and `maxAttempts: 2`. Assert the credential is sent only in the request header and no thrown diagnostic contains it.
+
+- [ ] **Step 2: Run the adapter test and confirm it fails.**
+
+  Run: `pnpm exec vitest run tests/adapters/node/http-support-resistance-source.test.ts`
+
+  Expected: FAIL because the port, fake, and adapter do not exist.
+
+- [ ] **Step 3: Define the port and both implementations in one change.**
+
+  Use a narrow request:
+
+  ```ts
+  export interface SupportResistanceSourceRequest {
+    readonly pair: "SOL/USDC";
+  }
+
+  export interface SupportResistanceSourcePort {
+    collect(request: SupportResistanceSourceRequest): Promise<SupportResistanceSourceSnapshot>;
+  }
   ```
 
-- [ ] Commit: `git add src/application/publish-evidence-bundle.ts tests/application/publish-evidence-bundle.test.ts && git commit -m "feat: bound evidence publish retries"`
+  The HTTP adapter calls `getJson<unknown>`, passes the unknown response through `acceptSupportResistanceSnapshot`, and maps `HttpRequestError` to `SupportResistanceSourceError` kinds `timeout | network | unavailable | malformed`. Treat HTTP 404, 429, and 5xx as unavailable; invalid JSON or domain-validation failure as malformed; other transport failures as network. Store only configured fake responses in the test fake and record requests for assertions.
+
+- [ ] **Step 4: Run focused verification.**
+
+  Run: `pnpm exec vitest run tests/adapters/node/http-support-resistance-source.test.ts`
+
+  Expected: PASS for request shaping, bounded response projection, failure classification, and secret redaction.
+
+  Run: `pnpm exec eslint src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts --max-warnings 0`
+
+  Expected: exit 0.
+
+  Run: `pnpm exec prettier --check src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts`
+
+  Expected: all listed files use Prettier formatting.
+
+- [ ] **Step 5: Commit the complete port/adapter slice.**
+
+  ```bash
+  git add src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts
+  git commit -m "feat: add support resistance source adapter"
+  ```
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/application/publish-evidence-bundle.ts
-- tests/application/publish-evidence-bundle.test.ts
+- src/ports/support-resistance-source.ts
+- src/ports/index.ts
+- src/adapters/node/http-support-resistance-source.ts
+- tests/fakes/fake-support-resistance-source.ts
+- tests/fakes/index.ts
+- tests/adapters/node/http-support-resistance-source.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm vitest run tests/application/publish-evidence-bundle.test.ts -t 'retry|Retry-After|audit failure|exhausted|concurrent'
-pnpm exec eslint src/application/publish-evidence-bundle.ts tests/application/publish-evidence-bundle.test.ts --max-warnings 0
+pnpm exec vitest run tests/adapters/node/http-support-resistance-source.test.ts
+pnpm exec eslint src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts --max-warnings 0
+pnpm exec prettier --check src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **transient-failures-retry-at-most-three-total-attempts**: Timeout, network, 408, 429, and 5xx failures transition through at most three audited attempts. (Test: `transient failures retry at most three total attempts`)
-- **unknown-outcome-reuses-identity**: Every retry reuses the exact payload reference, payload hash, and idempotency key established before the loop. (Test: `unknown outcome retries reuse exact key hash and payload`)
-- **retry-delay-is-bounded**: Exponential jitter and Retry-After delays are deterministic under fakes and never exceed 2000 ms. (Test: `retry delay is bounded and deterministic`)
-- **audit-before-retry-transition**: A transient result is inserted before retry_scheduled is emitted or sleep begins. (Test: `audit occurs before every retry delay`)
-- **audit-failure-stops-publication**: An insert exception or audit identity conflict returns audit_store_failed and prevents a later request. (Test: `audit failure stops publication before another request`)
-- **concurrent-duplicate-is-not-silent**: An audit identity collision is observable and the losing invocation cannot report remote success. (Test: `concurrent duplicate audit conflict is not reported as success`)
+- **bounded-request-with-optional-auth**: The adapter requests SOL/USDC once with fixed timeout/attempt options and sends the optional credential only as a bearer header. (Test: `fetches SOL/USDC claims with bounded request options and an optional bearer credential`)
+- **validated-projection-only**: The adapter returns the validated allowlisted snapshot and drops unknown provider fields before persistence can see them. (Test: `returns only the validated bounded snapshot and never retains unknown provider fields`)
+- **safe-failure-classification**: Transport, status, JSON, and validation failures map to stable kinds without credentials in diagnostics. (Test: `classifies timeout network http status and malformed payload failures without leaking credentials`)

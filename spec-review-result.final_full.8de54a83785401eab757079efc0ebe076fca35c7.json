@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P0",
+      "summary": "normalize.ts hardcodes expiresAtUnixMs to a future time (asOfUnixMs + 24h), violating the explicit requirement to 'Preserve a source-supplied expiry even when already expired; do not rewrite it to a future time.'",
+      "file": "src/domain/support-resistance/normalize.ts",
+      "suggested_fix": "Add expiresAtUnixMs to the raw snapshot schema in validate.ts and contracts, and preserve it in normalization instead of adding 86400000."
+    },
+    {
+      "severity": "P1",
+      "summary": "normalize.ts hardcodes thesisCodes and invalidationConditions to empty arrays, and fails to deduplicate/sort sourceReferences or trim strings, violating the requirement to 'Normalize strings by trimming, deduplicate/sort thesis codes, invalidation conditions, warnings, and references'.",
+      "file": "src/domain/support-resistance/normalize.ts",
+      "suggested_fix": "Add thesisCodes and invalidationConditions to the raw claim schema, and implement trimming, sorting, and deduplication for thesisCodes, invalidationConditions, and sourceReferences during normalization."
+    }
+  ]
+}

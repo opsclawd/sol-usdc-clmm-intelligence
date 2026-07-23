@@ -1,0 +1,11 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P0",
+      "summary": "Boundary violation: src/ports/index.ts imports the concrete adapter HttpSupportResistanceSource from src/adapters/node, violating layered architecture.",
+      "file": "src/ports/index.ts",
+      "suggested_fix": "Remove `export { HttpSupportResistanceSource } from \"../adapters/node/http-support-resistance-source.js\";` from src/ports/index.ts. If the adapter needs to be exported, it should be done from a composition root or an index in the adapters layer, not from ports."
+    }
+  ]
+}

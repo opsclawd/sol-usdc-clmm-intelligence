@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "In enrich.ts, the payloadHash is computed from the un-enriched payload before the stale_observation warning is appended, violating the invariant that normalized payload hashes must be computed after warnings are finalized.",
+      "file": "src/domain/support-resistance/enrich.ts",
+      "suggested_fix": "Move the `canonicalizePayload` call to after `enrichedPayload` is constructed, and hash `enrichedPayload` instead of `input.payload`."
+    },
+    {
+      "severity": "P1",
+      "summary": "The implementation is missing the Step 5 requirement to group duplicates in original claim order, retain one normalized payload, and append duplicate_equivalent_claim.",
+      "file": "src/domain/support-resistance/normalize.ts",
+      "suggested_fix": "Implement logic to filter the `accepted` claims by grouping them using `deriveSupportResistanceEquivalenceKey`, retaining only the first claim per identity group, and appending the `duplicate_equivalent_claim` warning to the retained claim."
+    }
+  ]
+}
