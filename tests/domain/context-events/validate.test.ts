@@ -96,7 +96,7 @@ describe("context-events/validate", () => {
 
     it("rejects a snapshot with non-array sourceReferences", () => {
       const snapshot = makeScheduledEventSnapshot({
-        sourceReferences: "not-an-array" as unknown as readonly unknown[]
+        sourceReferences: "not-an-array" as unknown as unknown[]
       });
       const bounded = makeBoundedScheduledEventSnapshot({ snapshot });
       expect(() => acceptScheduledEventSnapshot(bounded)).toThrow();

@@ -1,6 +1,7 @@
 import type {
   ScheduledEventPayloadV1,
-  ProtocolIncidentPayloadV1
+  ProtocolIncidentPayloadV1,
+  ContextEventWarning
 } from "../../contracts/context-events.js";
 import type { BoundedScheduledEventSnapshot, BoundedProtocolIncidentSnapshot } from "./validate.js";
 
@@ -35,7 +36,7 @@ function normalizeScheduledEvent(
     nowMs
   );
 
-  const warnings: ScheduledEventPayloadV1["warnings"] = [];
+  const warnings: ContextEventWarning[] = [];
 
   if (
     snap.sourceQuality.confirmation === "none" &&
@@ -111,7 +112,7 @@ function normalizeProtocolIncident(
     nowMs
   );
 
-  const warnings: ProtocolIncidentPayloadV1["warnings"] = [];
+  const warnings: ContextEventWarning[] = [];
 
   if (
     snap.sourceQuality.confirmation === "none" &&

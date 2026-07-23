@@ -16,8 +16,8 @@ export interface ScheduledEventSnapshot {
   scheduledEndUnixMs: number | null;
   severity: ContextEventSeverity;
   status: ContextEventStatus;
-  sourceReferences: readonly unknown[];
-  affectedScope: readonly string[];
+  sourceReferences: unknown[];
+  affectedScope: string[];
   sourceQuality: ContextEventSourceQuality;
   sourceObservedAtUnixMs: number;
 }
@@ -31,8 +31,8 @@ export interface ProtocolIncidentSnapshot {
   resolvedAtUnixMs: number | null;
   severity: ContextEventSeverity;
   status: ContextEventStatus;
-  sourceReferences: readonly unknown[];
-  affectedScope: readonly string[];
+  sourceReferences: unknown[];
+  affectedScope: string[];
   sourceQuality: ContextEventSourceQuality;
   sourceObservedAtUnixMs: number;
 }

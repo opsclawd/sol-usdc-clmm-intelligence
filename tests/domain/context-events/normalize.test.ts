@@ -27,9 +27,9 @@ describe("context-events/normalize", () => {
       });
       const result = normalizeScheduledEvents(bounded, now + 50);
       expect(result).toHaveLength(1);
-      expect(result[0].status).toBe("SCHEDULED");
-      expect(result[0].eventType).toBe("scheduled_event");
-      expect(result[0].eventFamily).toBe("macro_protocol_risk");
+      expect(result[0]!.status).toBe("SCHEDULED");
+      expect(result[0]!.eventType).toBe("scheduled_event");
+      expect(result[0]!.eventFamily).toBe("macro_protocol_risk");
     });
 
     it("appends a postponed scheduled state without changing sourceEventId", () => {
@@ -64,9 +64,9 @@ describe("context-events/normalize", () => {
 
       expect(result1).toHaveLength(1);
       expect(result2).toHaveLength(1);
-      expect(result1[0].sourceEventId).toBe(result2[0].sourceEventId);
-      expect(result1[0].scheduledStartUnixMs).toBe(originalStartMs);
-      expect(result2[0].scheduledStartUnixMs).toBe(postponedStartMs);
+      expect(result1[0]!.sourceEventId).toBe(result2[0]!.sourceEventId);
+      expect(result1[0]!.scheduledStartUnixMs).toBe(originalStartMs);
+      expect(result2[0]!.scheduledStartUnixMs).toBe(postponedStartMs);
     });
 
     it("produces bounded expiry for first scheduled event", () => {
@@ -74,8 +74,7 @@ describe("context-events/normalize", () => {
       const scheduledStart = now + 86400000;
       const snapshot = makeScheduledEventSnapshot({
         status: "SCHEDULED",
-        scheduledStartUnixMs: scheduledStart,
-        expiresAtUnixMs: null as unknown as number
+        scheduledStartUnixMs: scheduledStart
       });
       const bounded = makeBoundedScheduledEventSnapshot({
         snapshot,
@@ -83,8 +82,8 @@ describe("context-events/normalize", () => {
         retrievedAtUnixMs: now + 100
       });
       const result = normalizeScheduledEvents(bounded, now + 50);
-      expect(result[0].expiresAtUnixMs).toBeGreaterThan(now);
-      expect(result[0].expiresAtUnixMs).toBeLessThanOrEqual(scheduledStart + 86400000);
+      expect(result[0]!.expiresAtUnixMs).toBeGreaterThan(now);
+      expect(result[0]!.expiresAtUnixMs).toBeLessThanOrEqual(scheduledStart + 86400000);
     });
 
     it("sorts and deduplicates affectedScope", () => {
@@ -98,7 +97,7 @@ describe("context-events/normalize", () => {
         retrievedAtUnixMs: now + 100
       });
       const result = normalizeScheduledEvents(bounded, now + 50);
-      expect(result[0].affectedScope).toEqual(["BTC", "SOL", "USDC"]);
+      expect(result[0]!.affectedScope).toEqual(["BTC", "SOL", "USDC"]);
     });
 
     it("source and retrieval timestamps remain separate", () => {
@@ -112,8 +111,8 @@ describe("context-events/normalize", () => {
         retrievedAtUnixMs: retrievedAt
       });
       const result = normalizeScheduledEvents(bounded, now);
-      expect(result[0].rawProvenance.sourceObservedAtUnixMs).toBe(sourceObserved);
-      expect(result[0].rawProvenance.retrievedAtUnixMs).toBe(retrievedAt);
+      expect(result[0]!.rawProvenance.sourceObservedAtUnixMs).toBe(sourceObserved);
+      expect(result[0]!.rawProvenance.retrievedAtUnixMs).toBe(retrievedAt);
     });
 
     it("bounded description length", () => {
@@ -128,7 +127,7 @@ describe("context-events/normalize", () => {
         retrievedAtUnixMs: now + 100
       });
       const result = normalizeScheduledEvents(bounded, now + 50);
-      expect(result[0].description.length).toBeLessThanOrEqual(5000);
+      expect(result[0]!.description.length).toBeLessThanOrEqual(5000);
     });
 
     it("sorted sourceReferences output", () => {
@@ -146,7 +145,7 @@ describe("context-events/normalize", () => {
         retrievedAtUnixMs: now + 100
       });
       const result = normalizeScheduledEvents(bounded, now + 50);
-      expect(result[0].sourceReferences).toHaveLength(3);
+      expect(result[0]!.sourceReferences).toHaveLength(3);
     });
   });
 
@@ -165,7 +164,7 @@ describe("context-events/normalize", () => {
         retrievedAtUnixMs: now + 100
       });
       const result = normalizeProtocolIncidents(bounded, now + 50);
-      expect(result[0].status).toBe("UNCONFIRMED");
+      expect(result[0]!.status).toBe("UNCONFIRMED");
     });
 
     it("qualified incident activation preserves history", () => {
@@ -197,9 +196,9 @@ describe("context-events/normalize", () => {
       const result1 = normalizeProtocolIncidents(bounded1, now - 850);
       const result2 = normalizeProtocolIncidents(bounded2, now + 50);
 
-      expect(result1[0].status).toBe("ACTIVE");
-      expect(result2[0].status).toBe("ACTIVE");
-      expect(result2[0].sourceEventId).toBe(result1[0].sourceEventId);
+      expect(result1[0]!.status).toBe("ACTIVE");
+      expect(result2[0]!.status).toBe("ACTIVE");
+      expect(result2[0]!.sourceEventId).toBe(result1[0]!.sourceEventId);
     });
 
     it("incident resolution replaces active state until recovery expiry", () => {
@@ -232,10 +231,10 @@ describe("context-events/normalize", () => {
       const result1 = normalizeProtocolIncidents(bounded1, now - 25);
       const result2 = normalizeProtocolIncidents(bounded2, now + 25);
 
-      expect(result1[0].status).toBe("ACTIVE");
-      expect(result2[0].status).toBe("RESOLVED");
-      expect(result2[0].expiresAtUnixMs).toBeGreaterThanOrEqual(now);
-      expect(result2[0].expiresAtUnixMs).toBeLessThanOrEqual(now + 900000);
+      expect(result1[0]!.status).toBe("ACTIVE");
+      expect(result2[0]!.status).toBe("RESOLVED");
+      expect(result2[0]!.expiresAtUnixMs).toBeGreaterThanOrEqual(now);
+      expect(result2[0]!.expiresAtUnixMs).toBeLessThanOrEqual(now + 900000);
     });
 
     it("detects incomplete information warning", () => {
@@ -249,7 +248,7 @@ describe("context-events/normalize", () => {
         retrievedAtUnixMs: now + 100
       });
       const result = normalizeProtocolIncidents(bounded, now + 50);
-      expect(result[0].warnings).toContain("incomplete_information");
+      expect(result[0]!.warnings).toContain("incomplete_information");
     });
 
     it("detects missing qualifying confirmation warning", () => {
@@ -264,7 +263,7 @@ describe("context-events/normalize", () => {
         retrievedAtUnixMs: now + 100
       });
       const result = normalizeProtocolIncidents(bounded, now + 50);
-      expect(result[0].warnings).toContain("missing_qualifying_confirmation");
+      expect(result[0]!.warnings).toContain("missing_qualifying_confirmation");
     });
 
     it("resolves confidence caps for unconfirmed/partial evidence", () => {
@@ -282,8 +281,8 @@ describe("context-events/normalize", () => {
         retrievedAtUnixMs: now + 100
       });
       const result = normalizeProtocolIncidents(bounded, now + 50);
-      expect(result[0].sourceQuality.confirmation).toBe("secondary");
-      expect(result[0].sourceQuality.completeness).toBe("partial");
+      expect(result[0]!.sourceQuality.confirmation).toBe("secondary");
+      expect(result[0]!.sourceQuality.completeness).toBe("partial");
     });
 
     it("stale warning when sourceObservedAt is old", () => {
@@ -296,7 +295,7 @@ describe("context-events/normalize", () => {
         retrievedAtUnixMs: oldObservation + 100
       });
       const result = normalizeProtocolIncidents(bounded, now);
-      expect(result[0].warnings).toContain("stale_observation");
+      expect(result[0]!.warnings).toContain("stale_observation");
     });
   });
 });
