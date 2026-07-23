@@ -13,3 +13,8 @@ export {
   runSupportResistanceJob,
   type SupportResistanceJobDeps
 } from "./support-resistance-job.js";
+export {
+  contextEventsJob,
+  runContextEventsJob,
+  type ContextEventsJobDeps
+} from "./context-events-job.js";
