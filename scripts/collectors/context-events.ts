@@ -47,13 +47,13 @@ export async function runContextEventsCollect(): Promise<void> {
   const scheduledEventSource = new HttpScheduledEventSource({
     http: runtime.http,
     url: macroCalendarUrl,
-    apiKey: macroCalendarApiKey
+    ...(macroCalendarApiKey && { apiKey: macroCalendarApiKey })
   });
 
   const protocolIncidentSource = new HttpProtocolIncidentSource({
     http: runtime.http,
     url: solanaStatusUrl,
-    apiKey: solanaStatusApiKey
+    ...(solanaStatusApiKey && { apiKey: solanaStatusApiKey })
   });
 
   let result;
