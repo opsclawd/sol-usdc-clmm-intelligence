@@ -175,7 +175,8 @@ function makeAssembleInput(
     briefPresent: overrides?.briefPresent ?? false,
     pipelineVersion: overrides?.pipelineVersion ?? "1.0.0",
     gitCommit: overrides?.gitCommit ?? "abc123def456",
-    environment: overrides?.environment ?? "test"
+    environment: overrides?.environment ?? "test",
+    contextualEvents: overrides?.contextualEvents ?? []
   };
 }
 

@@ -17,7 +17,8 @@ export type { NormalizedObservationRow } from "../contracts/index.js";
 // Normalized observation repository port interface and rows
 export type {
   NormalizedObservationRepo,
-  NormalizedObservationInsert
+  NormalizedObservationInsert,
+  NormalizedObservationCandidateQuery
 } from "./normalized-observation-repo.js";
 export type {
   DerivedFeatureRepo,
