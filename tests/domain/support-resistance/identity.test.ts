@@ -15,7 +15,8 @@ describe("deriveSupportResistanceSourceObservationKey", () => {
   it("derives a source observation key from provider and provider run identity", async () => {
     const identity: SupportResistanceSourceObservationIdentity = {
       providerId: "technical-analysis-api",
-      providerRunId: "run-001"
+      providerRunId: "run-001",
+      evidenceSide: "SUPPORT"
     };
 
     const key = await deriveSupportResistanceSourceObservationKey(identity);
@@ -27,11 +28,13 @@ describe("deriveSupportResistanceSourceObservationKey", () => {
   it("produces identical keys for same provider and run", async () => {
     const identity1: SupportResistanceSourceObservationIdentity = {
       providerId: "technical-analysis-api",
-      providerRunId: "run-001"
+      providerRunId: "run-001",
+      evidenceSide: "SUPPORT"
     };
     const identity2: SupportResistanceSourceObservationIdentity = {
       providerId: "technical-analysis-api",
-      providerRunId: "run-001"
+      providerRunId: "run-001",
+      evidenceSide: "SUPPORT"
     };
 
     const key1 = await deriveSupportResistanceSourceObservationKey(identity1);
@@ -43,11 +46,13 @@ describe("deriveSupportResistanceSourceObservationKey", () => {
   it("produces different keys for different provider runs", async () => {
     const identity1: SupportResistanceSourceObservationIdentity = {
       providerId: "technical-analysis-api",
-      providerRunId: "run-001"
+      providerRunId: "run-001",
+      evidenceSide: "SUPPORT"
     };
     const identity2: SupportResistanceSourceObservationIdentity = {
       providerId: "technical-analysis-api",
-      providerRunId: "run-002"
+      providerRunId: "run-002",
+      evidenceSide: "SUPPORT"
     };
 
     const key1 = await deriveSupportResistanceSourceObservationKey(identity1);
@@ -75,11 +80,13 @@ describe("deriveSupportResistanceSourceObservationKey", () => {
 
     const identity1: SupportResistanceSourceObservationIdentity = {
       providerId: bounded1.providerId,
-      providerRunId: bounded1.providerRunId
+      providerRunId: bounded1.providerRunId,
+      evidenceSide: "RESISTANCE"
     };
     const identity2: SupportResistanceSourceObservationIdentity = {
       providerId: bounded2.providerId,
-      providerRunId: bounded2.providerRunId
+      providerRunId: bounded2.providerRunId,
+      evidenceSide: "RESISTANCE"
     };
 
     const key1 = await deriveSupportResistanceSourceObservationKey(identity1);

@@ -138,8 +138,13 @@ describe("DrizzleNormalizedObservationRepo support resistance integration", () =
       const found = await normalizedRepo.findByRawObservation(rawId, "support_resistance_level");
       expect(found).not.toBeNull();
       expect(found!.id).toBe(inserted.id);
-      expect((found!.payload as SupportResistancePayloadV1).levelType).toBe("point");
-      expect((found!.payload as SupportResistancePayloadV1).levelUsdcPerSol).toBe(150.5);
+      expect(
+        (found!.payload as unknown as { levelType: string; levelUsdcPerSol: number }).levelType
+      ).toBe("point");
+      expect(
+        (found!.payload as unknown as { levelType: string; levelUsdcPerSol: number })
+          .levelUsdcPerSol
+      ).toBe(150.5);
     });
 
     it("round-trips zone payload with isStale true and degraded confidence", async () => {
@@ -195,7 +200,7 @@ describe("DrizzleNormalizedObservationRepo support resistance integration", () =
         compositeScore: 0.35,
         level: "low" as const,
         weightingVersion: "v1",
-        reasons: ["stale_degradation"]
+        reasons: ["stale_input_degraded"] as const
       };
 
       const inserted = await normalizedRepo.insert({
@@ -220,9 +225,33 @@ describe("DrizzleNormalizedObservationRepo support resistance integration", () =
       expect(inserted.confidenceComposite).toBe(0.35);
       expect(inserted.confidenceLevel).toBe("low");
       expect(inserted.staleBehavior).toBe("allow_context_only");
-      expect((inserted.payload as SupportResistancePayloadV1).levelType).toBe("zone");
-      expect((inserted.payload as SupportResistancePayloadV1).zoneLowerUsdcPerSol).toBe(140.0);
-      expect((inserted.payload as SupportResistancePayloadV1).zoneUpperUsdcPerSol).toBe(160.0);
+      expect(
+        (
+          inserted.payload as unknown as {
+            levelType: string;
+            zoneLowerUsdcPerSol: number;
+            zoneUpperUsdcPerSol: number;
+          }
+        ).levelType
+      ).toBe("zone");
+      expect(
+        (
+          inserted.payload as unknown as {
+            levelType: string;
+            zoneLowerUsdcPerSol: number;
+            zoneUpperUsdcPerSol: number;
+          }
+        ).zoneLowerUsdcPerSol
+      ).toBe(140.0);
+      expect(
+        (
+          inserted.payload as unknown as {
+            levelType: string;
+            zoneLowerUsdcPerSol: number;
+            zoneUpperUsdcPerSol: number;
+          }
+        ).zoneUpperUsdcPerSol
+      ).toBe(160.0);
 
       const found = await normalizedRepo.findByRawObservation(rawId, "support_resistance_level");
       expect(found).not.toBeNull();
@@ -301,7 +330,7 @@ describe("DrizzleNormalizedObservationRepo support resistance integration", () =
       });
 
       expect(second.id).toBe(first.id);
-      expect(second.payload).toMatchObject(first.payload);
+      expect(second.payload as object).toMatchObject(first.payload as object);
     });
 
     it("keeps distinct payload hashes independent even under same raw observation", async () => {
@@ -395,8 +424,10 @@ describe("DrizzleNormalizedObservationRepo support resistance integration", () =
       });
 
       expect(second.id).not.toBe(first.id);
-      expect((second.payload as SupportResistancePayloadV1).levelUsdcPerSol).toBe(200.0);
-      expect((first.payload as SupportResistancePayloadV1).levelUsdcPerSol).toBe(180.0);
+      expect((second.payload as unknown as { levelUsdcPerSol: number }).levelUsdcPerSol).toBe(
+        200.0
+      );
+      expect((first.payload as unknown as { levelUsdcPerSol: number }).levelUsdcPerSol).toBe(180.0);
 
       const rows = await normalizedRepo.findBySource(SOURCE, "support_resistance_level", 0);
       const forThisRaw = rows.filter((r) => r.rawObservationId === rawId);

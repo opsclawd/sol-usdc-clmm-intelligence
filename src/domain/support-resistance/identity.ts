@@ -3,6 +3,7 @@ import { canonicalizePayload } from "../content-hash.js";
 export interface SupportResistanceSourceObservationIdentity {
   readonly providerId: string;
   readonly providerRunId: string;
+  readonly evidenceSide: "SUPPORT" | "RESISTANCE";
 }
 
 export interface SupportResistanceEquivalenceIdentity {
@@ -23,7 +24,8 @@ export async function deriveSupportResistanceSourceObservationKey(
 ): Promise<string> {
   const { payloadHash } = await canonicalizePayload({
     providerId: identity.providerId,
-    providerRunId: identity.providerRunId
+    providerRunId: identity.providerRunId,
+    evidenceSide: identity.evidenceSide
   });
   return payloadHash;
 }

@@ -104,19 +104,16 @@ function transformPortToBoundedSnapshot(
   }
 
   const boundedClaims: BoundedSupportResistanceClaim[] = snapshot.claims.map((claim) => {
-    const result: BoundedSupportResistanceClaim = {
-      evidenceSide: claim.evidenceSide
+    return {
+      evidenceSide: claim.evidenceSide,
+      ...(claim.levelUsdcPerSol !== undefined && { levelUsdcPerSol: claim.levelUsdcPerSol }),
+      ...(claim.zoneLowerUsdcPerSol !== undefined && {
+        zoneLowerUsdcPerSol: claim.zoneLowerUsdcPerSol
+      }),
+      ...(claim.zoneUpperUsdcPerSol !== undefined && {
+        zoneUpperUsdcPerSol: claim.zoneUpperUsdcPerSol
+      })
     };
-    if (claim.levelUsdcPerSol !== undefined) {
-      result.levelUsdcPerSol = claim.levelUsdcPerSol;
-    }
-    if (claim.zoneLowerUsdcPerSol !== undefined) {
-      result.zoneLowerUsdcPerSol = claim.zoneLowerUsdcPerSol;
-    }
-    if (claim.zoneUpperUsdcPerSol !== undefined) {
-      result.zoneUpperUsdcPerSol = claim.zoneUpperUsdcPerSol;
-    }
-    return result;
   });
 
   return {
