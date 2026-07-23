@@ -140,6 +140,40 @@ Key Architectural Invariants:
 7. **Solana Network-Health Deferment**: Solana network-health/status ingestion is identified as a separate backlog gap after the deterministic vertical slice. It is excluded from the core source count, and issue #24 completion does not depend on it.
 8. **No Execution Authority**: The pipeline collects evidence and advises only. It does not construct instructions, sign transactions, or execute swaps.
 9. **Operator Handoff**: `pnpm collect:core` is the canonical CLI/operator interface for gathering all four core telemetry sources. Legacy commands remain supported for backwards compatibility.
+10. **Contextual Evidence Boundary**: Missing or expired support/resistance levels are retained in bounded raw evidence and surfaced as degraded warnings, but never become normalized numeric evidence or execution authority.
+
+## Contextual Research Collectors
+
+Contextual research collectors provide lower-confidence contextual evidence that supplements core telemetry. They follow the same raw-first persistence pattern as core collectors.
+
+### Support Resistance Collector (`technical-analysis-api`)
+
+The support resistance collector (`pnpm collect:support-resistance`) collects SOL/USDC support and resistance levels from a technical analysis API provider.
+
+**Source port**: `SupportResistanceSourcePort` in `src/ports/support-resistance-source.ts`
+**HTTP adapter**: `HttpSupportResistanceSource` in `src/adapters/node/http-support-resistance-source.ts`
+**Application use case**: `collectSupportResistance` in `src/application/collect-support-resistance.ts`
+**Job**: `supportResistanceJob` / `runSupportResistanceJob` in `src/jobs/support-resistance-job.ts`
+**CLI script**: `scripts/collectors/support-resistance.ts`
+
+**Data flow**:
+
+```text
+technical-analysis-api provider
+        |
+        v (raw observation, append-only)
+ raw_observations
+        |
+        v (normalized, validated, bounded)
+ normalized_observations (support_resistance_level)
+```
+
+**Key invariants**:
+
+- Only explicit numeric `point` or `zone` values in USDC_PER_SOL are accepted as normalized evidence.
+- Missing or malformed levels are retained as bounded raw evidence with degraded warnings.
+- Provider/run identity, side, timeframe, and thesis are part of equivalence identity for replay detection.
+- API credentials are redacted from diagnostics, logs, and persisted metadata.
 
 ## Deterministic Feature Derivation
 

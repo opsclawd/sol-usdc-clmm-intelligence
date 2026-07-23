@@ -43,3 +43,10 @@ export {
   validatePublishAttemptInsert,
   validatePublishAttemptQueryLimit
 } from "./publish-attempt-repo.js";
+export type {
+  SupportResistanceSourcePort,
+  SupportResistanceSourceRequest,
+  SupportResistanceSourceSnapshot,
+  SupportResistanceSourceError,
+  SupportResistanceSourceClaim
+} from "./support-resistance-source.js";

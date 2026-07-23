@@ -76,6 +76,32 @@ When running `pnpm collect:core` or `runCoreCollectionJob` via scheduling:
 2. Confirm Pyth Hermes endpoint status and check if subscription credentials/API key are required.
 3. Check `clmm-v2` status and verify BFF API keys are correct.
 
+## Support Resistance Collector Exit Behavior
+
+When running `pnpm collect:support-resistance` or `runSupportResistanceJob` via scheduling:
+
+1. **Accepted (Exit Code: 0)**: Support/resistance levels collected, normalized, and persisted successfully (or replayed identically).
+2. **Identical Replay (Exit Code: 0)**: Same payload detected; no new rows created.
+3. **Stale (Exit Code: 0)**: Evidence has expired but raw data retained for contextual purposes.
+4. **Degraded (Exit Code: 0)**: Evidence has warnings (e.g., duplicate equivalent claims, missing/malformed levels). Raw evidence retained but no usable level fabricated.
+5. **Malformed (Exit Code: 1)**: Provider payload failed validation or structure parsing. No raw row written.
+6. **Timeout (Exit Code: 1)**: Request timed out.
+7. **Network (Exit Code: 1)**: Network error occurred.
+8. **Unavailable (Exit Code: 1)**: Service unavailable (e.g., HTTP 429, 404, 5xx).
+9. **Failed (Exit Code: 1)**: Normalization or persistence failure with zero usable evidence.
+10. **Conflict (Exit Code: 1)**: Database uniqueness/identity conflict; pipeline fails closed.
+
+**Missing or expired levels** are retained in bounded raw evidence and surfaced as degraded warnings, but **never become execution authority**.
+
+### Support Resistance API Configuration
+
+Required environment variables:
+
+- `SUPPORT_RESISTANCE_API_URL`: Base URL for the technical analysis API provider.
+- `SUPPORT_RESISTANCE_API_KEY`: Optional API key for authenticated endpoints.
+
+The collector reads `SUPPORT_RESISTANCE_API_URL` and optional `SUPPORT_RESISTANCE_API_KEY` from environment. API credentials are redacted from all output, diagnostics, and persisted metadata.
+
 ## Pre-deployment Preflight Checks
 
 Before deploying any schema migrations or running taxonomy updates, check if there are any historical `price_quote` rows in the database:

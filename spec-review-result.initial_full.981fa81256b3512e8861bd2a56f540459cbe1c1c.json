@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The error redaction logic uses string `replace()` which only replaces the first occurrence of the API key, potentially leaking credentials if the key appears multiple times in the error message.",
+      "file": "src/adapters/node/http-support-resistance-source.ts",
+      "suggested_fix": "Use `diagnostic.split(apiKey).join(\"[REDACTED]\")` or `.replaceAll(apiKey, \"[REDACTED]\")` to ensure all occurrences of the API key are redacted."
+    },
+    {
+      "severity": "P2",
+      "summary": "The error redaction conditionally appends `\" [REDACTED]\"` to the diagnostic message whenever an API key is configured, creating confusing log messages.",
+      "file": "src/adapters/node/http-support-resistance-source.ts",
+      "suggested_fix": "Remove the block `if (apiKey) { redactedDiagnostic = redactedDiagnostic + \" [REDACTED]\"; }`."
+    }
+  ]
+}

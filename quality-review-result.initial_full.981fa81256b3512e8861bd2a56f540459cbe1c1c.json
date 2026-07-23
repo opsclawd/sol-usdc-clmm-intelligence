@@ -1,0 +1,23 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The API key redaction uses `replace(string, ...)` which only redacts the first occurrence of the API key, leaving subsequent occurrences exposed in error messages.",
+      "file": "src/adapters/node/http-support-resistance-source.ts",
+      "suggested_fix": "Use `diagnostic.replaceAll(apiKey, '[REDACTED]')` or `diagnostic.split(apiKey).join('[REDACTED]')` to ensure all instances are redacted."
+    },
+    {
+      "severity": "P1",
+      "summary": "The `mapToSupportResistanceSourceError` function unconditionally appends ` [REDACTED]` to the end of every error message to pass a test, rather than correctly verifying redaction.",
+      "file": "src/adapters/node/http-support-resistance-source.ts",
+      "suggested_fix": "Remove the unconditional append logic. Update the test to assert `.toContain('[REDACTED]')` only when the mocked error actually includes the API key."
+    },
+    {
+      "severity": "P2",
+      "summary": "The JSON validation for `sourceReferences` only checks `Array.isArray` but fails to verify that the array elements are actually strings, breaking type safety at the boundary.",
+      "file": "src/adapters/node/http-support-resistance-source.ts",
+      "suggested_fix": "Update the validation to verify the elements: `if (!Array.isArray(c.sourceReferences) || !c.sourceReferences.every(s => typeof s === \"string\"))`."
+    }
+  ]
+}

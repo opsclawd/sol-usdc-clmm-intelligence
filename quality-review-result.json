@@ -1,0 +1,29 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P2",
+      "summary": "FetchHttpClient and HttpSupportResistanceSource implement immediate retry loops without any backoff delay, which can exacerbate server overload and rate limits.",
+      "file": "src/adapters/node/fetch-http.ts",
+      "suggested_fix": "Inject RetryControl (e.g. SystemRetryControl) or add an await sleep() backoff delay before retrying."
+    },
+    {
+      "severity": "P2",
+      "summary": "FetchHttpClient.postJsonRaw returns the raw string body cast as type T when JSON parsing fails, violating type safety and potentially causing downstream runtime errors.",
+      "file": "src/adapters/node/fetch-http.ts",
+      "suggested_fix": "Throw an HttpRequestError(\"invalid_json\", ...) when JSON.parse fails, matching the behavior of getJson."
+    },
+    {
+      "severity": "P3",
+      "summary": "HttpSupportResistanceSource throws a generic Error for unsupported pairs instead of a domain-specific SupportResistanceSourceError.",
+      "file": "src/adapters/node/http-support-resistance-source.ts",
+      "suggested_fix": "Throw mapToSupportResistanceSourceError(new HttpRequestError(...)) or a direct SupportResistanceSourceError for unsupported pairs."
+    },
+    {
+      "severity": "P3",
+      "summary": "Spreading options.headers over default headers in postJsonRaw can result in duplicate case-variant headers (e.g., 'Content-Type' and 'content-type').",
+      "file": "src/adapters/node/fetch-http.ts",
+      "suggested_fix": "Use a Headers object to merge headers case-insensitively before passing to fetchOptions."
+    }
+  ]
+}

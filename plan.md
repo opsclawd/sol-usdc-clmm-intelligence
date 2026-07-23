@@ -1,274 +1,553 @@
 <!-- plan-review-required -->
 
-# Persisted EvidenceBundle v1 Publisher Implementation Plan
+# SOL/USDC Support/Resistance Evidence Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Load the latest persisted canonical SOL/USDC `EvidenceBundle v1`, validate its stored identity without rebuilding it, publish the exact stored payload to Regime Engine, and append an auditable row for every local or HTTP attempt with bounded retry behavior.
+**Goal:** Collect provider-neutral SOL/USDC support/resistance point and zone assertions, retain a bounded auditable source snapshot, normalize them into contextual evidence with freshness/confidence/provenance, and persist exact replays idempotently without merging distinct sources or disagreements.
 
-**Architecture:** Extend the outbound HTTP port with a single-attempt raw POST operation whose timeout covers fetch and bounded body reading. Add an application use case that owns validation, status mapping, audit persistence, idempotency, retry/backoff, and structured lifecycle events; keep the job and CLI as thin Node wiring. Reuse the pinned contract at `schemas/regime-engine/evidence-bundle.v1/` and the existing `EvidenceBundleRepo`, `PublishAttemptRepo`, `EnvReader`, and `Clock` ports.
+**Architecture:** Add one contextual observation kind and a strict v1 payload contract, then keep provider response shaping, pure validation/normalization/enrichment, and raw-first persistence in separate layers. A source port and its Node HTTP adapter return a licensing-safe bounded snapshot; the application use case feeds that snapshot through the existing `ingestRawObservation` state machine and existing JSONB repositories. A thin job and CLI expose the collector without publishing policy or changing Regime Engine contracts.
 
-**Tech Stack:** TypeScript 5.7, Node fetch/AbortController, Vitest, Drizzle/Postgres repository ports, AJV-backed EvidenceBundle contract, pnpm.
+**Tech Stack:** TypeScript 5.7, Vitest 2, existing `HttpClient`/environment/clock ports, Drizzle-backed raw and normalized observation repositories, Node/tsx CLI, ESLint, Prettier.
 
 ---
 
-## Goal
+### Goal
 
-Provide a fail-closed `pnpm publish:evidence` path that selects the latest persisted `SOL/USDC` bundle, proves its stored schema/hash/canonical/idempotency identity still matches the pinned `evidence-bundle.v1` contract, POSTs `bundle.payload` unchanged to `/v1/evidence/sol-usdc`, and reports created, replayed, permanent-failure, exhausted-retry, and audit-store-failure outcomes without exposing the auth token.
+Deliver the first PR-sized contextual-evidence slice from issue #27: one configurable technical-analysis source, strict point/zone normalization, bounded raw retention, deterministic within-run equivalence grouping, exact replay handling, explicit stale/degraded outcomes, and an operator-facing command.
 
-## Non-goals
+### Non-goals
 
-- Do not assemble, enrich, normalize, recanonicalize for transmission, or otherwise mutate evidence.
-- Do not call collectors, feature calculators, LLMs, research-brief generators, legacy final-insight endpoints, or execution systems.
-- Do not add a new evidence schema, duplicate Regime Engine's contract, or change bundle/publish-attempt database schemas.
-- Do not add indefinite scheduler retries or automatically publish every historical bundle.
-- Do not interpret Regime Engine responses as policy decisions.
+- Do not publish an evidence bundle to Regime Engine or change the canonical `PolicyInsight` contract.
+- Do not alter clmm-v2 guards, execution rules, rebalance logic, transaction code, or user-facing UI.
+- Do not create macro, incident, news, regulatory, on-chain-flow, perp, liquidation, or LLM-brief collectors.
+- Do not infer numeric levels from prose, convert points into zones, combine distinct providers into consensus, or overwrite historical normalized evidence.
+- Do not add a database migration: the existing raw and normalized JSONB payload columns and uniqueness constraints are sufficient.
+- Do not add retries beyond the existing `HttpClient` request options; unavailable sources produce an explicit non-persisting outcome.
 
-## Contract assumptions and preconditions
+### Affected files
 
-- The pinned schema source is Regime Engine commit `ff821935acf7d7ce2844b9d667bea0bcc6f98ce8`, schema path `contracts/evidence-bundle/v1/evidence-bundle.schema.json`, version `evidence-bundle.v1`, and SHA-256 `0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17`, as recorded in `schemas/regime-engine/evidence-bundle.v1/provenance.json`.
-- The endpoint is `${REGIME_ENGINE_BASE_URL}/v1/evidence/sol-usdc`; bearer authentication and `Idempotency-Key` are assumed to be the merged #59 wire requirements described by `issue.md` and `design.md`.
-- Selection is deliberately `EvidenceBundleRepo.findLatestByPair("SOL/USDC")`; no new repository method is needed. A missing row is visible as a terminal invocation failure but cannot create an audit row because no bundle identity exists.
-- `requestHash` equals the verified persisted `payloadHash`: the request entity is exactly the stored payload, with no envelope or enrichment.
-- `researchBriefId` remains `null`; the canonical payload may contain `researchBrief: null`, but there is no persisted brief-row ID on `EvidenceBundleRow`.
+- `src/contracts/taxonomy.ts`
+- `src/contracts/support-resistance.ts` (new)
+- `src/contracts/index.ts`
+- `src/domain/taxonomy/registry.ts`
+- `tests/contracts/support-resistance.test.ts` (new)
+- `tests/domain/taxonomy/registry.test.ts`
+- `tests/domain/taxonomy/confidence.test.ts`
+- `src/domain/support-resistance/validate.ts` (new)
+- `src/domain/support-resistance/normalize.ts` (new)
+- `src/domain/support-resistance/identity.ts` (new)
+- `src/domain/support-resistance/enrich.ts` (new)
+- `src/domain/support-resistance/index.ts` (new)
+- `tests/fixtures/support-resistance.ts` (new)
+- `tests/domain/support-resistance/validate.test.ts` (new)
+- `tests/domain/support-resistance/normalize.test.ts` (new)
+- `tests/domain/support-resistance/identity.test.ts` (new)
+- `tests/domain/support-resistance/enrich.test.ts` (new)
+- `src/ports/support-resistance-source.ts` (new)
+- `src/ports/index.ts`
+- `src/adapters/node/http-support-resistance-source.ts` (new)
+- `tests/fakes/fake-support-resistance-source.ts` (new)
+- `tests/fakes/index.ts`
+- `tests/adapters/node/http-support-resistance-source.test.ts` (new)
+- `src/application/collect-support-resistance.ts` (new)
+- `tests/application/collect-support-resistance.test.ts` (new)
+- `tests/adapters/node/drizzle-support-resistance.integration.test.ts` (new)
+- `src/jobs/support-resistance-job.ts` (new)
+- `src/jobs/index.ts`
+- `scripts/collectors/support-resistance.ts` (new)
+- `tests/jobs/support-resistance-job.test.ts` (new)
+- `tests/scripts/support-resistance.test.ts` (new)
+- `package.json`
+- `.env.example`
+- `README.md`
+- `docs/architecture.md`
+- `docs/operator-runbook.md`
 
-## Affected files
+### Behavioral model and invariants
 
-- `src/ports/http.ts` — raw POST request/response contract.
-- `src/ports/retry.ts` — injectable sleep and jitter port (introduced in Task 1 so Task 2 can reference it as optional).
-- `src/ports/index.ts` — port exports.
-- `src/adapters/node/fetch-http.ts` — one-shot POST, lifecycle timeout, bounded body capture.
-- `src/adapters/node/system-retry.ts` — production sleep/random implementation.
-- `src/adapters/node/composition-root.ts` — expose retry control through `NodeRuntime`.
-- `src/application/publish-evidence-bundle.ts` — publisher state machine, validation, mapping, auditing, retry policy (optional retry in Task 2, required in Task 3), and event types.
-- `src/jobs/publish-evidence-bundle-job.ts` — thin job wrapper.
-- `src/jobs/index.ts` — job export.
-- `scripts/collectors/publish-evidence-bundle.ts` — CLI/runtime composition and operator-safe output.
-- `tests/fakes/fake-http.ts` — programmable raw POST fake.
-- `tests/fakes/fake-retry.ts` — deterministic sleep/jitter fake.
-- `tests/fakes/index.ts` — fake export.
-- `tests/adapters/node/fetch-http.test.ts` — POST adapter contract cases.
-- `tests/application/publish-evidence-bundle.test.ts` — publisher transition and audit cases.
-- `tests/scripts/publish-evidence-bundle.test.ts` — CLI wiring, exit, and redaction cases.
-- `package.json` — `publish:evidence` command.
-- `.env.example` — Regime Engine URL/token configuration.
-- `README.md` — current publisher capability and boundary.
-- `docs/operator-runbook.md` — configuration, outcomes, audit queries, and recovery.
+The collection flow reuses `ingestRawObservation` and must preserve these transitions:
 
-## Behavioral invariants
+| Input / current state                                                 | Required transition and observable result                                                                                                                             |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Source timeout/network/unavailable                                    | Return an unavailable outcome; create no raw or normalized row.                                                                                                       |
+| Adapter payload cannot be bounded/validated                           | Return malformed; create no raw or normalized row.                                                                                                                    |
+| New source-run identity + valid retained snapshot                     | Insert raw as `pending`, normalize accepted claims, then set raw to `parsed`.                                                                                         |
+| New raw row + no claim with an explicit point or complete zone        | Retain raw material, insert no normalized claim for the missing level, set raw to `parsed`, and return degraded with `missing_level`.                                 |
+| Normalization/persistence throws after raw insert                     | Best-effort transition raw from `pending` to `failed`; preserve the original error as the diagnostic.                                                                 |
+| Existing `parsed` identity + identical raw hash                       | Return `identical_replay`, reuse the raw row, and insert no additional normalized rows.                                                                               |
+| Existing `pending` or `failed` identity + identical raw hash          | Revalidate stored canonical content, insert missing normalized rows idempotently, and transition to `parsed`.                                                         |
+| Existing identity + different raw hash                                | Return conflict; do not overwrite raw or normalized history.                                                                                                          |
+| Same provider/run contains deterministically equivalent claims        | Retain both claims in raw material but emit one normalized claim with a `duplicate_equivalent_claim` warning.                                                         |
+| Same level comes from different providers or different run identities | Persist independently; never merge into consensus.                                                                                                                    |
+| Claim is expired/stale at collection time                             | Persist as contextual evidence with `isStale=true`, `allow_context_only`, a stale warning, and freshness-degraded confidence; never expose it as execution authority. |
 
-1. `local-invalid-never-sends`: when the selected row is missing, has an unsupported schema version, fails pinned validation, or disagrees with its stored canonical text/hash/idempotency key, no HTTP request occurs; identified rows receive exactly one `validation_failed` audit attempt.
-2. `exact-persisted-payload-and-identity`: every network attempt passes the same `bundle.payload` object, `payloadHash`, and `idempotencyKey`; retries never rebuild or mutate them.
-3. `created-and-replay-terminate-successfully`: HTTP 201 becomes `created`; HTTP 200 becomes `idempotent_replay`; each writes one completed audit row and stops.
-4. `permanent-http-failures-do-not-retry`: 400/422 become `validation_failed`, 401/403 become `auth_failed`, 409 becomes `conflict`, and other permanent 4xx become `unknown_failed`; each is audited once and terminates.
-5. `transient-failures-retry-at-most-three-total-attempts`: transport timeout/network errors, 408, 429, and 5xx become `network_failed`; after audit insertion they transition to delay then the next attempt, never beyond attempt 3.
-6. `retry-delay-is-bounded`: exponential delay plus injected jitter, or a valid `Retry-After`, is clamped to the documented maximum; tests never depend on wall-clock randomness.
-7. `audit-before-transition`: the use case does not return success, schedule a retry, or return terminal HTTP failure until the corresponding audit insert succeeds.
-8. `audit-failure-stops-publication`: a thrown insert or attempt-identity conflict becomes visible `audit_store_failed` and prevents any later retry, because continuing would create unaudited attempts.
-9. `concurrent-duplicate-is-not-silent`: Regime Engine receives the stable idempotency key; if concurrent publishers collide on the audit identity, one stored attempt wins and the loser emits/returns an audit conflict rather than claiming success.
-10. `secret-free-observability`: lifecycle events and CLI output include bundle ID, attempt, status, and endpoint target but never the bearer token; captured response data is bounded and recursively redacts secret-like keys.
+The exact invariant names and test case names are repeated in `task-manifest.json`; implementers write those tests before implementation.
 
-## Task 1: Add single-attempt bounded raw POST HTTP operation and RetryControl port
+## Task 1: Define the support/resistance contract and taxonomy policy
 
 **Files:**
 
-- Modify: `src/ports/http.ts`
+- Modify: `src/contracts/taxonomy.ts`
+- Create: `src/contracts/support-resistance.ts`
+- Modify: `src/contracts/index.ts`
+- Modify: `src/domain/taxonomy/registry.ts`
+- Create: `tests/contracts/support-resistance.test.ts`
+- Modify: `tests/domain/taxonomy/registry.test.ts` only in the `observationKindRegistry` kind list and a new dedicated `support_resistance_level` describe block
+- Modify: `tests/domain/taxonomy/confidence.test.ts` only to account for the extended `ConfidenceReason` union in type-checking contexts
+
+**Exported API changes:** extend `ObservationKind` with `"support_resistance_level"`, extend `Source` with `"technical-analysis-api"`, and export the new raw snapshot, claim, normalized payload, warning, and collection-result types from `src/contracts/support-resistance.ts` through `src/contracts/index.ts`. No existing repository-port method changes in this task.
+
+- [ ] **Step 1: Write the contract and registry tests first.**
+
+  Add exact test cases named `represents point and zone levels without silent conversion` and `registers support resistance as contextual support_resistance evidence`. The contract test should compile representative payloads with the following discriminated shape and assert that point-only fields do not appear on a zone and zone bounds do not appear on a point:
+
+  ```ts
+  export type SupportResistanceLevel =
+    | {
+        readonly levelType: "point";
+        readonly levelUsdcPerSol: number;
+      }
+    | {
+        readonly levelType: "zone";
+        readonly zoneLowerUsdcPerSol: number;
+        readonly zoneUpperUsdcPerSol: number;
+      };
+
+  export type SupportResistancePayloadV1 = SupportResistanceLevel & {
+    readonly kind: "support_resistance_level";
+    readonly schemaVersion: 1;
+    readonly pair: "SOL/USDC";
+    readonly unit: "USDC_PER_SOL";
+    readonly evidenceSide: "SUPPORT" | "RESISTANCE";
+    readonly timeframe: string;
+    readonly thesisCodes: readonly string[];
+    readonly asOfUnixMs: number;
+    readonly expiresAtUnixMs: number;
+    readonly invalidationConditions: readonly string[];
+    readonly warnings: readonly SupportResistanceWarning[];
+    readonly sourceReferences: readonly string[];
+    readonly sourceQuality: {
+      readonly providerId: string;
+      readonly reliability: number;
+      readonly completeness: "complete" | "partial";
+    };
+  };
+  ```
+
+  The registry test must assert evidence family `support_resistance`, signal class `contextual`, stale behavior `allow_context_only`, schema version `1`, and only `technical-analysis-api` in allowed direct source refs.
+
+- [ ] **Step 2: Run the focused tests and confirm the expected red state.**
+
+  Run: `pnpm exec vitest run tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts`
+
+  Expected: FAIL because the new contract exports and registry entry do not exist.
+
+- [ ] **Step 3: Add the minimal contracts and policy.**
+
+  Define a provider-neutral retained snapshot with `providerId`, `providerRunId`, `pair`, `asOfUnixMs`, `sourceReferences`, and `claims`. Each raw claim permits optional point/zone fields so missing-level source material can be retained, and includes bounded `sourceExtract?: string`; the strict normalized union above must not permit an absent or mixed level. Add warning codes:
+
+  ```ts
+  export type SupportResistanceWarning =
+    | "ambiguous_source_claim"
+    | "conflicting_source_claim"
+    | "duplicate_equivalent_claim"
+    | "missing_invalidation_conditions"
+    | "missing_level"
+    | "missing_source_reference"
+    | "stale_observation";
+  ```
+
+  Add `SupportResistanceCollectionResult` with statuses `accepted | degraded | stale | identical_replay | conflict | malformed | timeout | network | unavailable | failed`, `hasUsableEvidence`, raw ID/count, warnings, freshness, confidence level, and diagnostic. Extend `ConfidenceReason` with `contextual_source_quality_cap_applied` so a contextual cap is auditable. Register a 24-hour maximum observed age, source-expiry-aware freshness, `allow_context_only`, and confidence weights of source reliability `0.45`, completeness `0.35`, derivation confidence `0.20`, and LLM confidence `0`.
+
+- [ ] **Step 4: Run focused verification.**
+
+  Run: `pnpm exec vitest run tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts`
+
+  Expected: PASS, including the two named cases.
+
+  Run: `pnpm exec eslint src/contracts/taxonomy.ts src/contracts/support-resistance.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts --max-warnings 0`
+
+  Expected: exit 0.
+
+  Run: `pnpm exec prettier --check src/contracts/taxonomy.ts src/contracts/support-resistance.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts`
+
+  Expected: all listed files use Prettier formatting.
+
+- [ ] **Step 5: Commit the contract slice.**
+
+  ```bash
+  git add src/contracts/taxonomy.ts src/contracts/support-resistance.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts
+  git commit -m "feat: define support resistance evidence contract"
+  ```
+
+## Task 2: Implement pure validation, normalization, equivalence, and enrichment
+
+**Files:**
+
+- Create: `src/domain/support-resistance/validate.ts`
+- Create: `src/domain/support-resistance/normalize.ts`
+- Create: `src/domain/support-resistance/identity.ts`
+- Create: `src/domain/support-resistance/enrich.ts`
+- Create: `src/domain/support-resistance/index.ts`
+- Create: `tests/fixtures/support-resistance.ts`
+- Create: `tests/domain/support-resistance/validate.test.ts`
+- Create: `tests/domain/support-resistance/normalize.test.ts`
+- Create: `tests/domain/support-resistance/identity.test.ts`
+- Create: `tests/domain/support-resistance/enrich.test.ts`
+
+**Exported API changes:** add pure exported functions `acceptSupportResistanceSnapshot`, `normalizeSupportResistanceClaims`, `deriveSupportResistanceSourceObservationKey`, `deriveSupportResistanceEquivalenceKey`, and `enrichSupportResistanceClaim`, plus their input/output/error types. Existing signatures remain unchanged.
+
+- [ ] **Step 1: Add fixtures and failing validation/normalization tests.**
+
+  Build one reusable snapshot fixture containing a support point and resistance zone. Write these exact cases first:
+  - `accepts a bounded SOL/USDC snapshot and trims retained extracts to 500 characters`
+  - `rejects the wrong pair invalid timestamps and out-of-range source reliability`
+  - `normalizes an explicit point without zone fields`
+  - `normalizes ordered zone bounds without a point field`
+  - `does not fabricate a normalized claim when a source claim has no numeric level`
+  - `rejects mixed point and zone fields and inverted or non-positive bounds`
+  - `adds explicit warnings for missing references invalidation rules and ambiguity`
+
+  Validation must clone only the allowlisted fields from the unknown response. It must never retain arbitrary provider keys or a full article body. Normalize strings by trimming, deduplicate/sort thesis codes, invalidation conditions, warnings, and references, while preserving explicit point-versus-zone semantics.
+
+- [ ] **Step 2: Run validation/normalization tests and confirm they fail.**
+
+  Run: `pnpm exec vitest run tests/domain/support-resistance/validate.test.ts tests/domain/support-resistance/normalize.test.ts`
+
+  Expected: FAIL because the pure domain modules do not exist.
+
+- [ ] **Step 3: Implement strict acceptance and normalization.**
+
+  `acceptSupportResistanceSnapshot(input: unknown)` must require a non-empty provider/run identity, `SOL/USDC`, finite integer timestamps, an array of claims, arrays for source references whose present entries are non-empty strings, and reliability in `[0, 1]`; return a newly built bounded snapshot rather than the original object. Empty reference arrays remain representable and produce `missing_source_reference` during normalization. `normalizeSupportResistanceClaims(snapshot)` must return both accepted payloads and rejected claim diagnostics so a missing level becomes unavailable/degraded rather than fabricated.
+
+  Use the following deterministic level validation:
+
+  ```ts
+  if (claim.levelType === "point") {
+    accept only Number.isFinite(levelUsdcPerSol) && levelUsdcPerSol > 0;
+    reject any supplied zone bound;
+  }
+  if (claim.levelType === "zone") {
+    accept only finite positive lower/upper bounds with lower < upper;
+    reject any supplied point value;
+  }
+  otherwise reject with "missing_level";
+  ```
+
+  Preserve a source-supplied expiry even when already expired; do not rewrite it to a future time.
+
+- [ ] **Step 4: Add failing identity/equivalence tests.**
+
+  Write exact cases:
+  - `derives a source observation key from provider and provider run identity`
+  - `groups only materially equivalent claims from the same provider run`
+  - `keeps point and zone assertions distinct`
+  - `keeps different sides timeframes theses providers and runs distinct`
+
+  The equivalence key must canonicalize exactly: provider ID, provider run ID, pair, side, level type, point or both zone bounds, timeframe, and sorted thesis codes. Do not include warnings, prose extract, source URL order, or invalidation prose, because those do not change the asserted technical level; do include provider/run so cross-source claims remain independent.
+
+- [ ] **Step 5: Implement deterministic identity and within-run grouping.**
+
+  Hash canonical identity objects with the existing `canonicalizePayload`; group duplicates in original claim order, retain one normalized payload, and append `duplicate_equivalent_claim`. The source observation key must be a stable hash-derived `providerId:providerRunId` identity and must not include fetched time, so exact source-run replays hit the existing raw uniqueness boundary.
+
+- [ ] **Step 6: Add failing enrichment tests.**
+
+  Write exact cases:
+  - `enriches a fresh claim with contextual taxonomy confidence and direct raw provenance`
+  - `caps confidence at source quality and completeness`
+  - `marks an expired claim stale and degrades confidence for context-only use`
+
+  Assert `sourceValidUntilUnixMs` is passed to `computeFreshness`, provenance contains the raw observation ref and process metadata, stale payloads gain `stale_observation`, and normalized payload hashes are computed after warnings are finalized.
+
+- [ ] **Step 7: Implement enrichment with existing taxonomy primitives.**
+
+  Build direct provenance from the raw row using source `technical-analysis-api`, collector `http-support-resistance-source`, job `support-resistance-enrichment`, code version, and pipeline run ID. Compute completeness from presence of references and invalidation conditions; use the source reliability directly, derivation confidence `1`, and no LLM confidence. After `computeConfidence`, cap the composite at `Math.min(sourceReliability, dataCompleteness)`, rederive the level with the registry thresholds, and add `contextual_source_quality_cap_applied` when the cap changes the score. Apply the stale factor before that cap so expiry can only reduce confidence. Pass `{ factor: 0.5 }` for stale claims and validate provenance against the new taxonomy entry.
+
+- [ ] **Step 8: Run focused verification.**
+
+  Run: `pnpm exec vitest run tests/domain/support-resistance/validate.test.ts tests/domain/support-resistance/normalize.test.ts tests/domain/support-resistance/identity.test.ts tests/domain/support-resistance/enrich.test.ts`
+
+  Expected: PASS for all named point, zone, missing, equivalence, freshness, confidence, and provenance cases.
+
+  Run: `pnpm exec eslint src/domain/support-resistance tests/domain/support-resistance tests/fixtures/support-resistance.ts --max-warnings 0`
+
+  Expected: exit 0.
+
+  Run: `pnpm exec prettier --check src/domain/support-resistance tests/domain/support-resistance tests/fixtures/support-resistance.ts`
+
+  Expected: all listed paths use Prettier formatting.
+
+- [ ] **Step 9: Commit the pure domain slice.**
+
+  ```bash
+  git add src/domain/support-resistance tests/domain/support-resistance tests/fixtures/support-resistance.ts
+  git commit -m "feat: normalize support resistance claims"
+  ```
+
+## Task 3: Add the source port and Node HTTP adapter together
+
+**Files:**
+
+- Create: `src/ports/support-resistance-source.ts`
 - Modify: `src/ports/index.ts`
-- Modify: `src/adapters/node/fetch-http.ts`
-- Modify: `tests/fakes/fake-http.ts`
-- Modify: `tests/adapters/node/fetch-http.test.ts` (only add a new `postJsonRaw` describe block; do not rewrite existing GET cases)
-- Create: `src/ports/retry.ts`
-- Create: `src/adapters/node/system-retry.ts`
-- Create: `tests/fakes/fake-retry.ts`
+- Create: `src/adapters/node/http-support-resistance-source.ts`
+- Create: `tests/fakes/fake-support-resistance-source.ts`
 - Modify: `tests/fakes/index.ts`
-- Modify: `src/adapters/node/composition-root.ts`
+- Create: `tests/adapters/node/http-support-resistance-source.test.ts`
 
-**Signature changes:** `HttpClient` gains required `postJsonRaw<T>()`; new exported `HttpResponse<T>` describes status, `ok`, bounded parsed-or-text body, and normalized headers. `RetryControl` port and both production/fake implementations are introduced so `PublishEvidenceBundleDeps` can reference it as optional from Task 2 onward.
+**Port/interface atomicity:** this task adds `SupportResistanceSourcePort.collect` and includes both concrete implementations in the same task: `HttpSupportResistanceSource` for Node and `FakeSupportResistanceSource` for tests. Do not commit the port without both implementations; the automatic workspace `pnpm -r typecheck` gate must pass after this task.
 
-- [ ] Write failing adapter tests named `postJsonRaw sends one JSON POST with caller headers and no implicit retry`, `postJsonRaw returns non-2xx status body and headers without throwing`, `postJsonRaw bounds UTF-8 response capture to 10240 bytes`, `postJsonRaw timeout covers response body reading`, and `postJsonRaw converts fetch and body-read transport failures to HttpRequestError`. Assert `method: "POST"`, `Content-Type: application/json`, caller authorization/idempotency headers, one fetch call even for 429/503, and a fresh abort signal.
-- [ ] Define the port shape before implementation:
+**Exported API changes:** export `SupportResistanceSourcePort`, `SupportResistanceSourceRequest`, `SupportResistanceSourceError`, and `HttpSupportResistanceSource`. The required method shape is `collect(request: SupportResistanceSourceRequest): Promise<SupportResistanceSourceSnapshot>`.
 
-  ```ts
-  export interface HttpResponse<T = unknown> {
-    readonly status: number;
-    readonly ok: boolean;
-    readonly body: T;
-    readonly headers: Readonly<Record<string, string>>;
-  }
+- [ ] **Step 1: Write adapter contract tests first.**
 
-  export interface HttpClient {
-    getJson<T>(url: string, options?: HttpRequestOptions): Promise<T>;
-    postJsonRaw<T = unknown>(
-      url: string,
-      body: unknown,
-      options?: HttpRequestOptions
-    ): Promise<HttpResponse<T>>;
-  }
-  ```
+  Add exact cases:
+  - `fetches SOL/USDC claims with bounded request options and an optional bearer credential`
+  - `returns only the validated bounded snapshot and never retains unknown provider fields`
+  - `classifies timeout network http status and malformed payload failures without leaking credentials`
 
-- [ ] Implement `postJsonRaw` as exactly one fetch call. Start one timeout before fetch and clear it only after bounded body reading; read at most 10,240 UTF-8 bytes from the response stream, cancel the reader after the bound, parse complete valid JSON and otherwise retain text, normalize response headers, return all HTTP statuses, and throw `HttpRequestError` only for timeout/network/body-read transport failures. Do not reuse the GET retry loop.
-- [ ] Extend `FakeHttp` with queued POST responses/errors and call records that retain the exact body reference and options; keep existing GET behavior compatible.
-- [ ] Add `RetryControl` injectable port and implementations:
+  Configure the adapter through a constructor object containing `http`, `url`, optional `apiKey`, `timeoutMs: 5000`, and `maxAttempts: 2`. Assert the credential is sent only in the request header and no thrown diagnostic contains it.
+
+- [ ] **Step 2: Run the adapter test and confirm it fails.**
+
+  Run: `pnpm exec vitest run tests/adapters/node/http-support-resistance-source.test.ts`
+
+  Expected: FAIL because the port, fake, and adapter do not exist.
+
+- [ ] **Step 3: Define the port and both implementations in one change.**
+
+  Use a narrow request:
 
   ```ts
-  export interface RetryControl {
-    sleep(ms: number): Promise<void>;
-    jitterUnit(): number; // finite value in [0, 1]
+  export interface SupportResistanceSourceRequest {
+    readonly pair: "SOL/USDC";
+  }
+
+  export interface SupportResistanceSourcePort {
+    collect(request: SupportResistanceSourceRequest): Promise<SupportResistanceSourceSnapshot>;
   }
   ```
 
-  `SystemRetryControl` uses `setTimeout` and `Math.random`; `FakeRetry` records delays and returns queued jitter values.
+  The HTTP adapter calls `getJson<unknown>`, passes the unknown response through `acceptSupportResistanceSnapshot`, and maps `HttpRequestError` to `SupportResistanceSourceError` kinds `timeout | network | unavailable | malformed`. Treat HTTP 404, 429, and 5xx as unavailable; invalid JSON or domain-validation failure as malformed; other transport failures as network. Store only configured fake responses in the test fake and record requests for assertions.
 
-- [ ] Wire `RetryControl` into `NodeRuntime`; export both `RetryControl` and `SystemRetryControl` from their respective index files.
-- [ ] Run the scoped tests and inspect only the new section:
+- [ ] **Step 4: Run focused verification.**
+
+  Run: `pnpm exec vitest run tests/adapters/node/http-support-resistance-source.test.ts`
+
+  Expected: PASS for request shaping, bounded response projection, failure classification, and secret redaction.
+
+  Run: `pnpm exec eslint src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts --max-warnings 0`
+
+  Expected: exit 0.
+
+  Run: `pnpm exec prettier --check src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts`
+
+  Expected: all listed files use Prettier formatting.
+
+- [ ] **Step 5: Commit the complete port/adapter slice.**
 
   ```bash
-  pnpm vitest run tests/adapters/node/fetch-http.test.ts -t postJsonRaw
-  sed -n '/describe("postJsonRaw"/,/^  });/p' tests/adapters/node/fetch-http.test.ts
+  git add src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts
+  git commit -m "feat: add support resistance source adapter"
   ```
 
-- [ ] Commit: `git add src/ports/http.ts src/ports/index.ts src/ports/retry.ts src/adapters/node/fetch-http.ts src/adapters/node/system-retry.ts src/adapters/node/composition-root.ts tests/fakes/fake-http.ts tests/fakes/fake-retry.ts tests/fakes/index.ts tests/adapters/node/fetch-http.test.ts && git commit -m "feat: add auditable raw JSON POST transport and RetryControl port"`
-
-## Task 2: Implement local validation, terminal response mapping, and attempt auditing (single-shot, retry stub)
+## Task 4: Orchestrate raw-first collection and durable idempotency
 
 **Files:**
 
-- Create: `src/application/publish-evidence-bundle.ts`
-- Create: `tests/application/publish-evidence-bundle.test.ts`
+- Create: `src/application/collect-support-resistance.ts`
+- Create: `tests/application/collect-support-resistance.test.ts`
+- Create: `tests/adapters/node/drizzle-support-resistance.integration.test.ts`
 
-**Signature changes:** Add exported `PublishEvidenceBundleDeps` (with optional `retry?: RetryControl`), `PublishEvidenceBundleConfig`, `PublishEvidenceBundleEvent`, `PublishEvidenceBundleResult`, and `publishEvidenceBundle`. These are new application API declarations; later callers must use these exact names. `retry` is optional here to allow single-shot tests to compile; Task 3 makes it required and implements the retry loop.
+**Exported API changes:** add `CollectSupportResistanceDeps` and `collectSupportResistance(deps, context): Promise<SupportResistanceCollectionResult>`. Existing raw and normalized repository ports and adapters are deliberately unchanged.
 
-- [ ] Write the named invariant tests first: `local invalid never sends and audits validation_failed`, `exact persisted payload and identity are sent unchanged`, `201 audits created and terminates`, `200 audits idempotent replay and terminates`, `400 and 422 audit validation_failed without retry`, `401 and 403 audit auth_failed without retry`, `409 audits conflict without retry`, `other permanent 4xx audit unknown_failed without retry`, `audit insert completes before terminal outcome is returned`, `deterministic-only null-brief fixture publishes unchanged`, and `response secrets are redacted before audit persistence`.
-- [ ] Define a discriminated result with success outcomes `created | idempotent_replay` and failure outcomes `bundle_not_found | local_validation_failed | validation_failed | auth_failed | conflict | permanent_http_failed | audit_store_failed`; include bundle ID/attempt count where available, but never token/config secrets.
-- [ ] Load `REGIME_ENGINE_BASE_URL` and `REGIME_ENGINE_AUTH_TOKEN` through `EnvReader.get`. Normalize one trailing slash, reject URL credentials and non-HTTP(S) protocols, and construct only `/v1/evidence/sol-usdc`. Never place the token in events, errors, or results.
-- [ ] Select `findLatestByPair("SOL/USDC")`. Validate `schemaVersion`, call `contract.validateCanonicalizeAndHash(bundle.payload)`, and compare returned `payloadCanonical`, `payloadHash`, and `idempotencyKey` with every stored field. This is verification only: transmit `bundle.payload`, not the contract return payload and not `JSON.parse(bundle.payloadCanonical)`.
-- [ ] For an identified malformed row, insert attempt 1 with `validation_failed`, null HTTP status, bounded/redacted diagnostic data, `requestHash === payloadHash`, and completed timestamps. For a missing row, emit/return `bundle_not_found` without fabricating an audit identity.
-- [ ] Send one request with `Authorization: Bearer <token>`, `Idempotency-Key`, 5,000 ms timeout, and `maxAttempts: 1`; classify statuses per the invariants and insert the completed audit row before returning. Store at most the already-bounded response, recursively replacing values under keys matching `authorization|token|secret|api[-_]?key` with `[REDACTED]`.
-- [ ] Treat `PublishAttemptRepo.insert().outcome === "conflict"` and thrown insert errors as `audit_store_failed`; emit the safe `audit_persistence_failed` event and never claim the HTTP outcome succeeded.
-- [ ] The retry field is declared optional in `PublishEvidenceBundleDeps`; when absent or when the single-shot test path is taken, no retry delay is invoked and the single attempt is terminal.
-- [ ] Run:
+- [ ] **Step 1: Write collection state-transition tests first.**
+
+  Add these exact test cases before the use case:
+  - `persists bounded raw material before normalized claims and marks the raw row parsed`
+  - `returns unavailable without persistence when the source cannot be collected`
+  - `returns malformed without persistence when the bounded source payload is invalid`
+  - `retains a missing-level claim as raw degraded evidence without fabricating a normalized level`
+  - `marks the raw row failed when normalization persistence fails`
+  - `collapses an identical parsed replay without duplicate normalized rows`
+  - `recovers an identical pending or failed replay and transitions it to parsed`
+  - `rejects a conflicting replay without overwriting history`
+  - `groups equivalent same-provider-run claims and records a duplicate warning`
+  - `preserves different providers runs sides timeframes and theses independently`
+  - `persists expired evidence as stale context-only evidence with degraded confidence`
+
+  Use `FakeSupportResistanceSource`, `FakeObservationRepo`, `FakeNormalizedObservationRepo`, and a fixed `CollectionRunContext`. Assert raw canonical JSON contains only the accepted bounded snapshot and request metadata contains provider ID, provider run ID, pair, code version, and pipeline run ID but never an API key, bearer header, or arbitrary provider response field.
+
+- [ ] **Step 2: Run the application test and confirm it fails.**
+
+  Run: `pnpm exec vitest run tests/application/collect-support-resistance.test.ts`
+
+  Expected: FAIL because `collectSupportResistance` does not exist.
+
+- [ ] **Step 3: Implement collection by composing existing ingestion behavior.**
+
+  Dependencies are the source port, clock/env metadata, raw repository, and normalized repository. The use case must:
+  1. call the source port for `SOL/USDC` and map `SupportResistanceSourceError` without persistence;
+  2. canonicalize the already-bounded snapshot and derive the provider/run source identity;
+  3. call `ingestRawObservation` with source `technical-analysis-api` and parse status `pending`;
+  4. revalidate stored canonical content for pending/failed replay recovery;
+  5. normalize, group equivalent claims, enrich each accepted claim, and call `insertMany` once;
+  6. rely on `ingestRawObservation` to classify identical/conflicting raw identities and finalize `parsed`/`failed` status;
+  7. derive result status as stale when every usable row is stale, degraded when any claim was rejected or warned, identical replay only after recovering existing normalized rows, and accepted otherwise.
+
+  When an already parsed replay returns `normalizedCount: 0`, call existing `findBySource(SOURCE, "support_resistance_level", rawRow.receivedAtUnixMs)` and filter the returned rows by `rawObservationId` for the result summary; `findByRawObservation` returns only one row and is insufficient for a multi-claim snapshot. Do not interpret zero new rows as zero usable evidence. The use case writes no compatibility JSON file.
+
+- [ ] **Step 4: Add database-backed tests for the unchanged persistence boundary.**
+
+  In the new integration file, follow the existing `DATABASE_URL` skip/cleanup pattern from `tests/adapters/node/drizzle-observation-repos.integration.test.ts`. Add exact cases:
+  - `persists support resistance JSONB confidence freshness and provenance without a schema migration`
+  - `returns the existing normalized row for an identical payload hash and keeps distinct payloads independent`
+
+  Exercise only `DrizzleObservationRepo` and `DrizzleNormalizedObservationRepo`. Verify point and zone payloads round-trip, `validUntilUnixMs`, `isStale`, `allow_context_only`, confidence, and raw provenance survive mapping. Use unique provider/run keys so the test remains isolated.
+
+- [ ] **Step 5: Run focused verification.**
+
+  Run: `pnpm exec vitest run tests/application/collect-support-resistance.test.ts tests/adapters/node/drizzle-support-resistance.integration.test.ts`
+
+  Expected: PASS; when `DATABASE_URL` is absent, only the integration cases are explicitly skipped by their existing test-environment guard.
+
+  Run: `pnpm exec eslint src/application/collect-support-resistance.ts tests/application/collect-support-resistance.test.ts tests/adapters/node/drizzle-support-resistance.integration.test.ts --max-warnings 0`
+
+  Expected: exit 0.
+
+  Run: `pnpm exec prettier --check src/application/collect-support-resistance.ts tests/application/collect-support-resistance.test.ts tests/adapters/node/drizzle-support-resistance.integration.test.ts`
+
+  Expected: all listed files use Prettier formatting.
+
+- [ ] **Step 6: Commit the durable collection slice.**
 
   ```bash
-  pnpm vitest run tests/application/publish-evidence-bundle.test.ts -t 'local invalid|persisted payload|201|200|400|422|401|403|409|permanent|deterministic-only|redacted'
-  pnpm exec eslint src/application/publish-evidence-bundle.ts tests/application/publish-evidence-bundle.test.ts --max-warnings 0
+  git add src/application/collect-support-resistance.ts tests/application/collect-support-resistance.test.ts tests/adapters/node/drizzle-support-resistance.integration.test.ts
+  git commit -m "feat: collect durable support resistance evidence"
   ```
 
-- [ ] Commit: `git add src/application/publish-evidence-bundle.ts tests/application/publish-evidence-bundle.test.ts && git commit -m "feat: publish and audit persisted evidence bundles"`
-
-## Task 3: Add deterministic bounded retry transitions and make retry required
+## Task 5: Expose the collector through a job, CLI, configuration, and documentation
 
 **Files:**
 
-- Modify: `src/application/publish-evidence-bundle.ts`
-- Modify: `tests/application/publish-evidence-bundle.test.ts` (only add retry/audit/concurrency describe blocks)
-- Modify: `src/adapters/node/composition-root.ts` (only if needed for retry wiring changes)
-
-**Signature changes:** Change `retry` in `PublishEvidenceBundleDeps` from optional to required; extend the existing exported publisher result/event unions with retry exhaustion and scheduling variants. The `RetryControl` port, `SystemRetryControl`, and `FakeRetry` are already introduced in Task 1.
-
-- [ ] Write failing tests named `transient failures retry at most three total attempts`, `unknown outcome retries reuse exact key hash and payload`, `retry delay is bounded and deterministic`, `valid Retry-After is honored within maximum`, `invalid or excessive Retry-After falls back or clamps`, `audit occurs before every retry delay`, `audit failure stops publication before another request`, `exhausted transient failure is terminal and observable`, and `concurrent duplicate audit conflict is not reported as success`.
-- [ ] Replace the single HTTP action with attempts 1..3. Retry only `HttpRequestError` timeout/network, 408, 429, and 500..599. After each failed request, persist `network_failed`; only after successful audit emit `retry_scheduled`, sleep, and transition to the next attempt. On attempt 3 return `transient_failure_exhausted`.
-- [ ] Use base delay 250 ms, exponential factors 1 and 2, jitter up to 250 ms, and a hard 2,000 ms sleep cap. Parse `Retry-After` as non-negative delta-seconds or an HTTP date relative to `Clock`; clamp it to 2,000 ms. Invalid/missing values use exponential+jitter.
-- [ ] Keep one immutable request context outside the loop (payload reference, verified hash, idempotency key, endpoint, safe target), and create timestamps/attempt rows inside the loop. Emit `publish_started`, `retry_scheduled`, `created`, `idempotent_replay`, classified terminal failure, `transient_failure_exhausted`, and `audit_persistence_failed` events.
-- [ ] Run only the newly added behavior groups:
-
-  ```bash
-  pnpm vitest run tests/application/publish-evidence-bundle.test.ts -t 'retry|Retry-After|audit failure|exhausted|concurrent'
-  pnpm exec eslint src/application/publish-evidence-bundle.ts tests/application/publish-evidence-bundle.test.ts --max-warnings 0
-  ```
-
-- [ ] Commit: `git add src/application/publish-evidence-bundle.ts tests/application/publish-evidence-bundle.test.ts && git commit -m "feat: bound evidence publish retries"`
-
-## Task 4: Wire the publisher job and operator CLI
-
-**Files:**
-
-- Create: `src/jobs/publish-evidence-bundle-job.ts`
+- Create: `src/jobs/support-resistance-job.ts`
 - Modify: `src/jobs/index.ts`
-- Create: `scripts/collectors/publish-evidence-bundle.ts`
-- Create: `tests/scripts/publish-evidence-bundle.test.ts`
+- Create: `scripts/collectors/support-resistance.ts`
+- Create: `tests/jobs/support-resistance-job.test.ts`
+- Create: `tests/scripts/support-resistance.test.ts`
 - Modify: `package.json`
 - Modify: `.env.example`
+- Modify: `README.md` only in scripts/configuration/contextual-collector sections
+- Modify: `docs/architecture.md` only in pipeline/component-flow sections
+- Modify: `docs/operator-runbook.md` only in collector commands and degraded-outcome guidance
 
-**Signature changes:** Add exported `PublishEvidenceBundleJobDeps`, `PublishEvidenceBundleJobResult`, and `publishEvidenceBundleJob`. No existing exported signature is changed.
+**Exported API changes:** add `SupportResistanceJobDeps`, `supportResistanceJob`, and `runSupportResistanceJob` exports. The Node runtime interface remains unchanged; the CLI constructs `HttpSupportResistanceSource` from `runtime.http` and non-secret environment configuration, then supplies existing persistence/runtime dependencies to the job.
 
-- [ ] Write failing script tests named `publisher CLI wires latest bundle persistence contract HTTP clock retry and env`, `created and replay exit zero with redacted JSON`, `terminal publish failure exits nonzero`, `audit store failure exits nonzero and is visible`, `missing Regime configuration fails before HTTP`, `database connection closes on every outcome`, and `auth token never appears in stdout stderr or serialized result`.
-- [ ] Implement a thin job that invokes `publishEvidenceBundle` and preserves its discriminated result; it may add safe context to thrown initialization errors but must not retry the whole use case.
-- [ ] Implement `runPublishEvidenceBundleScript(runtime)` to obtain persistence and contract, wire `runtime.http/env/clock/retry`, print each structured event as JSON, close the DB connection in `finally`, print one safe final result, and set exit code 0 only for `created`/`idempotent_replay`. Do not accept arbitrary endpoint, payload, or token CLI arguments.
-- [ ] Add `"publish:evidence": "tsx scripts/collectors/publish-evidence-bundle.ts"` to `package.json`, plus blank `REGIME_ENGINE_BASE_URL` and `REGIME_ENGINE_AUTH_TOKEN` examples with comments in `.env.example`.
-- [ ] Run:
+- [ ] **Step 1: Write job and CLI tests first.**
 
-  ```bash
-  pnpm vitest run tests/scripts/publish-evidence-bundle.test.ts
-  pnpm exec eslint src/jobs/publish-evidence-bundle-job.ts src/jobs/index.ts scripts/collectors/publish-evidence-bundle.ts tests/scripts/publish-evidence-bundle.test.ts --max-warnings 0
-  pnpm exec prettier --check package.json .env.example
+  Add exact cases:
+  - `creates one collection run context and delegates to the support resistance use case`
+  - `prints a structured accepted result and exits zero when usable contextual evidence exists`
+  - `prints a structured degraded result and exits zero when raw evidence is retained but no level is usable`
+  - `exits nonzero for conflict malformed timeout network unavailable and failed outcomes without printing secrets`
+
+  Mock the job in the script test and mock `createNodeRuntime` with HTTP, env, clock, run-ID factory, and persistence. Assert the adapter reads `SUPPORT_RESISTANCE_API_URL` and optional `SUPPORT_RESISTANCE_API_KEY`, but structured output redacts secret-looking keys and values using the established collector redaction pattern.
+
+- [ ] **Step 2: Run job/CLI tests and confirm they fail.**
+
+  Run: `pnpm exec vitest run tests/jobs/support-resistance-job.test.ts tests/scripts/support-resistance.test.ts`
+
+  Expected: FAIL because the job and script do not exist.
+
+- [ ] **Step 3: Implement the job and thin script.**
+
+  `runSupportResistanceJob` creates one context with `createCollectionRunContext` and delegates. Add package script `collect:support-resistance` with command `tsx scripts/collectors/support-resistance.ts`. The CLI prints the result as formatted JSON, sets exit code `0` for accepted, identical replay, stale, or degraded outcomes, and `1` for conflict, malformed, timeout, network, unavailable, or failed outcomes. It must not publish, retry in a loop, or write local snapshots.
+
+- [ ] **Step 4: Document configuration, operation, and authority boundary.**
+
+  Add these environment entries with blank safe defaults:
+
+  ```dotenv
+  SUPPORT_RESISTANCE_API_URL=
+  SUPPORT_RESISTANCE_API_KEY=
   ```
 
-- [ ] Commit: `git add src/jobs/publish-evidence-bundle-job.ts src/jobs/index.ts scripts/collectors/publish-evidence-bundle.ts tests/scripts/publish-evidence-bundle.test.ts package.json .env.example && git commit -m "feat: expose evidence publisher CLI"`
+  Update the scoped README sections with the raw-to-normalized flow, point/zone distinction, bounded extracts, exact replay behavior, `allow_context_only` semantics, and `pnpm collect:support-resistance`. Update architecture documentation to place the source port/adapter and new application use case in their proper layers. Update the operator runbook with accepted/degraded/stale/failure exit behavior and the instruction that missing or expired levels never become execution authority.
 
-## Task 5: Document deployment, observability, and operator recovery
+- [ ] **Step 5: Run focused verification.**
 
-**Files:**
+  Run: `pnpm exec vitest run tests/jobs/support-resistance-job.test.ts tests/scripts/support-resistance.test.ts`
 
-- Modify: `README.md`
-- Modify: `docs/operator-runbook.md`
+  Expected: PASS for context creation, dependency wiring, exit status, structured output, and secret redaction.
 
-- [ ] Update the current-state data-flow description to say intelligence publishes canonical evidence to Regime Engine and still never publishes final `PolicyInsight` or executes transactions.
-- [ ] Add runbook sections containing the exact configuration names, `pnpm publish:evidence`, exit/outcome meanings, the three-attempt/2,000 ms retry bounds, and the fact that scheduler-level retries must remain bounded and operator-controlled.
-- [ ] Add read-only audit queries for bundle ID/idempotency key, recent `validation_failed|auth_failed|conflict|network_failed|unknown_failed`, and exhausted attempt 3. Document recovery: correct auth/config for auth failures, correct upstream bundle assembly for local validation, investigate idempotency payload mismatch for conflict, and rerun unchanged identity only after transient/store recovery.
-- [ ] Document notification behavior: nonzero exit plus structured terminal event is the repository's operator-visible mechanism; scheduled OpenClaw delivery should alert on that failure. State that logs and audit rows must never contain `REGIME_ENGINE_AUTH_TOKEN`.
-- [ ] Run:
+  Run: `pnpm exec eslint src/jobs/support-resistance-job.ts src/jobs/index.ts scripts/collectors/support-resistance.ts tests/jobs/support-resistance-job.test.ts tests/scripts/support-resistance.test.ts --max-warnings 0`
+
+  Expected: exit 0.
+
+  Run: `pnpm exec prettier --check src/jobs/support-resistance-job.ts src/jobs/index.ts scripts/collectors/support-resistance.ts tests/jobs/support-resistance-job.test.ts tests/scripts/support-resistance.test.ts package.json .env.example README.md docs/architecture.md docs/operator-runbook.md`
+
+  Expected: all listed files use Prettier formatting.
+
+- [ ] **Step 6: Commit the runnable/documented slice.**
 
   ```bash
-  pnpm exec prettier --check README.md docs/operator-runbook.md
-  sed -n '/Evidence Bundle Publishing/,/^[#][#] /p' docs/operator-runbook.md
+  git add src/jobs/support-resistance-job.ts src/jobs/index.ts scripts/collectors/support-resistance.ts tests/jobs/support-resistance-job.test.ts tests/scripts/support-resistance.test.ts package.json .env.example README.md docs/architecture.md docs/operator-runbook.md
+  git commit -m "feat: expose support resistance collector"
   ```
 
-- [ ] Commit: `git add README.md docs/operator-runbook.md && git commit -m "docs: add evidence publishing runbook"`
+### Tests to add or update
 
-## Tests to add or update
+- Contract/type tests for strict point/zone discrimination and explicit `USDC_PER_SOL` units.
+- Taxonomy registry tests for contextual classification, freshness, confidence, and allowed source provenance.
+- Pure domain tests for bounded retention, validation, normalization, missing/malformed levels, deterministic equivalence, stale behavior, confidence, and provenance.
+- Adapter tests for request shaping, optional credentials, bounded projection, error classification, and secret-safe diagnostics.
+- Application state-transition tests covering accepted, degraded, stale, replay recovery, conflict, unavailable, failed normalization, same-run equivalence, and cross-provider independence.
+- Drizzle integration tests demonstrating that existing JSONB tables round-trip the new payload and keep idempotent versus distinct rows correctly.
+- Job and CLI tests for run-context wiring, structured output, exit behavior, and redaction.
 
-- Extend `tests/adapters/node/fetch-http.test.ts` only with a focused raw-POST block covering one-shot behavior, HTTP response visibility, byte bound, and response-body timeout.
-- Add `tests/application/publish-evidence-bundle.test.ts` for all ten named invariants, exact deterministic fixture transmission, every response class, Retry-After, exhaustion, audit ordering/failure, and concurrency conflict visibility.
-- Add `tests/scripts/publish-evidence-bundle.test.ts` for dependency wiring, configuration, exit codes, connection cleanup, event output, and secret redaction.
-- Update fakes only where required by the new required port methods. No database repository contract or migration test should change because the existing row model is reused unchanged.
+### Validation commands after all implementation tasks
 
-## Validation commands
-
-The implement loop automatically runs `pnpm -r typecheck` after every task. After all implementation tasks, run these path-scoped checks in the dedicated validate phase (not as a standalone plan task):
+The orchestrator automatically runs workspace-wide `pnpm -r typecheck` after each task. After all five implementation tasks, the dedicated validate phase should run the repository-standard commands; these are not a standalone implementation task:
 
 ```bash
-pnpm vitest run tests/adapters/node/fetch-http.test.ts tests/application/publish-evidence-bundle.test.ts tests/scripts/publish-evidence-bundle.test.ts
-pnpm exec eslint src/ports/http.ts src/ports/retry.ts src/ports/index.ts src/adapters/node/fetch-http.ts src/adapters/node/system-retry.ts src/adapters/node/composition-root.ts src/application/publish-evidence-bundle.ts src/jobs/publish-evidence-bundle-job.ts src/jobs/index.ts scripts/collectors/publish-evidence-bundle.ts tests/fakes/fake-http.ts tests/fakes/fake-retry.ts tests/fakes/index.ts tests/adapters/node/fetch-http.test.ts tests/application/publish-evidence-bundle.test.ts tests/scripts/publish-evidence-bundle.test.ts --max-warnings 0
-pnpm exec prettier --check src/ports/http.ts src/ports/retry.ts src/ports/index.ts src/adapters/node/fetch-http.ts src/adapters/node/system-retry.ts src/adapters/node/composition-root.ts src/application/publish-evidence-bundle.ts src/jobs/publish-evidence-bundle-job.ts src/jobs/index.ts scripts/collectors/publish-evidence-bundle.ts tests/fakes/fake-http.ts tests/fakes/fake-retry.ts tests/fakes/index.ts tests/adapters/node/fetch-http.test.ts tests/application/publish-evidence-bundle.test.ts tests/scripts/publish-evidence-bundle.test.ts package.json .env.example README.md docs/operator-runbook.md
-pnpm exec depcruise --config .dependency-cruiser.cjs src/ports/http.ts src/ports/retry.ts src/ports/index.ts src/adapters/node/fetch-http.ts src/adapters/node/system-retry.ts src/adapters/node/composition-root.ts src/application/publish-evidence-bundle.ts src/jobs/publish-evidence-bundle-job.ts src/jobs/index.ts
-pnpm contract:evidence-bundle:check
+pnpm typecheck
+pnpm lint
+pnpm format
+pnpm test
+pnpm boundaries
 ```
 
-Expected: all selected tests pass; lint/format/boundary checks exit 0; pinned contract assets report matching hashes. Do not perform a live publish as automated validation because it is an irreversible external side effect.
+Expected: all commands exit 0. The database integration file may report its cases skipped when `DATABASE_URL` is not configured; with a test database configured, those cases must pass.
 
-## P1 fix: RetryControl port moved before Task 2
+### Risk areas
 
-The original plan introduced `RetryControl` in Task 3 as a required dependency of `PublishEvidenceBundleDeps`. Task 2's tests would not compile because they exercised `PublishEvidenceBundleDeps` before `retry` was defined. The fix moves `src/ports/retry.ts`, `src/adapters/node/system-retry.ts`, `tests/fakes/fake-retry.ts`, and the `RetryControl` wiring in `src/adapters/node/composition-root.ts` to Task 1. Task 2's `PublishEvidenceBundleDeps` declares `retry` as optional (`retry?: RetryControl`). Task 3 changes it to required and implements the retry loop. This preserves compile-ability at every task boundary.
+- **Licensing/retention:** retaining arbitrary response objects could copy prohibited source content. The adapter/domain boundary must rebuild an allowlisted snapshot and hard-cap each extract at 500 characters before canonical persistence.
+- **False consensus:** omitting provider/run, side, timeframe, type, or thesis from equivalence identity could merge distinct assertions. Identity tests lock each dimension.
+- **Numeric ambiguity:** coercing prose or malformed strings into numbers could fabricate levels. Only finite positive explicit numeric fields are accepted; mixed point/zone and inverted zone shapes are rejected.
+- **Replay semantics:** a parsed replay reports zero newly inserted rows, so the result must recover its linked normalized evidence rather than report no usable data.
+- **State recovery:** raw rows can remain pending/failed after downstream persistence errors. Replay must validate stored bounded canonical content and rely on normalized uniqueness for safe recovery.
+- **Freshness/confidence:** source expiry must participate in `computeFreshness`, and stale confidence must degrade while remaining contextual-only.
+- **Credential leakage:** API credentials may appear only in outbound headers and must be absent from canonical payloads, request metadata, diagnostics, and CLI output.
+- **Provider specificity:** the first adapter assumes a provider-neutral response contract. Provider-specific field mapping beyond that contract is a later adapter, not permissive parsing in this slice.
 
-## Risk areas
+### Stop conditions
 
-- A full-lifecycle timeout is easy to implement incorrectly if the timer is cleared immediately after headers; tests must stall body reading.
-- Character slicing is not a byte bound for UTF-8. The adapter must bound bytes and avoid persisting partial invalid JSON as though it were parsed JSON.
-- HTTP retries in both adapter and application would multiply attempts. `postJsonRaw` must always be one-shot even if `maxAttempts` is passed as 1 defensively.
-- Audit uniqueness means concurrent invocations can both reach Regime Engine but cannot both claim the same `(target, idempotencyKey, attemptNumber)` row; idempotency protects the remote side and the losing local invocation must fail visibly.
-- A remote success followed by audit-store failure is an unknown local outcome. Reruns must reuse the unchanged idempotency key so the remote returns replay rather than creating a duplicate.
-- Response payloads and thrown errors can contain credentials. Bound, sanitize, and keep raw authorization headers out of result/event objects.
-- `Retry-After` dates require the injected clock; invalid clock strings must fail closed instead of creating unbounded/negative delays.
-- Sending canonical text instead of the persisted payload object, or using the validated return object, would violate the publisher-only boundary even if JSON is semantically equal.
+Abort implementation and report the blocker instead of broadening scope if any of these occur:
 
-## Stop conditions
+- The target provider cannot legally supply/store the proposed bounded fields or references under its license.
+- The real provider response cannot supply explicit numeric point/zone values, timeframe, provider/run identity, source references, as-of time, and expiry without inference.
+- Regime Engine requires a different canonical evidence/publish contract in this PR; that is cross-repo scope and needs a separate design decision.
+- Existing database constraints cannot persist multiple normalized claims from one raw observation without migration. Do not silently change identity semantics or add a migration without revisiting the design.
+- Implementing the port reveals another production adapter or fake required by the compiler beyond the two listed in Task 3. Keep the interface and every implementation in one atomic task before continuing.
+- A planned task would require storing credentials, full copyrighted articles, or unbounded provider payloads.
+- The automatic workspace typecheck fails because of an unrelated pre-existing worktree change; preserve user changes and report the exact failure rather than modifying unrelated files.
 
-Abort implementation and escalate instead of guessing if any of these occurs:
+### Assumptions
 
-- The merged Regime Engine #59 contract requires a different path, auth scheme, idempotency header, request envelope, or success/conflict semantics than the pinned assumptions above.
-- The local pinned schema provenance/hash check fails, or `evidence-bundle.v1` is no longer the supported ingest version.
-- Publishing requires mutating/reassembling the persisted payload or generating a missing research brief.
-- The existing `publish_attempts` uniqueness/column constraints cannot represent the required audit record without a migration; schema work belongs in a separately reviewed dependency change.
-- Regime Engine cannot guarantee idempotency for unknown-outcome retries.
-- Operator notification requires a real external paging connector rather than the repository's structured nonzero job failure; obtain explicit authority/configuration before adding an external side effect.
-- A requested validation would send a real bundle to Regime Engine; use fakes or a separately authorized staging smoke test instead.
+- `issue-comments.md` is intentionally empty and adds no requirements.
+- One configurable provider-neutral `technical-analysis-api` adapter is the first PR-sized source implementation; additional concrete providers can implement the same port later.
+- The existing `raw_observations` and `normalized_observations` JSONB columns and normalized uniqueness key are authoritative and need no migration.
+- Source reliability is provider-supplied configuration/data constrained to `[0, 1]`; it is metadata, not a deterministic fact, and confidence cannot exceed it.
+- Distinct provider runs are historical observations that expire naturally; this slice does not add a supersession column.
+- Missing-level claims are retained in bounded raw evidence and surfaced as degraded warnings, but never become normalized numeric evidence.

@@ -1,0 +1,17 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P1",
+      "summary": "The retry loop in HttpSupportResistanceSource.collect immediately throws on timeouts (AbortError) and generic network errors instead of allowing the loop to retry, bypassing the maxAttempts logic.",
+      "file": "src/adapters/node/http-support-resistance-source.ts",
+      "suggested_fix": "Modify the catch block to only throw AbortError and generic network errors if attempt >= this.maxAttempts - 1. If attempt is less than maxAttempts - 1, wrap the error or simply allow the loop to continue to the next attempt."
+    },
+    {
+      "severity": "P2",
+      "summary": "Missing test coverage for the retry loop logic in HttpSupportResistanceSource.collect.",
+      "file": "tests/adapters/node/http-support-resistance-source.test.ts",
+      "suggested_fix": "Add test cases that verify HttpSupportResistanceSource actually retries up to maxAttempts on transient failures like timeouts, network errors, and 5xx statuses before eventually returning a result or throwing."
+    }
+  ]
+}

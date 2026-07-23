@@ -5,10 +5,37 @@ import type {
   HttpResponse
 } from "../../ports/http.js";
 import { HttpRequestError } from "../../ports/http.js";
+import type { RetryControl } from "../../ports/retry.js";
+import { SystemRetryControl } from "./system-retry.js";
 
 const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_MAX_ATTEMPTS = 2;
 const MAX_BODY_BYTES = 10_240;
+const BASE_BACKOFF_MS = 25;
+const MAX_BACKOFF_MS = 400;
+
+function computeBackoffMs(attempt: number, retryControl: RetryControl): number {
+  const base = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** attempt);
+  return base + retryControl.jitterUnit() * base;
+}
+
+function mergeHeadersCaseInsensitive(
+  defaults: Record<string, string>,
+  overrides?: Readonly<Record<string, string>>
+): Record<string, string> {
+  const merged: Record<string, string> = { ...defaults };
+  if (!overrides) {
+    return merged;
+  }
+  for (const [key, value] of Object.entries(overrides)) {
+    const existingKey = Object.keys(merged).find((k) => k.toLowerCase() === key.toLowerCase());
+    if (existingKey && existingKey !== key) {
+      delete merged[existingKey];
+    }
+    merged[key] = value;
+  }
+  return merged;
+}
 
 function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 429 || (status >= 500 && status < 600);
@@ -35,7 +62,10 @@ function classifyError(
 }
 
 export class FetchHttpClient implements HttpClient {
-  constructor(private readonly fetchFn: typeof fetch = fetch) {}
+  constructor(
+    private readonly fetchFn: typeof fetch = fetch,
+    private readonly retryControl: RetryControl = new SystemRetryControl()
+  ) {}
 
   async getJson<T>(url: string, options?: HttpRequestOptions): Promise<T> {
     const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -92,6 +122,8 @@ export class FetchHttpClient implements HttpClient {
       } finally {
         clearTimeout(timeoutId);
       }
+
+      await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
     }
 
     throw (
@@ -113,10 +145,10 @@ export class FetchHttpClient implements HttpClient {
     try {
       const fetchOptions: RequestInit = {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(options?.headers ?? {})
-        },
+        headers: mergeHeadersCaseInsensitive(
+          { "Content-Type": "application/json" },
+          options?.headers
+        ),
         body: JSON.stringify(body),
         signal: controller.signal
       };
