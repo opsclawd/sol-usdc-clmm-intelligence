@@ -29,11 +29,14 @@ export async function runSupportResistanceCollect(): Promise<void> {
     return;
   }
 
-  const supportResistanceSource = new HttpSupportResistanceSource({
+  const sourceOptions: { http: typeof runtime.http; url: string; apiKey?: string } = {
     http: runtime.http,
-    url: apiUrl,
-    apiKey: apiKey || undefined
-  });
+    url: apiUrl
+  };
+  if (apiKey) {
+    sourceOptions.apiKey = apiKey;
+  }
+  const supportResistanceSource = new HttpSupportResistanceSource(sourceOptions);
 
   let persistence;
   try {

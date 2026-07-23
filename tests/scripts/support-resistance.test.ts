@@ -30,9 +30,17 @@ vi.mock("../../src/adapters/node/composition-root.js", () => {
   return {
     createNodeRuntime: vi.fn(
       (): NodeRuntime => ({
-        http: {},
-        jsonStore: {},
-        textReader: {},
+        http: {
+          getJson: vi.fn(),
+          postJsonRaw: vi.fn()
+        },
+        jsonStore: {
+          readJson: vi.fn(),
+          writeJson: vi.fn()
+        },
+        textReader: {
+          readText: vi.fn()
+        },
         env: {
           get: vi.fn((name: string) => {
             if (name === "DATABASE_URL") return "postgresql://localhost";
@@ -45,20 +53,57 @@ vi.mock("../../src/adapters/node/composition-root.js", () => {
             return undefined;
           })
         },
-        clock: {},
-        commandRunner: {},
-        runIdFactory: {},
-        retryControl: {},
+        clock: {
+          now: vi.fn(() => "2024-01-01T00:00:00.000Z")
+        },
+        commandRunner: {
+          run: vi.fn()
+        },
+        runIdFactory: {
+          nextRunId: vi.fn(() => "test-run-id")
+        },
+        retryControl: {
+          sleep: vi.fn(),
+          jitterUnit: vi.fn(() => 0.1)
+        },
         getDb: vi.fn(),
         getPersistence: vi.fn(
           async (): Promise<Persistence> => ({
             connection: { close: mockClose },
-            rawObservationRepo: {},
-            normalizedObservationRepo: {},
-            featureRepo: {},
-            bundleRepo: {},
-            briefRepo: {},
-            publishAttemptRepo: {}
+            rawObservationRepo: {
+              insertOrClassify: vi.fn(),
+              findById: vi.fn(),
+              findByIds: vi.fn(),
+              findByIdentity: vi.fn(),
+              findByHash: vi.fn(),
+              findBySource: vi.fn(),
+              updateParseStatus: vi.fn()
+            },
+            normalizedObservationRepo: {
+              insert: vi.fn(),
+              insertMany: vi.fn(),
+              findBySource: vi.fn(),
+              findFreshByKind: vi.fn(),
+              findLatestByKind: vi.fn(),
+              findByRawObservation: vi.fn(),
+              listCandidates: vi.fn(),
+              findByIds: vi.fn()
+            },
+            featureRepo: {
+              insert: vi.fn(),
+              findById: vi.fn(),
+              findByIds: vi.fn()
+            },
+            bundleRepo: {
+              insert: vi.fn(),
+              findById: vi.fn()
+            },
+            briefRepo: {
+              insert: vi.fn()
+            },
+            publishAttemptRepo: {
+              insert: vi.fn()
+            }
           })
         ),
         getContract: vi.fn()
