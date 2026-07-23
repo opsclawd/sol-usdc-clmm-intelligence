@@ -684,9 +684,11 @@ describe("assembleEvidenceBundle with contextual events", () => {
       seedRaw([scheduledRawRow]);
 
       const request = makeRequest();
-      const result = await assembleEvidenceBundle(
-        { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
-        request
+      const result = assertSuccess(
+        await assembleEvidenceBundle(
+          { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+          request
+        )
       );
 
       expect(result.outcome).toBe("no_bundle");
@@ -724,7 +726,7 @@ describe("assembleEvidenceBundle with contextual events", () => {
       );
 
       expect(result.outcome).toBe("persisted");
-      expect(result.warnings.length).toBeGreaterThan(0);
+      expect((result as { warnings: readonly string[] }).warnings.length).toBeGreaterThan(0);
     });
   });
 });
