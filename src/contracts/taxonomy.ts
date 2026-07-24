@@ -7,7 +7,8 @@ export type EvidenceFamily =
   | "support_resistance"
   | "on_chain_flow"
   | "perp_liquidation"
-  | "macro_protocol_risk";
+  | "macro_protocol_risk"
+  | "news_evidence";
 
 export type SignalClass = "deterministic" | "probabilistic" | "contextual";
 
@@ -27,7 +28,9 @@ export type ObservationKind =
   | "pool_statistics"
   | "support_resistance_level"
   | "scheduled_event"
-  | "protocol_incident";
+  | "protocol_incident"
+  | "ecosystem_news"
+  | "regulatory_risk";
 
 export type FeatureKind =
   | "range_location"
@@ -49,7 +52,9 @@ export type Source =
   | "orca-public-api"
   | "technical-analysis-api"
   | "macro-calendar-api"
-  | "solana-status-api";
+  | "solana-status-api"
+  | "crypto-news-api"
+  | "regulatory-monitor-api";
 
 export type ParseStatus = "pending" | "parsed" | "failed";
 

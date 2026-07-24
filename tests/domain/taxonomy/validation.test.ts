@@ -16,6 +16,8 @@ describe("parseObservationKind", () => {
     expect(parseObservationKind("pool_state")).toBe("pool_state");
     expect(parseObservationKind("oracle_price")).toBe("oracle_price");
     expect(parseObservationKind("executable_quote")).toBe("executable_quote");
+    expect(parseObservationKind("ecosystem_news")).toBe("ecosystem_news");
+    expect(parseObservationKind("regulatory_risk")).toBe("regulatory_risk");
   });
 
   it("throws TaxonomyValidationError for unknown kind", () => {
@@ -38,6 +40,8 @@ describe("parseSource", () => {
   it("returns typed value for valid sources", () => {
     expect(parseSource("clmm-v2-bundle")).toBe("clmm-v2-bundle");
     expect(parseSource("jupiter-price-v3")).toBe("jupiter-price-v3");
+    expect(parseSource("crypto-news-api")).toBe("crypto-news-api");
+    expect(parseSource("regulatory-monitor-api")).toBe("regulatory-monitor-api");
   });
 
   it("throws for unknown source", () => {
@@ -60,6 +64,7 @@ describe("parseEvidenceFamily", () => {
   it("returns typed value for valid families", () => {
     expect(parseEvidenceFamily("clmm_state")).toBe("clmm_state");
     expect(parseEvidenceFamily("macro_protocol_risk")).toBe("macro_protocol_risk");
+    expect(parseEvidenceFamily("news_evidence")).toBe("news_evidence");
   });
 
   it("throws for unknown family", () => {
@@ -122,5 +127,19 @@ describe("runtime taxonomy parity", () => {
   it("parses pool statistics and orca public api literals", () => {
     expect(parseObservationKind("pool_statistics")).toBe("pool_statistics");
     expect(parseSource("orca-public-api")).toBe("orca-public-api");
+  });
+
+  it("parses ecosystem_news and regulatory_risk observation kinds", () => {
+    expect(parseObservationKind("ecosystem_news")).toBe("ecosystem_news");
+    expect(parseObservationKind("regulatory_risk")).toBe("regulatory_risk");
+  });
+
+  it("parses crypto-news-api and regulatory-monitor-api sources", () => {
+    expect(parseSource("crypto-news-api")).toBe("crypto-news-api");
+    expect(parseSource("regulatory-monitor-api")).toBe("regulatory-monitor-api");
+  });
+
+  it("parses news_evidence evidence family", () => {
+    expect(parseEvidenceFamily("news_evidence")).toBe("news_evidence");
   });
 });
