@@ -7,6 +7,16 @@ import type {
 import type { Source } from "../../../src/contracts/taxonomy.js";
 import { enrichOnChainFlow } from "../../../src/domain/on-chain-flow/enrich.js";
 
+function getFirst<T>(arr: readonly T[]): T {
+  expect(arr.length).toBeGreaterThan(0);
+  return arr[0] as T;
+}
+
+function getAt<T>(arr: readonly T[], index: number): T {
+  expect(arr.length).toBeGreaterThan(index);
+  return arr[index] as T;
+}
+
 function makeWhaleTransferCandidate(
   overrides?: Partial<{
     id: number;
@@ -142,7 +152,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].freshness.isStale).toBe(false);
+      expect(getFirst(result).freshness.isStale).toBe(false);
     });
 
     it("expired data is marked stale under the taxonomy policy", async () => {
@@ -161,7 +171,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].freshness.isStale).toBe(true);
+      expect(getFirst(result).freshness.isStale).toBe(true);
     });
 
     it("freshness derives validUntil from maxObservedAgeMs policy", async () => {
@@ -180,7 +190,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].freshness.validUntilUnixMs).toBe(1700000000000 + 900000);
+      expect(getFirst(result).freshness.validUntilUnixMs).toBe(1700000000000 + 900000);
     });
 
     it("freshness reason includes expired_past_max_observed_age when stale", async () => {
@@ -199,7 +209,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].freshness.reasons).toContain("expired_past_max_observed_age");
+      expect(getFirst(result).freshness.reasons).toContain("expired_past_max_observed_age");
     });
   });
 
@@ -214,9 +224,9 @@ describe("enrichOnChainFlow", () => {
         runId: "run-123"
       });
 
-      expect(result[0].provenance.rawObservationRefs).toHaveLength(1);
-      expect(result[0].provenance.rawObservationRefs[0].id).toBe(42);
-      expect(result[0].provenance.rawObservationRefs[0].source).toBe("helius-api");
+      expect(getFirst(result).provenance.rawObservationRefs).toHaveLength(1);
+      expect(getAt(getFirst(result).provenance.rawObservationRefs, 0).id).toBe(42);
+      expect(getAt(getFirst(result).provenance.rawObservationRefs, 0).source).toBe("helius-api");
     });
 
     it("provenance sourceRefs point to allowed provider helius-api", async () => {
@@ -229,8 +239,8 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].provenance.sourceRefs).toHaveLength(1);
-      expect(result[0].provenance.sourceRefs[0].source).toBe("helius-api");
+      expect(getFirst(result).provenance.sourceRefs).toHaveLength(1);
+      expect(getAt(getFirst(result).provenance.sourceRefs, 0).source).toBe("helius-api");
     });
 
     it("provenance sourceRefs point to allowed provider birdeye-api", async () => {
@@ -243,8 +253,8 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].provenance.sourceRefs).toHaveLength(1);
-      expect(result[0].provenance.sourceRefs[0].source).toBe("birdeye-api");
+      expect(getFirst(result).provenance.sourceRefs).toHaveLength(1);
+      expect(getAt(getFirst(result).provenance.sourceRefs, 0).source).toBe("birdeye-api");
     });
 
     it("provenance processRef includes collector and jobName", async () => {
@@ -257,10 +267,10 @@ describe("enrichOnChainFlow", () => {
         runId: "run-123"
       });
 
-      expect(result[0].provenance.processRef.collector).toBe("on-chain-flow-collector");
-      expect(result[0].provenance.processRef.jobName).toBe("on-chain-flow-intelligence");
-      expect(result[0].provenance.processRef.pipelineRunId).toBe("run-123");
-      expect(result[0].provenance.codeVersion).toBe("test-v1");
+      expect(getFirst(result).provenance.processRef.collector).toBe("on-chain-flow-collector");
+      expect(getFirst(result).provenance.processRef.jobName).toBe("on-chain-flow-intelligence");
+      expect(getFirst(result).provenance.processRef.pipelineRunId).toBe("run-123");
+      expect(getFirst(result).provenance.codeVersion).toBe("test-v1");
     });
 
     it("provenance validates successfully for helius-api whale_transfer", async () => {
@@ -273,7 +283,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].provenance.sourceRefs.length).toBeGreaterThan(0);
+      expect(getFirst(result).provenance.sourceRefs.length).toBeGreaterThan(0);
     });
 
     it("provenance validates successfully for birdeye-api dex_net_flow", async () => {
@@ -286,7 +296,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].provenance.sourceRefs.length).toBeGreaterThan(0);
+      expect(getFirst(result).provenance.sourceRefs.length).toBeGreaterThan(0);
     });
   });
 
@@ -306,7 +316,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].confidence.compositeScore).toBeLessThanOrEqual(0.69);
+      expect(getFirst(result).confidence.compositeScore).toBeLessThanOrEqual(0.69);
     });
 
     it("CEX confidence cap reason is recorded when cap is applied", async () => {
@@ -324,7 +334,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].confidence.reasons).toContain("cex_proxy_quality_cap_applied");
+      expect(getFirst(result).confidence.reasons).toContain("cex_proxy_quality_cap_applied");
     });
 
     it("CEX confidence level is capped at medium even if score would be high", async () => {
@@ -342,7 +352,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].confidence.level).toBe("medium");
+      expect(getFirst(result).confidence.level).toBe("medium");
     });
 
     it("CEX confidence with high attribution still gets capped", async () => {
@@ -360,8 +370,8 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].confidence.compositeScore).toBeLessThanOrEqual(0.69);
-      expect(result[0].confidence.reasons).toContain("cex_proxy_quality_cap_applied");
+      expect(getFirst(result).confidence.compositeScore).toBeLessThanOrEqual(0.69);
+      expect(getFirst(result).confidence.reasons).toContain("cex_proxy_quality_cap_applied");
     });
 
     it("sourceReliability is capped at attributionConfidence for CEX", async () => {
@@ -379,7 +389,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].confidence.components.sourceReliability).toBeLessThanOrEqual(0.6);
+      expect(getFirst(result).confidence.components.sourceReliability).toBeLessThanOrEqual(0.6);
     });
   });
 
@@ -394,7 +404,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].confidence.compositeScore).toBeGreaterThan(0.69);
+      expect(getFirst(result).confidence.compositeScore).toBeGreaterThan(0.69);
     });
 
     it("whale_transfer confidence does not include cex_proxy_quality_cap_applied", async () => {
@@ -407,7 +417,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].confidence.reasons).not.toContain("cex_proxy_quality_cap_applied");
+      expect(getFirst(result).confidence.reasons).not.toContain("cex_proxy_quality_cap_applied");
     });
 
     it("dex_net_flow confidence is not capped at 0.69", async () => {
@@ -420,7 +430,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].confidence.compositeScore).toBeGreaterThan(0.69);
+      expect(getFirst(result).confidence.compositeScore).toBeGreaterThan(0.69);
     });
 
     it("dex_net_flow confidence does not include cex_proxy_quality_cap_applied", async () => {
@@ -433,7 +443,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].confidence.reasons).not.toContain("cex_proxy_quality_cap_applied");
+      expect(getFirst(result).confidence.reasons).not.toContain("cex_proxy_quality_cap_applied");
     });
 
     it("deterministic facts retain ordinary component weighting", async () => {
@@ -446,8 +456,8 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].signalClass).toBe("deterministic");
-      expect(result[0].evidenceFamily).toBe("on_chain_flow");
+      expect(getFirst(result).signalClass).toBe("deterministic");
+      expect(getFirst(result).evidenceFamily).toBe("on_chain_flow");
     });
   });
 
@@ -492,7 +502,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].confidence.components.dataCompleteness).toBe(1);
+      expect(getFirst(result).confidence.components.dataCompleteness).toBe(1);
     });
 
     it("handles partial completeness correctly", async () => {
@@ -510,7 +520,7 @@ describe("enrichOnChainFlow", () => {
         runId: null
       });
 
-      expect(result[0].confidence.components.dataCompleteness).toBeLessThan(1);
+      expect(getFirst(result).confidence.components.dataCompleteness).toBeLessThan(1);
     });
 
     it("returns empty array when given empty candidates", async () => {
@@ -537,9 +547,9 @@ describe("enrichOnChainFlow", () => {
       });
 
       expect(result).toHaveLength(3);
-      expect(result[0].kind).toBe("whale_transfer");
-      expect(result[1].kind).toBe("dex_net_flow");
-      expect(result[2].kind).toBe("cex_flow_proxy");
+      expect(getFirst(result).kind).toBe("whale_transfer");
+      expect(getAt(result, 1).kind).toBe("dex_net_flow");
+      expect(getAt(result, 2).kind).toBe("cex_flow_proxy");
     });
   });
 });

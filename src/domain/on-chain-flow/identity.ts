@@ -65,8 +65,7 @@ export async function deriveOnChainFlowSourceObservationKey(
   const identityTuple = {
     source,
     eventKind: cexPayload.eventType,
-    transactionSignature: cexPayload.transactionSignature,
-    eventIndex: cexPayload.eventIndex
+    sourceEventId: cexPayload.sourceEventId
   };
   return canonicalHash(identityTuple);
 }
