@@ -197,7 +197,7 @@ function acceptNewsSourceSnapshot(response: unknown, requestSource: string): New
     } catch (e) {
       throw new HttpRequestError(
         "invalid_json",
-        `Invalid record validation failed: ${e instanceof Error ? e.message : String(e)}`,
+        `Record validation failed: ${e instanceof Error ? e.message : String(e)}`,
         null,
         false
       );

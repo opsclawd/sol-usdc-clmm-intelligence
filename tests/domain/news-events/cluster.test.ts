@@ -181,7 +181,12 @@ describe("clusterNewsEvidence", () => {
       expect(corroborationStates).toContain("independently_corroborated");
 
       const allRefs = result.flatMap((r) => r.sourceReferences).sort();
-      expect(allRefs).toEqual(["https://example.com/1", "https://example.com/2"]);
+      expect(allRefs).toEqual([
+        "https://example.com/1",
+        "https://example.com/1",
+        "https://example.com/2",
+        "https://example.com/2"
+      ]);
     });
 
     it("corroboration requires distinct publisher AND originating report pairs", async () => {

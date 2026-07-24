@@ -271,6 +271,7 @@ export async function collectNewsEvidence(
                 payload: matched as NewsEvidencePayload,
                 source,
                 rawId: rawRow.id,
+                rawPayloadHash: rawRow.payloadHash,
                 nowMs: context.startedAtUnixMs,
                 codeVersion: "news-evidence-v1",
                 runId: context.runId

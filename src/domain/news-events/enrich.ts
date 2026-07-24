@@ -26,6 +26,7 @@ export interface NewsEnrichmentInput {
   readonly payload: NewsEvidencePayload;
   readonly source: "crypto-news-api" | "regulatory-monitor-api";
   readonly rawId: number;
+  readonly rawPayloadHash: string;
   readonly nowMs: number;
   readonly codeVersion: string;
   readonly runId: string | null;
@@ -79,12 +80,12 @@ function computeDegradationFactor(payload: NewsEvidencePayload): number {
   return factor;
 }
 
-function buildNewsProvenance(input: NewsEnrichmentInput, payloadHash: string): Provenance {
+function buildNewsProvenance(input: NewsEnrichmentInput): Provenance {
   const rawRef: ProvenanceRef = {
     refType: "raw_observation",
     id: input.rawId,
     source: input.source,
-    payloadHash
+    payloadHash: input.rawPayloadHash
   };
 
   const processRef: ProcessRef = {
@@ -202,7 +203,7 @@ export async function enrichNewsEvidence(
 
   const { payloadHash } = await canonicalizePayload(enrichedPayload);
 
-  const provenance = buildNewsProvenance(input, payloadHash);
+  const provenance = buildNewsProvenance(input);
 
   const provenanceResult = validateProvenance(
     provenance,

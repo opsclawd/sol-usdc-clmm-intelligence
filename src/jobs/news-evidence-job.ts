@@ -10,7 +10,7 @@ import type { CollectionRunContext } from "../application/create-collection-run-
 import type { EnvReader } from "../ports/env.js";
 import type { Clock } from "../ports/clock.js";
 import type { RunIdFactory } from "../ports/run-id.js";
-import { redactSecretMentions } from "../domain/redact-secrets.js";
+import { redactDiagnostic } from "../application/source-outcome.js";
 
 export type NewsSourceKey = "crypto-news-api" | "regulatory-monitor-api";
 
@@ -130,8 +130,12 @@ export async function runNewsEvidenceJob(
     runIdFactory: deps.runIdFactory
   });
 
-  const collectPromises = deps.sources.map((configuredSource) => {
-    return collectNewsEvidence(
+  const sortedSources = [...deps.sources].sort((a, b) => a.source.localeCompare(b.source));
+
+  const results: NewsEvidenceCollectionResult[] = [];
+
+  for (const configuredSource of sortedSources) {
+    const result = await collectNewsEvidence(
       {
         newsSource: configuredSource.adapter,
         rawObservationRepo: deps.rawObservationRepo,
@@ -141,7 +145,7 @@ export async function runNewsEvidenceJob(
       configuredSource.source
     ).catch((err: unknown) => {
       const diagnosticMsg = err instanceof Error ? err.message : String(err);
-      const redactedDiag = redactSecretMentions(diagnosticMsg);
+      const redactedDiag = redactDiagnostic(diagnosticMsg);
       return {
         source: configuredSource.source,
         status: "failed" as const,
@@ -152,11 +156,10 @@ export async function runNewsEvidenceJob(
         diagnostic: redactedDiag
       };
     });
-  });
+    results.push(result);
+  }
 
-  const results = await Promise.all(collectPromises);
-
-  const orderedResults: NewsEvidenceCollectionResult[] = deps.sources.map((configuredSource) => {
+  const orderedResults: NewsEvidenceCollectionResult[] = sortedSources.map((configuredSource) => {
     return results.find((r) => r.source === configuredSource.source) ?? results[0]!;
   });
 

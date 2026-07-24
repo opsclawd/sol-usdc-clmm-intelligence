@@ -450,6 +450,8 @@ async function resolveClusters(
 
     const uniqueClaims = [...new Set(members.flatMap((p) => p.extractedClaims))].sort();
 
+    const uniqueSourceRefs = [...new Set(members.flatMap((p) => p.sourceReferences))].sort();
+
     const uniquePairs = new Set(
       members.map((p) => `${p.publisher.publisherId}::${p.originatingReportId}`)
     );
@@ -506,7 +508,7 @@ async function resolveClusters(
         ...member,
         clusterId: clusterIdHash,
         corroborationState,
-        sourceReferences: [...new Set(member.sourceReferences)].sort(),
+        sourceReferences: uniqueSourceRefs,
         extractedClaims: uniqueClaims,
         warnings: [...memberWarnings, ...warnings]
       });

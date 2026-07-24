@@ -12,6 +12,7 @@ describe("enrichNewsEvidence", () => {
   const codeVersion = "1.0.0";
   const runId = "test-run-001";
   const rawId = 123;
+  const rawPayloadHash = "test-raw-hash-abc123";
 
   function buildPayload(
     source: "crypto-news-api" | "regulatory-monitor-api",
@@ -37,6 +38,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -63,6 +65,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -89,6 +92,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -115,6 +119,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -134,6 +139,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -160,6 +166,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -179,6 +186,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -198,6 +206,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -219,6 +228,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -246,6 +256,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -272,6 +283,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -293,6 +305,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -313,6 +326,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -332,6 +346,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -351,6 +366,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -370,6 +386,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
@@ -391,6 +408,7 @@ describe("enrichNewsEvidence", () => {
         payload,
         source: "crypto-news-api",
         rawId,
+        rawPayloadHash,
         nowMs,
         codeVersion,
         runId
