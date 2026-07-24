@@ -72,3 +72,12 @@ export type {
   NewsSourceError,
   BoundedNewsSourceRecord
 } from "./news-source.js";
+export type {
+  OnChainFlowSourcePort,
+  OnChainFlowSourceRequest,
+  OnChainFlowSourceSnapshot,
+  OnChainFlowSourceError,
+  OnChainFlowSourceEvent,
+  HeliusTransactionFlowEvent,
+  BirdeyeNetFlowEvent
+} from "./on-chain-flow-source.js";
