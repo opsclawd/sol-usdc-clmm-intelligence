@@ -514,7 +514,7 @@ describe("onChainFlowJob", () => {
       expect(mockCollectOnChainFlow).not.toHaveBeenCalled();
     });
 
-    it("requires exactly one helius-api source", async () => {
+    it("requires exactly two sources", async () => {
       mockCreateCollectionRunContext.mockReturnValue(VALID_CONTEXT);
 
       const sources: ConfiguredOnChainFlowSource[] = [
@@ -523,20 +523,35 @@ describe("onChainFlowJob", () => {
       const deps = makeJobDeps(sources);
 
       await expect(runOnChainFlowJob(deps)).rejects.toThrow(
-        "Exactly one helius-api source must be configured"
+        "Exactly two on-chain flow sources (helius-api and birdeye-api) must be configured"
       );
     });
 
-    it("requires exactly one birdeye-api source", async () => {
+    it("rejects duplicate source names", async () => {
       mockCreateCollectionRunContext.mockReturnValue(VALID_CONTEXT);
 
       const sources: ConfiguredOnChainFlowSource[] = [
+        { source: "helius-api", adapter: makeOnChainFlowSource() },
         { source: "helius-api", adapter: makeOnChainFlowSource() }
       ];
       const deps = makeJobDeps(sources);
 
       await expect(runOnChainFlowJob(deps)).rejects.toThrow(
-        "Exactly one birdeye-api source must be configured"
+        "Duplicate on-chain flow source names are not allowed"
+      );
+    });
+
+    it("rejects two birdeye-api sources (duplicate check before heliusCount validation)", async () => {
+      mockCreateCollectionRunContext.mockReturnValue(VALID_CONTEXT);
+
+      const sources: ConfiguredOnChainFlowSource[] = [
+        { source: "birdeye-api", adapter: makeOnChainFlowSource() },
+        { source: "birdeye-api", adapter: makeOnChainFlowSource() }
+      ];
+      const deps = makeJobDeps(sources);
+
+      await expect(runOnChainFlowJob(deps)).rejects.toThrow(
+        "Duplicate on-chain flow source names are not allowed"
       );
     });
 

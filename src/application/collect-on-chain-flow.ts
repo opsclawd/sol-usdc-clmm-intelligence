@@ -126,7 +126,7 @@ export async function collectOnChainFlow(
     };
     snapshot = await source.collect(request);
   } catch (err) {
-    const { status } = mapSourceErrorToStatus(err);
+    const { status, diagnostic } = mapSourceErrorToStatus(err);
     return {
       status,
       accepted: 0,
@@ -136,7 +136,15 @@ export async function collectOnChainFlow(
       conflict: 0,
       sourceObservationId: null,
       sourceObservationKey: null,
-      results: []
+      results: [
+        {
+          sourceEventId: "",
+          sourceObservationKey: "",
+          sourceObservationId: 0,
+          outcome: "failed" as const,
+          diagnostic
+        }
+      ]
     };
   }
 

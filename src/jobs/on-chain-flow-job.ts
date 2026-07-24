@@ -146,15 +146,6 @@ export async function runOnChainFlowJob(deps: OnChainFlowJobDeps): Promise<OnCha
   const heliusCount = deps.sources.filter((s) => s.source === "helius-api").length;
   const birdeyeCount = deps.sources.filter((s) => s.source === "birdeye-api").length;
 
-  if (deps.sources.length === 1) {
-    if (heliusCount !== 1) {
-      throw new Error("Exactly one helius-api source must be configured");
-    }
-    if (birdeyeCount !== 1) {
-      throw new Error("Exactly one birdeye-api source must be configured");
-    }
-  }
-
   if (deps.sources.length !== 2) {
     throw new Error(
       "Exactly two on-chain flow sources (helius-api and birdeye-api) must be configured"
@@ -181,57 +172,49 @@ export async function runOnChainFlowJob(deps: OnChainFlowJobDeps): Promise<OnCha
 
   const sortedSources = [...deps.sources].sort((a, b) => a.source.localeCompare(b.source));
 
-  const results: OnChainFlowCollectionResult[] = [];
-
-  for (const configuredSource of sortedSources) {
-    let result: OnChainFlowCollectionResult;
-    try {
-      result = await collectOnChainFlow(
-        {
-          source: configuredSource.adapter,
-          rawObservationRepo: deps.rawObservationRepo,
-          normalizedObservationRepo: deps.normalizedObservationRepo
-        },
-        context,
-        {
-          source: configuredSource.source,
-          thresholds: deps.thresholds,
-          lookbackMs: deps.lookbackMs
-        }
-      );
-    } catch (err: unknown) {
-      const diagnosticMsg = err instanceof Error ? err.message : String(err);
-      const redactedDiag = redactDiagnostic(diagnosticMsg);
-      result = {
-        status: "failed" as const,
-        accepted: 0,
-        filtered: 0,
-        replayed: 0,
-        failed: 0,
-        conflict: 0,
-        sourceObservationId: null,
-        sourceObservationKey: null,
-        results: [
+  const results = await Promise.all(
+    sortedSources.map(async (configuredSource) => {
+      try {
+        return await collectOnChainFlow(
           {
-            sourceEventId: "",
-            sourceObservationKey: "",
-            sourceObservationId: 0,
-            outcome: "failed" as const,
-            diagnostic: redactedDiag
+            source: configuredSource.adapter,
+            rawObservationRepo: deps.rawObservationRepo,
+            normalizedObservationRepo: deps.normalizedObservationRepo
+          },
+          context,
+          {
+            source: configuredSource.source,
+            thresholds: deps.thresholds,
+            lookbackMs: deps.lookbackMs
           }
-        ]
-      };
-    }
-    results.push(result);
-  }
-
-  const orderedResults: OnChainFlowCollectionResult[] = sortedSources.map(
-    (configuredSource, idx) => {
-      return results[idx] ?? results[0]!;
-    }
+        );
+      } catch (err: unknown) {
+        const diagnosticMsg = err instanceof Error ? err.message : String(err);
+        const redactedDiag = redactDiagnostic(diagnosticMsg);
+        return {
+          status: "failed" as const,
+          accepted: 0,
+          filtered: 0,
+          replayed: 0,
+          failed: 0,
+          conflict: 0,
+          sourceObservationId: null,
+          sourceObservationKey: null,
+          results: [
+            {
+              sourceEventId: "",
+              sourceObservationKey: "",
+              sourceObservationId: 0,
+              outcome: "failed" as const,
+              diagnostic: redactedDiag
+            }
+          ]
+        };
+      }
+    })
   );
 
-  const outcomes = orderedResults.map((result, index) =>
+  const outcomes = results.map((result, index) =>
     mapCollectionResult(result, sortedSources[index]!.source)
   );
 
