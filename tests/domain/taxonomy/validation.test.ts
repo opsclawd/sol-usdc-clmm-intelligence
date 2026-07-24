@@ -142,4 +142,9 @@ describe("runtime taxonomy parity", () => {
   it("parses news_evidence evidence family", () => {
     expect(parseEvidenceFamily("news_evidence")).toBe("news_evidence");
   });
+
+  it("parses network status and solana rpc taxonomy literals", () => {
+    expect(parseObservationKind("network_status")).toBe("network_status");
+    expect(parseSource("solana-rpc")).toBe("solana-rpc");
+  });
 });

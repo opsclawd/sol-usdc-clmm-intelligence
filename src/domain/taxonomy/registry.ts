@@ -551,6 +551,34 @@ export const observationKindRegistry = {
     },
     active: true,
     schemaVersion: 1
+  },
+  network_status: {
+    kind: "network_status",
+    evidenceFamily: "execution_safety",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 60_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "exclude"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.5,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.2,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      ...DEFAULT_PROVENANCE_REQUIREMENTS,
+      allowedSourceRefs: ["solana-rpc"]
+    },
+    active: true,
+    schemaVersion: 1
   }
 } as const satisfies Record<ObservationKind, ObservationKindEntry>;
 
