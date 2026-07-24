@@ -10,7 +10,8 @@ import type {
   FeatureKind,
   Confidence,
   SignalClass,
-  EvidenceFamily
+  EvidenceFamily,
+  Provenance
 } from "../contracts/taxonomy.js";
 import type { DerivedFeatureV1, FeatureStatus } from "../contracts/derived-feature.js";
 import type { PositionStatePayloadV1 } from "../contracts/normalized-clmm-observation.js";
@@ -271,20 +272,7 @@ async function derivePositionFeatures(
     validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
     isStale: false,
     staleBehavior: null,
-    provenance: {
-      sourceRefs: [],
-      rawObservationRefs: [],
-      derivedFromRefs: [],
-      processRef: {
-        collector: "deterministic-feature-derivation",
-        jobName: "derive-mvp-features",
-        pipelineRunId: null,
-        codeVersion: null,
-        modelVersion: null
-      },
-      codeVersion,
-      runId
-    },
+    provenance: rangeKey.result.provenance as Provenance,
     payloadHash: rangeKey.payloadHash,
     receivedAtUnixMs: evaluationAsOfUnixMs,
     status: rangeCalc.status,
@@ -335,20 +323,7 @@ async function derivePositionFeatures(
     validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
     isStale: false,
     staleBehavior: null,
-    provenance: {
-      sourceRefs: [],
-      rawObservationRefs: [],
-      derivedFromRefs: [],
-      processRef: {
-        collector: "deterministic-feature-derivation",
-        jobName: "derive-mvp-features",
-        pipelineRunId: null,
-        codeVersion: null,
-        modelVersion: null
-      },
-      codeVersion,
-      runId
-    },
+    provenance: distLowerKey.result.provenance as Provenance,
     payloadHash: distLowerKey.payloadHash,
     receivedAtUnixMs: evaluationAsOfUnixMs,
     status: distLowerCalc.status,
@@ -399,20 +374,7 @@ async function derivePositionFeatures(
     validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
     isStale: false,
     staleBehavior: null,
-    provenance: {
-      sourceRefs: [],
-      rawObservationRefs: [],
-      derivedFromRefs: [],
-      processRef: {
-        collector: "deterministic-feature-derivation",
-        jobName: "derive-mvp-features",
-        pipelineRunId: null,
-        codeVersion: null,
-        modelVersion: null
-      },
-      codeVersion,
-      runId
-    },
+    provenance: distUpperKey.result.provenance as Provenance,
     payloadHash: distUpperKey.payloadHash,
     receivedAtUnixMs: evaluationAsOfUnixMs,
     status: distUpperCalc.status,
@@ -536,20 +498,7 @@ async function deriveOracleDivergence(
     validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
     isStale: false,
     staleBehavior: null,
-    provenance: {
-      sourceRefs: [],
-      rawObservationRefs: [],
-      derivedFromRefs: [],
-      processRef: {
-        collector: "deterministic-feature-derivation",
-        jobName: "derive-mvp-features",
-        pipelineRunId: null,
-        codeVersion: null,
-        modelVersion: null
-      },
-      codeVersion,
-      runId
-    },
+    provenance: divKey.result.provenance as Provenance,
     payloadHash: divKey.payloadHash,
     receivedAtUnixMs: evaluationAsOfUnixMs,
     status: calc.status,
@@ -667,20 +616,7 @@ async function deriveOracleConfidenceWidth(
     validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
     isStale: false,
     staleBehavior: null,
-    provenance: {
-      sourceRefs: [],
-      rawObservationRefs: [],
-      derivedFromRefs: [],
-      processRef: {
-        collector: "deterministic-feature-derivation",
-        jobName: "derive-mvp-features",
-        pipelineRunId: null,
-        codeVersion: null,
-        modelVersion: null
-      },
-      codeVersion,
-      runId
-    },
+    provenance: cwKey.result.provenance as Provenance,
     payloadHash: cwKey.payloadHash,
     receivedAtUnixMs: evaluationAsOfUnixMs,
     status: calc.status,
@@ -810,20 +746,7 @@ async function deriveRealizedVolatility(
     validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
     isStale: false,
     staleBehavior: null,
-    provenance: {
-      sourceRefs: [],
-      rawObservationRefs: [],
-      derivedFromRefs: [],
-      processRef: {
-        collector: "deterministic-feature-derivation",
-        jobName: "derive-mvp-features",
-        pipelineRunId: null,
-        codeVersion: null,
-        modelVersion: null
-      },
-      codeVersion,
-      runId
-    },
+    provenance: volKey.result.provenance as Provenance,
     payloadHash: volKey.payloadHash,
     receivedAtUnixMs: evaluationAsOfUnixMs,
     status: calc.status,
@@ -941,20 +864,7 @@ async function deriveVolumeRatio(
     validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
     isStale: false,
     staleBehavior: null,
-    provenance: {
-      sourceRefs: [],
-      rawObservationRefs: [],
-      derivedFromRefs: [],
-      processRef: {
-        collector: "deterministic-feature-derivation",
-        jobName: "derive-mvp-features",
-        pipelineRunId: null,
-        codeVersion: null,
-        modelVersion: null
-      },
-      codeVersion,
-      runId
-    },
+    provenance: vrKey.result.provenance as Provenance,
     payloadHash: vrKey.payloadHash,
     receivedAtUnixMs: evaluationAsOfUnixMs,
     status: calc.status,
@@ -1225,20 +1135,33 @@ export async function deriveMvpFeatures(
           ({
             id: r.observationId,
             rawObservationId: r.observationId,
-            source: oracleRow!.source,
+            source: r.source,
             observationKind: oracleRow!.observationKind,
             signalClass: oracleRow!.signalClass,
             evidenceFamily: oracleRow!.evidenceFamily,
-            payload: oracleRow!.payload,
-            payloadHash: oracleRow!.payloadHash,
-            confidence: oracleRow!.confidence,
-            confidenceComposite: oracleRow!.confidenceComposite,
-            confidenceLevel: oracleRow!.confidenceLevel,
-            validUntilUnixMs: oracleRow!.validUntilUnixMs,
-            isStale: oracleRow!.isStale,
-            staleBehavior: oracleRow!.staleBehavior,
-            provenance: oracleRow!.provenance,
-            receivedAtUnixMs: oracleRow!.receivedAtUnixMs
+            payload: {},
+            payloadHash: r.payloadHash,
+            confidence: buildDefaultConfidence(),
+            confidenceComposite: null,
+            confidenceLevel: null,
+            validUntilUnixMs: null,
+            isStale: false,
+            staleBehavior: null,
+            provenance: {
+              sourceRefs: [],
+              rawObservationRefs: [],
+              derivedFromRefs: [],
+              processRef: {
+                collector: "",
+                jobName: "",
+                pipelineRunId: null,
+                codeVersion: null,
+                modelVersion: null
+              },
+              codeVersion: "",
+              runId: null
+            },
+            receivedAtUnixMs: evaluationAsOfUnixMs
           }) as NormalizedObservationRow
       ),
       ...dexSel.rejected.map(
@@ -1246,20 +1169,33 @@ export async function deriveMvpFeatures(
           ({
             id: r.observationId,
             rawObservationId: r.observationId,
-            source: dexRow!.source,
+            source: r.source,
             observationKind: dexRow!.observationKind,
             signalClass: dexRow!.signalClass,
             evidenceFamily: dexRow!.evidenceFamily,
-            payload: dexRow!.payload,
-            payloadHash: dexRow!.payloadHash,
-            confidence: dexRow!.confidence,
-            confidenceComposite: dexRow!.confidenceComposite,
-            confidenceLevel: dexRow!.confidenceLevel,
-            validUntilUnixMs: dexRow!.validUntilUnixMs,
-            isStale: dexRow!.isStale,
-            staleBehavior: dexRow!.staleBehavior,
-            provenance: dexRow!.provenance,
-            receivedAtUnixMs: dexRow!.receivedAtUnixMs
+            payload: {},
+            payloadHash: r.payloadHash,
+            confidence: buildDefaultConfidence(),
+            confidenceComposite: null,
+            confidenceLevel: null,
+            validUntilUnixMs: null,
+            isStale: false,
+            staleBehavior: null,
+            provenance: {
+              sourceRefs: [],
+              rawObservationRefs: [],
+              derivedFromRefs: [],
+              processRef: {
+                collector: "",
+                jobName: "",
+                pipelineRunId: null,
+                codeVersion: null,
+                modelVersion: null
+              },
+              codeVersion: "",
+              runId: null
+            },
+            receivedAtUnixMs: evaluationAsOfUnixMs
           }) as NormalizedObservationRow
       )
     ],
@@ -1276,41 +1212,12 @@ export async function deriveMvpFeatures(
         ({
           id: r.observationId,
           rawObservationId: r.observationId,
-          source: oracleRow!.source,
+          source: r.source,
           observationKind: oracleRow!.observationKind,
           signalClass: oracleRow!.signalClass,
           evidenceFamily: oracleRow!.evidenceFamily,
-          payload: oracleRow!.payload,
-          payloadHash: oracleRow!.payloadHash,
-          confidence: oracleRow!.confidence,
-          confidenceComposite: oracleRow!.confidenceComposite,
-          confidenceLevel: oracleRow!.confidenceLevel,
-          validUntilUnixMs: oracleRow!.validUntilUnixMs,
-          isStale: oracleRow!.isStale,
-          staleBehavior: oracleRow!.staleBehavior,
-          provenance: oracleRow!.provenance,
-          receivedAtUnixMs: oracleRow!.receivedAtUnixMs
-        }) as NormalizedObservationRow
-    ),
-    evaluationAsOfUnixMs,
-    pipelineRunId,
-    codeVersion
-  );
-  allInserts.push(confidenceWidthInsert);
-
-  const volatilityInsert = await deriveRealizedVolatility(
-    volatilitySel.selected,
-    volatilitySel.rejected.map(
-      (r) =>
-        ({
-          id: r.observationId,
-          rawObservationId: r.observationId,
-          source: "pyth-hermes" as const,
-          observationKind: "oracle_price" as const,
-          signalClass: "deterministic" as const,
-          evidenceFamily: "clmm_state" as const,
           payload: {},
-          payloadHash: "",
+          payloadHash: r.payloadHash,
           confidence: buildDefaultConfidence(),
           confidenceComposite: null,
           confidenceLevel: null,
@@ -1332,7 +1239,49 @@ export async function deriveMvpFeatures(
             runId: null
           },
           receivedAtUnixMs: evaluationAsOfUnixMs
-        }) as unknown as NormalizedObservationRow
+        }) as NormalizedObservationRow
+    ),
+    evaluationAsOfUnixMs,
+    pipelineRunId,
+    codeVersion
+  );
+  allInserts.push(confidenceWidthInsert);
+
+  const volatilityInsert = await deriveRealizedVolatility(
+    volatilitySel.selected,
+    volatilitySel.rejected.map(
+      (r) =>
+        ({
+          id: r.observationId,
+          rawObservationId: r.observationId,
+          source: r.source,
+          observationKind: "oracle_price" as const,
+          signalClass: "deterministic" as const,
+          evidenceFamily: "clmm_state" as const,
+          payload: {},
+          payloadHash: r.payloadHash,
+          confidence: buildDefaultConfidence(),
+          confidenceComposite: null,
+          confidenceLevel: null,
+          validUntilUnixMs: null,
+          isStale: false,
+          staleBehavior: null,
+          provenance: {
+            sourceRefs: [],
+            rawObservationRefs: [],
+            derivedFromRefs: [],
+            processRef: {
+              collector: "",
+              jobName: "",
+              pipelineRunId: null,
+              codeVersion: null,
+              modelVersion: null
+            },
+            codeVersion: "",
+            runId: null
+          },
+          receivedAtUnixMs: evaluationAsOfUnixMs
+        }) as NormalizedObservationRow
     ),
     evaluationAsOfUnixMs,
     pipelineRunId,
@@ -1348,20 +1297,33 @@ export async function deriveMvpFeatures(
         ({
           id: r.observationId,
           rawObservationId: r.observationId,
-          source: poolStatsRow!.source,
+          source: r.source,
           observationKind: poolStatsRow!.observationKind,
           signalClass: poolStatsRow!.signalClass,
           evidenceFamily: poolStatsRow!.evidenceFamily,
-          payload: poolStatsRow!.payload,
-          payloadHash: poolStatsRow!.payloadHash,
-          confidence: poolStatsRow!.confidence,
-          confidenceComposite: poolStatsRow!.confidenceComposite,
-          confidenceLevel: poolStatsRow!.confidenceLevel,
-          validUntilUnixMs: poolStatsRow!.validUntilUnixMs,
-          isStale: poolStatsRow!.isStale,
-          staleBehavior: poolStatsRow!.staleBehavior,
-          provenance: poolStatsRow!.provenance,
-          receivedAtUnixMs: poolStatsRow!.receivedAtUnixMs
+          payload: {},
+          payloadHash: r.payloadHash,
+          confidence: buildDefaultConfidence(),
+          confidenceComposite: null,
+          confidenceLevel: null,
+          validUntilUnixMs: null,
+          isStale: false,
+          staleBehavior: null,
+          provenance: {
+            sourceRefs: [],
+            rawObservationRefs: [],
+            derivedFromRefs: [],
+            processRef: {
+              collector: "",
+              jobName: "",
+              pipelineRunId: null,
+              codeVersion: null,
+              modelVersion: null
+            },
+            codeVersion: "",
+            runId: null
+          },
+          receivedAtUnixMs: evaluationAsOfUnixMs
         }) as NormalizedObservationRow
     ),
     evaluationAsOfUnixMs,
