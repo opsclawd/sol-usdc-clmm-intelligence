@@ -18,3 +18,12 @@ export {
   runContextEventsJob,
   type ContextEventsJobDeps
 } from "./context-events-job.js";
+export {
+  newsEvidenceJob,
+  runNewsEvidenceJob,
+  type ConfiguredNewsSource,
+  type NewsEvidenceJobDeps,
+  type NewsEvidenceJobResult,
+  type NewsEvidenceJobStatus,
+  type NewsSourceOutcome
+} from "./news-evidence-job.js";
