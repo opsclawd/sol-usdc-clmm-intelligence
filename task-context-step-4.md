@@ -1,6 +1,6 @@
 # Task Context: Task 4
 
-Title: Implement raw-first event collection and append-only lifecycle persistence
+Title: Derive stable identities and enrich normalized observations
 
 ## Workspace & Scope Constraints
 
@@ -10,84 +10,92 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-28
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-10
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-28
-Start Commit: ed7e5c030c3f6ef4e1383e3236e36cf521bdb9a2
+Branch: ai/issue-10
+Start Commit: dfdc6c6a72b0862f77922bc0061053324d906eef
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/application/collect-context-events.ts`
-- Create: `src/application/collect-scheduled-events.ts`
-- Create: `src/application/collect-protocol-incidents.ts`
-- Create: `tests/application/collect-context-events.test.ts`
+- Create: `src/domain/on-chain-flow/identity.ts`
+- Create: `src/domain/on-chain-flow/enrich.ts`
+- Modify: `src/domain/on-chain-flow/index.ts`
+- Create: `tests/domain/on-chain-flow/identity.test.ts`
+- Create: `tests/domain/on-chain-flow/enrich.test.ts`
 
-- [ ] **Step 1: Write persistence and lifecycle tests first**
+**Behavioral invariants to test first:**
 
-Write the exact named cases:
+- `transaction identity is stable across pagination and collection runs`: only source, kind, signature, and event index affect the source observation key.
+- `different events in one transaction have different identities`: event index or kind changes the key.
+- `DEX window identity changes when venue or window bounds change`: separate pressure windows cannot collide.
+- `enrichment computes freshness from source time and retrieval time`: expired data is marked stale under the taxonomy policy.
+- `enrichment validates raw-first provenance`: source/raw refs point to the actual raw row and allowed provider.
+- `CEX confidence is capped by attribution quality and records the cap reason`: high generic provider quality cannot erase proxy uncertainty.
+- `non-CEX confidence does not receive the CEX cap`: deterministic facts retain ordinary component weighting.
 
-- `exact source snapshot replay writes no duplicate normalized rows`
-- `changed snapshot appends raw and normalized history`
-- `unavailable source creates no absence claim`
+- [ ] **Step 1: Write failing identity and enrichment tests**
 
-Also prove that accepted bounded source data is inserted into `raw_observations` before normalized inserts, each normalized row points to its raw parent, multiple events from one snapshot insert atomically through `insertMany`, malformed snapshots write nothing, partial-invalid records retain the accepted bounded snapshot and return warnings without fabricating normalized data, and source timestamps differ from retrieval timestamps.
+  Run:
 
-- [ ] **Step 2: Confirm application tests fail**
+  ```bash
+  pnpm test tests/domain/on-chain-flow/identity.test.ts tests/domain/on-chain-flow/enrich.test.ts
+  ```
 
-Run: `pnpm exec vitest run tests/application/collect-context-events.test.ts`
+  Expected: FAIL because the identity and enrichment modules do not exist.
 
-Expected: FAIL because the collection use cases do not exist.
+- [ ] **Step 2: Implement stable identity**
 
-- [ ] **Step 3: Implement the collection use cases**
+  Export `deriveOnChainFlowObservationKey`. Canonicalize the relevant identity tuple and hash it. Explicitly exclude provider run ID, pagination cursor, fetched time, and payload hash from transaction identity so retries do not duplicate the same chain event. Use window bounds for DEX observations, which have no transaction signature.
 
-Use a private generic orchestration helper plus explicit wrappers:
+- [ ] **Step 3: Implement enrichment**
 
-```ts
-export async function collectScheduledEvents(
-  deps: CollectScheduledEventsDeps,
-  context: CollectionRunContext
-): Promise<ContextEventCollectionResult>;
-export async function collectProtocolIncidents(
-  deps: CollectProtocolIncidentsDeps,
-  context: CollectionRunContext
-): Promise<ContextEventCollectionResult>;
-```
+  Export `enrichOnChainFlow`. Canonicalize the normalized payload, load its taxonomy entry, compute freshness and confidence, build/validate provenance, and return the fields needed by `NormalizedObservationInsert`. Compute completeness from required context availability. For CEX proxy, cap `sourceReliability` at `attributionConfidence`, cap final composite confidence at `0.69`, force at most `medium`, and append `cex_proxy_quality_cap_applied` when a cap changes the result.
 
-The helper must canonicalize the bounded snapshot, derive its version-specific raw key, call `ingestRawObservation`, build/enrich all normalized candidates, and call `normalizedObservationRepo.insertMany`. Return `accepted`, `degraded`, `stale`, `identical_replay`, `malformed`, `timeout`, `network`, `unavailable`, or `failed` with counts and redacted diagnostics. A changed provider snapshot gets a changed version key and appends history; stable event linkage remains the normalized `sourceEventId`.
+- [ ] **Step 4: Run task-scoped verification**
 
-- [ ] **Step 4: Verify and commit**
+  ```bash
+  pnpm test tests/domain/on-chain-flow/identity.test.ts tests/domain/on-chain-flow/enrich.test.ts
+  pnpm exec eslint src/domain/on-chain-flow/identity.ts src/domain/on-chain-flow/enrich.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/identity.test.ts tests/domain/on-chain-flow/enrich.test.ts --max-warnings 0
+  pnpm exec prettier --check src/domain/on-chain-flow/identity.ts src/domain/on-chain-flow/enrich.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/identity.test.ts tests/domain/on-chain-flow/enrich.test.ts
+  ```
 
-Run: `pnpm exec vitest run tests/application/collect-context-events.test.ts`
+  Expected: all commands pass.
 
-Run: `pnpm exec eslint src/application/collect-context-events.ts src/application/collect-scheduled-events.ts src/application/collect-protocol-incidents.ts tests/application/collect-context-events.test.ts`
+- [ ] **Step 5: Commit**
 
-Expected: all selected tests and lint checks pass.
-
-Commit: `git add src/application/collect-context-events.ts src/application/collect-scheduled-events.ts src/application/collect-protocol-incidents.ts tests/application/collect-context-events.test.ts && git commit -m "feat: persist contextual event lifecycle history"`
+  ```bash
+  git add src/domain/on-chain-flow/identity.ts src/domain/on-chain-flow/enrich.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/identity.test.ts tests/domain/on-chain-flow/enrich.test.ts
+  git commit -m "feat: identify and enrich on-chain flow observations"
+  ```
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/application/collect-context-events.ts
-- src/application/collect-scheduled-events.ts
-- src/application/collect-protocol-incidents.ts
-- tests/application/collect-context-events.test.ts
+- src/domain/on-chain-flow/identity.ts
+- src/domain/on-chain-flow/enrich.ts
+- src/domain/on-chain-flow/index.ts
+- tests/domain/on-chain-flow/identity.test.ts
+- tests/domain/on-chain-flow/enrich.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/application/collect-context-events.test.ts
-pnpm exec eslint src/application/collect-context-events.ts src/application/collect-scheduled-events.ts src/application/collect-protocol-incidents.ts tests/application/collect-context-events.test.ts
+pnpm test tests/domain/on-chain-flow/identity.test.ts tests/domain/on-chain-flow/enrich.test.ts
+pnpm exec eslint src/domain/on-chain-flow/identity.ts src/domain/on-chain-flow/enrich.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/identity.test.ts tests/domain/on-chain-flow/enrich.test.ts --max-warnings 0
+pnpm exec prettier --check src/domain/on-chain-flow/identity.ts src/domain/on-chain-flow/enrich.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/identity.test.ts tests/domain/on-chain-flow/enrich.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **exact replay idempotency**: An identical bounded snapshot reuses its raw row and inserts no normalized duplicates. (Test: `exact source snapshot replay writes no duplicate normalized rows`)
-- **append-only change**: A changed snapshot receives a distinct raw key and appends normalized lifecycle states. (Test: `changed snapshot appends raw and normalized history`)
-- **raw-first ordering**: Accepted bounded source data is persisted before any normalized insert. (Test: `persists bounded raw evidence before normalized candidates`)
-- **no absence claim**: Unavailable sources create no raw or normalized observation claiming no events. (Test: `unavailable source creates no absence claim`)
+- **transaction replay identity**: Pagination and run metadata cannot change a transaction event identity. (Test: `transaction identity is stable across pagination and collection runs`)
+- **multi-event uniqueness**: Different indexes or kinds within one transaction produce different identities. (Test: `different events in one transaction have different identities`)
+- **window uniqueness**: DEX venue or time-window changes produce a new identity. (Test: `DEX window identity changes when venue or window bounds change`)
+- **freshness derivation**: Freshness uses the source observation and retrieval timestamps under taxonomy policy. (Test: `enrichment computes freshness from source time and retrieval time`)
+- **raw-first provenance**: Normalized provenance references the actual raw row and an allowed source. (Test: `enrichment validates raw-first provenance`)
+- **CEX confidence cap**: CEX attribution quality caps confidence and records why. (Test: `CEX confidence is capped by attribution quality and records the cap reason`)
+- **non-CEX confidence**: Deterministic non-CEX facts do not receive the proxy-only cap. (Test: `non-CEX confidence does not receive the CEX cap`)

@@ -326,7 +326,12 @@ export async function assembleEvidenceBundle(
   const contextualCandidateQuery: NormalizedObservationCandidateQuery = {
     sourceKinds: [
       { source: "macro-calendar-api", observationKind: "scheduled_event" },
-      { source: "solana-status-api", observationKind: "protocol_incident" }
+      { source: "solana-status-api", observationKind: "protocol_incident" },
+      { source: "helius-api", observationKind: "whale_transfer" },
+      { source: "helius-api", observationKind: "whale_swap" },
+      { source: "helius-api", observationKind: "stablecoin_flow" },
+      { source: "helius-api", observationKind: "cex_flow_proxy" },
+      { source: "birdeye-api", observationKind: "dex_net_flow" }
     ],
     receivedAtOrAfterUnixMs: evaluationTimeUnixMs - 7 * 24 * 60 * 60 * 1000
   };

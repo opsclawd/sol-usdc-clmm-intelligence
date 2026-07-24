@@ -1,6 +1,6 @@
 # Task Context: Task 6
 
-Title: Select only the latest eligible lifecycle state
+Title: Orchestrate multi-source collection and status reduction
 
 ## Workspace & Scope Constraints
 
@@ -10,85 +10,84 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-28
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-10
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-28
-Start Commit: ed7e5c030c3f6ef4e1383e3236e36cf521bdb9a2
+Branch: ai/issue-10
+Start Commit: dfdc6c6a72b0862f77922bc0061053324d906eef
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/domain/context-events/select.ts`
-- Create: `tests/domain/context-events/select.test.ts`
-- Modify: `src/domain/context-events/index.ts`
+- Create: `src/jobs/on-chain-flow-job.ts`
+- Modify: `src/jobs/index.ts`
+- Create: `tests/jobs/on-chain-flow-job.test.ts`
 
-- [ ] **Step 1: Write selection invariants first**
+**Behavioral invariants to test first:**
 
-Write the exact named cases:
+- `all usable sources reduce to COMPLETE without command failure`.
+- `one usable and one unavailable source reduce to PARTIAL without command failure`.
+- `all unavailable sources reduce to UNAVAILABLE with command failure`.
+- `zero usable sources with malformed or persistence failure reduce to FAILED with command failure`.
+- `duplicate configured source names abort before collection`.
+- `one run context and one threshold set are passed to both collectors`.
+- `outcomes are returned in stable source-name order regardless of completion order`.
 
-- `cancellation becomes the latest state and suppresses older scheduled evidence`
-- `incident resolution replaces active state until recovery expiry`
-- `latest ineligible state never revives older active state`
+- [ ] **Step 1: Write failing job tests**
 
-Also cover deterministic grouping by source/kind/sourceEventId, tie-breaking by `asOfUnixMs`, then `receivedAtUnixMs`, then row ID; strict provider isolation; future observations; stale flags; expiry at the exact evaluation boundary; resolved recovery evidence; a maximum of 64 selected events; and stable output ordering.
+  Run:
 
-- [ ] **Step 2: Confirm selection tests fail**
+  ```bash
+  pnpm test tests/jobs/on-chain-flow-job.test.ts
+  ```
 
-Run: `pnpm exec vitest run tests/domain/context-events/select.test.ts`
+  Expected: FAIL because the job does not exist.
 
-Expected: FAIL because the selector does not exist.
+- [ ] **Step 2: Implement job and exports**
 
-- [ ] **Step 3: Implement selection**
+  Export `ConfiguredOnChainFlowSource`, `OnChainFlowJobDeps`, `OnChainFlowJobResult`, `onChainFlowJob`, and `runOnChainFlowJob`. Validate exactly one Helius and one Birdeye source, create one run context, run sources independently with the same explicit thresholds/lookback, redact rejected diagnostics, sort outcomes by source, and reduce status using the truth table in the invariants. Export the public job surface from `src/jobs/index.ts`.
 
-Export:
+- [ ] **Step 3: Run task-scoped verification**
 
-```ts
-export interface ContextEventSelectionRequest {
-  readonly evaluationTimeUnixMs: number;
-  readonly candidates: readonly NormalizedObservationRow[];
-  readonly maxItems: number;
-}
-export interface SelectedContextEvent {
-  readonly row: NormalizedObservationRow;
-  readonly payload: ScheduledEventPayloadV1 | ProtocolIncidentPayloadV1;
-}
-export function selectCurrentContextEvents(
-  request: ContextEventSelectionRequest
-): readonly SelectedContextEvent[];
-```
+  ```bash
+  pnpm test tests/jobs/on-chain-flow-job.test.ts
+  pnpm exec eslint src/jobs/on-chain-flow-job.ts src/jobs/index.ts tests/jobs/on-chain-flow-job.test.ts --max-warnings 0
+  pnpm exec prettier --check src/jobs/on-chain-flow-job.ts src/jobs/index.ts tests/jobs/on-chain-flow-job.test.ts
+  ```
 
-Validate payload discriminants before grouping. Determine the latest row for every identity first, then apply eligibility; this ordering enforces the no-revival invariant. Sort selected rows by severity rank, event time, source, source event ID, and row ID before applying `maxItems`.
+  Expected: all commands pass.
 
-- [ ] **Step 4: Verify and commit**
+- [ ] **Step 4: Commit**
 
-Run: `pnpm exec vitest run tests/domain/context-events/select.test.ts`
-
-Run: `pnpm exec eslint src/domain/context-events/select.ts src/domain/context-events/index.ts tests/domain/context-events/select.test.ts`
-
-Expected: all selected tests and lint checks pass.
-
-Commit: `git add src/domain/context-events/select.ts src/domain/context-events/index.ts tests/domain/context-events/select.test.ts && git commit -m "feat: select current contextual event states"`
+  ```bash
+  git add src/jobs/on-chain-flow-job.ts src/jobs/index.ts tests/jobs/on-chain-flow-job.test.ts
+  git commit -m "feat: orchestrate on-chain flow source collection"
+  ```
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/domain/context-events/select.ts
-- src/domain/context-events/index.ts
-- tests/domain/context-events/select.test.ts
+- src/jobs/on-chain-flow-job.ts
+- src/jobs/index.ts
+- tests/jobs/on-chain-flow-job.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/domain/context-events/select.test.ts
-pnpm exec eslint src/domain/context-events/select.ts src/domain/context-events/index.ts tests/domain/context-events/select.test.ts
+pnpm test tests/jobs/on-chain-flow-job.test.ts
+pnpm exec eslint src/jobs/on-chain-flow-job.ts src/jobs/index.ts tests/jobs/on-chain-flow-job.test.ts --max-warnings 0
+pnpm exec prettier --check src/jobs/on-chain-flow-job.ts src/jobs/index.ts tests/jobs/on-chain-flow-job.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **cancelled latest state**: A latest CANCELLED state suppresses every older SCHEDULED state for the same identity. (Test: `cancellation becomes the latest state and suppresses older scheduled evidence`)
-- **resolved recovery state**: A latest RESOLVED state is selected only until its recovery expiry. (Test: `incident resolution replaces active state until recovery expiry`)
-- **no revival**: Eligibility is applied after latest-state grouping, so an ineligible latest row never revives an older active row. (Test: `latest ineligible state never revives older active state`)
+- **complete reduction**: All usable sources produce COMPLETE and do not fail the command. (Test: `all usable sources reduce to COMPLETE without command failure`)
+- **partial reduction**: A usable source plus an unavailable source produces PARTIAL and exits successfully. (Test: `one usable and one unavailable source reduce to PARTIAL without command failure`)
+- **unavailable reduction**: All unavailable sources produce UNAVAILABLE and fail the command. (Test: `all unavailable sources reduce to UNAVAILABLE with command failure`)
+- **failed reduction**: No usable evidence plus malformed or persistence failure produces FAILED. (Test: `zero usable sources with malformed or persistence failure reduce to FAILED with command failure`)
+- **unique source configuration**: Duplicate source names abort before any source is called. (Test: `duplicate configured source names abort before collection`)
+- **shared run configuration**: Both collectors receive one run context and the same explicit threshold set. (Test: `one run context and one threshold set are passed to both collectors`)
+- **stable outcome order**: Result ordering is source-name stable regardless of asynchronous completion. (Test: `outcomes are returned in stable source-name order regardless of completion order`)

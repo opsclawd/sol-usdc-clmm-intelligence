@@ -40,7 +40,12 @@ describe("observationKindRegistry", () => {
     "pool_statistics",
     "support_resistance_level",
     "ecosystem_news",
-    "regulatory_risk"
+    "regulatory_risk",
+    "whale_transfer",
+    "whale_swap",
+    "stablecoin_flow",
+    "dex_net_flow",
+    "cex_flow_proxy"
   ];
 
   it("has an entry for every ObservationKind union member", () => {
@@ -534,5 +539,139 @@ describe("registers regulatory_risk as contextual news_evidence evidence", () =>
     const w = entry.confidencePolicy.weights;
     const sum = w.sourceReliability + w.dataCompleteness + w.derivationConfidence + w.llmConfidence;
     expect(Math.abs(sum - 1.0)).toBeLessThan(1e-9);
+  });
+});
+
+describe("registers deterministic on-chain transaction facts and probabilistic CEX proxies", () => {
+  const deterministicKinds = [
+    "whale_transfer",
+    "whale_swap",
+    "stablecoin_flow",
+    "dex_net_flow"
+  ] as const;
+
+  for (const kind of deterministicKinds) {
+    describe(`registers ${kind} as deterministic on_chain_flow evidence`, () => {
+      const entry = getObservationKindEntry(kind);
+
+      it(`${kind} is registered`, () => {
+        expect(entry).toBeDefined();
+        expect(entry.kind).toBe(kind);
+      });
+
+      it(`${kind} evidence family is on_chain_flow`, () => {
+        expect(entry.evidenceFamily).toBe("on_chain_flow");
+      });
+
+      it(`${kind} signal class is deterministic`, () => {
+        expect(entry.signalClass).toBe("deterministic");
+      });
+
+      it(`${kind} schema version is 1`, () => {
+        expect(entry.schemaVersion).toBe(1);
+      });
+
+      it(`${kind} is active`, () => {
+        expect(entry.active).toBe(true);
+      });
+    });
+  }
+
+  it("cex_flow_proxy is registered as probabilistic on_chain_flow evidence", () => {
+    const entry = getObservationKindEntry("cex_flow_proxy");
+    expect(entry).toBeDefined();
+    expect(entry.kind).toBe("cex_flow_proxy");
+    expect(entry.evidenceFamily).toBe("on_chain_flow");
+    expect(entry.signalClass).toBe("probabilistic");
+    expect(entry.schemaVersion).toBe(1);
+    expect(entry.active).toBe(true);
+  });
+});
+
+describe("allows only the source providers that can emit each flow kind", () => {
+  it("whale_transfer allows helius-api as provenance source", () => {
+    const entry = getObservationKindEntry("whale_transfer");
+    expect(entry.provenanceRequirements.allowedSourceRefs).toContain("helius-api");
+  });
+
+  it("whale_swap allows helius-api as provenance source", () => {
+    const entry = getObservationKindEntry("whale_swap");
+    expect(entry.provenanceRequirements.allowedSourceRefs).toContain("helius-api");
+  });
+
+  it("stablecoin_flow allows helius-api as provenance source", () => {
+    const entry = getObservationKindEntry("stablecoin_flow");
+    expect(entry.provenanceRequirements.allowedSourceRefs).toContain("helius-api");
+  });
+
+  it("cex_flow_proxy allows helius-api as provenance source", () => {
+    const entry = getObservationKindEntry("cex_flow_proxy");
+    expect(entry.provenanceRequirements.allowedSourceRefs).toContain("helius-api");
+  });
+
+  it("dex_net_flow allows birdeye-api as provenance source", () => {
+    const entry = getObservationKindEntry("dex_net_flow");
+    expect(entry.provenanceRequirements.allowedSourceRefs).toContain("birdeye-api");
+  });
+
+  it("dex_net_flow does not allow helius-api for DEX net flow", () => {
+    const entry = getObservationKindEntry("dex_net_flow");
+    expect(entry.provenanceRequirements.allowedSourceRefs).not.toContain("helius-api");
+  });
+});
+
+describe("on-chain flow freshness policies", () => {
+  const flowKinds = [
+    "whale_transfer",
+    "whale_swap",
+    "stablecoin_flow",
+    "dex_net_flow",
+    "cex_flow_proxy"
+  ] as const;
+
+  for (const kind of flowKinds) {
+    it(`${kind} has 15-minute max age, 5-second skew tolerance, and allow_context_only stale behavior`, () => {
+      const entry = getObservationKindEntry(kind);
+      expect(entry.freshnessPolicy.maxObservedAgeMs).toBe(900_000);
+      expect(entry.freshnessPolicy.clockSkewToleranceMs).toBe(5_000);
+      expect(entry.freshnessPolicy.staleBehavior).toBe("allow_context_only");
+    });
+  }
+});
+
+describe("on-chain flow confidence policies", () => {
+  it("deterministic flow kinds have source reliability weight >= 0.4", () => {
+    const deterministicKinds = [
+      "whale_transfer",
+      "whale_swap",
+      "stablecoin_flow",
+      "dex_net_flow"
+    ] as const;
+    for (const kind of deterministicKinds) {
+      const entry = getObservationKindEntry(kind);
+      expect(entry.confidencePolicy.weights.sourceReliability).toBeGreaterThanOrEqual(0.4);
+    }
+  });
+
+  it("cex_flow_proxy has greater source reliability weight for attribution", () => {
+    const entry = getObservationKindEntry("cex_flow_proxy");
+    expect(entry.confidencePolicy.weights.sourceReliability).toBeGreaterThan(0.4);
+  });
+
+  it("all flow kinds have confidence weights summing to 1.0", () => {
+    const flowKinds = [
+      "whale_transfer",
+      "whale_swap",
+      "stablecoin_flow",
+      "dex_net_flow",
+      "cex_flow_proxy"
+    ] as const;
+    for (const kind of flowKinds) {
+      const entry = getObservationKindEntry(kind);
+      const w = entry.confidencePolicy.weights;
+      const sum =
+        w.sourceReliability + w.dataCompleteness + w.derivationConfidence + w.llmConfidence;
+      expect(Math.abs(sum - 1.0)).toBeLessThan(1e-9);
+    }
   });
 });

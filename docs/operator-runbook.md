@@ -882,6 +882,108 @@ Check:
 
 A source outage is ambiguous: it may indicate genuine no-coverage or a service problem. The pipeline never fabricates a "clean" result to hide ambiguity.
 
+## On-Chain Flow Collection (`pnpm collect:on-chain-flow`)
+
+The `collect:on-chain-flow` command collects on-chain SOL/USDC flow events from two providers: Helius (transaction flows) and Birdeye (DEX net flows). On-chain flow data describes what happened on-chain, not why. No output claims motive or policy; final synthesis belongs to regime-engine.
+
+### Authority Boundary
+
+- **Factual evidence only**: Flow events (whale transfers, swaps, stablecoin flows, DEX net flows, CEX proxies) are factual metadata about on-chain activity. The collector does not infer intent, motive, or policy.
+- **Probabilistic CEX attribution**: CEX flow attributions are probabilistic proxies with explicit confidence thresholds. No output treats CEX proxy data as deterministic.
+- **No execution authority**: This collector captures evidence only. It does not construct instructions, sign transactions, or execute swaps.
+
+### Environment Variables
+
+Required environment variables:
+
+```bash
+# Helius flow API (transaction flows: whale transfers, swaps, stablecoin flows, CEX proxies)
+HELIUS_FLOW_API_URL=https://api.helius.xyz/v0/transactions
+HELIUS_API_KEY=<your-helius-api-key>
+
+# Birdeye flow API (DEX net flows: buy/sell volume and net flow)
+BIRDEYE_FLOW_API_URL=https://api.birdeye.xyz/v1/defi/portfolio
+BIRDEYE_API_KEY=<your-birdeye-api-key>
+
+# Optional threshold overrides (all default to values below if unset)
+ON_CHAIN_WHALE_TRANSFER_MIN_USDC=1000000       # Default: 1,000,000 USDC
+ON_CHAIN_WHALE_SWAP_MIN_USDC=1000000           # Default: 1,000,000 USDC
+ON_CHAIN_STABLECOIN_FLOW_MIN_USDC=1000000      # Default: 1,000,000 USDC
+ON_CHAIN_DEX_NET_FLOW_MIN_USDC=5000000          # Default: 5,000,000 USDC
+ON_CHAIN_CEX_PROXY_MIN_USDC=1000000             # Default: 1,000,000 USDC
+ON_CHAIN_CEX_MIN_ATTRIBUTION_CONFIDENCE=0.8     # Default: 0.8 (80%)
+ON_CHAIN_FLOW_LOOKBACK_MS=900000               # Default: 900,000 ms (15 minutes)
+```
+
+### Command and Statuses
+
+```bash
+pnpm collect:on-chain-flow
+```
+
+Exit codes:
+
+| Status        | Exit Code | Meaning                                                         |
+| ------------- | --------- | --------------------------------------------------------------- |
+| `COMPLETE`    | 0         | All configured sources succeeded (or replayed identically)      |
+| `PARTIAL`     | 0         | At least one source succeeded; others failed or degraded        |
+| `UNAVAILABLE` | 1         | All sources unavailable (HTTP 429, 404, 5xx, timeouts)          |
+| `FAILED`      | 1         | Validation conflict, malformed payload, or zero usable evidence |
+
+### Threshold Semantics
+
+Thresholds are exact decimal strings parsed with arbitrary-precision arithmetic. All thresholds are denominated in USDC:
+
+- `whaleTransferMinUsdc`: Whale transfer transactions (Helius)
+- `whaleSwapMinUsdc`: Whale swap transactions (Helius)
+- `stablecoinFlowMinUsdc`: Stablecoin mint/burn/transfer events (Helius)
+- `dexNetFlowMinUsdc`: DEX net flow magnitude (Birdeye)
+- `cexFlowProxyMinUsdc`: CEX flow proxy attribution amount (Helius)
+
+The CEX attribution confidence threshold (`cexMinAttributionConfidence`) is a number in [0, 1]. Values outside this range or non-finite numbers cause validation failure.
+
+### No-Event Semantics
+
+Empty responses from both providers are valid (no qualifying events in the lookback window). The collector returns `COMPLETE` with zero accepted events, not an error.
+
+### CEX Proxy Quality Gates
+
+CEX flow attributions are probabilistic proxies. Events are filtered when:
+
+1. `attributionConfidence < cexMinAttributionConfidence` (default 0.8)
+2. Amount falls below `cexFlowProxyMinUsdc` (default 1,000,000 USDC)
+
+The explicit confidence cap and threshold are authority boundaries, not presentation metadata.
+
+### Retention and Licensing
+
+All events carry `retention: "bounded"` and a provider-supplied `license` string. Providers must supply stable `providerRunId` values and non-empty source references. Missing or invalid license declarations cause collection to abort.
+
+### Troubleshooting
+
+#### Both sources return empty events
+
+Empty responses are valid (no qualifying events in the lookback window). If combined with a `degraded` status, this may indicate providers are filtering incorrectly. Verify the lookback window and threshold values are appropriate.
+
+#### Timeout errors
+
+Increase timeout values in the adapter configuration or reduce the lookback window (`ON_CHAIN_FLOW_LOOKBACK_MS`).
+
+#### License/retention validation failures
+
+Providers must declare non-empty `license` and `retention: "bounded"`. If a provider cannot supply these, the collector cannot legally accept the data. Contact the provider to update their API contract or use a compliant provider.
+
+#### All sources unavailable (UNAVAILABLE)
+
+Check:
+
+1. API endpoint status and rate limits
+2. Network connectivity
+3. Credentials correctness
+4. Diagnostic message for specifics
+
+A source outage is ambiguous: it may indicate genuine no-events or a service problem. The pipeline never fabricates a "clean" result to hide ambiguity.
+
 ## Publish-attempt persistence
 
 All SQL queries below are read-only. Do not manually mutate immutable publish-attempt audit rows.

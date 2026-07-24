@@ -1,6 +1,6 @@
 # Task Context: Task 3
 
-Title: Cluster duplicates corroboration conflicts and corrections
+Title: Validate, threshold, and normalize flow facts
 
 ## Workspace & Scope Constraints
 
@@ -10,87 +10,109 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-29
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-10
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-29
-Start Commit: c4ebafe2e56545826828c5cef80a53840e1a3cda
+Branch: ai/issue-10
+Start Commit: dfdc6c6a72b0862f77922bc0061053324d906eef
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/domain/news-events/cluster.ts`
-- Create: `tests/domain/news-events/cluster.test.ts`
-- Modify: `src/domain/news-events/index.ts`
+- Create: `src/domain/on-chain-flow/validate.ts`
+- Create: `src/domain/on-chain-flow/threshold.ts`
+- Create: `src/domain/on-chain-flow/normalize.ts`
+- Create: `src/domain/on-chain-flow/index.ts`
+- Create: `tests/domain/on-chain-flow/validate.test.ts`
+- Create: `tests/domain/on-chain-flow/threshold.test.ts`
+- Create: `tests/domain/on-chain-flow/normalize.test.ts`
 
-- [ ] **Step 1: Write clustering state-transition tests first**
+**Behavioral invariants to test first:**
 
-Write the exact named cases:
+- `accepts canonical factual events and rejects unknown or narrative fields`: strict schemas reject motive, recommendation, NaN, negative unsigned amounts, invalid time windows, and missing references.
+- `includes an event when amount equals its configured threshold`: comparisons are exact decimal comparisons, not `Number` conversions.
+- `filters an event when amount is below its kind threshold`: filtered events never reach raw persistence.
+- `filters CEX proxy below attribution confidence even when amount qualifies`: both gates must pass.
+- `normalizes transaction direction from explicit asset deltas only`: whale swap direction is `buy_sol`, `sell_sol`, or `unknown` based on supplied SOL/USDC deltas, never address intent.
+- `normalizes stablecoin mint burn and transfer as separate operations`: operation is retained exactly.
+- `normalizes DEX net flow with a signed net equal to buy minus sell`: inconsistent provider net values are rejected rather than silently corrected.
+- `always attaches CEX proxy noise caveats and never upgrades it to deterministic`: address attribution remains probabilistic.
 
-- `provider syndication id groups copies without corroboration`
-- `near duplicate clustering is deterministic across input order`
-- `independent publishers with distinct originating reports corroborate`
-- `conflicting reports remain visible as conflicting evidence`
-- `correction appends a linked version without overwriting history`
+- [ ] **Step 1: Write failing pure-domain tests**
 
-Add threshold boundary tests at `0.79` and `0.80`, 72-hour boundary tests, affected-scope mismatch tests, a case proving same-publisher rewrites do not corroborate, and a case proving corrections inherit the corrected record's cluster even when the corrected title changes.
+  Tests must name each invariant exactly and use boundary values such as `999999.99`, `1000000`, and `1000000.01`. Include a precision case beyond JavaScript’s safe integer range.
 
-- [ ] **Step 2: Confirm clustering tests fail**
+  Run:
 
-Run: `pnpm exec vitest run tests/domain/news-events/cluster.test.ts`
+  ```bash
+  pnpm test tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/threshold.test.ts tests/domain/on-chain-flow/normalize.test.ts
+  ```
 
-Expected: FAIL because the clustering API is absent.
+  Expected: FAIL because the domain modules do not exist.
 
-- [ ] **Step 3: Implement deterministic clustering**
+- [ ] **Step 2: Implement strict validation and exact decimal comparison**
 
-Export:
+  Implement:
 
-```ts
-export interface ClusterNewsEvidenceInput {
-  readonly historical: readonly NewsEvidencePayload[];
-  readonly incoming: readonly UnclusteredNewsEvidencePayload[];
-}
+  ```ts
+  acceptOnChainFlowSourceEvent(input: unknown): AcceptedOnChainFlowSourceEvent
+  parseOnChainFlowThresholds(input: OnChainFlowThresholds): ParsedOnChainFlowThresholds
+  qualifiesOnChainFlow(event, thresholds): boolean
+  normalizeOnChainFlow(event, retrievedAtUnixMs): OnChainFlowPayloadV1
+  ```
 
-export function clusterNewsEvidence(
-  input: ClusterNewsEvidenceInput
-): Promise<readonly NewsEvidencePayload[]>;
-```
+  Parse decimals into sign, digits, and scale; compare aligned integer digits without floating point. Reject scientific notation, infinities, and non-canonical leading signs. Require CEX attribution confidence in `[0, 1]`.
 
-Normalize tokens by Unicode lowercase, punctuation removal, whitespace collapse, stop-word removal, and unique sorting. Prefer exact correction targets, then exact non-null syndication IDs, then the `0.80` Jaccard/time/scope heuristic. Sort historical and incoming records by the deterministic representative tuple before unioning groups. Hash only the chosen representative identity to derive `clusterId`.
+- [ ] **Step 3: Implement factual normalization**
 
-For each incoming payload, aggregate sorted unique source references and claims from its resolved group. Count independent corroboration only across distinct `(publisher.id, originatingReportId)` pairs. Preserve the incoming record as its own immutable version; do not mutate historical payloads. If any accepted record declares a conflict with another source version, set `conflicting`, add `source_disagreement`, retain both claim arrays, and apply the conflict degradation during enrichment.
+  Sort/deduplicate source references and address labels. Copy provider timestamps and venue/address facts. For DEX pressure, verify exact `buyVolumeUsdc - sellVolumeUsdc === netFlowUsdc`. Build `freshnessContext` from source observation and retrieval timestamps. Do not add interpretations.
 
-- [ ] **Step 4: Verify and commit**
+- [ ] **Step 4: Run task-scoped verification**
 
-Run: `pnpm exec vitest run tests/domain/news-events/cluster.test.ts`
+  ```bash
+  pnpm test tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/threshold.test.ts tests/domain/on-chain-flow/normalize.test.ts
+  pnpm exec eslint src/domain/on-chain-flow/validate.ts src/domain/on-chain-flow/threshold.ts src/domain/on-chain-flow/normalize.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/threshold.test.ts tests/domain/on-chain-flow/normalize.test.ts --max-warnings 0
+  pnpm exec prettier --check src/domain/on-chain-flow/validate.ts src/domain/on-chain-flow/threshold.ts src/domain/on-chain-flow/normalize.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/threshold.test.ts tests/domain/on-chain-flow/normalize.test.ts
+  ```
 
-Run: `pnpm exec eslint src/domain/news-events/cluster.ts src/domain/news-events/index.ts tests/domain/news-events/cluster.test.ts`
+  Expected: all commands pass.
 
-Expected: selected tests and lint pass.
+- [ ] **Step 5: Commit**
 
-Commit: `git add src/domain/news-events/cluster.ts src/domain/news-events/index.ts tests/domain/news-events/cluster.test.ts && git commit -m "feat: cluster and corroborate news evidence"`
+  ```bash
+  git add src/domain/on-chain-flow/validate.ts src/domain/on-chain-flow/threshold.ts src/domain/on-chain-flow/normalize.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/threshold.test.ts tests/domain/on-chain-flow/normalize.test.ts
+  git commit -m "feat: validate and normalize on-chain flow facts"
+  ```
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/domain/news-events/cluster.ts
-- src/domain/news-events/index.ts
-- tests/domain/news-events/cluster.test.ts
+- src/domain/on-chain-flow/validate.ts
+- src/domain/on-chain-flow/threshold.ts
+- src/domain/on-chain-flow/normalize.ts
+- src/domain/on-chain-flow/index.ts
+- tests/domain/on-chain-flow/validate.test.ts
+- tests/domain/on-chain-flow/threshold.test.ts
+- tests/domain/on-chain-flow/normalize.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/domain/news-events/cluster.test.ts
-pnpm exec eslint src/domain/news-events/cluster.ts src/domain/news-events/index.ts tests/domain/news-events/cluster.test.ts
+pnpm test tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/threshold.test.ts tests/domain/on-chain-flow/normalize.test.ts
+pnpm exec eslint src/domain/on-chain-flow/validate.ts src/domain/on-chain-flow/threshold.ts src/domain/on-chain-flow/normalize.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/threshold.test.ts tests/domain/on-chain-flow/normalize.test.ts --max-warnings 0
+pnpm exec prettier --check src/domain/on-chain-flow/validate.ts src/domain/on-chain-flow/threshold.ts src/domain/on-chain-flow/normalize.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/threshold.test.ts tests/domain/on-chain-flow/normalize.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **syndication is not corroboration**: Provider-declared copies share a cluster but one originating report does not raise corroboration. (Test: `provider syndication id groups copies without corroboration`)
-- **order independent clustering**: Input permutation cannot change group membership, representative identity, or cluster ID. (Test: `near duplicate clustering is deterministic across input order`)
-- **independent reports corroborate**: Distinct publisher and originating-report identities in one cluster produce independently corroborated evidence and retain all references. (Test: `independent publishers with distinct originating reports corroborate`)
-- **conflicts stay visible**: Conflicting claim sets and references remain present with conflicting state rather than becoming consensus. (Test: `conflicting reports remain visible as conflicting evidence`)
-- **corrections preserve history**: A correction inherits cluster identity, links its corrected version, and does not mutate the corrected payload. (Test: `correction appends a linked version without overwriting history`)
+- **strict factual schema**: Unknown narrative fields and invalid numeric/timestamp shapes are rejected. (Test: `accepts canonical factual events and rejects unknown or narrative fields`)
+- **inclusive threshold**: An exact amount equal to its threshold qualifies. (Test: `includes an event when amount equals its configured threshold`)
+- **below threshold filter**: An event below its kind threshold is filtered before raw persistence. (Test: `filters an event when amount is below its kind threshold`)
+- **CEX attribution gate**: A CEX proxy must satisfy both amount and address-attribution confidence thresholds. (Test: `filters CEX proxy below attribution confidence even when amount qualifies`)
+- **explicit swap direction**: Swap direction comes only from explicit SOL/USDC deltas. (Test: `normalizes transaction direction from explicit asset deltas only`)
+- **stablecoin operation fidelity**: Mint, burn, and transfer operations remain distinct factual values. (Test: `normalizes stablecoin mint burn and transfer as separate operations`)
+- **DEX arithmetic reconciliation**: Signed net flow must exactly equal buy volume minus sell volume. (Test: `normalizes DEX net flow with a signed net equal to buy minus sell`)
+- **CEX probabilistic boundary**: Normalized CEX evidence always carries proxy caveats and remains probabilistic. (Test: `always attaches CEX proxy noise caveats and never upgrades it to deterministic`)

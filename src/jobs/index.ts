@@ -27,3 +27,12 @@ export {
   type NewsEvidenceJobStatus,
   type NewsSourceOutcome
 } from "./news-evidence-job.js";
+export {
+  onChainFlowJob,
+  runOnChainFlowJob,
+  type ConfiguredOnChainFlowSource,
+  type OnChainFlowJobDeps,
+  type OnChainFlowJobResult,
+  type OnChainFlowJobStatus,
+  type OnChainFlowSourceOutcome
+} from "./on-chain-flow-job.js";

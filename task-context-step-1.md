@@ -1,6 +1,6 @@
 # Task Context: Task 1
 
-Title: Define news evidence contracts and taxonomy
+Title: Define on-chain flow contracts and taxonomy entries
 
 ## Workspace & Scope Constraints
 
@@ -10,132 +10,122 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-29
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-10
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-29
-Start Commit: c4ebafe2e56545826828c5cef80a53840e1a3cda
+Branch: ai/issue-10
+Start Commit: dfdc6c6a72b0862f77922bc0061053324d906eef
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/contracts/news-events.ts`
-- Create: `tests/contracts/news-events.test.ts`
 - Modify: `src/contracts/taxonomy.ts`
+- Create: `src/contracts/on-chain-flow.ts`
 - Modify: `src/contracts/index.ts`
-- Modify: `src/ports/index.ts`
 - Modify: `src/domain/taxonomy/registry.ts`
-- Modify: `src/domain/taxonomy/validation.ts`
-- Modify: `src/jobs/index.ts`
-- Modify: `tests/domain/taxonomy/registry.test.ts`
-- Modify: `tests/domain/taxonomy/validation.test.ts`
-- Modify: `tests/domain/evidence-bundle/assemble.test.ts`
-- Modify: `tests/domain/evidence-bundle/context-events-assemble.test.ts`
-- Modify: `tests/fakes/index.ts`
+- Modify: `tests/domain/taxonomy/registry.test.ts` (only the `observationKinds` list and a new `on-chain flow registry` describe block)
+- Modify: `tests/domain/taxonomy/confidence.test.ts` (only to cover the new `cex_proxy_quality_cap_applied` reason)
+- Create: `tests/contracts/on-chain-flow.test.ts`
 
-- [ ] **Step 1: Write failing contract and taxonomy tests**
+**Behavioral invariants to test first:**
 
-Add the named contract cases `accepts a source-linked bounded ecosystem news record` and `rejects content that cannot be traced to an https source reference`. Assert that strict payloads expose no `direction`, `recommendation`, `sentiment`, or free-form article body. In the existing taxonomy tests, add focused describe blocks proving both new observation kinds/families/sources parse and that registry entries are contextual, active, schema version 1, `allow_context_only`, and restricted to their matching direct source.
+- `registers deterministic on-chain transaction facts and probabilistic CEX proxies`: transfer, swap, stablecoin, and DEX entries use `on_chain_flow`; only `cex_flow_proxy` uses `probabilistic`.
+- `allows only the source providers that can emit each flow kind`: Helius is allowed for transaction kinds and CEX proxy; Birdeye is allowed for DEX net flow.
+- `requires explicit CEX proxy noise metadata`: the CEX payload schema cannot be represented without attribution confidence, attribution provider, proxy quality, and caveats.
+- `does not provide a motive field on any normalized flow payload`: contract fixtures contain factual direction/context only.
 
-- [ ] **Step 2: Confirm the selected tests fail**
+- [ ] **Step 1: Write the failing contract and registry tests**
 
-Run: `pnpm exec vitest run tests/contracts/news-events.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts`
+  Add exact tests named above. In `tests/contracts/on-chain-flow.test.ts`, use `satisfies OnChainFlowPayloadV1` fixtures and assert the discriminated union contains:
+  - common fields: `schemaVersion`, `eventFamily`, `eventType`, `sourceEventId`, `observedAtUnixMs`, `amountUsdc`, `direction`, `venue`, `addressContext`, `sourceReferences`, `sourceQuality`, `freshnessContext`;
+  - transaction identity: `transactionSignature`, `eventIndex`, `slot`;
+  - stablecoin operation: `mint | burn | transfer`;
+  - DEX window: `windowStartUnixMs`, `windowEndUnixMs`, `buyVolumeUsdc`, `sellVolumeUsdc`, `netFlowUsdc`;
+  - CEX noise: `{ quality: "proxy"; attributionConfidence; attributionProvider; caveats }`.
 
-Expected: FAIL because the new contract, taxonomy values, and registry entries are absent.
+  Run:
 
-- [ ] **Step 3: Add the exported contracts and taxonomy entries**
+  ```bash
+  pnpm test tests/contracts/on-chain-flow.test.ts tests/domain/taxonomy/registry.test.ts
+  ```
 
-Add `"ecosystem_news"` and `"regulatory_risk"` to `EvidenceFamily` and `ObservationKind`, and `"crypto-news-api"` and `"regulatory-monitor-api"` to `Source`. Define and export these stable discriminants and shapes from `src/contracts/news-events.ts` and `src/contracts/index.ts`:
+  Expected: FAIL because the new types, sources, kinds, and registry entries do not exist.
 
-```ts
-export type NewsEvidenceKind = "ecosystem_news" | "regulatory_risk";
-export type NewsCorroborationState =
-  | "unconfirmed"
-  | "single_source"
-  | "independently_corroborated"
-  | "conflicting";
-export type NewsEvidenceWarning =
-  | "unconfirmed_claim"
-  | "correction"
-  | "partial_material"
-  | "paywalled_material"
-  | "source_disagreement"
-  | "stale_observation";
+- [ ] **Step 2: Add the contracts and taxonomy**
 
-export interface NewsPayloadV1 {
-  readonly evidenceKind: "ecosystem_news";
-  readonly articleId: string;
-  readonly sourceVersionId: string;
-  readonly correctsSourceVersionId: string | null;
-  readonly clusterId: string;
-  readonly title: string;
-  readonly factualSummary: string;
-  readonly extractedClaims: readonly string[];
-  readonly topicTags: readonly string[];
-  readonly publishedAtUnixMs: number | null;
-  readonly sourceUpdatedAtUnixMs: number | null;
-  readonly retrievedAtUnixMs: number;
-  readonly asOfUnixMs: number;
-  readonly expiresAtUnixMs: number;
-  readonly publisher: NewsPublisher;
-  readonly sourceQuality: NewsSourceQuality;
-  readonly corroborationState: NewsCorroborationState;
-  readonly originatingReportId: string;
-  readonly syndicationId: string | null;
-  readonly affectedAssets: readonly string[];
-  readonly affectedProtocols: readonly string[];
-  readonly affectedJurisdictions: readonly string[];
-  readonly sourceReferences: readonly string[];
-  readonly rawProvenance: NewsRawProvenance;
-  readonly warnings: readonly NewsEvidenceWarning[];
-}
+  Extend `ObservationKind` with:
 
-export interface RegulatoryPayloadV1 extends Omit<NewsPayloadV1, "evidenceKind"> {
-  readonly evidenceKind: "regulatory_risk";
-}
+  ```ts
+  | "whale_transfer"
+  | "whale_swap"
+  | "stablecoin_flow"
+  | "dex_net_flow"
+  | "cex_flow_proxy"
+  ```
 
-export type NewsEvidencePayload = NewsPayloadV1 | RegulatoryPayloadV1;
-```
+  Extend `Source` with `"helius-api" | "birdeye-api"` and `ConfidenceReason` with `"cex_proxy_quality_cap_applied"`.
 
-Define `NewsPublisher`, `NewsSourceQuality`, and `NewsRawProvenance` explicitly: publisher has stable ID, display name, and `official | primary | secondary | aggregator`; source quality has provider ID, reliability `[0,1]`, `complete | partial`, `confirmed | unconfirmed`, and paywall boolean; provenance has retrieval, license/rights, bounded retention, robots, and terms flags.
+  In `src/contracts/on-chain-flow.ts`, define `OnChainFlowDirection`, `OnChainAddressContext`, `OnChainFlowSourceQuality`, the five `*PayloadV1` interfaces, their `OnChainFlowPayloadV1` union, and:
 
-Register 24-hour/72-hour freshness policies, contextual confidence weights, no LLM weight, and direct-source provenance allowlists. Update every runtime parser set in `src/domain/taxonomy/validation.ts`.
+  ```ts
+  export interface OnChainFlowThresholds {
+    readonly whaleTransferMinUsdc: string;
+    readonly whaleSwapMinUsdc: string;
+    readonly stablecoinFlowMinUsdc: string;
+    readonly dexNetFlowMinUsdc: string;
+    readonly cexFlowProxyMinUsdc: string;
+    readonly cexMinAttributionConfidence: number;
+  }
+  ```
 
-- [ ] **Step 4: Verify and commit**
+  Keep numeric money fields as canonical non-negative decimal strings, except signed `netFlowUsdc`. Do not add narrative, motive, recommendation, or policy fields. Export the file from `src/contracts/index.ts`.
 
-Run: `pnpm exec vitest run tests/contracts/news-events.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts`
+- [ ] **Step 3: Register the five kinds**
 
-Run: `pnpm exec eslint src/contracts/news-events.ts src/contracts/taxonomy.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/contracts/news-events.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/evidence-bundle/assemble.test.ts tests/domain/evidence-bundle/context-events-assemble.test.ts`
+  Add five version-1 entries to `observationKindRegistry`, all with `evidenceFamily: "on_chain_flow"`, 15-minute max age, 5-second skew tolerance, and `staleBehavior: "allow_context_only"`. Use `deterministic` for blockchain/window facts and `probabilistic` for `cex_flow_proxy`. Give CEX proxy greater weight to source reliability, and restrict provenance sources as described in the invariants.
 
-Expected: selected tests and lint pass; the automatic `pnpm -r typecheck` gate also passes because the union types, registries, parsers, and exports change together.
+- [ ] **Step 4: Run task-scoped verification**
 
-Commit: `git add src/contracts/news-events.ts src/contracts/taxonomy.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/contracts/news-events.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/evidence-bundle/assemble.test.ts tests/domain/evidence-bundle/context-events-assemble.test.ts && git commit -m "feat: define news evidence taxonomy and contracts"`
+  ```bash
+  pnpm test tests/contracts/on-chain-flow.test.ts tests/domain/taxonomy/registry.test.ts
+  pnpm exec eslint src/contracts/taxonomy.ts src/contracts/on-chain-flow.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/on-chain-flow.test.ts tests/domain/taxonomy/registry.test.ts --max-warnings 0
+  pnpm exec prettier --check src/contracts/taxonomy.ts src/contracts/on-chain-flow.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/on-chain-flow.test.ts tests/domain/taxonomy/registry.test.ts
+  ```
+
+  Expected: all commands pass.
+
+- [ ] **Step 5: Commit**
+
+  ```bash
+  git add src/contracts/taxonomy.ts src/contracts/on-chain-flow.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/on-chain-flow.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts
+  git commit -m "feat: define on-chain flow evidence taxonomy"
+  ```
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/contracts/news-events.ts
 - src/contracts/taxonomy.ts
+- src/contracts/on-chain-flow.ts
 - src/contracts/index.ts
 - src/domain/taxonomy/registry.ts
-- src/domain/taxonomy/validation.ts
-- tests/contracts/news-events.test.ts
 - tests/domain/taxonomy/registry.test.ts
-- tests/domain/taxonomy/validation.test.ts
-- tests/domain/evidence-bundle/assemble.test.ts
-- tests/domain/evidence-bundle/context-events-assemble.test.ts
+- tests/domain/taxonomy/confidence.test.ts
+- tests/contracts/on-chain-flow.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/contracts/news-events.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts
-pnpm exec eslint src/contracts/news-events.ts src/contracts/taxonomy.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/contracts/news-events.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts tests/domain/evidence-bundle/assemble.test.ts tests/domain/evidence-bundle/context-events-assemble.test.ts
+pnpm test tests/contracts/on-chain-flow.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts
+pnpm exec eslint src/contracts/taxonomy.ts src/contracts/on-chain-flow.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/on-chain-flow.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts --max-warnings 0
+pnpm exec prettier --check src/contracts/taxonomy.ts src/contracts/on-chain-flow.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/on-chain-flow.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **bounded source linked contract**: A compliant record with an HTTPS reference is represented as contextual news evidence without any directional or recommendation field. (Test: `accepts a source-linked bounded ecosystem news record`)
-- **traceable source required**: A record with no absolute HTTPS source reference is rejected and cannot become normalized evidence. (Test: `rejects content that cannot be traced to an https source reference`)
+- **flow signal classes**: Transaction and DEX facts are deterministic, while CEX address-attribution proxies are probabilistic. (Test: `registers deterministic on-chain transaction facts and probabilistic CEX proxies`)
+- **provider allowlists**: Helius is allowed for transaction/CEX kinds and Birdeye is allowed for DEX net flow. (Test: `allows only the source providers that can emit each flow kind`)
+- **CEX noise shape**: Every CEX proxy carries attribution confidence/provider plus explicit proxy caveats. (Test: `requires explicit CEX proxy noise metadata`)
+- **no motive contract**: Normalized flow payload contracts contain factual direction and context but no motive field. (Test: `does not provide a motive field on any normalized flow payload`)

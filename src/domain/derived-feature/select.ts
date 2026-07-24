@@ -5,6 +5,8 @@ export const SELECTION_VERSION = "mvp-feature-selection/v1";
 export interface CandidateRejection {
   readonly observationId: number;
   readonly reason: string;
+  readonly source: Source;
+  readonly payloadHash: string;
 }
 
 export interface Selection<T> {
@@ -41,7 +43,9 @@ export function selectLatestBySourceAndKind(
     if (allowedSourceSet !== null && !allowedSourceSet.has(key)) {
       wrongSourceRejections.push({
         observationId: candidate.id,
-        reason: `wrong_source_kind: expected one of ${allowedSources!.map((s) => `${s.source}:${s.observationKind}`).join(", ")}, got ${key}`
+        reason: `wrong_source_kind: expected one of ${allowedSources!.map((s) => `${s.source}:${s.observationKind}`).join(", ")}, got ${key}`,
+        source: candidate.source,
+        payloadHash: candidate.payloadHash
       });
     } else {
       validCandidates.push(candidate);
@@ -57,7 +61,9 @@ export function selectLatestBySourceAndKind(
     if (candidate.validUntilUnixMs !== null && candidate.validUntilUnixMs <= evaluationAsOfUnixMs) {
       expiredRejections.push({
         observationId: candidate.id,
-        reason: `expired: validUntil=${candidate.validUntilUnixMs} <= evaluationAsOf=${evaluationAsOfUnixMs}`
+        reason: `expired: validUntil=${candidate.validUntilUnixMs} <= evaluationAsOf=${evaluationAsOfUnixMs}`,
+        source: candidate.source,
+        payloadHash: candidate.payloadHash
       });
     } else {
       notExpiredCandidates.push(candidate);
@@ -128,7 +134,9 @@ export function selectVolatilityTimestamps(
     ) {
       outsideWindowRejections.push({
         observationId: candidate.id,
-        reason: `outside_window: receivedAt=${candidate.receivedAtUnixMs} not in [${windowStart}, ${evaluationAsOfUnixMs}]`
+        reason: `outside_window: receivedAt=${candidate.receivedAtUnixMs} not in [${windowStart}, ${evaluationAsOfUnixMs}]`,
+        source: candidate.source,
+        payloadHash: candidate.payloadHash
       });
       continue;
     }
@@ -155,7 +163,9 @@ export function selectVolatilityTimestamps(
     if (isAnchorZone && !isFresh) {
       anchorExpiredRejections.push({
         observationId: candidate.id,
-        reason: `anchor_expired: validUntil=${candidate.validUntilUnixMs} <= evaluationAsOf=${evaluationAsOfUnixMs}`
+        reason: `anchor_expired: validUntil=${candidate.validUntilUnixMs} <= evaluationAsOf=${evaluationAsOfUnixMs}`,
+        source: candidate.source,
+        payloadHash: candidate.payloadHash
       });
       continue;
     }
@@ -172,7 +182,9 @@ export function selectVolatilityTimestamps(
     for (const candidate of eligibleCandidates) {
       allRejections.push({
         observationId: candidate.id,
-        reason: `no_fresh_anchor: no candidate within anchorThreshold=${anchorThreshold} is fresh`
+        reason: `no_fresh_anchor: no candidate within anchorThreshold=${anchorThreshold} is fresh`,
+        source: candidate.source,
+        payloadHash: candidate.payloadHash
       });
     }
     allRejections.sort((a, b) => a.observationId - b.observationId);
@@ -205,7 +217,9 @@ export function selectVolatilityTimestamps(
     for (const duplicate of group.slice(1)) {
       duplicateRejections.push({
         observationId: duplicate.id,
-        reason: `duplicate_slot: slot=${(duplicate.payload as VolatilityPayload)?.observedSource?.slot ?? 0}`
+        reason: `duplicate_slot: slot=${(duplicate.payload as VolatilityPayload)?.observedSource?.slot ?? 0}`,
+        source: duplicate.source,
+        payloadHash: duplicate.payloadHash
       });
     }
   }
@@ -240,7 +254,9 @@ export function selectWithExpiryCheck(
     if (candidate.validUntilUnixMs !== null && candidate.validUntilUnixMs <= evaluationAsOfUnixMs) {
       rejections.push({
         observationId: candidate.id,
-        reason: `expired: validUntil=${candidate.validUntilUnixMs} <= evaluationAsOf=${evaluationAsOfUnixMs}`
+        reason: `expired: validUntil=${candidate.validUntilUnixMs} <= evaluationAsOf=${evaluationAsOfUnixMs}`,
+        source: candidate.source,
+        payloadHash: candidate.payloadHash
       });
     } else {
       validCandidates.push(candidate);

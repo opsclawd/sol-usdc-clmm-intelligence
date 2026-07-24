@@ -223,6 +223,42 @@ crypto-news-api / regulatory-monitor-api provider
 6. **Raw-first append-only lifecycle**: Raw observations are persisted before normalization. Per-article persistence is not one transaction across a provider response; valid earlier writes survive a later failure and the source outcome becomes PARTIAL.
 7. **Authority boundaries**: News evidence is lower-confidence contextual evidence. Missing coverage does not imply no risk. No full-text retention, LLM briefs, policy synthesis, or execution authority. The pipeline ends at persisted normalized observations.
 
+## On-Chain Flow Collector (`helius-flow`, `birdeye-flow`)
+
+The on-chain flow collector (`pnpm collect:on-chain-flow`) collects SOL/USDC on-chain flow events from two sources: Helius (transaction flows) and Birdeye (DEX net flows).
+
+**Source port**: `OnChainFlowSourcePort` in `src/ports/on-chain-flow-source.ts`
+**HTTP adapter (Helius)**: `HttpHeliusFlowSource` in `src/adapters/node/http-helius-flow-source.ts`
+**HTTP adapter (Birdeye)**: `HttpBirdeyeFlowSource` in `src/adapters/node/http-birdeye-flow-source.ts`
+**Application use case**: `collectOnChainFlow` in `src/application/collect-on-chain-flow.ts`
+**Job**: `onChainFlowJob` / `runOnChainFlowJob` in `src/jobs/on-chain-flow-job.ts`
+**CLI script**: `scripts/collectors/on-chain-flow.ts`
+
+**Data flow**:
+
+```text
+Helius API / Birdeye API provider
+         |
+         v (raw observation, append-only)
+  raw_observations
+         |
+         v (normalized, validated, bounded)
+  normalized_observations (whale_transfer | whale_swap | stablecoin_flow | dex_net_flow | cex_flow_proxy)
+```
+
+**Key invariants**:
+
+1. **Factual-vs-motive authority boundary**: On-chain flow data describes what happened on-chain, not why. The collector captures transaction flows, DEX net flows, stablecoin flows, and CEX proxy attributions as factual evidence. No output claims motive, intent, or policy. Final synthesis belongs to regime-engine.
+2. **Per-event raw-first flow**: Each qualifying event is persisted as a raw observation before normalization. Replays with identical payloads produce no new rows (identical_replay). Changed payloads under the same chain identity create conflicts.
+3. **Stable identities**: Each event carries a stable `sourceEventId` from the provider (transaction signature + event index for Helius; provider-assigned ID for Birdeye). Identity combines `${source}::${sourceEventId}` with `asOfUnixMs` and `payloadHash`.
+4. **Threshold defaults and exact decimal semantics**: All thresholds are decimal strings parsed with exact arithmetic (no JavaScript `number` conversion). Default thresholds: `1000000` for whale transfer/swap/stablecoin/CEX flows, `5000000` for DEX net flow, `0.8` attribution confidence, `900000` lookback ms.
+5. **CEX proxy confidence/noise behavior**: CEX flow attributions are probabilistic proxies. Events with `attributionConfidence < cexMinAttributionConfidence` are filtered. The explicit confidence cap and quality gate are an authority boundary, not presentation metadata.
+6. **DEX pressure sourced from Birdeye**: DEX buy/sell pressure and net flow are denominated in USDC and reconciled exactly to the signed net value via Birdeye. Helius does not provide DEX net flow data.
+7. **Transaction flows sourced from Helius**: Whale transfers, whale swaps, stablecoin flows, and CEX proxy attributions are sourced from Helius. Birdeye does not provide transaction-level flow data.
+8. **Bounded extract retention**: All events carry `retention: "bounded"` and a provider-supplied `license` string. Providers must supply stable `providerRunId` values and non-empty source references.
+9. **Five flow kinds required**: The collector requires both Helius (4 flow kinds) and Birdeye (1 flow kind) to be configured. Missing or failing sources reduce status to PARTIAL or UNAVAILABLE.
+10. **No pagination/backfill**: This plan covers one bounded time window per run. API pagination/backfill for extended historical collection is out of scope.
+
 ## Deterministic Feature Derivation
 
 All seven canonical features are derived by code from normalized source observations. The derivation is deterministic: identical inputs produce bit-for-bit identical outputs.
