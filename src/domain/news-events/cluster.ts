@@ -114,25 +114,10 @@ function computeScopeTokens(
     .sort();
 }
 
-function computeTimeProximity(asOfA: number, asOfB: number): number {
-  const diff = Math.abs(asOfA - asOfB);
-  if (diff === 0) return 1;
-  if (diff >= TIME_WINDOW_MS) return 0;
-  return 1 - diff / TIME_WINDOW_MS;
-}
-
-function computeContentSimilarity(
+function hasOverlappingScope(
   payloadA: NewsEvidencePayload,
   payloadB: NewsEvidencePayload
-): number {
-  const titleTokensA = normalizeText(payloadA.title);
-  const titleTokensB = normalizeText(payloadB.title);
-  const claimsTokensA = payloadA.extractedClaims.flatMap(normalizeText);
-  const claimsTokensB = payloadB.extractedClaims.flatMap(normalizeText);
-
-  const titleJaccard = computeJaccardIndex(titleTokensA, titleTokensB);
-  const claimsJaccard = computeJaccardIndex(claimsTokensA, claimsTokensB);
-
+): boolean {
   const scopeA = computeScopeTokens(
     payloadA.affectedAssets,
     payloadA.affectedProtocols,
@@ -143,21 +128,44 @@ function computeContentSimilarity(
     payloadB.affectedProtocols,
     payloadB.affectedJurisdictions
   );
-  const scopeJaccard = computeJaccardIndex(scopeA, scopeB);
+  if (scopeA.length === 0 || scopeB.length === 0) return false;
+  return scopeA.some((token) => scopeB.includes(token));
+}
 
-  const timeProximity = computeTimeProximity(payloadA.asOfUnixMs, payloadB.asOfUnixMs);
+function isWithinTimeWindow(payloadA: NewsEvidencePayload, payloadB: NewsEvidencePayload): boolean {
+  const diff = Math.abs(payloadA.asOfUnixMs - payloadB.asOfUnixMs);
+  return diff < TIME_WINDOW_MS;
+}
 
-  return titleJaccard * 0.2 + claimsJaccard * 0.3 + scopeJaccard * 0.15 + timeProximity * 0.35;
+function computeTitleTopicJaccard(
+  payloadA: NewsEvidencePayload,
+  payloadB: NewsEvidencePayload
+): number {
+  const titleTokensA = normalizeText(payloadA.title);
+  const titleTokensB = normalizeText(payloadB.title);
+  const topicTokensA = [...payloadA.topicTags];
+  const topicTokensB = [...payloadB.topicTags];
+  const combinedTokensA = [...titleTokensA, ...topicTokensA].sort();
+  const combinedTokensB = [...titleTokensB, ...topicTokensB].sort();
+  return computeJaccardIndex(combinedTokensA, combinedTokensB);
+}
+
+function computeContentSimilarity(
+  payloadA: NewsEvidencePayload,
+  payloadB: NewsEvidencePayload
+): number {
+  if (!hasOverlappingScope(payloadA, payloadB)) return 0;
+  if (!isWithinTimeWindow(payloadA, payloadB)) return 0;
+  return computeTitleTopicJaccard(payloadA, payloadB);
 }
 
 function deriveRepresentativeTuple(payload: NewsEvidencePayload): string {
-  const titleTokens = normalizeText(payload.title);
-  const scopeTokens = computeScopeTokens(
-    payload.affectedAssets,
-    payload.affectedProtocols,
-    payload.affectedJurisdictions
-  );
-  return [titleTokens.join(" "), scopeTokens.join("|"), payload.asOfUnixMs.toString()].join("::");
+  return [
+    payload.publishedAtUnixMs?.toString() ?? "null",
+    payload.publisher.publisherId,
+    payload.articleId,
+    payload.sourceVersionId
+  ].join("|");
 }
 
 async function deriveClusterId(representative: NewsEvidencePayload): Promise<string> {
@@ -345,11 +353,13 @@ function mergeAllClusters(
 
   for (const [clusterId, keys] of correctionClusters) {
     const existingKeys = new Set<string>();
+    const clustersToDelete = new Set<string>();
     for (const k of keys) {
       const existingClusterId = keyToClusterId.get(k);
-      if (existingClusterId !== undefined) {
+      if (existingClusterId !== undefined && existingClusterId !== clusterId) {
         const existing = merged.get(existingClusterId) ?? [];
         existing.forEach((ek) => existingKeys.add(ek));
+        clustersToDelete.add(existingClusterId);
       }
     }
 
@@ -358,16 +368,21 @@ function mergeAllClusters(
     merged.set(clusterId, uniqKeys);
     for (const k of uniqKeys) {
       keyToClusterId.set(k, clusterId);
+    }
+    for (const oldClusterId of clustersToDelete) {
+      merged.delete(oldClusterId);
     }
   }
 
   for (const [clusterId, keys] of jaccardClusters) {
     const existingKeys = new Set<string>();
+    const clustersToDelete = new Set<string>();
     for (const k of keys) {
       const existingClusterId = keyToClusterId.get(k);
-      if (existingClusterId !== undefined) {
+      if (existingClusterId !== undefined && existingClusterId !== clusterId) {
         const existing = merged.get(existingClusterId) ?? [];
         existing.forEach((ek) => existingKeys.add(ek));
+        clustersToDelete.add(existingClusterId);
       }
     }
 
@@ -376,6 +391,9 @@ function mergeAllClusters(
     merged.set(clusterId, uniqKeys);
     for (const k of uniqKeys) {
       keyToClusterId.set(k, clusterId);
+    }
+    for (const oldClusterId of clustersToDelete) {
+      merged.delete(oldClusterId);
     }
   }
 
@@ -509,6 +527,11 @@ export async function clusterNewsEvidence(
   const historical = [...input.historical];
   const incoming = [...input.incoming].map((p) => ({ ...p }) as NewsEvidencePayload);
 
+  const incomingKeys = new Set<string>();
+  for (const p of incoming) {
+    incomingKeys.add(getRecordKey(p));
+  }
+
   const allRecords: NewsEvidencePayload[] = [...historical, ...incoming];
 
   if (allRecords.length === 0) return [];
@@ -523,5 +546,5 @@ export async function clusterNewsEvidence(
 
   const resolved = await resolveClusters(mergedClusters, allRecords, infoMap);
 
-  return resolved;
+  return resolved.filter((r) => incomingKeys.has(getRecordKey(r)));
 }
