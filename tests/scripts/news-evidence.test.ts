@@ -721,7 +721,7 @@ describe("news-evidence collector lifecycle", () => {
       const clock = createMockClock();
       const http = createMockHttpClient();
       const jsonStore = createMockJsonStore();
-      const consoleLogSpy = vi.spyOn(console, "log").mockImplementation();
+      const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
       const mockNewsSource = createMockNewsSourcePort();
       vi.spyOn(mockNewsSource, "collect").mockResolvedValue({
@@ -758,7 +758,7 @@ describe("news-evidence collector lifecycle", () => {
       });
 
       expect(consoleLogSpy).toHaveBeenCalled();
-      const loggedOutput = consoleLogSpy.mock.calls[0][0] as string;
+      const loggedOutput = consoleLogSpy.mock.calls[0]![0] as string;
       expect(loggedOutput).not.toContain("super-secret-key-12345");
 
       consoleLogSpy.mockRestore();
@@ -814,7 +814,7 @@ describe("news-evidence collector lifecycle", () => {
 
       const sources = buildNewsSources(runtime);
       expect(sources).toHaveLength(1);
-      expect(sources[0].source).toBe("crypto-news-api");
+      expect(sources[0]!.source).toBe("crypto-news-api");
     });
   });
 });

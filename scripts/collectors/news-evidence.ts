@@ -1,5 +1,10 @@
 import { createNodeRuntime, type NodeRuntime } from "../../src/adapters/node/composition-root.js";
-import { HttpNewsSource } from "../../src/adapters/node/http-news-source.js";
+import {
+  HttpNewsSource,
+  type HttpNewsSourceOptions
+} from "../../src/adapters/node/http-news-source.js";
+import type { RawObservationRepo } from "../../src/ports/observation-repo.js";
+import type { NormalizedObservationRepo } from "../../src/ports/normalized-observation-repo.js";
 import {
   runNewsEvidenceJob,
   type NewsEvidenceJobDeps,
@@ -78,13 +83,22 @@ export function buildNewsSources(runtime: NodeRuntime): ConfiguredNewsSource[] {
     const url = runtime.env.get(getSourceUrlEnvVar(sourceName));
     const apiKey = runtime.env.getOptional(getSourceApiKeyEnvVar(sourceName));
 
-    const adapter = new HttpNewsSource({
-      http: runtime.http,
-      url,
-      apiKey,
-      source: sourceName,
-      retryControl: runtime.retryControl
-    });
+    const adapterOptions: HttpNewsSourceOptions =
+      apiKey !== undefined
+        ? {
+            http: runtime.http,
+            url,
+            source: sourceName,
+            retryControl: runtime.retryControl,
+            apiKey
+          }
+        : {
+            http: runtime.http,
+            url,
+            source: sourceName,
+            retryControl: runtime.retryControl
+          };
+    const adapter = new HttpNewsSource(adapterOptions);
 
     sources.push({ source: sourceName, adapter });
   }
@@ -98,15 +112,8 @@ export async function runNewsEvidenceCollect(
 ): Promise<NewsEvidenceJobResult> {
   const sources = overrideSources?.sources ?? buildNewsSources(runtime);
 
-  const deps: NewsEvidenceJobDeps = {
-    sources,
-    rawObservationRepo: null as never,
-    normalizedObservationRepo: null as never,
-    env: runtime.env,
-    clock: runtime.clock,
-    runIdFactory: runtime.runIdFactory
-  };
-
+  let rawObservationRepo: RawObservationRepo;
+  let normalizedObservationRepo: NormalizedObservationRepo;
   let persistence: Awaited<ReturnType<NodeRuntime["getPersistence"]>> | undefined;
   let collectionError: unknown;
   let result: NewsEvidenceJobResult | undefined;
@@ -114,8 +121,17 @@ export async function runNewsEvidenceCollect(
 
   try {
     persistence = await runtime.getPersistence();
-    deps.rawObservationRepo = persistence.rawObservationRepo;
-    deps.normalizedObservationRepo = persistence.normalizedObservationRepo;
+    rawObservationRepo = persistence.rawObservationRepo;
+    normalizedObservationRepo = persistence.normalizedObservationRepo;
+
+    const deps: NewsEvidenceJobDeps = {
+      sources,
+      rawObservationRepo,
+      normalizedObservationRepo,
+      env: runtime.env,
+      clock: runtime.clock,
+      runIdFactory: runtime.runIdFactory
+    };
 
     result = await runNewsEvidenceJob(deps);
 
