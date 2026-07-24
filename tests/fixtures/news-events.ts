@@ -1,9 +1,9 @@
+import type { NewsEvidenceKind } from "../../src/contracts/news-events.js";
 import type {
   BoundedNewsSourceRecord,
-  NewsSourceQuality,
-  NewsPublisher,
-  NewsEvidenceKind
-} from "../src/contracts/news-events.js";
+  NewsSourceRecordInput
+} from "../../src/domain/news-events/validate.js";
+import type { NewsSourceQuality, NewsPublisher } from "../../src/contracts/news-events.js";
 
 export interface BoundedNewsSourceRecordOverrides {
   readonly source?: "crypto-news-api" | "regulatory-monitor-api";
@@ -15,18 +15,18 @@ export interface BoundedNewsSourceRecordOverrides {
   readonly correctsSourceVersionId?: string | null;
   readonly title?: string;
   readonly factualSummary?: string;
-  readonly extractedClaims?: readonly string[];
-  readonly topicTags?: readonly string[];
+  readonly extractedClaims?: string[];
+  readonly topicTags?: string[];
   readonly publishedAtUnixMs?: number | null;
   readonly sourceUpdatedAtUnixMs?: number | null;
   readonly publisher?: NewsPublisher;
   readonly sourceQuality?: NewsSourceQuality;
   readonly originatingReportId?: string;
   readonly syndicationId?: string | null;
-  readonly affectedAssets?: readonly string[];
-  readonly affectedProtocols?: readonly string[];
-  readonly affectedJurisdictions?: readonly string[];
-  readonly sourceReferences?: readonly string[];
+  readonly affectedAssets?: string[];
+  readonly affectedProtocols?: string[];
+  readonly affectedJurisdictions?: string[];
+  readonly sourceReferences?: string[];
   readonly license?: string;
   readonly retentionMode?: "bounded_factual_extract";
   readonly robotsAllowed?: boolean;
@@ -57,7 +57,7 @@ function makeDefaultSourceQuality(): NewsSourceQuality {
 
 export function makeBoundedNewsSourceRecord(
   overrides?: BoundedNewsSourceRecordOverrides
-): BoundedNewsSourceRecord {
+): NewsSourceRecordInput {
   const source = overrides?.source ?? "crypto-news-api";
   const providerId = overrides?.providerId ?? source;
 
@@ -102,7 +102,7 @@ export function makeBoundedNewsSourceRecord(
 
 export function makeRegulatoryRiskRecord(
   overrides?: BoundedNewsSourceRecordOverrides
-): BoundedNewsSourceRecord {
+): NewsSourceRecordInput {
   return makeBoundedNewsSourceRecord({
     source: "regulatory-monitor-api",
     providerId: "regulatory-monitor-api",
@@ -114,7 +114,7 @@ export function makeRegulatoryRiskRecord(
 
 export function makePaywalledRecord(
   overrides?: BoundedNewsSourceRecordOverrides
-): BoundedNewsSourceRecord {
+): NewsSourceRecordInput {
   return makeBoundedNewsSourceRecord({
     sourceQuality: {
       ...makeDefaultSourceQuality(),
@@ -127,7 +127,7 @@ export function makePaywalledRecord(
 
 export function makeUnconfirmedRecord(
   overrides?: BoundedNewsSourceRecordOverrides
-): BoundedNewsSourceRecord {
+): NewsSourceRecordInput {
   return makeBoundedNewsSourceRecord({
     sourceQuality: {
       ...makeDefaultSourceQuality(),
@@ -140,7 +140,7 @@ export function makeUnconfirmedRecord(
 export function makeStaleRecord(
   nowMs: number,
   overrides?: BoundedNewsSourceRecordOverrides
-): BoundedNewsSourceRecord {
+): NewsSourceRecordInput {
   const stalePublishedAt = nowMs - 1000 * 60 * 60 * 25;
   return makeBoundedNewsSourceRecord({
     publishedAtUnixMs: stalePublishedAt,
@@ -156,7 +156,7 @@ export function makeLongString(length: number): string {
 export function makeRecordWithLongSummary(
   length: number,
   overrides?: BoundedNewsSourceRecordOverrides
-): BoundedNewsSourceRecord {
+): NewsSourceRecordInput {
   return makeBoundedNewsSourceRecord({
     factualSummary: makeLongString(length),
     ...overrides
@@ -166,7 +166,7 @@ export function makeRecordWithLongSummary(
 export function makeRecordWithManyClaims(
   count: number,
   overrides?: BoundedNewsSourceRecordOverrides
-): BoundedNewsSourceRecord {
+): NewsSourceRecordInput {
   const claims = Array.from({ length: count }, (_, i) => `Claim ${i + 1}: Test claim content.`);
   return makeBoundedNewsSourceRecord({
     extractedClaims: claims,
@@ -177,7 +177,7 @@ export function makeRecordWithManyClaims(
 export function makeRecordWithManyTags(
   count: number,
   overrides?: BoundedNewsSourceRecordOverrides
-): BoundedNewsSourceRecord {
+): NewsSourceRecordInput {
   const tags = Array.from({ length: count }, (_, i) => `tag${i + 1}`);
   return makeBoundedNewsSourceRecord({
     topicTags: tags,
@@ -188,7 +188,7 @@ export function makeRecordWithManyTags(
 export function makeRecordWithManyReferences(
   count: number,
   overrides?: BoundedNewsSourceRecordOverrides
-): BoundedNewsSourceRecord {
+): NewsSourceRecordInput {
   const references = Array.from({ length: count }, (_, i) => `https://example.com/source${i + 1}`);
   return makeBoundedNewsSourceRecord({
     sourceReferences: references,
@@ -198,7 +198,7 @@ export function makeRecordWithManyReferences(
 
 export function makeRecordWithManyAffectedScope(
   overrides?: BoundedNewsSourceRecordOverrides
-): BoundedNewsSourceRecord {
+): NewsSourceRecordInput {
   return makeBoundedNewsSourceRecord({
     affectedAssets: Array.from({ length: 50 }, (_, i) => `ASSET${i + 1}`),
     affectedProtocols: Array.from({ length: 50 }, (_, i) => `PROTOCOL${i + 1}`),
@@ -209,7 +209,7 @@ export function makeRecordWithManyAffectedScope(
 
 export function makeRecordMissingHttps(
   overrides?: BoundedNewsSourceRecordOverrides
-): BoundedNewsSourceRecord {
+): NewsSourceRecordInput {
   return makeBoundedNewsSourceRecord({
     sourceReferences: ["http://example.com/article", "https://example.com/article"],
     ...overrides
@@ -218,7 +218,7 @@ export function makeRecordMissingHttps(
 
 export function makeRecordWithDuplicateTags(
   overrides?: BoundedNewsSourceRecordOverrides
-): BoundedNewsSourceRecord {
+): NewsSourceRecordInput {
   return makeBoundedNewsSourceRecord({
     topicTags: ["solana", "defi", "solana", "news", "defi"],
     ...overrides
@@ -227,7 +227,7 @@ export function makeRecordWithDuplicateTags(
 
 export function makeCorrectionRecord(
   overrides?: BoundedNewsSourceRecordOverrides
-): BoundedNewsSourceRecord {
+): NewsSourceRecordInput {
   return makeBoundedNewsSourceRecord({
     sourceVersionId: "v2",
     correctsSourceVersionId: "v1",
@@ -238,11 +238,10 @@ export function makeCorrectionRecord(
 
 export function makeIncompleteRecord(
   overrides?: BoundedNewsSourceRecordOverrides
-): BoundedNewsSourceRecord {
+): NewsSourceRecordInput {
   return makeBoundedNewsSourceRecord({
     publishedAtUnixMs: null,
     sourceUpdatedAtUnixMs: null,
-    publisherTier: undefined,
     ...overrides
   });
 }

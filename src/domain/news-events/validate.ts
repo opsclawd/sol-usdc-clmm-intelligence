@@ -77,15 +77,13 @@ const newsSourceRecordInputSchema = z
     termsAllowRetention: z.boolean()
   })
   .passthrough()
-  .refine((data, ctx) => {
+  .superRefine((data, ctx) => {
     if ("body" in data || "content" in data || "html" in data) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "prohibited long-form fields (body, content, html) are not allowed"
       });
-      return false;
     }
-    return true;
   })
   .refine(
     (data) => {
@@ -197,6 +195,8 @@ const newsSourceRecordInputSchema = z
     }
   );
 
+export type NewsSourceRecordInput = z.infer<typeof newsSourceRecordInputSchema>;
+
 export interface BoundedNewsSourceRecord {
   readonly source: "crypto-news-api" | "regulatory-monitor-api";
   readonly providerId: string;
@@ -264,8 +264,8 @@ export function acceptBoundedNewsRecord(input: unknown): BoundedNewsSourceRecord
     factualSummary: trimSummary(parsed.factualSummary.trim()),
     extractedClaims: parsed.extractedClaims.map((c) => c.trim()),
     topicTags,
-    publishedAtUnixMs: parsed.publishedAtUnixMs,
-    sourceUpdatedAtUnixMs: parsed.sourceUpdatedAtUnixMs,
+    publishedAtUnixMs: parsed.publishedAtUnixMs ?? null,
+    sourceUpdatedAtUnixMs: parsed.sourceUpdatedAtUnixMs ?? null,
     publisher: parsed.publisher,
     sourceQuality: parsed.sourceQuality,
     originatingReportId: parsed.originatingReportId,

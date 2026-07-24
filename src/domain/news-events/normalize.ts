@@ -1,9 +1,9 @@
 import type {
   NewsPayloadV1,
   RegulatoryPayloadV1,
-  BoundedNewsSourceRecord,
   NewsEvidenceWarning
 } from "../../contracts/news-events.js";
+import type { BoundedNewsSourceRecord } from "./validate.js";
 
 const ECOSYSTEM_NEWS_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const REGULATORY_RISK_MAX_AGE_MS = 72 * 60 * 60 * 1000;
