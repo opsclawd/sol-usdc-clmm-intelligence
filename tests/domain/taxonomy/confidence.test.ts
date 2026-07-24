@@ -365,4 +365,28 @@ describe("computeConfidence", () => {
     const result = computeConfidence(components, policy, "v1", undefined, additionalReasons);
     expect(result.reasons).toContain("contextual_source_quality_cap_applied");
   });
+
+  it("accepts cex_proxy_quality_cap_applied reason", () => {
+    const components = {
+      sourceReliability: 0.6,
+      dataCompleteness: 0.9,
+      derivationConfidence: 0.7,
+      llmConfidence: null as number | null
+    };
+    const policy = {
+      weights: {
+        sourceReliability: 0.5,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.2,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    };
+    const additionalReasons: import("../../../src/contracts/taxonomy.js").ConfidenceReason[] = [
+      "cex_proxy_quality_cap_applied"
+    ];
+    const result = computeConfidence(components, policy, "v1", undefined, additionalReasons);
+    expect(result.reasons).toContain("cex_proxy_quality_cap_applied");
+  });
 });

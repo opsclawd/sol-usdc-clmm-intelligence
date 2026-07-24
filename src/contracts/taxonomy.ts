@@ -30,7 +30,12 @@ export type ObservationKind =
   | "scheduled_event"
   | "protocol_incident"
   | "ecosystem_news"
-  | "regulatory_risk";
+  | "regulatory_risk"
+  | "whale_transfer"
+  | "whale_swap"
+  | "stablecoin_flow"
+  | "dex_net_flow"
+  | "cex_flow_proxy";
 
 export type FeatureKind =
   | "range_location"
@@ -54,7 +59,9 @@ export type Source =
   | "macro-calendar-api"
   | "solana-status-api"
   | "crypto-news-api"
-  | "regulatory-monitor-api";
+  | "regulatory-monitor-api"
+  | "helius-api"
+  | "birdeye-api";
 
 export type ParseStatus = "pending" | "parsed" | "failed";
 
@@ -124,7 +131,8 @@ export type ConfidenceReason =
   | "llm_confidence_required_but_null"
   | "oracle_confidence_wide"
   | "high_price_impact"
-  | "contextual_source_quality_cap_applied";
+  | "contextual_source_quality_cap_applied"
+  | "cex_proxy_quality_cap_applied";
 
 export interface Confidence {
   readonly components: ConfidenceComponents;
