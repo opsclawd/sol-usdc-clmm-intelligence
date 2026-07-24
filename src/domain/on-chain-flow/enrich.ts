@@ -79,6 +79,7 @@ function computeDataCompletenessFromQuality(completeness: "full" | "partial"): n
 
 function buildDirectProvenance(
   candidate: OnChainFlowEnrichmentCandidate,
+  payloadHash: string,
   codeVersion: string,
   runId: string | null,
   collector: string,
@@ -88,7 +89,7 @@ function buildDirectProvenance(
     refType: "raw_observation",
     id: candidate.id,
     source: candidate.source,
-    payloadHash: ""
+    payloadHash
   };
 
   const processRef: ProcessRef = {
@@ -189,7 +190,14 @@ export async function enrichOnChainFlow(
         );
       }
 
-      const provenance = buildDirectProvenance(candidate, codeVersion, runId, collector, jobName);
+      const provenance = buildDirectProvenance(
+        candidate,
+        payloadHash,
+        codeVersion,
+        runId,
+        collector,
+        jobName
+      );
 
       const provenanceResult = validateProvenance(provenance, entry.provenanceRequirements, kind);
 
