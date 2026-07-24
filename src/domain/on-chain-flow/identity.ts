@@ -4,8 +4,7 @@ import type {
   WhaleTransferPayloadV1,
   WhaleSwapPayloadV1,
   StablecoinFlowPayloadV1,
-  DexNetFlowPayloadV1,
-  CexFlowProxyPayloadV1
+  DexNetFlowPayloadV1
 } from "../../contracts/on-chain-flow.js";
 import type { Source } from "../../contracts/taxonomy.js";
 
@@ -61,11 +60,15 @@ export async function deriveOnChainFlowSourceObservationKey(
     return canonicalHash(identityTuple);
   }
 
-  const cexPayload = payload as CexFlowProxyPayloadV1;
-  const identityTuple = {
-    source,
-    eventKind: cexPayload.eventType,
-    sourceEventId: cexPayload.sourceEventId
-  };
-  return canonicalHash(identityTuple);
+  if (payload.eventType === "cex_flow_proxy") {
+    const identityTuple = {
+      source,
+      eventKind: payload.eventType,
+      sourceEventId: payload.sourceEventId
+    };
+    return canonicalHash(identityTuple);
+  }
+
+  const exhaustiveCheck: never = payload;
+  throw new Error(`Unknown on-chain flow event type: ${JSON.stringify(exhaustiveCheck)}`);
 }

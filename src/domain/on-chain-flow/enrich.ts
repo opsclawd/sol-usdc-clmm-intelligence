@@ -56,7 +56,7 @@ function isCexFlowProxy(payload: OnChainFlowPayloadV1): payload is CexFlowProxyP
   return payload.eventType === "cex_flow_proxy";
 }
 
-function mapEventTypeToKind(eventType: string): ObservationKind {
+function mapEventTypeToKind(eventType: OnChainFlowPayloadV1["eventType"]): ObservationKind {
   switch (eventType) {
     case "whale_transfer":
       return "whale_transfer";
@@ -135,59 +135,38 @@ export async function enrichOnChainFlow(
         kind
       );
 
-      let confidence: Confidence;
-      let sourceReliability = 1.0;
+      const isCex = isCexFlowProxy(candidate.payload);
+      const sourceReliability = isCex ? candidate.payload.attributionConfidence : 1.0;
+      const dataCompleteness = computeDataCompletenessFromQuality(
+        candidate.payload.sourceQuality.completeness
+      );
 
-      if (isCexFlowProxy(candidate.payload)) {
-        const cexPayload = candidate.payload;
-        sourceReliability = Math.min(sourceReliability, cexPayload.attributionConfidence);
+      let confidence = computeConfidence(
+        {
+          sourceReliability,
+          dataCompleteness,
+          derivationConfidence: 1,
+          llmConfidence: null
+        },
+        entry.confidencePolicy,
+        ON_CHAIN_FLOW_CONFIDENCE_WEIGHTING_VERSION
+      );
 
-        const dataCompleteness = computeDataCompletenessFromQuality(
-          cexPayload.sourceQuality.completeness
-        );
+      if (isCex && confidence.compositeScore > CEX_CONFIDENCE_CAP) {
+        const cappedScore = CEX_CONFIDENCE_CAP;
+        const cappedLevel =
+          cappedScore >= entry.confidencePolicy.thresholds.highAtOrAbove
+            ? "high"
+            : cappedScore < entry.confidencePolicy.thresholds.lowBelow
+              ? "low"
+              : "medium";
 
-        confidence = computeConfidence(
-          {
-            sourceReliability,
-            dataCompleteness,
-            derivationConfidence: 1,
-            llmConfidence: null
-          },
-          entry.confidencePolicy,
-          ON_CHAIN_FLOW_CONFIDENCE_WEIGHTING_VERSION
-        );
-
-        if (confidence.compositeScore > CEX_CONFIDENCE_CAP) {
-          const cappedScore = CEX_CONFIDENCE_CAP;
-          const cappedLevel =
-            cappedScore >= entry.confidencePolicy.thresholds.highAtOrAbove
-              ? "high"
-              : cappedScore < entry.confidencePolicy.thresholds.lowBelow
-                ? "low"
-                : "medium";
-
-          confidence = {
-            ...confidence,
-            compositeScore: cappedScore,
-            level: cappedLevel,
-            reasons: [...confidence.reasons, "cex_proxy_quality_cap_applied"]
-          };
-        }
-      } else {
-        const dataCompleteness = computeDataCompletenessFromQuality(
-          candidate.payload.sourceQuality.completeness
-        );
-
-        confidence = computeConfidence(
-          {
-            sourceReliability,
-            dataCompleteness,
-            derivationConfidence: 1,
-            llmConfidence: null
-          },
-          entry.confidencePolicy,
-          ON_CHAIN_FLOW_CONFIDENCE_WEIGHTING_VERSION
-        );
+        confidence = {
+          ...confidence,
+          compositeScore: cappedScore,
+          level: cappedLevel,
+          reasons: [...confidence.reasons, "cex_proxy_quality_cap_applied"]
+        };
       }
 
       const provenance = buildDirectProvenance(

@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import type {
   WhaleTransferPayloadV1,
   WhaleSwapPayloadV1,
-  DexNetFlowPayloadV1
+  DexNetFlowPayloadV1,
+  CexFlowProxyPayloadV1
 } from "../../../src/contracts/on-chain-flow.js";
 import { deriveOnChainFlowSourceObservationKey } from "../../../src/domain/on-chain-flow/identity.js";
 
@@ -400,6 +401,109 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
       const key2 = await deriveOnChainFlowSourceObservationKey(dexFlow2, "birdeye-api", null);
 
       expect(key1).not.toBe(key2);
+    });
+  });
+
+  describe("CEX flow proxy identity is stable and keyed by sourceEventId", () => {
+    const baseCexEvent: CexFlowProxyPayloadV1 = {
+      schemaVersion: 1,
+      eventFamily: "on_chain_flow",
+      eventType: "cex_flow_proxy",
+      sourceEventId: "cex_proxy_001",
+      observedAtUnixMs: 1700000000000,
+      amountUsdc: "5000000000",
+      direction: "outbound",
+      venue: "cex",
+      addressContext: { addressType: "wallet", address: "cex-hot-wallet" },
+      sourceReferences: ["https://helius.xyz/txn/cex_proxy_001"],
+      sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "full" },
+      freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
+      quality: "proxy",
+      attributionConfidence: 0.65,
+      attributionProvider: "helius-api",
+      caveats: ["heuristic_attribution"]
+    };
+
+    it("same sourceEventId produces same key regardless of provider run ID", async () => {
+      const key1 = await deriveOnChainFlowSourceObservationKey(
+        baseCexEvent,
+        "helius-api",
+        "run_001"
+      );
+      const key2 = await deriveOnChainFlowSourceObservationKey(
+        baseCexEvent,
+        "helius-api",
+        "run_002"
+      );
+
+      expect(key1).toBe(key2);
+    });
+
+    it("fields outside the identity tuple do not affect the key", async () => {
+      const eventWithDifferentConfidence: CexFlowProxyPayloadV1 = {
+        ...baseCexEvent,
+        attributionConfidence: 0.99,
+        amountUsdc: "9999999999",
+        caveats: ["different_caveat"]
+      };
+
+      const key1 = await deriveOnChainFlowSourceObservationKey(baseCexEvent, "helius-api", null);
+      const key2 = await deriveOnChainFlowSourceObservationKey(
+        eventWithDifferentConfidence,
+        "helius-api",
+        null
+      );
+
+      expect(key1).toBe(key2);
+    });
+
+    it("different sourceEventId produces different identity", async () => {
+      const otherEvent: CexFlowProxyPayloadV1 = {
+        ...baseCexEvent,
+        sourceEventId: "cex_proxy_002"
+      };
+
+      const key1 = await deriveOnChainFlowSourceObservationKey(baseCexEvent, "helius-api", null);
+      const key2 = await deriveOnChainFlowSourceObservationKey(otherEvent, "helius-api", null);
+
+      expect(key1).not.toBe(key2);
+    });
+
+    it("different source produces different identity for the same sourceEventId", async () => {
+      const key1 = await deriveOnChainFlowSourceObservationKey(baseCexEvent, "helius-api", null);
+      const key2 = await deriveOnChainFlowSourceObservationKey(baseCexEvent, "birdeye-api", null);
+
+      expect(key1).not.toBe(key2);
+    });
+
+    it("differs from a non-CEX event with the same sourceEventId", async () => {
+      const whaleTransfer: WhaleTransferPayloadV1 = {
+        schemaVersion: 1,
+        eventFamily: "on_chain_flow",
+        eventType: "whale_transfer",
+        sourceEventId: baseCexEvent.sourceEventId,
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "1000000000",
+        direction: "inbound",
+        venue: "solana",
+        addressContext: { addressType: "wallet", address: "wallet_pubkey_1" },
+        sourceReferences: ["https://helius.xyz/txn/txn_abc123"],
+        sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "full" },
+        freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
+        transactionSignature: "txn_abc123",
+        eventIndex: 0,
+        slot: 123456789,
+        stablecoinOperation: "transfer"
+      };
+
+      const keyCex = await deriveOnChainFlowSourceObservationKey(baseCexEvent, "helius-api", null);
+      const keyTransfer = await deriveOnChainFlowSourceObservationKey(
+        whaleTransfer,
+        "helius-api",
+        null
+      );
+
+      expect(keyCex).not.toBe(keyTransfer);
     });
   });
 
