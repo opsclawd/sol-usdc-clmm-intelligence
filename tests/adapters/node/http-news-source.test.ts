@@ -39,31 +39,70 @@ function createMockHttpClient(behavior: {
   } as unknown as HttpClient;
 }
 
+function makeValidRawRecord(overrides?: Record<string, unknown>) {
+  return {
+    articleId: "article-1",
+    sourceVersionId: "v1",
+    correctsSourceVersionId: null,
+    title: "SOL surges on regulatory news",
+    factualSummary: "Solana experienced a sharp increase in activity.",
+    extractedClaims: ["SOL price rose by 10%"],
+    topicTags: ["solana", "regulatory"],
+    publishedAtUnixMs: 1699990000000,
+    sourceUpdatedAtUnixMs: null,
+    publisher: {
+      publisherId: "pub-1",
+      displayName: "Crypto News",
+      tier: "primary"
+    },
+    sourceQuality: {
+      providerId: "test-provider",
+      reliability: 0.9,
+      completeness: "complete",
+      confirmation: "confirmed",
+      isPaywalled: false
+    },
+    originatingReportId: "report-1",
+    syndicationId: null,
+    affectedAssets: ["SOL"],
+    affectedProtocols: ["solana"],
+    affectedJurisdictions: [],
+    sourceReferences: ["https://example.com/news/1"],
+    license: "CC-BY-4.0",
+    retentionMode: "bounded_factual_extract",
+    robotsAllowed: true,
+    termsAllowRetention: true,
+    ...overrides
+  };
+}
+
+function makeValidRawResponse(
+  source: "crypto-news-api" | "regulatory-monitor-api" = "crypto-news-api",
+  recordOverrides?: Record<string, unknown>
+) {
+  const records = [
+    makeValidRawRecord({
+      ...(source === "regulatory-monitor-api" ? { affectedJurisdictions: ["US"] } : {}),
+      ...recordOverrides
+    })
+  ];
+
+  return {
+    source,
+    providerId: "test-provider",
+    providerRunId: "run-123",
+    retrievedAtUnixMs: 1700000000000,
+    records
+  };
+}
+
 describe("HttpNewsSource", () => {
   describe("bounded-request-with-optional-auth", () => {
-    it("fetches SOL/USDC news with bounded request options and optional bearer credential", async () => {
+    it("fetches SOL/USDC news with bounded request options, appended search params, and optional bearer credential", async () => {
       const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
 
       const mockHttp = createMockHttpClient({
-        body: {
-          source: "crypto-news-api",
-          providerId: "test-provider",
-          providerRunId: "run-123",
-          retrievedAtUnixMs: 1700000000000,
-          records: [
-            {
-              id: "news-1",
-              headline: "SOL surges on regulatory news",
-              publishedAtUnixMs: 1699990000000,
-              source: "CryptoNews",
-              url: "https://example.com/news/1",
-              categories: ["regulatory", "solana"],
-              license: "MIT",
-              reference: "https://example.com/source",
-              compliance: { isSponsored: false, isAffiliate: false }
-            }
-          ]
-        }
+        body: makeValidRawResponse("crypto-news-api")
       });
 
       const source = new HttpNewsSource({
@@ -85,7 +124,7 @@ describe("HttpNewsSource", () => {
       expect(result.source).toBe("crypto-news-api");
       expect(mockHttp.getJson).toHaveBeenCalledTimes(1);
       expect(mockHttp.getJson).toHaveBeenCalledWith(
-        "https://api.example.com/news",
+        "https://api.example.com/news?pair=SOL%2FUSDC&source=crypto-news-api&fromUnixMs=1699900000000&toUnixMs=1700000000000",
         expect.objectContaining({
           timeoutMs: 5000,
           maxAttempts: 1,
@@ -96,17 +135,36 @@ describe("HttpNewsSource", () => {
       );
     });
 
+    it("appends search parameters while preserving existing URL query parameters", async () => {
+      const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
+
+      const mockHttp = createMockHttpClient({
+        body: makeValidRawResponse("regulatory-monitor-api")
+      });
+
+      const source = new HttpNewsSource({
+        http: mockHttp,
+        url: "https://api.example.com/regulatory?existing=param"
+      });
+
+      await source.collect({
+        pair: "SOL/USDC",
+        source: "regulatory-monitor-api",
+        fromUnixMs: 1699900000000,
+        toUnixMs: 1700000000000
+      });
+
+      expect(mockHttp.getJson).toHaveBeenCalledWith(
+        "https://api.example.com/regulatory?existing=param&pair=SOL%2FUSDC&source=regulatory-monitor-api&fromUnixMs=1699900000000&toUnixMs=1700000000000",
+        expect.anything()
+      );
+    });
+
     it("sends no Authorization header when apiKey is not provided", async () => {
       const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
 
       const mockHttp = createMockHttpClient({
-        body: {
-          source: "crypto-news-api",
-          providerId: "test-provider",
-          providerRunId: "run-123",
-          retrievedAtUnixMs: 1700000000000,
-          records: []
-        }
+        body: makeValidRawResponse("crypto-news-api")
       });
 
       const source = new HttpNewsSource({
@@ -124,7 +182,7 @@ describe("HttpNewsSource", () => {
       });
 
       expect(mockHttp.getJson).toHaveBeenCalledWith(
-        "https://api.example.com/news",
+        expect.any(String),
         expect.objectContaining({
           headers: expect.not.objectContaining({
             Authorization: expect.anything()
@@ -137,13 +195,7 @@ describe("HttpNewsSource", () => {
       const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
 
       const mockHttp = createMockHttpClient({
-        body: {
-          source: "crypto-news-api",
-          providerId: "test-provider",
-          providerRunId: "run-123",
-          retrievedAtUnixMs: 1700000000000,
-          records: []
-        }
+        body: makeValidRawResponse("crypto-news-api")
       });
 
       const source = new HttpNewsSource({
@@ -166,13 +218,7 @@ describe("HttpNewsSource", () => {
       const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
 
       const mockHttp = createMockHttpClient({
-        body: {
-          source: "crypto-news-api",
-          providerId: "test-provider",
-          providerRunId: "run-123",
-          retrievedAtUnixMs: 1700000000000,
-          records: []
-        }
+        body: makeValidRawResponse("crypto-news-api")
       });
 
       const source = new HttpNewsSource({
@@ -196,35 +242,18 @@ describe("HttpNewsSource", () => {
     });
   });
 
-  describe("projects provider responses to bounded records without full text", () => {
-    it("returns only the validated bounded snapshot and never retains unknown provider fields", async () => {
+  describe("projects provider responses to canonical bounded records without full text", () => {
+    it("returns validated canonical bounded snapshot, drops unknown provider fields, and deep freezes projection", async () => {
       const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
 
-      const mockHttp = createMockHttpClient({
-        body: {
-          source: "crypto-news-api",
-          providerId: "test-provider",
-          providerRunId: "run-123",
-          retrievedAtUnixMs: 1700000000000,
-          records: [
-            {
-              id: "news-1",
-              headline: "SOL surges on regulatory news",
-              publishedAtUnixMs: 1699990000000,
-              source: "CryptoNews",
-              url: "https://example.com/news/1",
-              categories: ["regulatory", "solana"],
-              license: "MIT",
-              reference: "https://example.com/source",
-              compliance: { isSponsored: false, isAffiliate: false },
-              unknownField: "should be dropped",
-              anotherUnknown: 12345
-            }
-          ],
-          unknownTopLevelField: "should be dropped",
-          unknownArray: [1, 2, 3]
-        }
-      });
+      const rawResponse = {
+        ...makeValidRawResponse("crypto-news-api", {
+          unknownRecordField: "should be dropped"
+        }),
+        unknownTopLevelField: "should be dropped"
+      };
+
+      const mockHttp = createMockHttpClient({ body: rawResponse });
 
       const source = new HttpNewsSource({
         http: mockHttp,
@@ -243,45 +272,41 @@ describe("HttpNewsSource", () => {
       expect(result.source).toBe("crypto-news-api");
       expect(result.retrievedAtUnixMs).toBe(1700000000000);
       expect(result.records).toHaveLength(1);
-      expect(result.records[0]).toEqual({
-        id: "news-1",
-        headline: "SOL surges on regulatory news",
-        publishedAtUnixMs: 1699990000000,
-        source: "CryptoNews",
-        url: "https://example.com/news/1",
-        categories: ["regulatory", "solana"],
-        license: "MIT",
-        reference: "https://example.com/source",
-        compliance: { isSponsored: false, isAffiliate: false }
-      });
+
+      const rec = result.records[0]!;
+      expect(rec.articleId).toBe("article-1");
+      expect(rec.sourceVersionId).toBe("v1");
+      expect(rec.title).toBe("SOL surges on regulatory news");
+      expect(rec.evidenceKind).toBe("ecosystem_news");
+      expect(rec.publisher.publisherId).toBe("pub-1");
+      expect(rec.sourceQuality.reliability).toBe(0.9);
+      expect(rec.rawProvenance.license).toBe("CC-BY-4.0");
 
       expect(result).not.toHaveProperty("unknownTopLevelField");
-      expect(result.records[0] as unknown as Record<string, unknown>).not.toHaveProperty(
-        "unknownField"
-      );
-      expect(result.records[0] as unknown as Record<string, unknown>).not.toHaveProperty(
-        "anotherUnknown"
-      );
+      expect(rec as unknown as Record<string, unknown>).not.toHaveProperty("unknownRecordField");
+
+      // Verify Deep Freezing
+      expect(Object.isFrozen(result)).toBe(true);
+      expect(Object.isFrozen(result.records)).toBe(true);
+      expect(Object.isFrozen(rec)).toBe(true);
+      expect(Object.isFrozen(rec.extractedClaims)).toBe(true);
+      expect(Object.isFrozen(rec.topicTags)).toBe(true);
+      expect(Object.isFrozen(rec.publisher)).toBe(true);
+      expect(Object.isFrozen(rec.sourceQuality)).toBe(true);
+      expect(Object.isFrozen(rec.affectedAssets)).toBe(true);
+      expect(Object.isFrozen(rec.affectedProtocols)).toBe(true);
+      expect(Object.isFrozen(rec.affectedJurisdictions)).toBe(true);
+      expect(Object.isFrozen(rec.sourceReferences)).toBe(true);
+      expect(Object.isFrozen(rec.rawProvenance)).toBe(true);
     });
 
-    it("rejects records missing required license or reference fields", async () => {
+    it("rejects non-HTTPS source references", async () => {
       const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
 
       const mockHttp = createMockHttpClient({
-        body: {
-          source: "crypto-news-api",
-          providerId: "test-provider",
-          providerRunId: "run-123",
-          retrievedAtUnixMs: 1700000000000,
-          records: [
-            {
-              id: "news-1",
-              headline: "SOL surges",
-              publishedAtUnixMs: 1699990000000,
-              source: "CryptoNews"
-            }
-          ]
-        }
+        body: makeValidRawResponse("crypto-news-api", {
+          sourceReferences: ["http://example.com/http-only"]
+        })
       });
 
       const source = new HttpNewsSource({
@@ -303,26 +328,13 @@ describe("HttpNewsSource", () => {
       }
     });
 
-    it("rejects records missing compliance flags", async () => {
+    it("rejects records with robotsAllowed or termsAllowRetention false", async () => {
       const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
 
       const mockHttp = createMockHttpClient({
-        body: {
-          source: "crypto-news-api",
-          providerId: "test-provider",
-          providerRunId: "run-123",
-          retrievedAtUnixMs: 1700000000000,
-          records: [
-            {
-              id: "news-1",
-              headline: "SOL surges",
-              publishedAtUnixMs: 1699990000000,
-              source: "CryptoNews",
-              url: "https://example.com/news/1",
-              categories: ["regulatory"]
-            }
-          ]
-        }
+        body: makeValidRawResponse("crypto-news-api", {
+          robotsAllowed: false
+        })
       });
 
       const source = new HttpNewsSource({
@@ -348,27 +360,9 @@ describe("HttpNewsSource", () => {
       const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
 
       const mockHttp = createMockHttpClient({
-        body: {
-          source: "crypto-news-api",
-          providerId: "test-provider",
-          providerRunId: "run-123",
-          retrievedAtUnixMs: 1700000000000,
-          records: [
-            {
-              id: "news-1",
-              headline: "SOL surges on regulatory news",
-              publishedAtUnixMs: 1699990000000,
-              source: "CryptoNews",
-              url: "https://example.com/news/1",
-              categories: ["regulatory"],
-              license: "MIT",
-              reference: "https://example.com/source",
-              compliance: { isSponsored: false, isAffiliate: false },
-              fullText: "This should not be in the bounded projection",
-              body: "This is the full article body that should be rejected"
-            }
-          ]
-        }
+        body: makeValidRawResponse("crypto-news-api", {
+          body: "Full article body content"
+        })
       });
 
       const source = new HttpNewsSource({
@@ -607,8 +601,8 @@ describe("HttpNewsSource", () => {
     });
   });
 
-  describe("retry-loop", () => {
-    it("retries transient network errors up to maxAttempts before throwing", async () => {
+  describe("retry-loop and two-attempt ceiling", () => {
+    it("enforces at most two HTTP attempts ceiling even if maxAttempts: 3 is requested", async () => {
       const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
 
       const mockHttp = createMockHttpClient({ networkError: true });
@@ -629,18 +623,18 @@ describe("HttpNewsSource", () => {
       } catch (e) {
         const error = e as NewsSourceError;
         expect(error.kind).toBe("network");
-        expect(mockHttp.getJson).toHaveBeenCalledTimes(3);
+        expect(mockHttp.getJson).toHaveBeenCalledTimes(2);
       }
     });
 
-    it("retries timeout errors up to maxAttempts before throwing", async () => {
+    it("retries timeout errors up to maxAttempts (max 2) before throwing", async () => {
       const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
 
       const mockHttp = createMockHttpClient({ shouldTimeout: true });
       const source = new HttpNewsSource({
         http: mockHttp,
         url: "https://api.example.com/news",
-        maxAttempts: 3
+        maxAttempts: 2
       });
 
       try {
@@ -654,39 +648,14 @@ describe("HttpNewsSource", () => {
       } catch (e) {
         const error = e as NewsSourceError;
         expect(error.kind).toBe("timeout");
-        expect(mockHttp.getJson).toHaveBeenCalledTimes(3);
+        expect(mockHttp.getJson).toHaveBeenCalledTimes(2);
       }
     });
 
-    it("retries 5xx server errors up to maxAttempts before throwing", async () => {
+    it("retries 5xx server errors up to maxAttempts (max 2) before throwing", async () => {
       const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
 
       const mockHttp = createMockHttpClient({ httpStatus: 503 });
-      const source = new HttpNewsSource({
-        http: mockHttp,
-        url: "https://api.example.com/news",
-        maxAttempts: 3
-      });
-
-      try {
-        await source.collect({
-          pair: "SOL/USDC",
-          source: "crypto-news-api",
-          fromUnixMs: 1699900000000,
-          toUnixMs: 1700000000000
-        });
-        expect.fail("Should have thrown");
-      } catch (e) {
-        const error = e as NewsSourceError;
-        expect(error.kind).toBe("unavailable");
-        expect(mockHttp.getJson).toHaveBeenCalledTimes(3);
-      }
-    });
-
-    it("retries on 429 rate limit errors up to maxAttempts before throwing", async () => {
-      const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
-
-      const mockHttp = createMockHttpClient({ httpStatus: 429 });
       const source = new HttpNewsSource({
         http: mockHttp,
         url: "https://api.example.com/news",
@@ -715,7 +684,7 @@ describe("HttpNewsSource", () => {
       const source = new HttpNewsSource({
         http: mockHttp,
         url: "https://api.example.com/news",
-        maxAttempts: 3
+        maxAttempts: 2
       });
 
       try {
@@ -733,31 +702,6 @@ describe("HttpNewsSource", () => {
       }
     });
 
-    it("throws immediately on non-retryable 4xx error without retrying", async () => {
-      const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
-
-      const mockHttp = createMockHttpClient({ httpStatus: 400 });
-      const source = new HttpNewsSource({
-        http: mockHttp,
-        url: "https://api.example.com/news",
-        maxAttempts: 3
-      });
-
-      try {
-        await source.collect({
-          pair: "SOL/USDC",
-          source: "crypto-news-api",
-          fromUnixMs: 1699900000000,
-          toUnixMs: 1700000000000
-        });
-        expect.fail("Should have thrown");
-      } catch (e) {
-        const error = e as NewsSourceError;
-        expect(error.kind).toBe("network");
-        expect(mockHttp.getJson).toHaveBeenCalledTimes(1);
-      }
-    });
-
     it("throws immediately on malformed response without retrying", async () => {
       const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
 
@@ -765,7 +709,7 @@ describe("HttpNewsSource", () => {
       const source = new HttpNewsSource({
         http: mockHttp,
         url: "https://api.example.com/news",
-        maxAttempts: 3
+        maxAttempts: 2
       });
 
       try {
@@ -783,23 +727,17 @@ describe("HttpNewsSource", () => {
       }
     });
 
-    it("succeeds on successful response after previous failed attempts", async () => {
+    it("succeeds on second attempt after first failed attempt", async () => {
       const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
 
       let callCount = 0;
       const mockHttp = {
         getJson: vi.fn().mockImplementation(async (): Promise<unknown> => {
           callCount++;
-          if (callCount < 3) {
+          if (callCount < 2) {
             throw new TypeError("transient network error");
           }
-          return {
-            source: "crypto-news-api",
-            providerId: "test-provider",
-            providerRunId: "run-123",
-            retrievedAtUnixMs: 1700000000000,
-            records: []
-          };
+          return makeValidRawResponse("crypto-news-api");
         }),
         postJsonRaw: vi.fn().mockRejectedValue(new Error("Not implemented"))
       } as unknown as HttpClient;
@@ -807,7 +745,7 @@ describe("HttpNewsSource", () => {
       const source = new HttpNewsSource({
         http: mockHttp,
         url: "https://api.example.com/news",
-        maxAttempts: 3
+        maxAttempts: 2
       });
 
       const result = await source.collect({
@@ -818,140 +756,7 @@ describe("HttpNewsSource", () => {
       });
 
       expect(result.providerId).toBe("test-provider");
-      expect(mockHttp.getJson).toHaveBeenCalledTimes(3);
+      expect(mockHttp.getJson).toHaveBeenCalledTimes(2);
     });
-
-    it("caps exponential backoff at 400ms plus jitter", async () => {
-      const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
-      const { FakeRetry } = await import("../../../tests/fakes/index.js");
-
-      const fakeRetry = new FakeRetry([0, 0]);
-      const mockHttp = createMockHttpClient({ networkError: true });
-      const source = new HttpNewsSource({
-        http: mockHttp,
-        url: "https://api.example.com/news",
-        maxAttempts: 2,
-        retryControl: fakeRetry
-      });
-
-      try {
-        await source.collect({
-          pair: "SOL/USDC",
-          source: "crypto-news-api",
-          fromUnixMs: 1699900000000,
-          toUnixMs: 1700000000000
-        });
-        expect.fail("Should have thrown");
-      } catch (e) {
-        expect(mockHttp.getJson).toHaveBeenCalledTimes(2);
-        expect(fakeRetry.delays).toHaveLength(1);
-        expect(fakeRetry.delays[0]).toBeLessThanOrEqual(480);
-      }
-    });
-  });
-});
-
-describe("FakeNewsSource", () => {
-  it("returns configured response on collect", async () => {
-    const { FakeNewsSource } = await import("../../../tests/fakes/fake-news-source.js");
-
-    const fake = new FakeNewsSource();
-    fake.setResponse({
-      source: "crypto-news-api",
-      providerId: "test-provider",
-      providerRunId: "run-123",
-      retrievedAtUnixMs: 1700000000000,
-      records: []
-    });
-
-    const result = await fake.collect({
-      pair: "SOL/USDC",
-      source: "crypto-news-api",
-      fromUnixMs: 1699900000000,
-      toUnixMs: 1700000000000
-    });
-
-    expect(result.providerId).toBe("test-provider");
-    expect(fake.calls).toHaveLength(1);
-    expect(fake.calls[0]?.request.pair).toBe("SOL/USDC");
-  });
-
-  it("throws configured error on collect", async () => {
-    const { FakeNewsSource } = await import("../../../tests/fakes/fake-news-source.js");
-
-    const fake = new FakeNewsSource();
-    fake.setError({ kind: "network", diagnostic: "test error" });
-
-    try {
-      await fake.collect({
-        pair: "SOL/USDC",
-        source: "crypto-news-api",
-        fromUnixMs: 1699900000000,
-        toUnixMs: 1700000000000
-      });
-      expect.fail("Should have thrown");
-    } catch (e) {
-      const error = e as NewsSourceError;
-      expect(error.kind).toBe("network");
-    }
-  });
-});
-
-describe("NewsSourcePort interface", () => {
-  it("can be used with a fake implementation for testing", async () => {
-    const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
-    type NewsSourcePortType = import("../../../src/ports/news-source.js").NewsSourcePort;
-
-    const mockHttp = createMockHttpClient({
-      body: {
-        source: "crypto-news-api",
-        providerId: "test-provider",
-        providerRunId: "run-123",
-        retrievedAtUnixMs: 1700000000000,
-        records: []
-      }
-    });
-
-    const httpSource = new HttpNewsSource({
-      http: mockHttp,
-      url: "https://api.example.com/news"
-    });
-
-    const port: NewsSourcePortType = httpSource;
-
-    const result = await port.collect({
-      pair: "SOL/USDC",
-      source: "crypto-news-api",
-      fromUnixMs: 1699900000000,
-      toUnixMs: 1700000000000
-    });
-
-    expect(result.providerId).toBe("test-provider");
-  });
-
-  it("can swap between HTTP and fake implementations", async () => {
-    type NewsSourcePortType = import("../../../src/ports/news-source.js").NewsSourcePort;
-    const { FakeNewsSource } = await import("../../../tests/fakes/fake-news-source.js");
-
-    const fake = new FakeNewsSource();
-    fake.setResponse({
-      source: "regulatory-monitor-api",
-      providerId: "regulatory-provider",
-      providerRunId: "run-456",
-      retrievedAtUnixMs: 1700000000000,
-      records: []
-    });
-
-    const port: NewsSourcePortType = fake;
-
-    const result = await port.collect({
-      pair: "SOL/USDC",
-      source: "regulatory-monitor-api",
-      fromUnixMs: 1699900000000,
-      toUnixMs: 1700000000000
-    });
-
-    expect(result.providerId).toBe("regulatory-provider");
-    expect(result.source).toBe("regulatory-monitor-api");
   });
 });

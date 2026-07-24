@@ -2,8 +2,10 @@ import { z } from "zod";
 import type {
   NewsEvidenceKind,
   NewsPublisher,
-  NewsSourceQuality
+  NewsSourceQuality,
+  BoundedNewsSourceRecord
 } from "../../contracts/news-events.js";
+export type { BoundedNewsSourceRecord };
 
 const MAX_SUMMARY_LENGTH = 1000;
 const MAX_CLAIM_LENGTH = 500;
@@ -196,38 +198,6 @@ const newsSourceRecordInputSchema = z
   );
 
 export type NewsSourceRecordInput = z.infer<typeof newsSourceRecordInputSchema>;
-
-export interface BoundedNewsSourceRecord {
-  readonly source: "crypto-news-api" | "regulatory-monitor-api";
-  readonly providerId: string;
-  readonly providerRunId: string;
-  readonly retrievedAtUnixMs: number;
-  readonly articleId: string;
-  readonly sourceVersionId: string;
-  readonly correctsSourceVersionId: string | null;
-  readonly evidenceKind: NewsEvidenceKind;
-  readonly title: string;
-  readonly factualSummary: string;
-  readonly extractedClaims: readonly string[];
-  readonly topicTags: readonly string[];
-  readonly publishedAtUnixMs: number | null;
-  readonly sourceUpdatedAtUnixMs: number | null;
-  readonly publisher: NewsPublisher;
-  readonly sourceQuality: NewsSourceQuality;
-  readonly originatingReportId: string;
-  readonly syndicationId: string | null;
-  readonly affectedAssets: readonly string[];
-  readonly affectedProtocols: readonly string[];
-  readonly affectedJurisdictions: readonly string[];
-  readonly sourceReferences: readonly string[];
-  readonly rawProvenance: {
-    readonly retrievedAtUnixMs: number;
-    readonly license: string;
-    readonly retentionMode: "bounded_factual_extract";
-    readonly robotsCompliance: boolean;
-    readonly termsAccepted: boolean;
-  };
-}
 
 function normalizeStringArray(arr: readonly string[]): string[] {
   const trimmed = arr.map((s) => s.trim()).filter((s) => s.length > 0);

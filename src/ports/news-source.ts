@@ -5,20 +5,8 @@ export interface NewsSourceRequest {
   readonly toUnixMs: number;
 }
 
-export interface BoundedNewsSourceRecord {
-  readonly id: string;
-  readonly headline: string;
-  readonly publishedAtUnixMs: number;
-  readonly source: string;
-  readonly url: string;
-  readonly categories: readonly string[];
-  readonly license: string;
-  readonly reference: string;
-  readonly compliance: {
-    readonly isSponsored: boolean;
-    readonly isAffiliate: boolean;
-  };
-}
+import type { BoundedNewsSourceRecord } from "../contracts/news-events.js";
+export type { BoundedNewsSourceRecord };
 
 export interface NewsSourceSnapshot {
   readonly source: NewsSourceRequest["source"];

@@ -74,3 +74,29 @@ export interface RegulatoryPayloadV1 extends Omit<NewsPayloadV1, "evidenceKind">
 }
 
 export type NewsEvidencePayload = NewsPayloadV1 | RegulatoryPayloadV1;
+
+export interface BoundedNewsSourceRecord {
+  readonly source: "crypto-news-api" | "regulatory-monitor-api";
+  readonly providerId: string;
+  readonly providerRunId: string;
+  readonly retrievedAtUnixMs: number;
+  readonly articleId: string;
+  readonly sourceVersionId: string;
+  readonly correctsSourceVersionId: string | null;
+  readonly evidenceKind: NewsEvidenceKind;
+  readonly title: string;
+  readonly factualSummary: string;
+  readonly extractedClaims: readonly string[];
+  readonly topicTags: readonly string[];
+  readonly publishedAtUnixMs: number | null;
+  readonly sourceUpdatedAtUnixMs: number | null;
+  readonly publisher: NewsPublisher;
+  readonly sourceQuality: NewsSourceQuality;
+  readonly originatingReportId: string;
+  readonly syndicationId: string | null;
+  readonly affectedAssets: readonly string[];
+  readonly affectedProtocols: readonly string[];
+  readonly affectedJurisdictions: readonly string[];
+  readonly sourceReferences: readonly string[];
+  readonly rawProvenance: NewsRawProvenance;
+}

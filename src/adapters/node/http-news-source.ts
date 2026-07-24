@@ -9,11 +9,11 @@ import { HttpRequestError } from "../../ports/http.js";
 import type { HttpClient } from "../../ports/http.js";
 import type { RetryControl } from "../../ports/retry.js";
 import { SystemRetryControl } from "./system-retry.js";
+import { acceptBoundedNewsRecord } from "../../domain/news-events/validate.js";
 
 const BASE_BACKOFF_MS = 25;
 const MAX_BACKOFF_MS = 400;
-
-const PROHIBITED_FIELDS = ["fullText", "body"];
+const MAX_ALLOWED_ATTEMPTS = 2;
 
 function computeBackoffMs(attempt: number, retryControl: RetryControl): number {
   const base = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** attempt);
@@ -37,7 +37,8 @@ export class HttpNewsSource implements NewsSourcePort {
 
   constructor(private readonly options: HttpNewsSourceOptions) {
     this.timeoutMs = options.timeoutMs ?? 5000;
-    this.maxAttempts = options.maxAttempts ?? 2;
+    const requestedMax = options.maxAttempts ?? 2;
+    this.maxAttempts = Math.min(MAX_ALLOWED_ATTEMPTS, Math.max(1, requestedMax));
     this.retryControl = options.retryControl ?? new SystemRetryControl();
   }
 
@@ -71,17 +72,23 @@ export class HttpNewsSource implements NewsSourcePort {
       headers["Authorization"] = `Bearer ${this.options.apiKey}`;
     }
 
+    const url = new URL(this.options.url);
+    url.searchParams.set("pair", request.pair);
+    url.searchParams.set("source", request.source);
+    url.searchParams.set("fromUnixMs", String(request.fromUnixMs));
+    url.searchParams.set("toUnixMs", String(request.toUnixMs));
+
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
       try {
-        const response = await this.options.http.getJson<unknown>(this.options.url, {
+        const response = await this.options.http.getJson<unknown>(url.toString(), {
           headers,
           timeoutMs: this.timeoutMs,
           maxAttempts: 1
         });
 
-        return acceptNewsSourceSnapshot(response);
+        return acceptNewsSourceSnapshot(response, request.source);
       } catch (e) {
         lastError = e instanceof Error ? e : new Error(String(e));
 
@@ -134,7 +141,7 @@ function mapToNewsSourceError(e: HttpRequestError, apiKey?: string): NewsSourceE
   }
 }
 
-function acceptNewsSourceSnapshot(response: unknown): NewsSourceSnapshot {
+function acceptNewsSourceSnapshot(response: unknown, requestSource: string): NewsSourceSnapshot {
   if (typeof response !== "object" || response === null) {
     throw new HttpRequestError("invalid_json", "Response is not an object", null, false);
   }
@@ -158,6 +165,14 @@ function acceptNewsSourceSnapshot(response: unknown): NewsSourceSnapshot {
   if (source !== "crypto-news-api" && source !== "regulatory-monitor-api") {
     throw new HttpRequestError("invalid_json", "Missing or invalid source", null, false);
   }
+  if (source !== requestSource) {
+    throw new HttpRequestError(
+      "invalid_json",
+      `Source mismatch: expected '${requestSource}', got '${source}'`,
+      null,
+      false
+    );
+  }
 
   const records = obj.records as unknown[];
   const validatedRecords: BoundedNewsSourceRecord[] = [];
@@ -168,118 +183,53 @@ function acceptNewsSourceSnapshot(response: unknown): NewsSourceSnapshot {
     }
 
     const r = record as Record<string, unknown>;
+    const recordInput = {
+      source: obj.source,
+      providerId: obj.providerId,
+      providerRunId: obj.providerRunId,
+      retrievedAtUnixMs: obj.retrievedAtUnixMs,
+      ...r
+    };
 
-    for (const prohibited of PROHIBITED_FIELDS) {
-      if (prohibited in r) {
-        throw new HttpRequestError(
-          "invalid_json",
-          `Invalid record: contains prohibited field '${prohibited}'`,
-          null,
-          false
-        );
-      }
-    }
-
-    if (typeof r.id !== "string") {
+    try {
+      const validated = acceptBoundedNewsRecord(recordInput);
+      validatedRecords.push(validated);
+    } catch (e) {
       throw new HttpRequestError(
         "invalid_json",
-        "Invalid record: missing or invalid id",
+        `Invalid record validation failed: ${e instanceof Error ? e.message : String(e)}`,
         null,
         false
       );
     }
-    if (typeof r.headline !== "string") {
-      throw new HttpRequestError(
-        "invalid_json",
-        "Invalid record: missing or invalid headline",
-        null,
-        false
-      );
-    }
-    if (typeof r.publishedAtUnixMs !== "number") {
-      throw new HttpRequestError(
-        "invalid_json",
-        "Invalid record: missing or invalid publishedAtUnixMs",
-        null,
-        false
-      );
-    }
-    if (typeof r.source !== "string") {
-      throw new HttpRequestError(
-        "invalid_json",
-        "Invalid record: missing or invalid source",
-        null,
-        false
-      );
-    }
-    if (typeof r.url !== "string") {
-      throw new HttpRequestError(
-        "invalid_json",
-        "Invalid record: missing or invalid url",
-        null,
-        false
-      );
-    }
-    if (!Array.isArray(r.categories) || !r.categories.every((c) => typeof c === "string")) {
-      throw new HttpRequestError(
-        "invalid_json",
-        "Invalid record: missing or invalid categories",
-        null,
-        false
-      );
-    }
-    if (typeof r.license !== "string") {
-      throw new HttpRequestError(
-        "invalid_json",
-        "Invalid record: missing or invalid license",
-        null,
-        false
-      );
-    }
-    if (typeof r.reference !== "string") {
-      throw new HttpRequestError(
-        "invalid_json",
-        "Invalid record: missing or invalid reference",
-        null,
-        false
-      );
-    }
-    if (
-      typeof r.compliance !== "object" ||
-      r.compliance === null ||
-      typeof (r.compliance as Record<string, unknown>)?.isSponsored !== "boolean" ||
-      typeof (r.compliance as Record<string, unknown>)?.isAffiliate !== "boolean"
-    ) {
-      throw new HttpRequestError(
-        "invalid_json",
-        "Invalid record: missing or invalid compliance",
-        null,
-        false
-      );
-    }
-
-    const complianceObj = r.compliance as Record<string, unknown>;
-    validatedRecords.push({
-      id: r.id,
-      headline: r.headline,
-      publishedAtUnixMs: r.publishedAtUnixMs,
-      source: r.source,
-      url: r.url,
-      categories: r.categories as readonly string[],
-      license: r.license,
-      reference: r.reference,
-      compliance: {
-        isSponsored: complianceObj.isSponsored === true,
-        isAffiliate: complianceObj.isAffiliate === true
-      }
-    });
   }
 
-  return Object.freeze({
+  const snapshot: NewsSourceSnapshot = {
     source: source as NewsSourceSnapshot["source"],
     providerId: obj.providerId,
     providerRunId: obj.providerRunId,
     retrievedAtUnixMs: obj.retrievedAtUnixMs,
-    records: Object.freeze(validatedRecords)
-  });
+    records: validatedRecords
+  };
+
+  return deepFreezeSnapshot(snapshot);
+}
+
+function deepFreezeRecord(record: BoundedNewsSourceRecord): BoundedNewsSourceRecord {
+  Object.freeze(record.extractedClaims);
+  Object.freeze(record.topicTags);
+  Object.freeze(record.publisher);
+  Object.freeze(record.sourceQuality);
+  Object.freeze(record.affectedAssets);
+  Object.freeze(record.affectedProtocols);
+  Object.freeze(record.affectedJurisdictions);
+  Object.freeze(record.sourceReferences);
+  Object.freeze(record.rawProvenance);
+  return Object.freeze(record);
+}
+
+function deepFreezeSnapshot(snapshot: NewsSourceSnapshot): NewsSourceSnapshot {
+  snapshot.records.forEach((record) => deepFreezeRecord(record));
+  Object.freeze(snapshot.records);
+  return Object.freeze(snapshot);
 }
