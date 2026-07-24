@@ -48,7 +48,6 @@ import {
   VOLATILITY_WINDOW_MS
 } from "../domain/derived-feature/volatility.js";
 import { parseDerivedFeatureV1 } from "../contracts/derived-feature.js";
-import { canonicalHash } from "../domain/content-hash.js";
 
 export interface DeriveMvpFeaturesRequest {
   readonly pair: "SOL/USDC";
@@ -121,30 +120,6 @@ function buildDefaultConfidence(): Confidence {
   };
 }
 
-async function computeUnavailableDerivationKey(
-  featureKind: FeatureKind,
-  poolId: string | null,
-  positionId: string | null,
-  calculatorVersion: string,
-  codeVersion: string,
-  reasons: readonly string[]
-): Promise<string> {
-  const identity = {
-    schemaVersion: 1,
-    featureKind,
-    status: "UNAVAILABLE",
-    poolId,
-    positionId,
-    calculatorVersion,
-    selectionVersion: SELECTION_VERSION,
-    codeVersion,
-    inputObservationIds: [] as number[],
-    rejectedObservationIds: [] as number[],
-    reasons: [...reasons].sort()
-  };
-  return `dk-${await canonicalHash(identity)}`;
-}
-
 async function assembleAvailableFeature(
   featureKind: FeatureKind,
   status: FeatureStatus,
@@ -211,6 +186,74 @@ async function assembleAvailableFeature(
   return assembleDerivedFeature({
     input,
     selectedRows,
+    rejectedRows,
+    evaluationAsOfUnixMs,
+    runId,
+    codeVersion
+  });
+}
+
+async function assembleUnavailableFeature(
+  featureKind: FeatureKind,
+  unit: "BPS" | "PPM",
+  poolId: string | null,
+  positionId: string | null,
+  asOfUnixMs: number,
+  confidence: Confidence,
+  inputObservationIds: readonly number[],
+  rejectedObservationIds: readonly number[],
+  reasons: readonly string[],
+  calculatorVersion: string,
+  calculationMetadata: Readonly<Record<string, unknown>>,
+  rejectedRows: readonly NormalizedObservationRow[],
+  evaluationAsOfUnixMs: number,
+  runId: string,
+  codeVersion: string
+): Promise<AssembledFeature> {
+  const input: AssembleFeatureInput = {
+    featureKind,
+    status: "UNAVAILABLE",
+    value: null,
+    unit,
+    pair: PAIR,
+    poolId,
+    positionId,
+    asOfUnixMs,
+    expiresAtUnixMs: asOfUnixMs,
+    confidence,
+    freshness: {
+      isStale: false,
+      validUntilUnixMs: asOfUnixMs,
+      derivedAt: asOfUnixMs,
+      policyKind: featureKind,
+      reasons: []
+    },
+    inputObservationIds,
+    rejectedObservationIds,
+    provenance: {
+      sourceRefs: [],
+      rawObservationRefs: [],
+      derivedFromRefs: [],
+      processRef: {
+        collector: "deterministic-feature-derivation",
+        jobName: "derive-mvp-features",
+        pipelineRunId: null,
+        codeVersion: null,
+        modelVersion: null
+      },
+      codeVersion: calculatorVersion,
+      runId: null
+    },
+    warnings: [],
+    reasons,
+    calculatorVersion,
+    selectionVersion: SELECTION_VERSION,
+    calculationMetadata
+  };
+
+  return assembleDerivedFeature({
+    input,
+    selectedRows: [],
     rejectedRows,
     evaluationAsOfUnixMs,
     runId,
@@ -407,13 +450,22 @@ async function deriveOracleDivergence(
     if (!oracleRow) reasons.push("missing_oracle");
     if (!dexRow) reasons.push("missing_dex");
 
-    const derivationKey = await computeUnavailableDerivationKey(
+    const assembled = await assembleUnavailableFeature(
       "oracle_dex_divergence",
+      "BPS",
       null,
       null,
+      evaluationAsOfUnixMs,
+      buildDefaultConfidence(),
+      [],
+      rejectedRows.map((r) => r.id),
+      reasons,
       MARKET_CALCULATOR_VERSIONS.oracle_dex_divergence,
-      codeVersion,
-      reasons
+      { reasons },
+      rejectedRows,
+      evaluationAsOfUnixMs,
+      runId,
+      codeVersion
     );
 
     return {
@@ -427,21 +479,8 @@ async function deriveOracleDivergence(
       validUntilUnixMs: evaluationAsOfUnixMs,
       isStale: false,
       staleBehavior: null,
-      provenance: {
-        sourceRefs: [],
-        rawObservationRefs: [],
-        derivedFromRefs: [],
-        processRef: {
-          collector: "deterministic-feature-derivation",
-          jobName: "derive-mvp-features",
-          pipelineRunId: null,
-          codeVersion: null,
-          modelVersion: null
-        },
-        codeVersion,
-        runId
-      },
-      payloadHash: derivationKey.replace("dk-", ""),
+      provenance: assembled.result.provenance as Provenance,
+      payloadHash: assembled.payloadHash,
       receivedAtUnixMs: evaluationAsOfUnixMs,
       status: "UNAVAILABLE",
       unit: "BPS",
@@ -450,7 +489,7 @@ async function deriveOracleDivergence(
       selectionVersion: SELECTION_VERSION,
       inputObservationIds: [],
       rejectedObservationIds: rejectedRows.map((r) => r.id),
-      derivationKey,
+      derivationKey: assembled.derivationKey,
       poolId: null,
       positionId: null,
       warnings: [],
@@ -525,13 +564,23 @@ async function deriveOracleConfidenceWidth(
 ): Promise<DerivedFeatureInsert> {
   if (!oracleRow) {
     const reasons = ["missing_oracle"];
-    const derivationKey = await computeUnavailableDerivationKey(
+
+    const assembled = await assembleUnavailableFeature(
       "oracle_confidence_width",
+      "BPS",
       null,
       null,
+      evaluationAsOfUnixMs,
+      buildDefaultConfidence(),
+      [],
+      rejectedRows.map((r) => r.id),
+      reasons,
       MARKET_CALCULATOR_VERSIONS.oracle_confidence_width,
-      codeVersion,
-      reasons
+      { reasons },
+      rejectedRows,
+      evaluationAsOfUnixMs,
+      runId,
+      codeVersion
     );
 
     return {
@@ -545,21 +594,8 @@ async function deriveOracleConfidenceWidth(
       validUntilUnixMs: evaluationAsOfUnixMs,
       isStale: false,
       staleBehavior: null,
-      provenance: {
-        sourceRefs: [],
-        rawObservationRefs: [],
-        derivedFromRefs: [],
-        processRef: {
-          collector: "deterministic-feature-derivation",
-          jobName: "derive-mvp-features",
-          pipelineRunId: null,
-          codeVersion: null,
-          modelVersion: null
-        },
-        codeVersion,
-        runId
-      },
-      payloadHash: derivationKey.replace("dk-", ""),
+      provenance: assembled.result.provenance as Provenance,
+      payloadHash: assembled.payloadHash,
       receivedAtUnixMs: evaluationAsOfUnixMs,
       status: "UNAVAILABLE",
       unit: "BPS",
@@ -568,7 +604,7 @@ async function deriveOracleConfidenceWidth(
       selectionVersion: SELECTION_VERSION,
       inputObservationIds: [],
       rejectedObservationIds: rejectedRows.map((r) => r.id),
-      derivationKey,
+      derivationKey: assembled.derivationKey,
       poolId: null,
       positionId: null,
       warnings: [],
@@ -643,13 +679,23 @@ async function deriveRealizedVolatility(
 ): Promise<DerivedFeatureInsert> {
   if (priceRows.length === 0) {
     const reasons = ["no_price_observations"];
-    const derivationKey = await computeUnavailableDerivationKey(
+
+    const assembled = await assembleUnavailableFeature(
       "realized_volatility_1h",
+      "BPS",
       null,
       null,
+      evaluationAsOfUnixMs,
+      buildDefaultConfidence(),
+      [],
+      rejectedRows.map((r) => r.id),
+      reasons,
       REALIZED_VOLATILITY_1H_VERSION,
-      codeVersion,
-      reasons
+      { reasons },
+      rejectedRows,
+      evaluationAsOfUnixMs,
+      runId,
+      codeVersion
     );
 
     return {
@@ -663,21 +709,8 @@ async function deriveRealizedVolatility(
       validUntilUnixMs: evaluationAsOfUnixMs,
       isStale: false,
       staleBehavior: null,
-      provenance: {
-        sourceRefs: [],
-        rawObservationRefs: [],
-        derivedFromRefs: [],
-        processRef: {
-          collector: "deterministic-feature-derivation",
-          jobName: "derive-mvp-features",
-          pipelineRunId: null,
-          codeVersion: null,
-          modelVersion: null
-        },
-        codeVersion,
-        runId
-      },
-      payloadHash: derivationKey.replace("dk-", ""),
+      provenance: assembled.result.provenance as Provenance,
+      payloadHash: assembled.payloadHash,
       receivedAtUnixMs: evaluationAsOfUnixMs,
       status: "UNAVAILABLE",
       unit: "BPS",
@@ -686,7 +719,7 @@ async function deriveRealizedVolatility(
       selectionVersion: SELECTION_VERSION,
       inputObservationIds: [],
       rejectedObservationIds: rejectedRows.map((r) => r.id),
-      derivationKey,
+      derivationKey: assembled.derivationKey,
       poolId: null,
       positionId: null,
       warnings: [],
@@ -774,13 +807,23 @@ async function deriveVolumeRatio(
 ): Promise<DerivedFeatureInsert> {
   if (!poolStatsRow) {
     const reasons = ["missing_pool_stats"];
-    const derivationKey = await computeUnavailableDerivationKey(
+
+    const assembled = await assembleUnavailableFeature(
       "volume_liquidity_ratio_24h",
+      "PPM",
       poolId,
       null,
+      evaluationAsOfUnixMs,
+      buildDefaultConfidence(),
+      [],
+      rejectedRows.map((r) => r.id),
+      reasons,
       MARKET_CALCULATOR_VERSIONS.volume_liquidity_ratio_24h,
-      codeVersion,
-      reasons
+      { reasons },
+      rejectedRows,
+      evaluationAsOfUnixMs,
+      runId,
+      codeVersion
     );
 
     return {
@@ -794,21 +837,8 @@ async function deriveVolumeRatio(
       validUntilUnixMs: evaluationAsOfUnixMs,
       isStale: false,
       staleBehavior: null,
-      provenance: {
-        sourceRefs: [],
-        rawObservationRefs: [],
-        derivedFromRefs: [],
-        processRef: {
-          collector: "deterministic-feature-derivation",
-          jobName: "derive-mvp-features",
-          pipelineRunId: null,
-          codeVersion: null,
-          modelVersion: null
-        },
-        codeVersion,
-        runId
-      },
-      payloadHash: derivationKey.replace("dk-", ""),
+      provenance: assembled.result.provenance as Provenance,
+      payloadHash: assembled.payloadHash,
       receivedAtUnixMs: evaluationAsOfUnixMs,
       status: "UNAVAILABLE",
       unit: "PPM",
@@ -817,7 +847,7 @@ async function deriveVolumeRatio(
       selectionVersion: SELECTION_VERSION,
       inputObservationIds: [],
       rejectedObservationIds: rejectedRows.map((r) => r.id),
-      derivationKey,
+      derivationKey: assembled.derivationKey,
       poolId,
       positionId: null,
       warnings: [],
@@ -890,32 +920,60 @@ async function deriveUnavailablePositionFeatures(
   codeVersion: string
 ): Promise<DerivedFeatureInsert[]> {
   const reasons = ["position_not_found"];
+  const emptyRows: NormalizedObservationRow[] = [];
 
-  const rangeDerivationKey = await computeUnavailableDerivationKey(
+  const rangeAssembled = await assembleUnavailableFeature(
     "range_location",
+    "PPM",
     poolId,
     positionId,
+    evaluationAsOfUnixMs,
+    buildDefaultConfidence(),
+    [],
+    [],
+    reasons,
     RANGE_CALCULATOR_VERSIONS.range_location,
-    codeVersion,
-    reasons
+    { reasons },
+    emptyRows,
+    evaluationAsOfUnixMs,
+    runId,
+    codeVersion
   );
 
-  const distLowerDerivationKey = await computeUnavailableDerivationKey(
+  const distLowerAssembled = await assembleUnavailableFeature(
     "distance_to_lower",
+    "PPM",
     poolId,
     positionId,
+    evaluationAsOfUnixMs,
+    buildDefaultConfidence(),
+    [],
+    [],
+    reasons,
     RANGE_CALCULATOR_VERSIONS.distance_to_lower,
-    codeVersion,
-    reasons
+    { reasons },
+    emptyRows,
+    evaluationAsOfUnixMs,
+    runId,
+    codeVersion
   );
 
-  const distUpperDerivationKey = await computeUnavailableDerivationKey(
+  const distUpperAssembled = await assembleUnavailableFeature(
     "distance_to_upper",
+    "PPM",
     poolId,
     positionId,
+    evaluationAsOfUnixMs,
+    buildDefaultConfidence(),
+    [],
+    [],
+    reasons,
     RANGE_CALCULATOR_VERSIONS.distance_to_upper,
-    codeVersion,
-    reasons
+    { reasons },
+    emptyRows,
+    evaluationAsOfUnixMs,
+    runId,
+    codeVersion
   );
 
   return [
@@ -930,21 +988,8 @@ async function deriveUnavailablePositionFeatures(
       validUntilUnixMs: evaluationAsOfUnixMs,
       isStale: false,
       staleBehavior: null,
-      provenance: {
-        sourceRefs: [],
-        rawObservationRefs: [],
-        derivedFromRefs: [],
-        processRef: {
-          collector: "deterministic-feature-derivation",
-          jobName: "derive-mvp-features",
-          pipelineRunId: null,
-          codeVersion: null,
-          modelVersion: null
-        },
-        codeVersion,
-        runId
-      },
-      payloadHash: rangeDerivationKey.replace("dk-", ""),
+      provenance: rangeAssembled.result.provenance as Provenance,
+      payloadHash: rangeAssembled.payloadHash,
       receivedAtUnixMs: evaluationAsOfUnixMs,
       status: "UNAVAILABLE",
       unit: "PPM",
@@ -953,7 +998,7 @@ async function deriveUnavailablePositionFeatures(
       selectionVersion: SELECTION_VERSION,
       inputObservationIds: [],
       rejectedObservationIds: [],
-      derivationKey: rangeDerivationKey,
+      derivationKey: rangeAssembled.derivationKey,
       poolId,
       positionId,
       warnings: [],
@@ -970,21 +1015,8 @@ async function deriveUnavailablePositionFeatures(
       validUntilUnixMs: evaluationAsOfUnixMs,
       isStale: false,
       staleBehavior: null,
-      provenance: {
-        sourceRefs: [],
-        rawObservationRefs: [],
-        derivedFromRefs: [],
-        processRef: {
-          collector: "deterministic-feature-derivation",
-          jobName: "derive-mvp-features",
-          pipelineRunId: null,
-          codeVersion: null,
-          modelVersion: null
-        },
-        codeVersion,
-        runId
-      },
-      payloadHash: distLowerDerivationKey.replace("dk-", ""),
+      provenance: distLowerAssembled.result.provenance as Provenance,
+      payloadHash: distLowerAssembled.payloadHash,
       receivedAtUnixMs: evaluationAsOfUnixMs,
       status: "UNAVAILABLE",
       unit: "PPM",
@@ -993,7 +1025,7 @@ async function deriveUnavailablePositionFeatures(
       selectionVersion: SELECTION_VERSION,
       inputObservationIds: [],
       rejectedObservationIds: [],
-      derivationKey: distLowerDerivationKey,
+      derivationKey: distLowerAssembled.derivationKey,
       poolId,
       positionId,
       warnings: [],
@@ -1010,21 +1042,8 @@ async function deriveUnavailablePositionFeatures(
       validUntilUnixMs: evaluationAsOfUnixMs,
       isStale: false,
       staleBehavior: null,
-      provenance: {
-        sourceRefs: [],
-        rawObservationRefs: [],
-        derivedFromRefs: [],
-        processRef: {
-          collector: "deterministic-feature-derivation",
-          jobName: "derive-mvp-features",
-          pipelineRunId: null,
-          codeVersion: null,
-          modelVersion: null
-        },
-        codeVersion,
-        runId
-      },
-      payloadHash: distUpperDerivationKey.replace("dk-", ""),
+      provenance: distUpperAssembled.result.provenance as Provenance,
+      payloadHash: distUpperAssembled.payloadHash,
       receivedAtUnixMs: evaluationAsOfUnixMs,
       status: "UNAVAILABLE",
       unit: "PPM",
@@ -1033,7 +1052,7 @@ async function deriveUnavailablePositionFeatures(
       selectionVersion: SELECTION_VERSION,
       inputObservationIds: [],
       rejectedObservationIds: [],
-      derivationKey: distUpperDerivationKey,
+      derivationKey: distUpperAssembled.derivationKey,
       poolId,
       positionId,
       warnings: [],
