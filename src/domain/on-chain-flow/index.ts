@@ -13,6 +13,17 @@ export {
 
 export { normalizeOnChainFlow, OnChainFlowNormalizationError } from "./normalize.js";
 
+export {
+  deriveOnChainFlowSourceObservationKey,
+  type OnChainFlowSourceObservationIdentity
+} from "./identity.js";
+
+export {
+  enrichOnChainFlow,
+  type OnChainFlowEnrichmentCandidate,
+  type EnrichedOnChainFlowObservation
+} from "./enrich.js";
+
 export type {
   OnChainFlowPayloadV1,
   WhaleTransferPayloadV1,
