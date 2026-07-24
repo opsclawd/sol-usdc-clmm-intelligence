@@ -14,3 +14,5 @@ export {
   type EnrichedNewsEvidenceObservation,
   NEWS_CONFIDENCE_WEIGHTING_VERSION
 } from "./enrich.js";
+
+export { clusterNewsEvidence, type ClusterNewsEvidenceInput } from "./cluster.js";
