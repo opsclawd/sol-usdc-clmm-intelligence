@@ -65,3 +65,10 @@ export type {
   ProtocolIncidentSourceError,
   ProtocolIncidentSourceClaim
 } from "./protocol-incident-source.js";
+export type {
+  NewsSourcePort,
+  NewsSourceRequest,
+  NewsSourceSnapshot,
+  NewsSourceError,
+  BoundedNewsSourceRecord
+} from "./news-source.js";
