@@ -17,7 +17,8 @@ export type { NormalizedObservationRow } from "../contracts/index.js";
 // Normalized observation repository port interface and rows
 export type {
   NormalizedObservationRepo,
-  NormalizedObservationInsert
+  NormalizedObservationInsert,
+  NormalizedObservationCandidateQuery
 } from "./normalized-observation-repo.js";
 export type {
   DerivedFeatureRepo,
@@ -50,3 +51,17 @@ export type {
   SupportResistanceSourceError,
   SupportResistanceSourceClaim
 } from "./support-resistance-source.js";
+export type {
+  ScheduledEventSourcePort,
+  ScheduledEventSourceRequest,
+  ScheduledEventSourceSnapshot,
+  ScheduledEventSourceError,
+  ScheduledEventSourceClaim
+} from "./scheduled-event-source.js";
+export type {
+  ProtocolIncidentSourcePort,
+  ProtocolIncidentSourceRequest,
+  ProtocolIncidentSourceSnapshot,
+  ProtocolIncidentSourceError,
+  ProtocolIncidentSourceClaim
+} from "./protocol-incident-source.js";

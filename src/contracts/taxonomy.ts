@@ -25,7 +25,9 @@ export type ObservationKind =
   | "trigger_event"
   | "data_quality"
   | "pool_statistics"
-  | "support_resistance_level";
+  | "support_resistance_level"
+  | "scheduled_event"
+  | "protocol_incident";
 
 export type FeatureKind =
   | "range_location"
@@ -45,7 +47,9 @@ export type Source =
   | "pyth-hermes"
   | "jupiter-quote"
   | "orca-public-api"
-  | "technical-analysis-api";
+  | "technical-analysis-api"
+  | "macro-calendar-api"
+  | "solana-status-api";
 
 export type ParseStatus = "pending" | "parsed" | "failed";
 

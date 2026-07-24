@@ -145,6 +145,8 @@ Tracked by #9, #10, and #11.
 
 Research collector packs add:
 
+- **contextual events** (`macro-calendar-api`, `solana-status-api`): Collects scheduled macro events (token unlocks, protocol upgrades, governance votes) and Solana protocol incidents. Produces `scheduled_event` and `protocol_incident` observations with severity, status, and source quality metadata. Events follow a raw-first append-only lifecycle with exact replay detection. Selection uses latest-state grouping before eligibility filtering to prevent older-state revival. Severity/materiality is deterministic evidence metadata; missing feeds do not imply no risk; unconfirmed reports remain unconfirmed; event direction is always unknown; only regime-engine can synthesize final policy.
+
 - **support/resistance** (`technical-analysis-api`): Collects SOL/USDC support and resistance levels from a technical analysis API provider. Produces `support_resistance_level` observations with explicit numeric point/zone values in USDC_PER_SOL units. Raw-to-normalized flow validates bounded snapshots, normalizes claims, deduplicates equivalent claims within a provider run, and surfaces degraded warnings for missing/malformed levels. Expiry-gated levels never become execution authority.
 
 Research collector packs should add:
@@ -486,6 +488,7 @@ The render step prints the OpenClaw commands needed to register cron jobs define
 pnpm collect:core         # collects CLMM, Pyth, Jupiter, and Orca telemetry to Postgres
 pnpm collect:price        # legacy command: collects Pyth and Jupiter telemetry to Postgres, updates compatibility snapshot
 pnpm collect:clmm-bundle  # legacy command: fetches and writes SOL/USDC CLMM bundle from clmm-v2
+pnpm collect:context-events  # collects contextual events (scheduled macro events, protocol incidents)
 pnpm collect:support-resistance  # collects support/resistance levels from technical-analysis-api provider
 pnpm assemble:bundle      # assembles evidence bundle from derived features and observations
 pnpm db:generate          # generates Drizzle migrations from schema changes

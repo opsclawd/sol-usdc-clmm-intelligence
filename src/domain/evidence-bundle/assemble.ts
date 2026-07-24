@@ -2,13 +2,19 @@ import type {
   EvidenceBundleV1,
   DeterministicFeature,
   SourceReference,
-  ContextualEvidence
+  ContextualEvidence,
+  EventClaim
 } from "../../contracts/generated/evidence-bundle-v1.js";
 import type { SelectedFeatureSlot } from "./select.js";
 import type { EvidenceBundleQuality } from "./quality.js";
 import type { VerifiedEvidenceLineage } from "./lineage.js";
 import type { FeatureKind } from "../../contracts/taxonomy.js";
 import { MVP_FEATURE_KINDS } from "../../contracts/derived-feature.js";
+import type { SelectedContextEvent } from "../context-events/select.js";
+import type {
+  ScheduledEventPayloadV1,
+  ProtocolIncidentPayloadV1
+} from "../../contracts/context-events.js";
 
 export const EVIDENCE_BUNDLE_ASSEMBLE_VERSION = "mvp-evidence-bundle-assemble/v1";
 
@@ -30,6 +36,7 @@ export interface AssembleEvidenceBundleInput {
   readonly pipelineVersion: string;
   readonly gitCommit: string;
   readonly environment: "production" | "staging" | "development" | "test";
+  readonly contextualEvents: readonly SelectedContextEvent[];
 }
 
 type FeatureFamily =
@@ -213,12 +220,50 @@ function buildDeterministicFeature(
   return result as DeterministicFeature;
 }
 
-function buildEmptyContextualEvidence(): ContextualEvidence {
+function buildContextualEvidence(
+  contextualEvents: readonly SelectedContextEvent[]
+): ContextualEvidence {
+  const events: EventClaim[] = contextualEvents.map((selectedEvent): EventClaim => {
+    const { row, payload } = selectedEvent;
+    const typedPayload = payload as ScheduledEventPayloadV1 | ProtocolIncidentPayloadV1;
+
+    let kind: "scheduled_event" | "protocol_incident" | "network_incident";
+    if (typedPayload.eventType === "scheduled_event") {
+      kind = "scheduled_event";
+    } else if (typedPayload.eventType === "protocol_incident") {
+      kind = "protocol_incident";
+    } else {
+      kind = "network_incident";
+    }
+
+    const claim = `${typedPayload.status}: ${typedPayload.title} — ${typedPayload.description}`;
+
+    return {
+      evidenceId:
+        `normalized-${row.id}` as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
+      kind,
+      claim,
+      direction: "unknown" as const,
+      confidenceBps: Math.round(row.confidence.compositeScore * 10000),
+      observedAt: String(
+        typedPayload.asOfUnixMs
+      ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
+      expiresAt: String(
+        typedPayload.expiresAtUnixMs
+      ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
+      sourceReferenceIds: [`raw-${row.rawObservationId}`] as [
+        import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
+        ...import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
+      ],
+      provenanceMethod: "collected" as const
+    };
+  });
+
   return {
     supportResistance: [],
     flows: [],
     derivatives: [],
-    events: [],
+    events,
     newsRegulatory: []
   };
 }
@@ -293,7 +338,8 @@ export function assembleEvidenceBundleCandidate(
     createdAt,
     asOf,
     freshUntil,
-    expiresAt
+    expiresAt,
+    contextualEvents
   } = input;
 
   const deterministicFeatures: DeterministicFeature[] = MVP_FEATURE_KINDS.map(
@@ -323,7 +369,7 @@ export function assembleEvidenceBundleCandidate(
       "1.0.0" as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128
   };
 
-  const contextualEvidence = buildEmptyContextualEvidence();
+  const contextualEvidence = buildContextualEvidence(contextualEvents);
 
   const researchBrief = input.briefPresent ? null : null;
 

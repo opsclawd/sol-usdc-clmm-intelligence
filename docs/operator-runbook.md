@@ -622,6 +622,139 @@ LIMIT 20;
 > [!STOP]
 > **Migration precondition:** The migration that introduces `publish_attempts` constraints assumes the table is empty. If any row exists, the migration aborts. Do not rewrite or delete existing rows without lead engineer approval.
 
+## Contextual Event Evidence Collection (`pnpm collect:context-events`)
+
+The `collect:context-events` command collects contextual evidence from two sources: scheduled macro events (token unlocks, protocol upgrades, governance votes) and Solana protocol incidents. Contextual evidence supplements core telemetry but is explicitly **lower-confidence** and **never becomes execution authority**.
+
+### Authority Boundary
+
+- **Severity and materiality are deterministic evidence metadata.** Severity ranks (CRITICAL > HIGH > MEDIUM > LOW) are provider-supplied facts, not LLM determinations.
+- **Missing feeds do not imply no risk.** A source outage produces a diagnostic outcome, not a "no upcoming events/no incidents" fact.
+- **Unconfirmed reports remain unconfirmed.** Protocol incidents with `status: UNCONFIRMED` are excluded from selection eligibility regardless of severity.
+- **Event direction is always unknown.** Contextual events describe what happened or what is scheduled; they do not indicate market direction or prescribe rebalancing.
+- **Only regime-engine can synthesize final policy.** This repo collects, normalizes, and publishes contextual evidence. Final PolicyInsight synthesis belongs to regime-engine.
+
+### Four Required Environment Variables
+
+```bash
+# Macro calendar API (scheduled events: token unlocks, upgrades, governance)
+MACRO_CALENDAR_API_URL=https://api.example.com/events
+MACRO_CALENDAR_API_KEY=<optional-api-key>
+
+# Solana status API (protocol incidents)
+SOLANA_STATUS_API_URL=https://api.example.com/incidents
+SOLANA_STATUS_API_KEY=<optional-api-key>
+```
+
+Both `MACRO_CALENDAR_API_KEY` and `SOLANA_STATUS_API_KEY` are optional. API credentials are redacted from all output, diagnostics, and persisted metadata.
+
+### Retention and Licensing
+
+All bounded factual extracts carry `retentionMode: "bounded_factual_extract"` and a provider-supplied `license` string. Providers must supply:
+
+1. A non-empty `license` declaration
+2. Stable `sourceEventId` values (provider event ID, not synthesized)
+3. Original source timestamps (`sourceObservedAtUnixMs`)
+
+If a provider cannot legally permit bounded factual-extract retention or cannot supply a non-empty license/retention declaration, the collector aborts with `malformed` status.
+
+### Raw-First Append-Only Lifecycle
+
+```
+Provider API
+    |
+    v (raw observation, append-only)
+raw_observations
+    |
+    v (normalized, validated, immutable)
+normalized_observations (scheduled_event | protocol_incident)
+```
+
+- **Raw-first:** Raw observations are persisted before normalization. Malformed provider payloads that fail validation produce no raw row.
+- **Append-only:** Lifecycle state transitions (SCHEDULED → ACTIVE → RESOLVED, or CANCELLED) are recorded as new rows, never mutations.
+- **Immutable normalized:** Once written, normalized observation rows are never updated or deleted.
+
+### Exact Replay Semantics
+
+Replay detection uses a deterministic identity key derived from:
+
+- `source` (e.g., `macro-calendar-api`, `solana-status-api`)
+- `providerId`
+- `sourceObservedAtUnixMs`
+- `payloadHash` (canonical SHA-256 of the bounded snapshot)
+
+Replaying the same provider snapshot with identical inputs produces `identical_replay` with no new rows created.
+
+### Latest-State Selection
+
+When multiple normalized rows exist for the same `sourceEventId`, selection uses **group-then-filter**:
+
+1. **Group by identity:** Group all rows by `${source}::${observationKind}::${sourceEventId}`
+2. **Pick latest:** Sort each group by `asOfUnixMs DESC, receivedAtUnixMs DESC, id DESC` and keep only the most recent
+3. **Filter eligibility:** Apply freshness, expiry, and status filters to the latest-only set
+4. **Sort result:** Order eligible events by severity ASC, then event time DESC, then sourceEventId ASC
+5. **Cap:** Return at most `maxItems` (default 64)
+
+This prevents older ACTIVE rows from being incorrectly revived after cancellation/expiry.
+
+### Exit Statuses
+
+| Status             | Exit Code | Meaning                                                        |
+| ------------------ | --------- | -------------------------------------------------------------- |
+| `accepted`         | 0         | Collection succeeded with no warnings                          |
+| `identical_replay` | 0         | Same snapshot detected; no new rows created                    |
+| `stale`            | 0         | Evidence expired but raw data retained for contextual purposes |
+| `degraded`         | 0         | Evidence has warnings; raw data retained but usable            |
+| `malformed`        | 1         | Provider payload failed validation or license/retention check  |
+| `timeout`          | 1         | Request timed out                                              |
+| `network`          | 1         | Network error occurred                                         |
+| `unavailable`      | 1         | Service unavailable (HTTP 404, 429, 5xx)                       |
+| `failed`           | 1         | Normalization or persistence failure with zero usable evidence |
+
+### Freshness Windows
+
+Each contextual event carries:
+
+- `asOfUnixMs`: Provider-supplied event observation time
+- `expiresAtUnixMs`: Calculated expiry (typically `asOfUnixMs + 86400000` for scheduled events, provider-supplied for incidents)
+- `validUntilUnixMs`: Normalized row validity cutoff
+
+Events are excluded from selection when:
+
+- `isStale === true`
+- `asOfUnixMs > evaluationTimeUnixMs` (future-dated)
+- `validUntilUnixMs <= evaluationTimeUnixMs`
+- `expiresAtUnixMs <= evaluationTimeUnixMs`
+
+### Source Unavailable Behavior
+
+When both macro-calendar and solana-status APIs are unavailable, the job returns `UNAVAILABLE` with exit code 1. This is a **diagnostic outcome**, not a "no events" fact. Operators should:
+
+1. Check API endpoint status and rate limits
+2. Verify network connectivity
+3. Confirm credentials are correct (if required)
+4. Inspect diagnostic message for specifics
+
+A source outage is **ambiguous** — it may indicate genuine no-events or a service problem. The pipeline never fabricates a "clean" result to hide the ambiguity.
+
+### Troubleshooting
+
+#### All sources return empty events/incidents
+
+Empty responses are valid (no scheduled events this period, no active incidents). Combined with a `degraded` status, this may indicate the provider is filtering by scope incorrectly. Verify `pair: "SOL/USDC"` and `network: "solana-mainnet"` are correct.
+
+#### Timeout errors
+
+Increase `timeoutMs` in the adapter or add `SOLANA_STATUS_API_KEY` if the provider rate-limits unauthenticated requests.
+
+#### License/retention validation failures
+
+Providers must declare non-empty `license` and `retention: "bounded"`. If a provider cannot supply these, the collector cannot legally accept the data. Contact the provider to update their API contract or use a compliant provider.
+
+#### Incident stays UNCONFIRMED forever
+
+UNCONFIRMED incidents are correctly excluded from selection. Once the provider confirms the incident (e.g., via official post-mortem), a new normalized row with `status: ACTIVE` or `status: RESOLVED` will be created on the next collection run.
+
 ## Publish-attempt persistence
 
 All SQL queries below are read-only. Do not manually mutate immutable publish-attempt audit rows.

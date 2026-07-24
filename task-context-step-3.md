@@ -1,6 +1,6 @@
 # Task Context: Task 3
 
-Title: Add the source port and Node HTTP adapter together
+Title: Add source ports and bounded HTTP adapters
 
 ## Workspace & Scope Constraints
 
@@ -10,101 +10,93 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-27
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-28
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-27
-Start Commit: 8d258115c27c92c40909384db9d08dca77ae3750
+Branch: ai/issue-28
+Start Commit: ed7e5c030c3f6ef4e1383e3236e36cf521bdb9a2
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/ports/support-resistance-source.ts`
+- Create: `src/ports/scheduled-event-source.ts`
+- Create: `src/ports/protocol-incident-source.ts`
+- Create: `src/adapters/node/http-scheduled-event-source.ts`
+- Create: `src/adapters/node/http-protocol-incident-source.ts`
+- Create: `tests/fakes/fake-scheduled-event-source.ts`
+- Create: `tests/fakes/fake-protocol-incident-source.ts`
+- Create: `tests/adapters/node/http-scheduled-event-source.test.ts`
+- Create: `tests/adapters/node/http-protocol-incident-source.test.ts`
 - Modify: `src/ports/index.ts`
-- Create: `src/adapters/node/http-support-resistance-source.ts`
-- Create: `tests/fakes/fake-support-resistance-source.ts`
 - Modify: `tests/fakes/index.ts`
-- Create: `tests/adapters/node/http-support-resistance-source.test.ts`
 
-**Port/interface atomicity:** this task adds `SupportResistanceSourcePort.collect` and includes both concrete implementations in the same task: `HttpSupportResistanceSource` for Node and `FakeSupportResistanceSource` for tests. Do not commit the port without both implementations; the automatic workspace `pnpm -r typecheck` gate must pass after this task.
+- [ ] **Step 1: Write adapter contract tests**
 
-**Exported API changes:** export `SupportResistanceSourcePort`, `SupportResistanceSourceRequest`, `SupportResistanceSourceError`, and `HttpSupportResistanceSource`. The required method shape is `collect(request: SupportResistanceSourceRequest): Promise<SupportResistanceSourceSnapshot>`.
+Test a bounded look-ahead request for scheduled events and a Solana-mainnet request for incidents; optional bearer auth; unknown-field removal; retention/license enforcement; timeout, network, malformed, 404/429/5xx classification; secret redaction; and bounded retry timing.
 
-- [ ] **Step 1: Write adapter contract tests first.**
+Define complete port/implementation pairs in this task:
 
-  Add exact cases:
-  - `fetches SOL/USDC claims with bounded request options and an optional bearer credential`
-  - `returns only the validated bounded snapshot and never retains unknown provider fields`
-  - `classifies timeout network http status and malformed payload failures without leaking credentials`
-
-  Configure the adapter through a constructor object containing `http`, `url`, optional `apiKey`, `timeoutMs: 5000`, and `maxAttempts: 2`. Assert the credential is sent only in the request header and no thrown diagnostic contains it.
-
-- [ ] **Step 2: Run the adapter test and confirm it fails.**
-
-  Run: `pnpm exec vitest run tests/adapters/node/http-support-resistance-source.test.ts`
-
-  Expected: FAIL because the port, fake, and adapter do not exist.
-
-- [ ] **Step 3: Define the port and both implementations in one change.**
-
-  Use a narrow request:
-
-  ```ts
-  export interface SupportResistanceSourceRequest {
+```ts
+export interface ScheduledEventSourcePort {
+  collect(request: {
     readonly pair: "SOL/USDC";
-  }
+    readonly fromUnixMs: number;
+    readonly toUnixMs: number;
+  }): Promise<ScheduledEventSourceSnapshot>;
+}
+export interface ProtocolIncidentSourcePort {
+  collect(request: { readonly network: "solana-mainnet" }): Promise<ProtocolIncidentSourceSnapshot>;
+}
+```
 
-  export interface SupportResistanceSourcePort {
-    collect(request: SupportResistanceSourceRequest): Promise<SupportResistanceSourceSnapshot>;
-  }
-  ```
+Each snapshot exposes provider/source timestamps, reliability, license/retention metadata, bounded records, factual source references, and explicit confirmation level. Use the shared source error union `timeout | network | unavailable | malformed`.
 
-  The HTTP adapter calls `getJson<unknown>`, passes the unknown response through `acceptSupportResistanceSnapshot`, and maps `HttpRequestError` to `SupportResistanceSourceError` kinds `timeout | network | unavailable | malformed`. Treat HTTP 404, 429, and 5xx as unavailable; invalid JSON or domain-validation failure as malformed; other transport failures as network. Store only configured fake responses in the test fake and record requests for assertions.
+- [ ] **Step 2: Confirm adapter tests fail**
 
-- [ ] **Step 4: Run focused verification.**
+Run: `pnpm exec vitest run tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts`
 
-  Run: `pnpm exec vitest run tests/adapters/node/http-support-resistance-source.test.ts`
+Expected: FAIL because the ports and adapters do not exist.
 
-  Expected: PASS for request shaping, bounded response projection, failure classification, and secret redaction.
+- [ ] **Step 3: Implement both ports and all implementations**
 
-  Run: `pnpm exec eslint src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts --max-warnings 0`
+Implement both adapters with the existing `HttpClient` and `RetryControl`. Use at most two attempts, one adapter-level request per attempt, exponential backoff capped at 400 ms plus injected jitter, and no retries for malformed responses or non-retryable 4xx responses. Project accepted responses into frozen bounded snapshots and redact the configured credential from diagnostics.
 
-  Expected: exit 0.
+- [ ] **Step 4: Verify and commit**
 
-  Run: `pnpm exec prettier --check src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts`
+Run: `pnpm exec vitest run tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts`
 
-  Expected: all listed files use Prettier formatting.
+Run: `pnpm exec eslint src/ports/scheduled-event-source.ts src/ports/protocol-incident-source.ts src/ports/index.ts src/adapters/node/http-scheduled-event-source.ts src/adapters/node/http-protocol-incident-source.ts tests/fakes/fake-scheduled-event-source.ts tests/fakes/fake-protocol-incident-source.ts tests/fakes/index.ts tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts`
 
-- [ ] **Step 5: Commit the complete port/adapter slice.**
+Expected: all selected tests and lint checks pass.
 
-  ```bash
-  git add src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts
-  git commit -m "feat: add support resistance source adapter"
-  ```
+Commit: `git add src/ports src/adapters/node/http-scheduled-event-source.ts src/adapters/node/http-protocol-incident-source.ts tests/fakes tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts && git commit -m "feat: add contextual event source adapters"`
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/ports/support-resistance-source.ts
+- src/ports/scheduled-event-source.ts
+- src/ports/protocol-incident-source.ts
 - src/ports/index.ts
-- src/adapters/node/http-support-resistance-source.ts
-- tests/fakes/fake-support-resistance-source.ts
+- src/adapters/node/http-scheduled-event-source.ts
+- src/adapters/node/http-protocol-incident-source.ts
+- tests/fakes/fake-scheduled-event-source.ts
+- tests/fakes/fake-protocol-incident-source.ts
 - tests/fakes/index.ts
-- tests/adapters/node/http-support-resistance-source.test.ts
+- tests/adapters/node/http-scheduled-event-source.test.ts
+- tests/adapters/node/http-protocol-incident-source.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/adapters/node/http-support-resistance-source.test.ts
-pnpm exec eslint src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts --max-warnings 0
-pnpm exec prettier --check src/ports/support-resistance-source.ts src/ports/index.ts src/adapters/node/http-support-resistance-source.ts tests/fakes/fake-support-resistance-source.ts tests/fakes/index.ts tests/adapters/node/http-support-resistance-source.test.ts
+pnpm exec vitest run tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts
+pnpm exec eslint src/ports/scheduled-event-source.ts src/ports/protocol-incident-source.ts src/ports/index.ts src/adapters/node/http-scheduled-event-source.ts src/adapters/node/http-protocol-incident-source.ts tests/fakes/fake-scheduled-event-source.ts tests/fakes/fake-protocol-incident-source.ts tests/fakes/index.ts tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **bounded-request-with-optional-auth**: The adapter requests SOL/USDC once with fixed timeout/attempt options and sends the optional credential only as a bearer header. (Test: `fetches SOL/USDC claims with bounded request options and an optional bearer credential`)
-- **validated-projection-only**: The adapter returns the validated allowlisted snapshot and drops unknown provider fields before persistence can see them. (Test: `returns only the validated bounded snapshot and never retains unknown provider fields`)
-- **safe-failure-classification**: Transport, status, JSON, and validation failures map to stable kinds without credentials in diagnostics. (Test: `classifies timeout network http status and malformed payload failures without leaking credentials`)
+- **bounded retry**: Retryable failures perform at most two adapter attempts, with each HttpClient call configured for one attempt. (Test: `retries a retryable source failure once without nested HTTP retries`)
+- **nonretryable failure**: Malformed and non-retryable 4xx responses stop immediately. (Test: `does not retry malformed or non-retryable responses`)
+- **bounded retention**: Only responses declaring bounded factual extraction and a non-empty license are accepted. (Test: `rejects source snapshots without bounded retention permission`)

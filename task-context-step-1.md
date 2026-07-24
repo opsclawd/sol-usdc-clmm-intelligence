@@ -1,6 +1,6 @@
 # Task Context: Task 1
 
-Title: Define the support/resistance contract and taxonomy policy
+Title: Add contextual event contracts and taxonomy entries
 
 ## Workspace & Scope Constraints
 
@@ -10,131 +10,95 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-27
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-28
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-27
-Start Commit: 8d258115c27c92c40909384db9d08dca77ae3750
+Branch: ai/issue-28
+Start Commit: ed7e5c030c3f6ef4e1383e3236e36cf521bdb9a2
 
 ## Task Requirements
 
 **Files:**
 
+- Create: `src/contracts/context-events.ts`
+- Create: `tests/contracts/context-events.test.ts`
 - Modify: `src/contracts/taxonomy.ts`
-- Create: `src/contracts/support-resistance.ts`
 - Modify: `src/contracts/index.ts`
 - Modify: `src/domain/taxonomy/registry.ts`
-- Create: `tests/contracts/support-resistance.test.ts`
-- Modify: `tests/domain/taxonomy/registry.test.ts` only in the `observationKindRegistry` kind list and a new dedicated `support_resistance_level` describe block
-- Modify: `tests/domain/taxonomy/confidence.test.ts` only to account for the extended `ConfidenceReason` union in type-checking contexts
+- Modify: `tests/domain/taxonomy/registry.test.ts`
 
-**Exported API changes:** extend `ObservationKind` with `"support_resistance_level"`, extend `Source` with `"technical-analysis-api"`, and export the new raw snapshot, claim, normalized payload, warning, and collection-result types from `src/contracts/support-resistance.ts` through `src/contracts/index.ts`. No existing repository-port method changes in this task.
+- [ ] **Step 1: Write failing contract and registry tests**
 
-- [ ] **Step 1: Write the contract and registry tests first.**
+Cover strict scheduled/incident payload shapes, lifecycle enums, warnings, severity, source quality, raw provenance, required temporal fields, and rejection of unknown fields. Add registry assertions that both kinds use `macro_protocol_risk`, `contextual`, `exclude`, schema version 1, and only their matching source.
 
-  Add exact test cases named `represents point and zone levels without silent conversion` and `registers support resistance as contextual support_resistance evidence`. The contract test should compile representative payloads with the following discriminated shape and assert that point-only fields do not appear on a zone and zone bounds do not appear on a point:
+Use these exported shapes:
 
-  ```ts
-  export type SupportResistanceLevel =
-    | {
-        readonly levelType: "point";
-        readonly levelUsdcPerSol: number;
-      }
-    | {
-        readonly levelType: "zone";
-        readonly zoneLowerUsdcPerSol: number;
-        readonly zoneUpperUsdcPerSol: number;
-      };
+```ts
+export type ContextEventStatus = "SCHEDULED" | "ACTIVE" | "RESOLVED" | "CANCELLED" | "UNCONFIRMED";
+export type ContextEventSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+export type ContextEventWarning =
+  | "conflicting_times"
+  | "source_disagreement"
+  | "incomplete_information"
+  | "missing_qualifying_confirmation"
+  | "postponed"
+  | "stale_observation";
+export type ContextEventSourceQuality = {
+  readonly providerId: string;
+  readonly reliability: number;
+  readonly completeness: "complete" | "partial";
+  readonly confirmation: "official" | "primary" | "secondary" | "none";
+};
+export type ContextEventRawProvenance = {
+  readonly sourceObservedAtUnixMs: number;
+  readonly retrievedAtUnixMs: number;
+  readonly retentionMode: "bounded_factual_extract";
+  readonly license: string;
+};
+```
 
-  export type SupportResistancePayloadV1 = SupportResistanceLevel & {
-    readonly kind: "support_resistance_level";
-    readonly schemaVersion: 1;
-    readonly pair: "SOL/USDC";
-    readonly unit: "USDC_PER_SOL";
-    readonly evidenceSide: "SUPPORT" | "RESISTANCE";
-    readonly timeframe: string;
-    readonly thesisCodes: readonly string[];
-    readonly asOfUnixMs: number;
-    readonly expiresAtUnixMs: number;
-    readonly invalidationConditions: readonly string[];
-    readonly warnings: readonly SupportResistanceWarning[];
-    readonly sourceReferences: readonly string[];
-    readonly sourceQuality: {
-      readonly providerId: string;
-      readonly reliability: number;
-      readonly completeness: "complete" | "partial";
-    };
-  };
-  ```
+Define `ScheduledEventPayloadV1` and `ProtocolIncidentPayloadV1` as strict discriminated schemas/types. Both include `sourceEventId`, `eventFamily`, `eventType`, `title`, `description`, `asOfUnixMs`, `expiresAtUnixMs`, `severity`, `status`, `affectedScope`, `sourceReferences`, `sourceQuality`, `rawProvenance`, and `warnings`; scheduled events require `scheduledStartUnixMs` and nullable `scheduledEndUnixMs`, while incidents require `detectedAtUnixMs` and nullable `resolvedAtUnixMs`.
 
-  The registry test must assert evidence family `support_resistance`, signal class `contextual`, stale behavior `allow_context_only`, schema version `1`, and only `technical-analysis-api` in allowed direct source refs.
+- [ ] **Step 2: Confirm the new tests fail**
 
-- [ ] **Step 2: Run the focused tests and confirm the expected red state.**
+Run: `pnpm exec vitest run tests/contracts/context-events.test.ts tests/domain/taxonomy/registry.test.ts`
 
-  Run: `pnpm exec vitest run tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts`
+Expected: FAIL because the contracts, kinds, sources, and registry entries do not exist.
 
-  Expected: FAIL because the new contract exports and registry entry do not exist.
+- [ ] **Step 3: Implement contracts and taxonomy**
 
-- [ ] **Step 3: Add the minimal contracts and policy.**
+Add `"scheduled_event" | "protocol_incident"` to `ObservationKind` and `"macro-calendar-api" | "solana-status-api"` to `Source`. Export the new contracts from `src/contracts/index.ts`. Add registry entries with contextual confidence weights, source allowlists, and freshness policies of 24 hours for scheduled feed refreshes and 15 minutes for incident feed refreshes; both use source-provided expiry as the tighter bound and `staleBehavior: "exclude"`.
 
-  Define a provider-neutral retained snapshot with `providerId`, `providerRunId`, `pair`, `asOfUnixMs`, `sourceReferences`, and `claims`. Each raw claim permits optional point/zone fields so missing-level source material can be retained, and includes bounded `sourceExtract?: string`; the strict normalized union above must not permit an absent or mixed level. Add warning codes:
+- [ ] **Step 4: Verify and commit**
 
-  ```ts
-  export type SupportResistanceWarning =
-    | "ambiguous_source_claim"
-    | "conflicting_source_claim"
-    | "duplicate_equivalent_claim"
-    | "missing_invalidation_conditions"
-    | "missing_level"
-    | "missing_source_reference"
-    | "stale_observation";
-  ```
+Run: `pnpm exec vitest run tests/contracts/context-events.test.ts tests/domain/taxonomy/registry.test.ts`
 
-  Add `SupportResistanceCollectionResult` with statuses `accepted | degraded | stale | identical_replay | conflict | malformed | timeout | network | unavailable | failed`, `hasUsableEvidence`, raw ID/count, warnings, freshness, confidence level, and diagnostic. Extend `ConfidenceReason` with `contextual_source_quality_cap_applied` so a contextual cap is auditable. Register a 24-hour maximum observed age, source-expiry-aware freshness, `allow_context_only`, and confidence weights of source reliability `0.45`, completeness `0.35`, derivation confidence `0.20`, and LLM confidence `0`.
+Run: `pnpm exec eslint src/contracts/context-events.ts src/contracts/taxonomy.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/context-events.test.ts tests/domain/taxonomy/registry.test.ts`
 
-- [ ] **Step 4: Run focused verification.**
+Expected: all selected tests and lint checks pass.
 
-  Run: `pnpm exec vitest run tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts`
-
-  Expected: PASS, including the two named cases.
-
-  Run: `pnpm exec eslint src/contracts/taxonomy.ts src/contracts/support-resistance.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts --max-warnings 0`
-
-  Expected: exit 0.
-
-  Run: `pnpm exec prettier --check src/contracts/taxonomy.ts src/contracts/support-resistance.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts`
-
-  Expected: all listed files use Prettier formatting.
-
-- [ ] **Step 5: Commit the contract slice.**
-
-  ```bash
-  git add src/contracts/taxonomy.ts src/contracts/support-resistance.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts
-  git commit -m "feat: define support resistance evidence contract"
-  ```
+Commit: `git add src/contracts/context-events.ts src/contracts/taxonomy.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/context-events.test.ts tests/domain/taxonomy/registry.test.ts && git commit -m "feat: define contextual event evidence contracts"`
 
 ## Repository Targets
 
 ### Expected Files
 
+- src/contracts/context-events.ts
 - src/contracts/taxonomy.ts
-- src/contracts/support-resistance.ts
 - src/contracts/index.ts
 - src/domain/taxonomy/registry.ts
-- tests/contracts/support-resistance.test.ts
+- tests/contracts/context-events.test.ts
 - tests/domain/taxonomy/registry.test.ts
-- tests/domain/taxonomy/confidence.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts
-pnpm exec eslint src/contracts/taxonomy.ts src/contracts/support-resistance.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts --max-warnings 0
-pnpm exec prettier --check src/contracts/taxonomy.ts src/contracts/support-resistance.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/support-resistance.test.ts tests/domain/taxonomy/registry.test.ts
+pnpm exec vitest run tests/contracts/context-events.test.ts tests/domain/taxonomy/registry.test.ts
+pnpm exec eslint src/contracts/context-events.ts src/contracts/taxonomy.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/context-events.test.ts tests/domain/taxonomy/registry.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **point-zone-discrimination**: A normalized point has only one level value and a normalized zone has only ordered lower and upper bounds; neither shape silently converts to the other. (Test: `represents point and zone levels without silent conversion`)
-- **contextual-taxonomy-authority**: Support/resistance is registered as contextual support_resistance evidence with allow_context_only stale behavior and technical-analysis-api provenance. (Test: `registers support resistance as contextual support_resistance evidence`)
+- **scheduled temporal shape**: A scheduled event requires scheduledStartUnixMs and permits only a nullable scheduledEndUnixMs. (Test: `requires scheduled timestamps for scheduled event payloads`)
+- **incident temporal shape**: A protocol incident requires detectedAtUnixMs and permits only a nullable resolvedAtUnixMs. (Test: `requires detected timestamps for protocol incident payloads`)
