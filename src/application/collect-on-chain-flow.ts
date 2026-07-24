@@ -58,7 +58,7 @@ export interface OnChainFlowCollectionResult {
 }
 
 function mapSourceErrorToStatus(error: unknown): {
-  status: "timeout" | "network" | "unavailable" | "malformed";
+  status: "timeout" | "network" | "unavailable" | "malformed" | "failed";
   diagnostic: string;
 } {
   if (error && typeof error === "object" && "kind" in error) {
@@ -84,20 +84,22 @@ function sortEventsByIdentity(
   events: readonly AcceptedOnChainFlowSourceEvent[]
 ): AcceptedOnChainFlowSourceEvent[] {
   return [...events].sort((a, b) => {
-    const aKey =
-      a.eventKind +
-        ":" +
-        (a as { sourceEventId?: string; transactionHash?: string }).sourceEventId ??
-      (a as { transactionHash?: string }).transactionHash ??
-      "";
-    const bKey =
-      b.eventKind +
-        ":" +
-        (b as { sourceEventId?: string; transactionHash?: string }).sourceEventId ??
-      (b as { transactionHash?: string }).transactionHash ??
-      "";
+    const aId = (a as { sourceEventId?: string }).sourceEventId;
+    const aHash = (a as { transactionHash?: string }).transactionHash;
+    const aKey = a.eventKind + ":" + (aId ?? aHash ?? "");
+    const bId = (b as { sourceEventId?: string }).sourceEventId;
+    const bHash = (b as { transactionHash?: string }).transactionHash;
+    const bKey = b.eventKind + ":" + (bId ?? bHash ?? "");
     return aKey.localeCompare(bKey);
   });
+}
+
+function getSourceEventId(event: AcceptedOnChainFlowSourceEvent): string {
+  const sourceEventId = (event as { sourceEventId?: string }).sourceEventId;
+  if (sourceEventId) return sourceEventId;
+  const transactionHash = (event as { transactionHash?: string }).transactionHash;
+  if (transactionHash) return transactionHash;
+  return String((event as { timestampUnixMs?: number }).timestampUnixMs ?? "unknown");
 }
 
 export async function collectOnChainFlow(
@@ -155,7 +157,13 @@ export async function collectOnChainFlow(
   const parsedThresholds: ParsedOnChainFlowThresholds = parseOnChainFlowThresholds(
     input.thresholds
   );
-  const results: OnChainFlowCollectionResult["results"] = [];
+  const results: {
+    sourceEventId: string;
+    sourceObservationKey: string;
+    sourceObservationId: number;
+    outcome: "accepted" | "filtered" | "replayed" | "conflict" | "failed";
+    diagnostic: string | null;
+  }[] = [];
   let accepted = 0;
   let filtered = 0;
   let replayed = 0;
@@ -191,10 +199,7 @@ export async function collectOnChainFlow(
     if (!passesThreshold) {
       filtered++;
       results.push({
-        sourceEventId:
-          validatedEvent.sourceEventId ??
-          (validatedEvent as { transactionHash?: string }).transactionHash ??
-          "",
+        sourceEventId: getSourceEventId(validatedEvent),
         sourceObservationKey: "",
         sourceObservationId: 0,
         outcome: "filtered",
@@ -209,10 +214,7 @@ export async function collectOnChainFlow(
     } catch {
       failed++;
       results.push({
-        sourceEventId:
-          validatedEvent.sourceEventId ??
-          (validatedEvent as { transactionHash?: string }).transactionHash ??
-          "",
+        sourceEventId: getSourceEventId(validatedEvent),
         sourceObservationKey: "",
         sourceObservationId: 0,
         outcome: "failed",

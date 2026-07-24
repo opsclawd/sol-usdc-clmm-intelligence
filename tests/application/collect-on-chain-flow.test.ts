@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { OnChainFlowThresholds } from "../../src/contracts/on-chain-flow.js";
+import type {
+  OnChainFlowSourceSnapshot,
+  OnChainFlowSourceEvent
+} from "../../src/ports/on-chain-flow-source.js";
 import { FakeOnChainFlowSource } from "../fakes/fake-on-chain-flow-source.js";
 import { FakeObservationRepo } from "../fakes/fake-observation-repo.js";
 import { FakeNormalizedObservationRepo } from "../fakes/fake-normalized-observation-repo.js";
@@ -82,15 +86,7 @@ function makeCexFlowProxyEvent(
   };
 }
 
-function makeValidSnapshot(events?: readonly Record<string, unknown>[]): {
-  source: "helius-api";
-  providerId: string;
-  providerRunId: string;
-  asOfUnixMs: number;
-  license: string;
-  retention: "bounded";
-  events: readonly Record<string, unknown>[];
-} {
+function makeValidSnapshot(events?: readonly unknown[]): OnChainFlowSourceSnapshot {
   return {
     source: "helius-api",
     providerId: "test-provider",
@@ -98,7 +94,7 @@ function makeValidSnapshot(events?: readonly Record<string, unknown>[]): {
     asOfUnixMs: 1700000000000,
     license: "CC0-1.0",
     retention: "bounded",
-    events: events ?? [makeWhaleTransferEvent()]
+    events: (events ?? [makeWhaleTransferEvent()]) as unknown as readonly OnChainFlowSourceEvent[]
   };
 }
 
