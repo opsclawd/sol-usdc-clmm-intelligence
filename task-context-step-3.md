@@ -1,6 +1,6 @@
 # Task Context: Task 3
 
-Title: Add source ports and bounded HTTP adapters
+Title: Cluster duplicates corroboration conflicts and corrections
 
 ## Workspace & Scope Constraints
 
@@ -10,93 +10,87 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-28
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-29
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-28
-Start Commit: ed7e5c030c3f6ef4e1383e3236e36cf521bdb9a2
+Branch: ai/issue-29
+Start Commit: c4ebafe2e56545826828c5cef80a53840e1a3cda
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/ports/scheduled-event-source.ts`
-- Create: `src/ports/protocol-incident-source.ts`
-- Create: `src/adapters/node/http-scheduled-event-source.ts`
-- Create: `src/adapters/node/http-protocol-incident-source.ts`
-- Create: `tests/fakes/fake-scheduled-event-source.ts`
-- Create: `tests/fakes/fake-protocol-incident-source.ts`
-- Create: `tests/adapters/node/http-scheduled-event-source.test.ts`
-- Create: `tests/adapters/node/http-protocol-incident-source.test.ts`
-- Modify: `src/ports/index.ts`
-- Modify: `tests/fakes/index.ts`
+- Create: `src/domain/news-events/cluster.ts`
+- Create: `tests/domain/news-events/cluster.test.ts`
+- Modify: `src/domain/news-events/index.ts`
 
-- [ ] **Step 1: Write adapter contract tests**
+- [ ] **Step 1: Write clustering state-transition tests first**
 
-Test a bounded look-ahead request for scheduled events and a Solana-mainnet request for incidents; optional bearer auth; unknown-field removal; retention/license enforcement; timeout, network, malformed, 404/429/5xx classification; secret redaction; and bounded retry timing.
+Write the exact named cases:
 
-Define complete port/implementation pairs in this task:
+- `provider syndication id groups copies without corroboration`
+- `near duplicate clustering is deterministic across input order`
+- `independent publishers with distinct originating reports corroborate`
+- `conflicting reports remain visible as conflicting evidence`
+- `correction appends a linked version without overwriting history`
+
+Add threshold boundary tests at `0.79` and `0.80`, 72-hour boundary tests, affected-scope mismatch tests, a case proving same-publisher rewrites do not corroborate, and a case proving corrections inherit the corrected record's cluster even when the corrected title changes.
+
+- [ ] **Step 2: Confirm clustering tests fail**
+
+Run: `pnpm exec vitest run tests/domain/news-events/cluster.test.ts`
+
+Expected: FAIL because the clustering API is absent.
+
+- [ ] **Step 3: Implement deterministic clustering**
+
+Export:
 
 ```ts
-export interface ScheduledEventSourcePort {
-  collect(request: {
-    readonly pair: "SOL/USDC";
-    readonly fromUnixMs: number;
-    readonly toUnixMs: number;
-  }): Promise<ScheduledEventSourceSnapshot>;
+export interface ClusterNewsEvidenceInput {
+  readonly historical: readonly NewsEvidencePayload[];
+  readonly incoming: readonly UnclusteredNewsEvidencePayload[];
 }
-export interface ProtocolIncidentSourcePort {
-  collect(request: { readonly network: "solana-mainnet" }): Promise<ProtocolIncidentSourceSnapshot>;
-}
+
+export function clusterNewsEvidence(
+  input: ClusterNewsEvidenceInput
+): Promise<readonly NewsEvidencePayload[]>;
 ```
 
-Each snapshot exposes provider/source timestamps, reliability, license/retention metadata, bounded records, factual source references, and explicit confirmation level. Use the shared source error union `timeout | network | unavailable | malformed`.
+Normalize tokens by Unicode lowercase, punctuation removal, whitespace collapse, stop-word removal, and unique sorting. Prefer exact correction targets, then exact non-null syndication IDs, then the `0.80` Jaccard/time/scope heuristic. Sort historical and incoming records by the deterministic representative tuple before unioning groups. Hash only the chosen representative identity to derive `clusterId`.
 
-- [ ] **Step 2: Confirm adapter tests fail**
-
-Run: `pnpm exec vitest run tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts`
-
-Expected: FAIL because the ports and adapters do not exist.
-
-- [ ] **Step 3: Implement both ports and all implementations**
-
-Implement both adapters with the existing `HttpClient` and `RetryControl`. Use at most two attempts, one adapter-level request per attempt, exponential backoff capped at 400 ms plus injected jitter, and no retries for malformed responses or non-retryable 4xx responses. Project accepted responses into frozen bounded snapshots and redact the configured credential from diagnostics.
+For each incoming payload, aggregate sorted unique source references and claims from its resolved group. Count independent corroboration only across distinct `(publisher.id, originatingReportId)` pairs. Preserve the incoming record as its own immutable version; do not mutate historical payloads. If any accepted record declares a conflict with another source version, set `conflicting`, add `source_disagreement`, retain both claim arrays, and apply the conflict degradation during enrichment.
 
 - [ ] **Step 4: Verify and commit**
 
-Run: `pnpm exec vitest run tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts`
+Run: `pnpm exec vitest run tests/domain/news-events/cluster.test.ts`
 
-Run: `pnpm exec eslint src/ports/scheduled-event-source.ts src/ports/protocol-incident-source.ts src/ports/index.ts src/adapters/node/http-scheduled-event-source.ts src/adapters/node/http-protocol-incident-source.ts tests/fakes/fake-scheduled-event-source.ts tests/fakes/fake-protocol-incident-source.ts tests/fakes/index.ts tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts`
+Run: `pnpm exec eslint src/domain/news-events/cluster.ts src/domain/news-events/index.ts tests/domain/news-events/cluster.test.ts`
 
-Expected: all selected tests and lint checks pass.
+Expected: selected tests and lint pass.
 
-Commit: `git add src/ports src/adapters/node/http-scheduled-event-source.ts src/adapters/node/http-protocol-incident-source.ts tests/fakes tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts && git commit -m "feat: add contextual event source adapters"`
+Commit: `git add src/domain/news-events/cluster.ts src/domain/news-events/index.ts tests/domain/news-events/cluster.test.ts && git commit -m "feat: cluster and corroborate news evidence"`
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/ports/scheduled-event-source.ts
-- src/ports/protocol-incident-source.ts
-- src/ports/index.ts
-- src/adapters/node/http-scheduled-event-source.ts
-- src/adapters/node/http-protocol-incident-source.ts
-- tests/fakes/fake-scheduled-event-source.ts
-- tests/fakes/fake-protocol-incident-source.ts
-- tests/fakes/index.ts
-- tests/adapters/node/http-scheduled-event-source.test.ts
-- tests/adapters/node/http-protocol-incident-source.test.ts
+- src/domain/news-events/cluster.ts
+- src/domain/news-events/index.ts
+- tests/domain/news-events/cluster.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts
-pnpm exec eslint src/ports/scheduled-event-source.ts src/ports/protocol-incident-source.ts src/ports/index.ts src/adapters/node/http-scheduled-event-source.ts src/adapters/node/http-protocol-incident-source.ts tests/fakes/fake-scheduled-event-source.ts tests/fakes/fake-protocol-incident-source.ts tests/fakes/index.ts tests/adapters/node/http-scheduled-event-source.test.ts tests/adapters/node/http-protocol-incident-source.test.ts
+pnpm exec vitest run tests/domain/news-events/cluster.test.ts
+pnpm exec eslint src/domain/news-events/cluster.ts src/domain/news-events/index.ts tests/domain/news-events/cluster.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **bounded retry**: Retryable failures perform at most two adapter attempts, with each HttpClient call configured for one attempt. (Test: `retries a retryable source failure once without nested HTTP retries`)
-- **nonretryable failure**: Malformed and non-retryable 4xx responses stop immediately. (Test: `does not retry malformed or non-retryable responses`)
-- **bounded retention**: Only responses declaring bounded factual extraction and a non-empty license are accepted. (Test: `rejects source snapshots without bounded retention permission`)
+- **syndication is not corroboration**: Provider-declared copies share a cluster but one originating report does not raise corroboration. (Test: `provider syndication id groups copies without corroboration`)
+- **order independent clustering**: Input permutation cannot change group membership, representative identity, or cluster ID. (Test: `near duplicate clustering is deterministic across input order`)
+- **independent reports corroborate**: Distinct publisher and originating-report identities in one cluster produce independently corroborated evidence and retain all references. (Test: `independent publishers with distinct originating reports corroborate`)
+- **conflicts stay visible**: Conflicting claim sets and references remain present with conflicting state rather than becoming consensus. (Test: `conflicting reports remain visible as conflicting evidence`)
+- **corrections preserve history**: A correction inherits cluster identity, links its corrected version, and does not mutate the corrected payload. (Test: `correction appends a linked version without overwriting history`)

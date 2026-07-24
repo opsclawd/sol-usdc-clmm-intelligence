@@ -18,7 +18,12 @@ const OBSERVATION_KINDS = new Set<ObservationKind>([
   "volume_metrics",
   "trigger_event",
   "data_quality",
-  "pool_statistics"
+  "pool_statistics",
+  "ecosystem_news",
+  "regulatory_risk",
+  "support_resistance_level",
+  "scheduled_event",
+  "protocol_incident"
 ]);
 
 const FEATURE_KINDS = new Set<FeatureKind>([
@@ -39,7 +44,12 @@ const SOURCES = new Set<Source>([
   "defillama",
   "pyth-hermes",
   "jupiter-quote",
-  "orca-public-api"
+  "orca-public-api",
+  "crypto-news-api",
+  "regulatory-monitor-api",
+  "technical-analysis-api",
+  "macro-calendar-api",
+  "solana-status-api"
 ]);
 
 const SIGNAL_CLASSES = new Set<SignalClass>(["deterministic", "probabilistic", "contextual"]);
@@ -53,7 +63,8 @@ const EVIDENCE_FAMILIES = new Set<EvidenceFamily>([
   "support_resistance",
   "on_chain_flow",
   "perp_liquidation",
-  "macro_protocol_risk"
+  "macro_protocol_risk",
+  "news_evidence"
 ]);
 
 const CONFIDENCE_LEVELS = new Set<ConfidenceLevel>(["low", "medium", "high"]);

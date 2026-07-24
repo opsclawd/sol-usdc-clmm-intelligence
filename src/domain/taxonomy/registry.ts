@@ -355,6 +355,62 @@ export const observationKindRegistry = {
     },
     active: true,
     schemaVersion: 1
+  },
+  ecosystem_news: {
+    kind: "ecosystem_news",
+    evidenceFamily: "news_evidence",
+    signalClass: "contextual",
+    freshnessPolicy: {
+      maxObservedAgeMs: 86_400_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "allow_context_only"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.45,
+        dataCompleteness: 0.35,
+        derivationConfidence: 0.2,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      ...DEFAULT_PROVENANCE_REQUIREMENTS,
+      allowedSourceRefs: ["crypto-news-api"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  regulatory_risk: {
+    kind: "regulatory_risk",
+    evidenceFamily: "news_evidence",
+    signalClass: "contextual",
+    freshnessPolicy: {
+      maxObservedAgeMs: 259_200_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "allow_context_only"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.45,
+        dataCompleteness: 0.35,
+        derivationConfidence: 0.2,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      ...DEFAULT_PROVENANCE_REQUIREMENTS,
+      allowedSourceRefs: ["regulatory-monitor-api"]
+    },
+    active: true,
+    schemaVersion: 1
   }
 } as const satisfies Record<ObservationKind, ObservationKindEntry>;
 

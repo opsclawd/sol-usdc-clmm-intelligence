@@ -21,7 +21,8 @@ const VALID_EVIDENCE_FAMILIES: EvidenceFamily[] = [
   "support_resistance",
   "on_chain_flow",
   "perp_liquidation",
-  "macro_protocol_risk"
+  "macro_protocol_risk",
+  "news_evidence"
 ];
 
 const VALID_SIGNAL_CLASSES: SignalClass[] = ["deterministic", "probabilistic", "contextual"];
@@ -37,7 +38,9 @@ describe("observationKindRegistry", () => {
     "trigger_event",
     "data_quality",
     "pool_statistics",
-    "support_resistance_level"
+    "support_resistance_level",
+    "ecosystem_news",
+    "regulatory_risk"
   ];
 
   it("has an entry for every ObservationKind union member", () => {
@@ -415,6 +418,116 @@ describe("registers protocol_incident as contextual macro_protocol_risk evidence
   it("has source-provided expiry as tighter bound with null maxFetchLag", () => {
     expect(entry.freshnessPolicy.maxFetchLagMs).toBeNull();
     expect(entry.freshnessPolicy.validForMs).toBeNull();
+  });
+
+  it("has confidence weights summing to 1.0", () => {
+    const w = entry.confidencePolicy.weights;
+    const sum = w.sourceReliability + w.dataCompleteness + w.derivationConfidence + w.llmConfidence;
+    expect(Math.abs(sum - 1.0)).toBeLessThan(1e-9);
+  });
+});
+
+describe("registers ecosystem_news as contextual news_evidence evidence", () => {
+  const entry = getObservationKindEntry("ecosystem_news");
+
+  it("ecosystem_news is registered", () => {
+    expect(entry).toBeDefined();
+    expect(entry.kind).toBe("ecosystem_news");
+  });
+
+  it("evidence family is news_evidence", () => {
+    expect(entry.evidenceFamily).toBe("news_evidence");
+  });
+
+  it("signal class is contextual", () => {
+    expect(entry.signalClass).toBe("contextual");
+  });
+
+  it("stale behavior is allow_context_only", () => {
+    expect(entry.freshnessPolicy.staleBehavior).toBe("allow_context_only");
+  });
+
+  it("schema version is 1", () => {
+    expect(entry.schemaVersion).toBe(1);
+  });
+
+  it("only crypto-news-api is allowed as direct source ref", () => {
+    expect(entry.provenanceRequirements.allowedSourceRefs).toEqual(["crypto-news-api"]);
+  });
+
+  it("is active", () => {
+    expect(entry.active).toBe(true);
+  });
+
+  it("has 24-hour maximum observed age", () => {
+    expect(entry.freshnessPolicy.maxObservedAgeMs).toBe(86_400_000);
+  });
+
+  it("has source-expiry-aware freshness with null maxFetchLag", () => {
+    expect(entry.freshnessPolicy.maxFetchLagMs).toBeNull();
+    expect(entry.freshnessPolicy.validForMs).toBeNull();
+  });
+
+  it("has confidence weights sourceReliability 0.45, completeness 0.35, derivation 0.20, llm 0", () => {
+    expect(entry.confidencePolicy.weights.sourceReliability).toBe(0.45);
+    expect(entry.confidencePolicy.weights.dataCompleteness).toBe(0.35);
+    expect(entry.confidencePolicy.weights.derivationConfidence).toBe(0.2);
+    expect(entry.confidencePolicy.weights.llmConfidence).toBe(0);
+  });
+
+  it("has confidence weights summing to 1.0", () => {
+    const w = entry.confidencePolicy.weights;
+    const sum = w.sourceReliability + w.dataCompleteness + w.derivationConfidence + w.llmConfidence;
+    expect(Math.abs(sum - 1.0)).toBeLessThan(1e-9);
+  });
+});
+
+describe("registers regulatory_risk as contextual news_evidence evidence", () => {
+  const entry = getObservationKindEntry("regulatory_risk");
+
+  it("regulatory_risk is registered", () => {
+    expect(entry).toBeDefined();
+    expect(entry.kind).toBe("regulatory_risk");
+  });
+
+  it("evidence family is news_evidence", () => {
+    expect(entry.evidenceFamily).toBe("news_evidence");
+  });
+
+  it("signal class is contextual", () => {
+    expect(entry.signalClass).toBe("contextual");
+  });
+
+  it("stale behavior is allow_context_only", () => {
+    expect(entry.freshnessPolicy.staleBehavior).toBe("allow_context_only");
+  });
+
+  it("schema version is 1", () => {
+    expect(entry.schemaVersion).toBe(1);
+  });
+
+  it("only regulatory-monitor-api is allowed as direct source ref", () => {
+    expect(entry.provenanceRequirements.allowedSourceRefs).toEqual(["regulatory-monitor-api"]);
+  });
+
+  it("is active", () => {
+    expect(entry.active).toBe(true);
+  });
+
+  it("has 72-hour maximum observed age", () => {
+    expect(entry.freshnessPolicy.maxObservedAgeMs).toBe(259_200_000);
+  });
+
+  it("has source-expiry-aware freshness with null maxFetchLag", () => {
+    expect(entry.freshnessPolicy.maxFetchLagMs).toBeNull();
+    expect(entry.freshnessPolicy.validForMs).toBeNull();
+  });
+
+  it("has confidence weights sourceReliability 0.45, completeness 0.35, derivation 0.20, llm 0", () => {
+    expect(entry.confidencePolicy.weights.sourceReliability).toBe(0.45);
+    expect(entry.confidencePolicy.weights.dataCompleteness).toBe(0.35);
+    expect(entry.confidencePolicy.weights.derivationConfidence).toBe(0.2);
+    expect(entry.confidencePolicy.weights.llmConfidence).toBe(0);
   });
 
   it("has confidence weights summing to 1.0", () => {

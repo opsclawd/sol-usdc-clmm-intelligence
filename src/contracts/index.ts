@@ -13,3 +13,4 @@ export * from "./evidence-bundle.js";
 export * from "./generated/evidence-bundle-v1.js";
 export * from "./support-resistance.js";
 export * from "./context-events.js";
+export * from "./news-events.js";

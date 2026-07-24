@@ -149,6 +149,8 @@ Research collector packs add:
 
 - **support/resistance** (`technical-analysis-api`): Collects SOL/USDC support and resistance levels from a technical analysis API provider. Produces `support_resistance_level` observations with explicit numeric point/zone values in USDC_PER_SOL units. Raw-to-normalized flow validates bounded snapshots, normalizes claims, deduplicates equivalent claims within a provider run, and surfaces degraded warnings for missing/malformed levels. Expiry-gated levels never become execution authority.
 
+- **news evidence** (`crypto-news-api`, `regulatory-monitor-api`): Collects bounded factual extracts from two allowed news sources. Produces `ecosystem_news` and `regulatory_risk` observations with immutable article/version identities, correction semantics, corroboration state, and source quality metadata. Ecosystem news carries a 24-hour freshness cap; regulatory risk carries a 72-hour cap. Syndication is distinguished from independent corroboration. Missing coverage does not imply no risk. No full-text retention, LLM briefs, policy synthesis, or execution authority.
+
 Research collector packs should add:
 
 - support/resistance theses;
@@ -490,6 +492,7 @@ pnpm collect:price        # legacy command: collects Pyth and Jupiter telemetry 
 pnpm collect:clmm-bundle  # legacy command: fetches and writes SOL/USDC CLMM bundle from clmm-v2
 pnpm collect:context-events  # collects contextual events (scheduled macro events, protocol incidents)
 pnpm collect:support-resistance  # collects support/resistance levels from technical-analysis-api provider
+pnpm collect:news-evidence  # collects ecosystem and regulatory news from two-source allowlist
 pnpm assemble:bundle      # assembles evidence bundle from derived features and observations
 pnpm db:generate          # generates Drizzle migrations from schema changes
 pnpm db:migrate           # runs Drizzle migrations against DATABASE_URL
