@@ -120,6 +120,7 @@ describe("OnChainFlowPayloadV1 union", () => {
     const cex: CexFlowProxyPayloadV1 = {
       ...BASE_COMMON_FIELDS,
       eventType: "cex_flow_proxy",
+      venue: "cex",
       quality: "proxy" as const,
       attributionConfidence: 0.75,
       attributionProvider: "helius-api",
@@ -264,11 +265,12 @@ describe("requiring explicit CEX proxy noise metadata", () => {
     const malformed = {
       ...BASE_COMMON_FIELDS,
       eventType: "cex_flow_proxy" as const,
+      venue: "cex" as const,
       quality: "proxy" as const,
       attributionProvider: "helius-api",
       caveats: [] as readonly string[]
     };
-    expect((malformed as CexFlowProxyPayloadV1).attributionConfidence).toBeUndefined();
+    expect((malformed as unknown as CexFlowProxyPayloadV1).attributionConfidence).toBeUndefined();
   });
 });
 
@@ -326,6 +328,7 @@ describe("not providing a motive field on any normalized flow payload", () => {
     const cex: CexFlowProxyPayloadV1 = {
       ...BASE_COMMON_FIELDS,
       eventType: "cex_flow_proxy",
+      venue: "cex",
       quality: "proxy",
       attributionConfidence: 0.75,
       attributionProvider: "helius-api",
@@ -393,6 +396,7 @@ describe("OnChainFlowPayloadV1 satisfies contracts", () => {
     const cex: CexFlowProxyPayloadV1 = {
       ...BASE_COMMON_FIELDS,
       eventType: "cex_flow_proxy",
+      venue: "cex",
       quality: "proxy",
       attributionConfidence: 0.8,
       attributionProvider: "helius-api",
