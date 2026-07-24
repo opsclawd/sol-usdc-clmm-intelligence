@@ -5,7 +5,7 @@ export interface NewsObservationKeyInput {
   readonly providerId: string;
   readonly articleId: string;
   readonly sourceVersionId: string;
-  readonly boundedPayloadHash: string;
+  readonly boundedPayloadHash?: string;
 }
 
 export async function deriveNewsObservationKey(input: NewsObservationKeyInput): Promise<string> {
@@ -13,8 +13,7 @@ export async function deriveNewsObservationKey(input: NewsObservationKeyInput): 
     source: input.source,
     providerId: input.providerId,
     articleId: input.articleId,
-    sourceVersionId: input.sourceVersionId,
-    boundedPayloadHash: input.boundedPayloadHash
+    sourceVersionId: input.sourceVersionId
   });
   return payloadHash;
 }
