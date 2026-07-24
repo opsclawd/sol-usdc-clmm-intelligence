@@ -602,8 +602,8 @@ describe("onChainFlowJob", () => {
 
       await new Promise((r) => setTimeout(r, 10));
 
-      resolveBirdeye!({ ...ACCEPTED_RESULT, source: "birdeye-api" });
-      resolveHelius!({ ...ACCEPTED_RESULT, source: "helius-api" });
+      resolveBirdeye!(ACCEPTED_RESULT);
+      resolveHelius!(ACCEPTED_RESULT);
 
       const result = await jobPromise;
 
