@@ -5,7 +5,7 @@ export interface HeliusTransactionFlowEvent {
   readonly timestampUnixMs: number;
   readonly flowSide: "buy" | "sell";
   readonly nativeAmount: number;
-  readonly sourceReferences: readonly string[];
+  readonly sourceReferences: string[];
 }
 
 export interface BirdeyeNetFlowEvent {
@@ -14,7 +14,7 @@ export interface BirdeyeNetFlowEvent {
   readonly buyVolume: number;
   readonly sellVolume: number;
   readonly netFlow: number;
-  readonly sourceReferences: readonly string[];
+  readonly sourceReferences: string[];
 }
 
 export type OnChainFlowSourceEvent = HeliusTransactionFlowEvent | BirdeyeNetFlowEvent;

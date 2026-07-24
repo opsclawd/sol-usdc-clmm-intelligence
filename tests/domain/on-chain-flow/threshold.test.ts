@@ -309,6 +309,7 @@ describe("qualifiesOnChainFlow", () => {
         sourceReferences: ["https://cex.example/txn/abc"],
         sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "full" },
         freshnessContext: { slot: 123, blockTimestampUnixMs: 1700000000000 },
+        quality: "proxy",
         attributionConfidence: 0.5,
         attributionProvider: "helius-api",
         caveats: ["proxy_address_attribution"]
@@ -338,6 +339,7 @@ describe("qualifiesOnChainFlow", () => {
         sourceReferences: ["https://cex.example/txn/abc"],
         sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "full" },
         freshnessContext: { slot: 123, blockTimestampUnixMs: 1700000000000 },
+        quality: "proxy",
         attributionConfidence: 0.9,
         attributionProvider: "helius-api",
         caveats: ["proxy_address_attribution"]
@@ -367,6 +369,7 @@ describe("qualifiesOnChainFlow", () => {
         sourceReferences: ["https://cex.example/txn/abc"],
         sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "full" },
         freshnessContext: { slot: 123, blockTimestampUnixMs: 1700000000000 },
+        quality: "proxy",
         attributionConfidence: 0.9,
         attributionProvider: "helius-api",
         caveats: ["proxy_address_attribution"]
@@ -396,6 +399,7 @@ describe("qualifiesOnChainFlow", () => {
         sourceReferences: ["https://cex.example/txn/abc"],
         sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "full" },
         freshnessContext: { slot: 123, blockTimestampUnixMs: 1700000000000 },
+        quality: "proxy",
         attributionConfidence: 0.8,
         attributionProvider: "helius-api",
         caveats: ["proxy_address_attribution"]

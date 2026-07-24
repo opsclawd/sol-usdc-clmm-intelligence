@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { makeHeliusTransactionFlowEvent } from "../../fixtures/on-chain-flow.js";
+import type { StablecoinFlowPayloadV1 } from "../../../src/contracts/on-chain-flow.js";
 import {
   normalizeOnChainFlow,
   OnChainFlowNormalizationError
@@ -113,7 +114,7 @@ describe("normalizeOnChainFlow", () => {
       };
       const result = normalizeOnChainFlow(event, Date.now());
       expect(result.eventType).toBe("stablecoin_flow");
-      expect(result.stablecoinOperation).toBe("mint");
+      expect((result as StablecoinFlowPayloadV1).stablecoinOperation).toBe("mint");
     });
 
     it("burn operation is retained as burn", () => {
@@ -139,7 +140,7 @@ describe("normalizeOnChainFlow", () => {
       };
       const result = normalizeOnChainFlow(event, Date.now());
       expect(result.eventType).toBe("stablecoin_flow");
-      expect(result.stablecoinOperation).toBe("burn");
+      expect((result as StablecoinFlowPayloadV1).stablecoinOperation).toBe("burn");
     });
 
     it("transfer operation is retained as transfer", () => {
@@ -165,7 +166,7 @@ describe("normalizeOnChainFlow", () => {
       };
       const result = normalizeOnChainFlow(event, Date.now());
       expect(result.eventType).toBe("stablecoin_flow");
-      expect(result.stablecoinOperation).toBe("transfer");
+      expect((result as StablecoinFlowPayloadV1).stablecoinOperation).toBe("transfer");
     });
 
     it("mint and burn are never conflated even if semantically similar", () => {
@@ -211,7 +212,9 @@ describe("normalizeOnChainFlow", () => {
       };
       const mintResult = normalizeOnChainFlow(mintEvent, Date.now());
       const burnResult = normalizeOnChainFlow(burnEvent, Date.now());
-      expect(mintResult.stablecoinOperation).not.toBe(burnResult.stablecoinOperation);
+      expect((mintResult as StablecoinFlowPayloadV1).stablecoinOperation).not.toBe(
+        (burnResult as StablecoinFlowPayloadV1).stablecoinOperation
+      );
     });
   });
 
@@ -286,8 +289,9 @@ describe("normalizeOnChainFlow", () => {
           completeness: "full" as const
         },
         freshnessContext: { slot: 123, blockTimestampUnixMs: 1700000000000 },
+        quality: "proxy" as const,
         attributionConfidence: 0.8,
-        attributionProvider: "helius-api",
+        attributionProvider: "helius-api" as const,
         caveats: ["proxy_address_attribution"]
       };
       const result = normalizeOnChainFlow(event, Date.now());
@@ -312,8 +316,9 @@ describe("normalizeOnChainFlow", () => {
           completeness: "full" as const
         },
         freshnessContext: { slot: 123, blockTimestampUnixMs: 1700000000000 },
+        quality: "proxy" as const,
         attributionConfidence: 1.0,
-        attributionProvider: "helius-api",
+        attributionProvider: "helius-api" as const,
         caveats: ["proxy_address_attribution"]
       };
       const result = normalizeOnChainFlow(event, Date.now());
@@ -338,8 +343,9 @@ describe("normalizeOnChainFlow", () => {
           completeness: "full" as const
         },
         freshnessContext: { slot: 123, blockTimestampUnixMs: 1700000000000 },
+        quality: "proxy" as const,
         attributionConfidence: 0.95,
-        attributionProvider: "helius-api",
+        attributionProvider: "helius-api" as const,
         caveats: ["proxy_address_attribution", "wallet_exchange_proximity"]
       };
       const result = normalizeOnChainFlow(event, Date.now());

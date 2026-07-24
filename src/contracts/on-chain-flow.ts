@@ -114,7 +114,7 @@ export type CexFlowProxyPayloadV1 = {
   readonly observedAtUnixMs: number;
   readonly amountUsdc: string;
   readonly direction: OnChainFlowDirection;
-  readonly venue: "solana";
+  readonly venue: "cex";
   readonly addressContext: OnChainAddressContext;
   readonly sourceReferences: readonly string[];
   readonly sourceQuality: OnChainFlowSourceQuality;

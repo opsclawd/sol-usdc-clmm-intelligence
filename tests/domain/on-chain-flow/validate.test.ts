@@ -91,7 +91,7 @@ describe("acceptOnChainFlowSourceEvent", () => {
 
     it("rejects event with empty sourceReferences", () => {
       const event = makeHeliusTransactionFlowEvent({
-        sourceReferences: [] as unknown as readonly string[]
+        sourceReferences: []
       });
       expect(() => acceptOnChainFlowSourceEvent(event)).toThrow(OnChainFlowValidationError);
     });
