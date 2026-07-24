@@ -72,20 +72,34 @@ function normalizeText(text: string): string[] {
   return [...new Set(cleaned)].sort();
 }
 
-function normalizeTextReplaceNumbers(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .replace(/\b\d+\.?\d*\b/g, "#")
-    .trim();
+function extractNumbers(text: string): string[] {
+  const matches = text.match(/\$?\d+\.?\d*/g);
+  return matches ? matches.sort() : [];
+}
+
+function claimsHaveSameStructureButDifferentNumbers(textA: string, textB: string): boolean {
+  const numsA = extractNumbers(textA);
+  const numsB = extractNumbers(textB);
+  if (numsA.length !== numsB.length) return false;
+  const normalizedA = textA.replace(/\$?\d+\.?\d*/g, "#");
+  const normalizedB = textB.replace(/\$?\d+\.?\d*/g, "#");
+  if (normalizedA !== normalizedB) return false;
+  for (let i = 0; i < numsA.length; i++) {
+    if (numsA[i] !== numsB[i]) return true;
+  }
+  return false;
 }
 
 function hasClaimConflict(claimsA: readonly string[], claimsB: readonly string[]): boolean {
   if (claimsA.length === 0 || claimsB.length === 0) return false;
-  const normA = claimsA.map(normalizeTextReplaceNumbers).sort();
-  const normB = claimsB.map(normalizeTextReplaceNumbers).sort();
-  return normA.join("|") !== normB.join("|");
+  for (const claimA of claimsA) {
+    for (const claimB of claimsB) {
+      if (claimsHaveSameStructureButDifferentNumbers(claimA, claimB)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 function computeJaccardIndex(tokensA: string[], tokensB: string[]): number {
@@ -107,10 +121,25 @@ function computeScopeTokens(
     .sort();
 }
 
-function hasOverlappingScope(
+function computeTimeProximity(asOfA: number, asOfB: number): number {
+  const diff = Math.abs(asOfA - asOfB);
+  if (diff === 0) return 1;
+  if (diff >= TIME_WINDOW_MS) return 0;
+  return 1 - diff / TIME_WINDOW_MS;
+}
+
+function computeContentSimilarity(
   payloadA: NewsEvidencePayload,
   payloadB: NewsEvidencePayload
-): boolean {
+): number {
+  const titleTokensA = normalizeText(payloadA.title);
+  const titleTokensB = normalizeText(payloadB.title);
+  const claimsTokensA = payloadA.extractedClaims.flatMap(normalizeText);
+  const claimsTokensB = payloadB.extractedClaims.flatMap(normalizeText);
+
+  const titleJaccard = computeJaccardIndex(titleTokensA, titleTokensB);
+  const claimsJaccard = computeJaccardIndex(claimsTokensA, claimsTokensB);
+
   const scopeA = computeScopeTokens(
     payloadA.affectedAssets,
     payloadA.affectedProtocols,
@@ -121,45 +150,21 @@ function hasOverlappingScope(
     payloadB.affectedProtocols,
     payloadB.affectedJurisdictions
   );
-  if (scopeA.length === 0 && scopeB.length === 0) return true;
-  if (scopeA.length === 0 || scopeB.length === 0) return false;
-  return scopeA.some((token) => scopeB.includes(token));
-}
+  const scopeJaccard = computeJaccardIndex(scopeA, scopeB);
 
-function isWithinTimeWindow(payloadA: NewsEvidencePayload, payloadB: NewsEvidencePayload): boolean {
-  const diff = Math.abs(payloadA.asOfUnixMs - payloadB.asOfUnixMs);
-  return diff < TIME_WINDOW_MS;
-}
+  const timeProximity = computeTimeProximity(payloadA.asOfUnixMs, payloadB.asOfUnixMs);
 
-function computeTitleTopicJaccard(
-  payloadA: NewsEvidencePayload,
-  payloadB: NewsEvidencePayload
-): number {
-  const titleTokensA = normalizeText(payloadA.title);
-  const titleTokensB = normalizeText(payloadB.title);
-  const topicTokensA = [...payloadA.topicTags];
-  const topicTokensB = [...payloadB.topicTags];
-  const combinedTokensA = [...titleTokensA, ...topicTokensA].sort();
-  const combinedTokensB = [...titleTokensB, ...topicTokensB].sort();
-  return computeJaccardIndex(combinedTokensA, combinedTokensB);
-}
-
-function computeContentSimilarity(
-  payloadA: NewsEvidencePayload,
-  payloadB: NewsEvidencePayload
-): number {
-  if (!hasOverlappingScope(payloadA, payloadB)) return 0;
-  if (!isWithinTimeWindow(payloadA, payloadB)) return 0;
-  return computeTitleTopicJaccard(payloadA, payloadB);
+  return titleJaccard * 0.2 + claimsJaccard * 0.3 + scopeJaccard * 0.15 + timeProximity * 0.35;
 }
 
 function deriveRepresentativeTuple(payload: NewsEvidencePayload): string {
-  return [
-    payload.publishedAtUnixMs?.toString() ?? "null",
-    payload.publisher.publisherId,
-    payload.articleId,
-    payload.sourceVersionId
-  ].join("|");
+  const titleTokens = normalizeText(payload.title);
+  const scopeTokens = computeScopeTokens(
+    payload.affectedAssets,
+    payload.affectedProtocols,
+    payload.affectedJurisdictions
+  );
+  return [titleTokens.join(" "), scopeTokens.join("|"), payload.asOfUnixMs.toString()].join("::");
 }
 
 async function deriveClusterId(representative: NewsEvidencePayload): Promise<string> {
@@ -268,7 +273,10 @@ function buildCorrectionClusters(
       const currentInfo = infoMap.get(currentKey);
       if (!currentInfo || currentInfo.correctionOf === null) break;
       const targetKey = currentInfo.correctionOf;
-      if (assigned.has(targetKey)) break;
+      if (assigned.has(targetKey)) {
+        chain.push(targetKey);
+        break;
+      }
       chain.push(targetKey);
       assigned.add(targetKey);
       currentKey = targetKey;
@@ -282,7 +290,10 @@ function buildCorrectionClusters(
   return clusters;
 }
 
-function buildJaccardClusters(allRecords: NewsEvidencePayload[]): Map<string, string[]> {
+function buildJaccardClusters(
+  allRecords: NewsEvidencePayload[],
+  infoMap: Map<string, RecordInfo>
+): Map<string, string[]> {
   const clusters = new Map<string, string[]>();
   const assigned = new Set<string>();
   const recordByKey = new Map<string, NewsEvidencePayload>();
@@ -294,6 +305,10 @@ function buildJaccardClusters(allRecords: NewsEvidencePayload[]): Map<string, st
     const key = getRecordKey(record);
     if (assigned.has(key)) continue;
 
+    const info = infoMap.get(key)!;
+    if (info.correctionOf !== null) continue;
+    if (info.syndicationMatches.length > 0) continue;
+
     const clusterKeys = [key];
     assigned.add(key);
 
@@ -301,9 +316,12 @@ function buildJaccardClusters(allRecords: NewsEvidencePayload[]): Map<string, st
       const otherKey = getRecordKey(other);
       if (assigned.has(otherKey)) continue;
 
+      const otherInfo = infoMap.get(otherKey)!;
       if (record.publisher.publisherId === other.publisher.publisherId) {
         continue;
       }
+      if (otherInfo.correctionOf !== null) continue;
+      if (otherInfo.syndicationMatches.length > 0) continue;
 
       const similarity = computeContentSimilarity(record, other);
       if (similarity >= JACCARD_THRESHOLD) {
@@ -340,10 +358,12 @@ function mergeAllClusters(
     const clustersToDelete = new Set<string>();
     for (const k of keys) {
       const existingClusterId = keyToClusterId.get(k);
-      if (existingClusterId !== undefined && existingClusterId !== clusterId) {
+      if (existingClusterId !== undefined) {
         const existing = merged.get(existingClusterId) ?? [];
         existing.forEach((ek) => existingKeys.add(ek));
-        clustersToDelete.add(existingClusterId);
+        if (existingClusterId !== clusterId) {
+          clustersToDelete.add(existingClusterId);
+        }
       }
     }
 
@@ -363,10 +383,12 @@ function mergeAllClusters(
     const clustersToDelete = new Set<string>();
     for (const k of keys) {
       const existingClusterId = keyToClusterId.get(k);
-      if (existingClusterId !== undefined && existingClusterId !== clusterId) {
+      if (existingClusterId !== undefined) {
         const existing = merged.get(existingClusterId) ?? [];
         existing.forEach((ek) => existingKeys.add(ek));
-        clustersToDelete.add(existingClusterId);
+        if (existingClusterId !== clusterId) {
+          clustersToDelete.add(existingClusterId);
+        }
       }
     }
 
@@ -384,21 +406,12 @@ function mergeAllClusters(
   return merged;
 }
 
-function isSyndicationCluster(
-  infoMap: Map<string, RecordInfo>,
-  keys: string[],
-  recordByKey: Map<string, NewsEvidencePayload>
-): boolean {
-  const syndicationIds = new Set<string | null>();
+function isSyndicationCluster(infoMap: Map<string, RecordInfo>, keys: string[]): boolean {
   for (const k of keys) {
-    const record = recordByKey.get(k);
-    if (record) {
-      syndicationIds.add(record.syndicationId);
+    const info = infoMap.get(k);
+    if (info && info.syndicationMatches.length > 0) {
+      return true;
     }
-  }
-  if (syndicationIds.size === 1) {
-    const onlyId = [...syndicationIds][0];
-    return onlyId !== null;
   }
   return false;
 }
@@ -406,8 +419,7 @@ function isSyndicationCluster(
 async function resolveClusters(
   clusters: Map<string, string[]>,
   allRecords: NewsEvidencePayload[],
-  infoMap: Map<string, RecordInfo>,
-  incomingKeys: Set<string>
+  infoMap: Map<string, RecordInfo>
 ): Promise<NewsEvidencePayload[]> {
   const recordByKey = new Map<string, NewsEvidencePayload>();
   for (const record of allRecords) {
@@ -431,8 +443,7 @@ async function resolveClusters(
     if (!representative) continue;
     const clusterIdHash = await deriveClusterId(representative);
 
-    const uniqueClaims = [...new Set(members.flatMap((p) => p.extractedClaims))].sort();
-    const uniqueSourceReferences = [...new Set(members.flatMap((p) => p.sourceReferences))].sort();
+    const uniqueClaims = [...new Set(members.flatMap((p) => p.extractedClaims))];
 
     const uniquePairs = new Set(
       members.map((p) => `${p.publisher.publisherId}::${p.originatingReportId}`)
@@ -441,13 +452,19 @@ async function resolveClusters(
     const corrections = members.filter((m) => m.correctsSourceVersionId !== null);
     let hasConflict = false;
     if (corrections.length > 1) {
-      const versionsCorrected = new Set(
-        corrections.flatMap((c) => {
-          const targetKey = `${c.articleId}::${c.publisher.publisherId}::${c.correctsSourceVersionId}`;
-          return members.filter((m) => getRecordKey(m) === targetKey).map((m) => m.sourceVersionId);
-        })
-      );
-      hasConflict = corrections.some((c) => versionsCorrected.has(c.sourceVersionId));
+      const correctionsByTarget = new Map<string, NewsEvidencePayload[]>();
+      for (const c of corrections) {
+        const targetId = c.correctsSourceVersionId as string;
+        const arr = correctionsByTarget.get(targetId) ?? [];
+        arr.push(c);
+        correctionsByTarget.set(targetId, arr);
+      }
+      if (correctionsByTarget.size === 1) {
+        const firstEntry = correctionsByTarget.entries().next().value;
+        if (firstEntry && firstEntry[1].length > 1) {
+          hasConflict = true;
+        }
+      }
     }
 
     if (!hasConflict && members.length > 1) {
@@ -472,29 +489,23 @@ async function resolveClusters(
     if (hasConflict) {
       corroborationState = "conflicting";
       warnings = ["source_disagreement"];
-    } else if (uniquePairs.size >= 2 && !isSyndicationCluster(infoMap, keys, recordByKey)) {
+    } else if (uniquePairs.size >= 2 && !isSyndicationCluster(infoMap, keys)) {
       corroborationState = "independently_corroborated";
     } else {
       corroborationState = "single_source";
     }
 
     for (const member of sorted) {
-      const key = getRecordKey(member);
-      if (!incomingKeys.has(key)) {
-        resolved.push(member);
-        processedKeys.add(key);
-        continue;
-      }
       const memberWarnings = member.warnings.filter((w) => w !== "source_disagreement");
       resolved.push({
         ...member,
         clusterId: clusterIdHash,
         corroborationState,
+        sourceReferences: [...new Set(member.sourceReferences)].sort(),
         extractedClaims: uniqueClaims,
-        sourceReferences: uniqueSourceReferences,
         warnings: [...memberWarnings, ...warnings]
       });
-      processedKeys.add(key);
+      processedKeys.add(getRecordKey(member));
     }
   }
 
@@ -517,7 +528,7 @@ async function resolveSingleRecord(record: NewsEvidencePayload): Promise<NewsEvi
     clusterId: clusterIdHash,
     corroborationState: "single_source",
     sourceReferences: [...new Set(record.sourceReferences)].sort(),
-    extractedClaims: [...new Set(record.extractedClaims)].sort(),
+    extractedClaims: [...record.extractedClaims],
     warnings: record.warnings
   };
 }
@@ -528,24 +539,21 @@ export async function clusterNewsEvidence(
   const historical = [...input.historical];
   const incoming = [...input.incoming].map((p) => ({ ...p }) as NewsEvidencePayload);
 
-  const incomingKeys = new Set<string>();
-  for (const p of incoming) {
-    incomingKeys.add(getRecordKey(p));
-  }
-
   const allRecords: NewsEvidencePayload[] = [...historical, ...incoming];
 
   if (allRecords.length === 0) return [];
 
-  const infoMap = buildRecordInfoMap(allRecords);
+  const sortedAllRecords = sortByRepresentative(allRecords);
 
-  const syndicationClusters = buildSyndicationClusters(allRecords, infoMap);
-  const correctionClusters = buildCorrectionClusters(allRecords, infoMap);
-  const jaccardClusters = buildJaccardClusters(allRecords);
+  const infoMap = buildRecordInfoMap(sortedAllRecords);
+
+  const syndicationClusters = buildSyndicationClusters(sortedAllRecords, infoMap);
+  const correctionClusters = buildCorrectionClusters(sortedAllRecords, infoMap);
+  const jaccardClusters = buildJaccardClusters(sortedAllRecords, infoMap);
 
   const mergedClusters = mergeAllClusters(syndicationClusters, correctionClusters, jaccardClusters);
 
-  const resolved = await resolveClusters(mergedClusters, allRecords, infoMap, incomingKeys);
+  const resolved = await resolveClusters(mergedClusters, sortedAllRecords, infoMap);
 
   return resolved;
 }
