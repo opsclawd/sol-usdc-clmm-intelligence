@@ -49,9 +49,18 @@ function normalizeDexNetFlow(event: AcceptedOnChainFlowSourceEvent): {
   const sellDecimal = parseDecimalString(sellVolumeStr);
   const netDecimal = parseDecimalString(netFlowStr);
 
-  const buyInt = BigInt(buyDecimal.sign < 0 ? "-" + buyDecimal.digits : buyDecimal.digits);
-  const sellInt = BigInt(sellDecimal.sign < 0 ? "-" + sellDecimal.digits : sellDecimal.digits);
-  const netInt = BigInt(netDecimal.sign < 0 ? "-" + netDecimal.digits : netDecimal.digits);
+  const maxScale = Math.max(buyDecimal.scale, sellDecimal.scale, netDecimal.scale);
+  const scaleDiffBuy = maxScale - buyDecimal.scale;
+  const scaleDiffSell = maxScale - sellDecimal.scale;
+  const scaleDiffNet = maxScale - netDecimal.scale;
+
+  const buyDigitsAligned = buyDecimal.digits + "0".repeat(scaleDiffBuy);
+  const sellDigitsAligned = sellDecimal.digits + "0".repeat(scaleDiffSell);
+  const netDigitsAligned = netDecimal.digits + "0".repeat(scaleDiffNet);
+
+  const buyInt = BigInt(buyDecimal.sign < 0 ? "-" + buyDigitsAligned : buyDigitsAligned);
+  const sellInt = BigInt(sellDecimal.sign < 0 ? "-" + sellDigitsAligned : sellDigitsAligned);
+  const netInt = BigInt(netDecimal.sign < 0 ? "-" + netDigitsAligned : netDigitsAligned);
 
   const computedNet = buyInt - sellInt;
 
@@ -182,7 +191,7 @@ export function normalizeOnChainFlow(
         eventType: "dex_net_flow",
         sourceEventId: `birdeye-${beEvent.timestampUnixMs}`,
         observedAtUnixMs: beEvent.timestampUnixMs,
-        amountUsdc: dexFlow.netFlowUsdc,
+        amountUsdc: dexFlow.netFlowUsdc.replace(/^-/, ""),
         direction: dexFlow.netFlowUsdc.startsWith("-") ? "outbound" : "inbound",
         venue: "solana",
         addressContext: { addressType: "wallet", address: "birdeye-aggregated" },

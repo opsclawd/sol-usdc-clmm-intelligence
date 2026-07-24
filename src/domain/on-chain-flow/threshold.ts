@@ -192,8 +192,12 @@ export function qualifiesOnChainFlow(
   event: AcceptedOnChainFlowSourceEvent,
   thresholds: ParsedOnChainFlowThresholds
 ): boolean {
-  const amountDecimal = getAmountDecimal(event);
+  let amountDecimal = getAmountDecimal(event);
   const threshold = getThresholdForEventKind(event, thresholds);
+
+  if (event.eventKind === "birdeye_net_flow" || event.eventKind === "dex_net_flow") {
+    amountDecimal = { ...amountDecimal, sign: 1 };
+  }
 
   const amountPasses = decimalGreaterThanOrEqual(amountDecimal, threshold);
   if (!amountPasses) return false;
