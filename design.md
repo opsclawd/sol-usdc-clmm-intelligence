@@ -1,76 +1,79 @@
-# Design: Scheduled Events and Protocol Incidents Evidence Collection
+# Design Document: Collect and Normalize Solana Ecosystem News and Regulatory Risk Evidence
 
-## 1. The Problem Being Solved and Why It Matters
+## The Problem Being Solved and Why It Matters
 
-The SOL/USDC CLMM Intelligence agent currently lacks structured context regarding exogenous time-bounded market events (e.g., macro releases, token unlocks) and operational incidents (e.g., Solana network degradation, protocol hacks). Without this, the downstream `regime-engine` cannot defensively adjust policies (e.g., pausing liquidity provision or widening spreads) around known high-volatility windows or network instability. This issue introduces the deterministic collection, normalization, and lifecycle management of these contextual risk events so they can be bundled as structured evidence.
+Solana ecosystem news and regulatory developments provide critical contextual intelligence for market regime classification and policy generation. Unlike deterministic on-chain data (prices, pool statistics), news and regulatory evidence are qualitative, asynchronous, and inherently lower confidence.
 
-## 2. Key Design Decisions and Trade-offs Considered
+The current system handles deterministic signals, support/resistance, scheduled events, and active protocol incidents. However, unpredictable news and regulatory risks require different handling due to the nature of their sources, varying confidence levels, data retention constraints (copyright), and high rates of syndication and duplication. By collecting, normalizing, and clustering this contextual evidence, we enable downstream systems (like the regime engine) to synthesize policies that account for macroscopic risk factors before they fully manifest in on-chain price or volume action.
 
-**Decision 1: Unified vs. Distinct Normalized Contracts**
+## Key Design Decisions and Trade-offs Considered
 
-- _Option A (Unified):_ A single `NormalizedEvent` contract handling both macro events and protocol incidents.
-- _Option B (Distinct):_ Separate payload contracts (`ScheduledEventPayload` and `ProtocolIncidentPayload`) mapped to separate `ObservationKind`s.
-- _Trade-off:_ Option A reduces schema duplication for common fields like `status`, `severity`, and `title`. Option B allows strict typing for domain-specific fields (e.g., `scheduledStart` vs `detectedAt`).
-- _Selected Approach:_ **Distinct payload types with shared standard metadata**. The taxonomy will add two new `ObservationKind`s: `scheduled_event` and `protocol_incident`. The payload schemas will share common fields (status, severity, references) but strictly require their respective temporal fields.
+1. **Separation from Scheduled Events:** News and regulatory updates are treated as a distinct pipeline from scheduled macro events or protocol incidents.
+   - _Trade-off:_ This introduces new taxonomy and contract types rather than reusing existing event structures.
+   - _Rationale:_ News aggregation requires complex clustering and deduplication (handling syndication), different source-quality metadata, and strict copyright compliance constraints that don't apply to on-chain protocol incidents.
 
-**Decision 2: State Lifecycle and Deduplication**
+2. **Compliant Retention and Copyright:** We will retain bounded factual extracts, source URLs, and metadata rather than scraping or storing full article bodies.
+   - _Trade-off:_ We lose the complete context of the article if the source URL becomes unavailable.
+   - _Rationale:_ Strict adherence to copyright law, terms of service, and robots.txt restrictions is a hard requirement.
 
-- _Option A (Mutable State):_ Update existing normalized rows in the DB when an incident resolves or an event is postponed.
-- _Option B (Append-Only):_ Insert new `normalized_observations` for every state change with the same stable source identity, using `receivedAtUnixMs` to establish the current state.
-- _Trade-off:_ Mutable state is easier to query but destroys point-in-time historical reconstruction. Append-only is required by the intelligence pipeline's immutable architecture.
-- _Selected Approach:_ **Append-Only with Deterministic Identity**. We will correlate updates using a stable `sourceEventId` provided by the source. The latest observation per `sourceEventId` represents the current state. Exact replays will be deduplicated idempotently by comparing the `payloadHash`.
+3. **Immutable Corrections:** Corrections and updates to news will be appended as new records linked to the original, rather than overwriting history.
+   - _Trade-off:_ Increases storage and logic complexity for querying the "latest" state.
+   - _Rationale:_ Ensures a full auditable history of what evidence was available at any given time.
 
-**Decision 3: Severity and Confidence Scoring**
+4. **Clustering vs. Corroboration:** Syndicated coverage will be grouped into clusters using deterministic identifiers or similarity heuristics, but will _not_ be counted as independent corroboration. Conflicting reports will remain visible as separate evidence.
+   - _Rationale:_ Prevents false certainty driven by high-volume syndicated news echoing a single unconfirmed source.
 
-- _Trade-off:_ Hardcoding severity rules into the collector vs. passing raw severity from sources.
-- _Selected Approach:_ Sources will map their internal severities to a standard deterministic classification (e.g., `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`). The Intelligence agent does NOT infer market direction, only the materiality of the event.
+## Proposed Approach with Rationale
 
-## 3. Proposed Approach with Rationale
+1. **Taxonomy Additions (`src/contracts/taxonomy.ts`):**
+   - Add new `ObservationKind`s: `ecosystem_news` and `regulatory_risk`.
+   - Add new `EvidenceFamily`s: `ecosystem_news` and `regulatory_risk`.
+   - Add new `Source`s (e.g., `crypto-news-api`, `regulatory-monitor-api`).
+   - The `SignalClass` will explicitly be `contextual`.
 
-1. **Taxonomy Additions (`src/contracts/taxonomy.ts`)**:
-   - Add new `ObservationKind`s: `"scheduled_event" | "protocol_incident"`.
-   - Add new `Source`s: `"macro-calendar-api" | "solana-status-api"` (or generalized equivalent names).
-   - Both will map to `EvidenceFamily = "macro_protocol_risk"` and `SignalClass = "contextual"`.
+2. **Normalized Contracts (`src/contracts/news-events.ts`):**
+   - Define `NewsPayloadV1` and `RegulatoryPayloadV1` containing fields for: stable article identity, topic tags, bounded factual summary, publication/retrieval times, publisher/source-quality metadata, corroboration state, affected scope, cluster identity, and warnings.
 
-2. **Normalized Contracts (`src/contracts/normalized-events.ts`)**:
-   - Create standard TypeScript interfaces for `ScheduledEventPayload` and `ProtocolIncidentPayload`.
-   - Required fields will include: `sourceEventId`, `eventType`, `title`, `description`, `status` (`SCHEDULED`, `ACTIVE`, `RESOLVED`, `CANCELLED`, `UNCONFIRMED`), `severity`, `affectedScope`, and `warnings`.
-   - Temporal fields: `scheduledStart` / `scheduledEnd` for events; `detectedAt` / `resolvedAt` for incidents.
+3. **Source Adapters and Ports (`src/ports/news-source.ts`):**
+   - Introduce a new port for news adapters, configuring an explicit allowlist of supported sources.
+   - Adapters will fetch the data and return bounded extracts that conform to a strict interface, omitting prohibited full-text content.
 
-3. **Lifecycle & Persistence**:
-   - Adapters fetch data periodically.
-   - Raw observations are persisted to `raw_observations`.
-   - The normalizer maps raw data to the new payload types, generating a stable `payloadHash`.
-   - If the hash and source match an existing record (exact replay), the insert is skipped (idempotent).
-   - If a status change occurs (e.g., `ACTIVE` -> `RESOLVED`), a new `normalized_observations` row is inserted. Expired events will stop being selected as active evidence based on their `expiresAt` or `validUntilUnixMs` values.
+4. **Domain Logic (`src/domain/clustering.ts`):**
+   - Implement pure domain functions to calculate cluster identities (e.g., via hash of title/topic or deterministic syndication IDs provided by APIs).
+   - Evaluate independent corroboration, ensuring syndicated duplicates don't falsely inflate confidence.
 
-## 4. Assumptions Made
+5. **Persistence (`src/application` & `src/db`):**
+   - Integrate into the existing `raw_observations` → `normalized_observations` pipeline.
+   - Deduplication will ensure exact source replays are idempotent.
 
-- **Adapter Implementations**: Specific external APIs (e.g., ForexFactory, Solana Status RSS) are not strictly mandated by this design phase, but the system assumes the existence of adapter interfaces that can provide this data. Mock adapters will be implemented for tests if live ones aren't defined yet.
-- **Drizzle Schema**: The existing `raw_observations` and `normalized_observations` tables use JSONB for `payload`. We do not need new database tables, just new Zod schemas and TypeScript interfaces for the JSONB payload.
-- **Evidence Bundle Integration**: The `regime-engine` expects these events as part of the standard `v1/evidence/sol-usdc` payload under a contextual section; we will supply this via our standard normalization flow.
+## Assumptions Made
 
-## 5. Scope
+- We assume that source adapters will utilize third-party APIs that provide structured news metadata (titles, summaries, URLs, publication times) rather than requiring us to scrape raw HTML.
+- We assume basic text similarity or provider-supplied syndication IDs will be sufficient for clustering, avoiding the need for heavy NLP models within this service.
+- We assume that when an API provides a short description or summary, it falls within fair-use or bounded extraction limits for retention.
+- The `asOf` time will default to the article's publication time if available, falling back to retrieval time otherwise.
 
-**In Scope**:
+## Scope
 
-- Definition of normalized event/incident contracts.
-- Taxonomy additions (`ObservationKind`, `Source`).
-- Normalizer logic handling lifecycle (deduplication, state transitions).
-- Zod schema validation for payloads.
-- Persistence integration (inserting to JSONB payloads).
-- Comprehensive unit tests covering status transitions, stale events, and exact replays.
-- Operator documentation updates.
+**In Scope:**
 
-**Out of Scope**:
+- Ecosystem-news and regulatory-risk source adapters.
+- Source allowlist/configuration.
+- Compliant raw/source-reference retention.
+- Normalized contracts and taxonomy additions.
+- Logic for clustering, deduplication, correction handling, freshness calculation, confidence scoring, and provenance tracking.
+- Persistence layer integration, fixtures, tests, and documentation updates.
 
-- General ecosystem news or regulatory headline scraping.
-- Evaluating the actual directional impact (bullish/bearish) of an event.
-- Final policy synthesis, UI, or execution behavior.
-- On-chain flow, perp, funding, or liquidation evidence (handled separately).
+**Out of Scope:**
 
-## 6. Risks or Concerns Identified
+- Support/resistance evidence handling.
+- Scheduled macro events and active protocol incidents.
+- On-chain flow or perp/liquidation evidence.
+- LLM research-brief generation beyond the deterministic bounded extraction explicitly required for normalization.
+- Final policy synthesis, UI representation, or execution behavior.
 
-- **Stale/Stuck State**: If an incident adapter fails to fetch the `RESOLVED` state (e.g., source goes offline), an incident might remain permanently `ACTIVE`. The normalizer should enforce an `expiresAt` or rely on `FreshnessPolicy` to degrade/exclude events that haven't received an update within a reasonable timeout.
-- **Conflicting Sources**: Different sources might report different times for the same macro event. The normalizer needs to tag these with a `warning` in the payload if correlation is attempted across sources, or simply rely on strict source isolation to avoid cross-source contamination.
-- **Event Mutability vs Append-Only**: Guaranteeing that the latest row accurately overrides earlier states without confusing downstream consumers relies on strict querying rules. Downstream bundle generation must use `PARTITION BY sourceEventId ORDER BY receivedAtUnixMs DESC` (or equivalent) to only surface the most recent state.
+## Risks or Concerns Identified from Code Analysis
+
+1. **Clustering Complexity:** Without complex NLP, relying solely on deterministic IDs or basic text similarity might lead to under-clustering (failing to group syndicated news with altered titles) or over-clustering. The thresholds must be carefully tuned.
+2. **Data Sparsity in Corrections:** Handling article corrections and updates asynchronously means we may process policy based on outdated facts before the correction is ingested. The pipeline needs robust handling for `asOf` versus `retrievedAt` timelines.
+3. **API Rate Limits and Paywalls:** External news sources may block requests or return partial/paywalled content, leading to malformed payload structures. The adapters must map these strictly to the `ParseStatus.failed` state or apply explicit warnings in the normalized contract.

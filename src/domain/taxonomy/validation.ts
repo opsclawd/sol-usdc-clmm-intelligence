@@ -20,7 +20,10 @@ const OBSERVATION_KINDS = new Set<ObservationKind>([
   "data_quality",
   "pool_statistics",
   "ecosystem_news",
-  "regulatory_risk"
+  "regulatory_risk",
+  "support_resistance_level",
+  "scheduled_event",
+  "protocol_incident"
 ]);
 
 const FEATURE_KINDS = new Set<FeatureKind>([
@@ -43,7 +46,10 @@ const SOURCES = new Set<Source>([
   "jupiter-quote",
   "orca-public-api",
   "crypto-news-api",
-  "regulatory-monitor-api"
+  "regulatory-monitor-api",
+  "technical-analysis-api",
+  "macro-calendar-api",
+  "solana-status-api"
 ]);
 
 const SIGNAL_CLASSES = new Set<SignalClass>(["deterministic", "probabilistic", "contextual"]);

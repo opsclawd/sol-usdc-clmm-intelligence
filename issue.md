@@ -1,99 +1,96 @@
-# feat: collect scheduled market events and Solana protocol incident evidence
+# feat: collect and normalize Solana ecosystem news and regulatory risk evidence
 
 ## Summary
 
-Collect, retain, normalize, and deduplicate scheduled market-event and Solana protocol-incident evidence relevant to SOL/USDC risk.
+Collect, retain, normalize, cluster, and deduplicate Solana ecosystem news and regulatory-risk evidence relevant to SOL/USDC.
 
-This is the second PR-sized child of #9. It covers time-bounded events and operational incidents; it does not collect general ecosystem news, regulatory headlines, or support/resistance levels.
+This is the third PR-sized child of #9. It is deliberately separated from deterministic support/resistance evidence and scheduled event/protocol-incident collection because news sources, confidence, retention, and deduplication require different rules.
 
-## Evidence families
+## Correct boundary
 
-### Scheduled events
+This issue produces contextual evidence records and source-linked factual summaries. It does not make the final policy decision, predict price direction from headlines, or authorize execution.
 
-At minimum support normalized evidence for relevant scheduled events such as:
+News and regulatory evidence must carry visibly lower and more conditional confidence than deterministic on-chain/oracle facts.
 
-- high-impact macroeconomic releases;
-- central-bank decisions and speeches when materially relevant;
-- known Solana upgrades or maintenance windows;
-- material token unlocks or supply events;
-- other pre-announced events with a defensible SOL/USDC risk relationship.
+## Required evidence families
 
-### Protocol and network incidents
+At minimum support normalized records for:
 
-At minimum support normalized evidence for:
+- material Solana ecosystem announcements;
+- protocol upgrades, launches, deprecations, or governance changes not already represented as scheduled events;
+- material security disclosures and post-incident reporting;
+- token unlock/supply news not available as a canonical scheduled event;
+- regulatory or legal developments with a defensible SOL/USDC market-risk relationship;
+- major exchange/custody/access developments affecting SOL availability or liquidity.
 
-- confirmed Solana network degradation or outage incidents;
-- material protocol/security incidents affecting Solana market or execution conditions;
-- incident resolution/recovery updates;
-- explicit unknown/unconfirmed states while an incident is still developing.
+## Required normalized record
 
-## Required normalized event contract
+Each record must include at minimum:
 
-Each event/incident record must include at minimum:
+- stable source/article identity;
+- evidence family and topic tags;
+- bounded factual summary or extracted claims;
+- publication time, source update time when available, retrieval time, `asOf`, and `expiresAt`;
+- source publisher and source-quality metadata;
+- confidence and corroboration state;
+- affected protocols/assets/jurisdictions where applicable;
+- source references and compliant raw/extract provenance;
+- cluster/deduplication identity;
+- warnings for unconfirmed claims, corrections, paywalled/partial material, or source disagreement.
 
-- stable source/event identity;
-- event family and event type;
-- title/short factual description;
-- scheduled start/end or detected/resolved times as applicable;
-- `asOf` and `expiresAt`;
-- severity/materiality classification derived from documented deterministic rules;
-- confidence and source-quality metadata;
-- affected ecosystem/protocol scope;
-- source references and raw provenance;
-- status such as `SCHEDULED`, `ACTIVE`, `RESOLVED`, `CANCELLED`, or `UNCONFIRMED` where applicable;
-- warnings for conflicting times, source disagreement, or incomplete information.
+Do not store a directional recommendation as part of the normalized evidence record.
 
-Severity is evidence metadata, not a final trading recommendation.
+## Source, retention, and copyright behavior
 
-## Source and retention behavior
+- Use adapters behind ports and an explicit allowlist/configuration of sources.
+- Respect source terms, licensing, robots restrictions, and retention constraints.
+- Store URLs, metadata, hashes, and bounded compliant extracts rather than copying full copyrighted articles.
+- Preserve corrections and updates without overwriting historical source records.
+- Reject content that cannot be traced to a source reference.
 
-- Collect through source adapters behind ports.
-- Persist accepted raw observations or compliant bounded source extracts before normalization.
-- Preserve original source timestamps and retrieval timestamps separately.
-- Respect source licensing and retention constraints.
-- Never convert an unconfirmed report into a confirmed incident without qualifying source evidence.
+## Clustering and deduplication
 
-## Deduplication and lifecycle
-
-- Deduplicate exact replays idempotently.
-- Correlate updates to the same scheduled event or incident using deterministic identity rules.
-- Preserve state transitions and history rather than overwriting the original event.
-- Handle postponements, cancellations, corrections, and incident resolution explicitly.
-- Expired events remain historically queryable but must not be selected as current evidence.
+- Exact source replays are idempotent.
+- Syndicated or materially duplicate coverage should be grouped into a cluster using deterministic identifiers and similarity thresholds.
+- Preserve every source reference used for corroboration.
+- Do not count a syndicated copy as independent corroboration.
+- Conflicting reports remain visible as conflicting evidence rather than being compressed into false certainty.
 
 ## Scope
 
 In scope:
 
-- macro/event-calendar adapters;
-- Solana status/protocol-incident adapters;
-- normalized event/incident contracts and taxonomy additions;
-- raw retention, provenance, freshness, confidence, lifecycle, and deduplication;
-- persistence, fixtures, tests, and operator documentation.
+- ecosystem-news and regulatory-risk source adapters;
+- source allowlist/configuration;
+- compliant raw/source-reference retention;
+- normalized contracts and taxonomy additions;
+- clustering, deduplication, correction handling, freshness, confidence, and provenance;
+- persistence, fixtures, tests, and documentation.
 
 Out of scope:
 
-- general ecosystem news or regulatory-headline collection;
 - support/resistance evidence;
-- on-chain flow, perp, funding, or liquidation evidence;
-- LLM research-brief generation;
+- scheduled macro events and active protocol incidents;
+- on-chain flow or perp/liquidation evidence;
+- LLM research-brief generation beyond any deterministic bounded extraction explicitly required for normalization;
 - final policy synthesis, UI, or execution behavior.
 
 ## Guardrails
 
-- Scheduled events and incidents are contextual risk evidence, not execution authority.
-- Unconfirmed reports remain explicitly unconfirmed.
-- Missing event feeds do not imply no upcoming risk.
-- Do not assign market direction from an event headline in this issue.
+- Do not infer market direction from a headline.
+- Unconfirmed claims remain explicitly unconfirmed.
+- Syndication is not independent corroboration.
+- Missing news coverage does not imply no risk.
+- Contextual evidence cannot override deterministic execution guards.
 
 ## Acceptance criteria
 
-- [ ] Scheduled events and protocol incidents have strict normalized contracts with explicit lifecycle states and timestamps.
-- [ ] Accepted source observations are retained before normalization with complete source provenance.
-- [ ] Exact replays are idempotent and updates to one event/incident remain linked without overwriting history.
-- [ ] Postponed, cancelled, active, resolved, unconfirmed, stale, and conflicting-source cases are represented explicitly.
-- [ ] Tests cover scheduled events, token unlocks/upgrades, active incidents, incident resolution, duplicate updates, conflicting times, stale events, and unavailable sources.
-- [ ] Documentation states that severity/materiality is deterministic evidence metadata, not a final recommendation.
+- [ ] Ecosystem-news and regulatory-risk records have a strict source-linked normalized contract.
+- [ ] Source retention is compliant and does not copy prohibited full article content.
+- [ ] Exact replays are idempotent, syndicated duplicates are clustered, and independent corroborating sources remain traceable.
+- [ ] Corrections, conflicting reports, unconfirmed claims, stale items, and unavailable sources are represented explicitly.
+- [ ] Tests cover exact duplicates, syndication, corroboration, conflicts, corrections, partial/paywalled material, stale items, and malformed source responses.
+- [ ] Documentation defines the source allowlist, retention policy, freshness rules, and the lower-confidence contextual boundary.
 
 ## Parent
 
