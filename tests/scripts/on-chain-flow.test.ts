@@ -45,6 +45,14 @@ function createMockRuntime() {
       }),
       getOptional: vi.fn((name: string) => {
         switch (name) {
+          case "HELIUS_FLOW_API_URL":
+            return "https://api.helius.xyz/v0/transactions";
+          case "HELIUS_API_KEY":
+            return "helius-secret-key-123";
+          case "BIRDEYE_FLOW_API_URL":
+            return "https://api.birdeye.xyz/v1/defi/portfolio";
+          case "BIRDEYE_API_KEY":
+            return "birdeye-secret-key-456";
           case "ON_CHAIN_WHALE_TRANSFER_MIN_USDC":
             return "1000000";
           case "ON_CHAIN_WHALE_SWAP_MIN_USDC":
@@ -249,6 +257,10 @@ describe("on-chain-flow collector script", () => {
             if (name === "HELIUS_API_KEY") return "helius-secret-key-123";
             if (name === "BIRDEYE_API_KEY") return "birdeye-secret-key-456";
             throw new Error(`Unexpected env var: ${name}`);
+          }),
+          getOptional: vi.fn((name: string) => {
+            if (name === "HELIUS_FLOW_API_URL") return undefined;
+            return createMockRuntime().env.getOptional(name);
           })
         }
       });
@@ -271,6 +283,10 @@ describe("on-chain-flow collector script", () => {
               throw new Error("Missing required environment variable: HELIUS_API_KEY");
             if (name === "BIRDEYE_API_KEY") return "birdeye-secret-key-456";
             throw new Error(`Unexpected env var: ${name}`);
+          }),
+          getOptional: vi.fn((name: string) => {
+            if (name === "HELIUS_API_KEY") return undefined;
+            return createMockRuntime().env.getOptional(name);
           })
         }
       });
@@ -293,6 +309,10 @@ describe("on-chain-flow collector script", () => {
             if (name === "HELIUS_API_KEY") return "helius-secret-key-123";
             if (name === "BIRDEYE_API_KEY") return "birdeye-secret-key-456";
             throw new Error(`Unexpected env var: ${name}`);
+          }),
+          getOptional: vi.fn((name: string) => {
+            if (name === "BIRDEYE_FLOW_API_URL") return undefined;
+            return createMockRuntime().env.getOptional(name);
           })
         }
       });
@@ -315,6 +335,10 @@ describe("on-chain-flow collector script", () => {
             if (name === "BIRDEYE_API_KEY")
               throw new Error("Missing required environment variable: BIRDEYE_API_KEY");
             throw new Error(`Unexpected env var: ${name}`);
+          }),
+          getOptional: vi.fn((name: string) => {
+            if (name === "BIRDEYE_API_KEY") return undefined;
+            return createMockRuntime().env.getOptional(name);
           })
         }
       });
