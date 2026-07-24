@@ -1,0 +1,382 @@
+import { describe, it, expect } from "vitest";
+import { makeHeliusTransactionFlowEvent } from "../../fixtures/on-chain-flow.js";
+import {
+  normalizeOnChainFlow,
+  OnChainFlowNormalizationError
+} from "../../../src/domain/on-chain-flow/normalize.js";
+
+describe("normalizeOnChainFlow", () => {
+  describe("normalizes transaction direction from explicit asset deltas only", () => {
+    it("whale swap with SOL delta > 0 and USDC delta < 0 produces inbound direction", () => {
+      const event = {
+        eventKind: "whale_swap" as const,
+        sourceEventId: "ws_001",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "50000000",
+        direction: "inbound" as const,
+        venue: "solana" as const,
+        addressContext: { addressType: "wallet" as const, address: "abc123" },
+        sourceReferences: ["https://helius.xyz/txn/abc123"],
+        sourceQuality: {
+          provider: "helius-api" as const,
+          freshness: "realtime" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
+        transactionSignature: "txn_abc123",
+        eventIndex: 0,
+        slot: 123456789,
+        stablecoinOperation: "transfer" as const,
+        solDelta: 1000000000,
+        usdcDelta: -50000000
+      };
+      const result = normalizeOnChainFlow(event, Date.now());
+      expect(result.eventType).toBe("whale_swap");
+    });
+
+    it("whale swap with SOL delta < 0 and USDC delta > 0 produces outbound direction", () => {
+      const event = {
+        eventKind: "whale_swap" as const,
+        sourceEventId: "ws_001",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "50000000",
+        direction: "outbound" as const,
+        venue: "solana" as const,
+        addressContext: { addressType: "wallet" as const, address: "abc123" },
+        sourceReferences: ["https://helius.xyz/txn/abc123"],
+        sourceQuality: {
+          provider: "helius-api" as const,
+          freshness: "realtime" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
+        transactionSignature: "txn_abc123",
+        eventIndex: 0,
+        slot: 123456789,
+        stablecoinOperation: "transfer" as const,
+        solDelta: -1000000000,
+        usdcDelta: 50000000
+      };
+      const result = normalizeOnChainFlow(event, Date.now());
+      expect(result.eventType).toBe("whale_swap");
+    });
+
+    it("whale swap direction never uses address intent", () => {
+      const event = {
+        eventKind: "whale_swap" as const,
+        sourceEventId: "ws_001",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "50000000",
+        direction: "inbound" as const,
+        venue: "solana" as const,
+        addressContext: { addressType: "wallet" as const, address: "Mwallet123_swap" },
+        sourceReferences: ["https://helius.xyz/txn/abc123"],
+        sourceQuality: {
+          provider: "helius-api" as const,
+          freshness: "realtime" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
+        transactionSignature: "txn_abc123",
+        eventIndex: 0,
+        slot: 123456789,
+        stablecoinOperation: "transfer" as const,
+        solDelta: 1000000000,
+        usdcDelta: -50000000
+      };
+      const result = normalizeOnChainFlow(event, Date.now());
+      expect(result.eventType).toBe("whale_swap");
+    });
+  });
+
+  describe("normalizes stablecoin mint burn and transfer as separate operations", () => {
+    it("mint operation is retained as mint", () => {
+      const event = {
+        eventKind: "stablecoin_flow" as const,
+        sourceEventId: "sf_001",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "1000000",
+        direction: "inbound" as const,
+        venue: "solana" as const,
+        addressContext: { addressType: "contract" as const, address: "mint_authority" },
+        sourceReferences: ["https://helius.xyz/txn/abc123"],
+        sourceQuality: {
+          provider: "helius-api" as const,
+          freshness: "realtime" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
+        transactionSignature: "txn_abc123",
+        eventIndex: 0,
+        slot: 123456789,
+        stablecoinOperation: "mint" as const
+      };
+      const result = normalizeOnChainFlow(event, Date.now());
+      expect(result.eventType).toBe("stablecoin_flow");
+      expect(result.stablecoinOperation).toBe("mint");
+    });
+
+    it("burn operation is retained as burn", () => {
+      const event = {
+        eventKind: "stablecoin_flow" as const,
+        sourceEventId: "sf_001",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "1000000",
+        direction: "outbound" as const,
+        venue: "solana" as const,
+        addressContext: { addressType: "contract" as const, address: "burn_authority" },
+        sourceReferences: ["https://helius.xyz/txn/abc123"],
+        sourceQuality: {
+          provider: "helius-api" as const,
+          freshness: "realtime" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
+        transactionSignature: "txn_abc123",
+        eventIndex: 0,
+        slot: 123456789,
+        stablecoinOperation: "burn" as const
+      };
+      const result = normalizeOnChainFlow(event, Date.now());
+      expect(result.eventType).toBe("stablecoin_flow");
+      expect(result.stablecoinOperation).toBe("burn");
+    });
+
+    it("transfer operation is retained as transfer", () => {
+      const event = {
+        eventKind: "stablecoin_flow" as const,
+        sourceEventId: "sf_001",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "1000000",
+        direction: "inbound" as const,
+        venue: "solana" as const,
+        addressContext: { addressType: "wallet" as const, address: "user_wallet" },
+        sourceReferences: ["https://helius.xyz/txn/abc123"],
+        sourceQuality: {
+          provider: "helius-api" as const,
+          freshness: "realtime" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
+        transactionSignature: "txn_abc123",
+        eventIndex: 0,
+        slot: 123456789,
+        stablecoinOperation: "transfer" as const
+      };
+      const result = normalizeOnChainFlow(event, Date.now());
+      expect(result.eventType).toBe("stablecoin_flow");
+      expect(result.stablecoinOperation).toBe("transfer");
+    });
+
+    it("mint and burn are never conflated even if semantically similar", () => {
+      const mintEvent = {
+        eventKind: "stablecoin_flow" as const,
+        sourceEventId: "sf_001",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "1000000",
+        direction: "inbound" as const,
+        venue: "solana" as const,
+        addressContext: { addressType: "contract" as const, address: "mint_authority" },
+        sourceReferences: ["https://helius.xyz/txn/abc123"],
+        sourceQuality: {
+          provider: "helius-api" as const,
+          freshness: "realtime" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
+        transactionSignature: "txn_abc123",
+        eventIndex: 0,
+        slot: 123456789,
+        stablecoinOperation: "mint" as const
+      };
+      const burnEvent = {
+        eventKind: "stablecoin_flow" as const,
+        sourceEventId: "sf_002",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "1000000",
+        direction: "outbound" as const,
+        venue: "solana" as const,
+        addressContext: { addressType: "contract" as const, address: "burn_authority" },
+        sourceReferences: ["https://helius.xyz/txn/def456"],
+        sourceQuality: {
+          provider: "helius-api" as const,
+          freshness: "realtime" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 123456790, blockTimestampUnixMs: 1700000000000 },
+        transactionSignature: "txn_def456",
+        eventIndex: 0,
+        slot: 123456790,
+        stablecoinOperation: "burn" as const
+      };
+      const mintResult = normalizeOnChainFlow(mintEvent, Date.now());
+      const burnResult = normalizeOnChainFlow(burnEvent, Date.now());
+      expect(mintResult.stablecoinOperation).not.toBe(burnResult.stablecoinOperation);
+    });
+  });
+
+  describe("normalizes DEX net flow with a signed net equal to buy minus sell", () => {
+    it("accepts consistent DEX net flow where buy - sell = net", () => {
+      const event = {
+        eventKind: "birdeye_net_flow" as const,
+        timestampUnixMs: 1700000000000,
+        buyVolume: "50000000000",
+        sellVolume: "30000000000",
+        netFlow: "20000000000",
+        sourceReferences: ["https://birdeye.xyz/token/SOL"]
+      };
+      const result = normalizeOnChainFlow(event, Date.now());
+      expect(result.eventType).toBe("dex_net_flow");
+      expect((result as Record<string, unknown>).buyVolumeUsdc).toBe("50000000000");
+      expect((result as Record<string, unknown>).sellVolumeUsdc).toBe("30000000000");
+      expect((result as Record<string, unknown>).netFlowUsdc).toBe("20000000000");
+    });
+
+    it("rejects inconsistent provider net value where buy - sell != net", () => {
+      const event = {
+        eventKind: "birdeye_net_flow" as const,
+        timestampUnixMs: 1700000000000,
+        buyVolume: "50000000000",
+        sellVolume: "30000000000",
+        netFlow: "10000000000",
+        sourceReferences: ["https://birdeye.xyz/token/SOL"]
+      };
+      expect(() => normalizeOnChainFlow(event, Date.now())).toThrow(OnChainFlowNormalizationError);
+    });
+
+    it("rejects net flow where buy - sell gives negative of claimed positive net", () => {
+      const event = {
+        eventKind: "birdeye_net_flow" as const,
+        timestampUnixMs: 1700000000000,
+        buyVolume: "30000000000",
+        sellVolume: "50000000000",
+        netFlow: "20000000000",
+        sourceReferences: ["https://birdeye.xyz/token/SOL"]
+      };
+      expect(() => normalizeOnChainFlow(event, Date.now())).toThrow(OnChainFlowNormalizationError);
+    });
+
+    it("rejects inconsistent net values rather than silently correcting", () => {
+      const event = {
+        eventKind: "birdeye_net_flow" as const,
+        timestampUnixMs: 1700000000000,
+        buyVolume: "10000000000",
+        sellVolume: "5000000000",
+        netFlow: "6000000000",
+        sourceReferences: ["https://birdeye.xyz/token/SOL"]
+      };
+      expect(() => normalizeOnChainFlow(event, Date.now())).toThrow(OnChainFlowNormalizationError);
+    });
+  });
+
+  describe("always attaches CEX proxy noise caveats and never upgrades it to deterministic", () => {
+    it("CEX proxy result always has caveats array", () => {
+      const event = {
+        eventKind: "cex_flow_proxy" as const,
+        sourceEventId: "cex_001",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "5000000",
+        direction: "inbound" as const,
+        venue: "cex" as const,
+        addressContext: { addressType: "wallet" as const, address: "abc123" },
+        sourceReferences: ["https://cex.example/txn/abc"],
+        sourceQuality: {
+          provider: "helius-api" as const,
+          freshness: "realtime" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 123, blockTimestampUnixMs: 1700000000000 },
+        attributionConfidence: 0.8,
+        attributionProvider: "helius-api",
+        caveats: ["proxy_address_attribution"]
+      };
+      const result = normalizeOnChainFlow(event, Date.now());
+      expect(result.eventType).toBe("cex_flow_proxy");
+      expect((result as Record<string, unknown>).caveats).toBeDefined();
+      expect(((result as Record<string, unknown>).caveats as string[]).length).toBeGreaterThan(0);
+    });
+
+    it("CEX proxy never has attribution upgraded to deterministic even with confidence 1.0", () => {
+      const event = {
+        eventKind: "cex_flow_proxy" as const,
+        sourceEventId: "cex_001",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "5000000",
+        direction: "inbound" as const,
+        venue: "cex" as const,
+        addressContext: { addressType: "wallet" as const, address: "abc123" },
+        sourceReferences: ["https://cex.example/txn/abc"],
+        sourceQuality: {
+          provider: "helius-api" as const,
+          freshness: "realtime" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 123, blockTimestampUnixMs: 1700000000000 },
+        attributionConfidence: 1.0,
+        attributionProvider: "helius-api",
+        caveats: ["proxy_address_attribution"]
+      };
+      const result = normalizeOnChainFlow(event, Date.now());
+      expect(result.eventType).toBe("cex_flow_proxy");
+      expect((result as Record<string, unknown>).quality).toBe("proxy");
+      expect((result as Record<string, unknown>).attributionConfidence).toBe(1.0);
+    });
+
+    it("CEX proxy retains original caveats without adding deterministic markers", () => {
+      const event = {
+        eventKind: "cex_flow_proxy" as const,
+        sourceEventId: "cex_001",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "5000000",
+        direction: "inbound" as const,
+        venue: "cex" as const,
+        addressContext: { addressType: "wallet" as const, address: "abc123" },
+        sourceReferences: ["https://cex.example/txn/abc"],
+        sourceQuality: {
+          provider: "helius-api" as const,
+          freshness: "realtime" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 123, blockTimestampUnixMs: 1700000000000 },
+        attributionConfidence: 0.95,
+        attributionProvider: "helius-api",
+        caveats: ["proxy_address_attribution", "wallet_exchange_proximity"]
+      };
+      const result = normalizeOnChainFlow(event, Date.now());
+      expect(result.eventType).toBe("cex_flow_proxy");
+      expect((result as Record<string, unknown>).caveats).toContain("proxy_address_attribution");
+      expect((result as Record<string, unknown>).quality).toBe("proxy");
+    });
+  });
+
+  describe("sorts and deduplicates source references", () => {
+    it("deduplicates and sorts source references", () => {
+      const event = makeHeliusTransactionFlowEvent({
+        sourceReferences: [
+          "https://b.example.com",
+          "https://a.example.com",
+          "https://c.example.com",
+          "https://a.example.com"
+        ]
+      });
+      const result = normalizeOnChainFlow(event, Date.now());
+      expect(result.sourceReferences).toEqual([
+        "https://a.example.com",
+        "https://b.example.com",
+        "https://c.example.com"
+      ]);
+    });
+  });
+
+  describe("builds freshness context from source and retrieval timestamps", () => {
+    it("freshness context includes source and retrieval timestamps", () => {
+      const sourceObserved = 1700000000000;
+      const retrievedAt = 1700000005000;
+      const event = makeHeliusTransactionFlowEvent({
+        timestampUnixMs: sourceObserved
+      });
+      const result = normalizeOnChainFlow(event, retrievedAt);
+      expect(result.freshnessContext.blockTimestampUnixMs).toBe(sourceObserved);
+    });
+  });
+});
