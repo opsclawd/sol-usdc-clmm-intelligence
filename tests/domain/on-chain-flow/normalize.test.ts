@@ -273,6 +273,64 @@ describe("normalizeOnChainFlow", () => {
       };
       expect(() => normalizeOnChainFlow(event, Date.now())).toThrow(OnChainFlowNormalizationError);
     });
+
+    it("dex_net_flow strips negative sign from amountUsdc and derives direction from net flow sign", () => {
+      const event = {
+        eventKind: "dex_net_flow" as const,
+        sourceEventId: "dex_nf_001",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "20000000000",
+        direction: "inbound" as const,
+        venue: "solana" as const,
+        addressContext: { addressType: "wallet" as const, address: "dex-wallet" },
+        sourceReferences: ["https://dex.example/txn/abc"],
+        sourceQuality: {
+          provider: "helius-api" as const,
+          freshness: "realtime" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 123, blockTimestampUnixMs: 1700000000000 },
+        windowStartUnixMs: 1699913600000,
+        windowEndUnixMs: 1700000000000,
+        buyVolumeUsdc: "50000000000",
+        sellVolumeUsdc: "30000000000",
+        netFlowUsdc: "20000000000"
+      };
+      const result = normalizeOnChainFlow(event, Date.now());
+      expect(result.eventType).toBe("dex_net_flow");
+      expect((result as Record<string, unknown>).amountUsdc).toBe("20000000000");
+      expect((result as Record<string, unknown>).direction).toBe("inbound");
+      expect((result as Record<string, unknown>).netFlowUsdc).toBe("20000000000");
+    });
+
+    it("dex_net_flow with negative net flow strips sign from amountUsdc and sets outbound direction", () => {
+      const event = {
+        eventKind: "dex_net_flow" as const,
+        sourceEventId: "dex_nf_002",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "20000000000",
+        direction: "outbound" as const,
+        venue: "solana" as const,
+        addressContext: { addressType: "wallet" as const, address: "dex-wallet-2" },
+        sourceReferences: ["https://dex.example/txn/def"],
+        sourceQuality: {
+          provider: "helius-api" as const,
+          freshness: "realtime" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 124, blockTimestampUnixMs: 1700000000000 },
+        windowStartUnixMs: 1699913600000,
+        windowEndUnixMs: 1700000000000,
+        buyVolumeUsdc: "30000000000",
+        sellVolumeUsdc: "50000000000",
+        netFlowUsdc: "-20000000000"
+      };
+      const result = normalizeOnChainFlow(event, Date.now());
+      expect(result.eventType).toBe("dex_net_flow");
+      expect((result as Record<string, unknown>).amountUsdc).toBe("20000000000");
+      expect((result as Record<string, unknown>).direction).toBe("outbound");
+      expect((result as Record<string, unknown>).netFlowUsdc).toBe("-20000000000");
+    });
   });
 
   describe("always attaches CEX proxy noise caveats and never upgrades it to deterministic", () => {

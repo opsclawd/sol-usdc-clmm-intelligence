@@ -20,6 +20,13 @@ function isValidDecimalString(value: string): boolean {
   return true;
 }
 
+function isValidNonNegativeDecimalString(value: string): boolean {
+  if (value === "") return false;
+  if (value.startsWith("+")) return false;
+  if (!value.startsWith("-") && DECIMAL_STRING_REGEX.test(value)) return true;
+  return false;
+}
+
 function isSafeInteger(value: number): boolean {
   return Number.isInteger(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER;
 }
@@ -130,8 +137,8 @@ const whaleTransferFlowSchema = z
     eventKind: z.literal("whale_transfer"),
     sourceEventId: z.string().min(1),
     observedAtUnixMs: z.number().int().positive(),
-    amountUsdc: z.string().refine(isValidDecimalString, {
-      message: "amountUsdc must be a valid decimal string without scientific notation"
+    amountUsdc: z.string().refine(isValidNonNegativeDecimalString, {
+      message: "amountUsdc must be a non-negative decimal string without scientific notation"
     }),
     direction: z.enum(["inbound", "outbound"]),
     venue: z.literal("solana"),
@@ -151,8 +158,8 @@ const whaleSwapFlowSchema = z
     eventKind: z.literal("whale_swap"),
     sourceEventId: z.string().min(1),
     observedAtUnixMs: z.number().int().positive(),
-    amountUsdc: z.string().refine(isValidDecimalString, {
-      message: "amountUsdc must be a valid decimal string without scientific notation"
+    amountUsdc: z.string().refine(isValidNonNegativeDecimalString, {
+      message: "amountUsdc must be a non-negative decimal string without scientific notation"
     }),
     direction: z.enum(["inbound", "outbound"]),
     venue: z.literal("solana"),
@@ -174,8 +181,8 @@ const stablecoinFlowSchema = z
     eventKind: z.literal("stablecoin_flow"),
     sourceEventId: z.string().min(1),
     observedAtUnixMs: z.number().int().positive(),
-    amountUsdc: z.string().refine(isValidDecimalString, {
-      message: "amountUsdc must be a valid decimal string without scientific notation"
+    amountUsdc: z.string().refine(isValidNonNegativeDecimalString, {
+      message: "amountUsdc must be a non-negative decimal string without scientific notation"
     }),
     direction: z.enum(["inbound", "outbound"]),
     venue: z.literal("solana"),
@@ -195,8 +202,8 @@ const dexNetFlowSchema = z
     eventKind: z.literal("dex_net_flow"),
     sourceEventId: z.string().min(1),
     observedAtUnixMs: z.number().int().positive(),
-    amountUsdc: z.string().refine(isValidDecimalString, {
-      message: "amountUsdc must be a valid decimal string without scientific notation"
+    amountUsdc: z.string().refine(isValidNonNegativeDecimalString, {
+      message: "amountUsdc must be a non-negative decimal string without scientific notation"
     }),
     direction: z.enum(["inbound", "outbound"]),
     venue: z.literal("solana"),
@@ -227,8 +234,8 @@ const cexFlowProxySchema = z
     eventKind: z.literal("cex_flow_proxy"),
     sourceEventId: z.string().min(1),
     observedAtUnixMs: z.number().int().positive(),
-    amountUsdc: z.string().refine(isValidDecimalString, {
-      message: "amountUsdc must be a valid decimal string"
+    amountUsdc: z.string().refine(isValidNonNegativeDecimalString, {
+      message: "amountUsdc must be a non-negative decimal string"
     }),
     direction: z.enum(["inbound", "outbound"]),
     venue: z.literal("cex"),
