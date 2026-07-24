@@ -128,6 +128,7 @@ function hasOverlappingScope(
     payloadB.affectedProtocols,
     payloadB.affectedJurisdictions
   );
+  if (scopeA.length === 0 && scopeB.length === 0) return true;
   if (scopeA.length === 0 || scopeB.length === 0) return false;
   return scopeA.some((token) => scopeB.includes(token));
 }
@@ -437,7 +438,7 @@ async function resolveClusters(
     if (!representative) continue;
     const clusterIdHash = await deriveClusterId(representative);
 
-    const uniqueClaims = [...new Set(members.flatMap((p) => p.extractedClaims))];
+    const uniqueClaims = [...new Set(members.flatMap((p) => p.extractedClaims))].sort();
 
     const uniquePairs = new Set(
       members.map((p) => `${p.publisher.publisherId}::${p.originatingReportId}`)
@@ -489,7 +490,6 @@ async function resolveClusters(
         ...member,
         clusterId: clusterIdHash,
         corroborationState,
-        sourceReferences: [...new Set(member.sourceReferences)].sort(),
         extractedClaims: uniqueClaims,
         warnings: [...memberWarnings, ...warnings]
       });
@@ -516,7 +516,7 @@ async function resolveSingleRecord(record: NewsEvidencePayload): Promise<NewsEvi
     clusterId: clusterIdHash,
     corroborationState: "single_source",
     sourceReferences: [...new Set(record.sourceReferences)].sort(),
-    extractedClaims: [...record.extractedClaims],
+    extractedClaims: [...new Set(record.extractedClaims)].sort(),
     warnings: record.warnings
   };
 }
@@ -546,5 +546,5 @@ export async function clusterNewsEvidence(
 
   const resolved = await resolveClusters(mergedClusters, allRecords, infoMap);
 
-  return resolved.filter((r) => incomingKeys.has(getRecordKey(r)));
+  return resolved;
 }
