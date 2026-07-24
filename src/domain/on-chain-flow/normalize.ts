@@ -138,6 +138,14 @@ export function normalizeOnChainFlow(
 
     case "whale_swap": {
       const wsEvent = event as AcceptedOnChainFlowSourceEvent & { eventKind: "whale_swap" };
+      const solDelta = wsEvent.solDelta ?? 0;
+      const usdcDelta = wsEvent.usdcDelta ?? 0;
+      const direction: "inbound" | "outbound" =
+        solDelta > 0 && usdcDelta < 0
+          ? "inbound"
+          : solDelta < 0 && usdcDelta > 0
+            ? "outbound"
+            : (wsEvent.direction as "inbound" | "outbound");
       const result: WhaleSwapPayloadV1 = {
         schemaVersion: 1,
         eventFamily: "on_chain_flow",
@@ -145,7 +153,7 @@ export function normalizeOnChainFlow(
         sourceEventId: wsEvent.sourceEventId,
         observedAtUnixMs: wsEvent.observedAtUnixMs,
         amountUsdc: wsEvent.amountUsdc,
-        direction: wsEvent.direction,
+        direction,
         venue: wsEvent.venue,
         addressContext: wsEvent.addressContext,
         sourceReferences,

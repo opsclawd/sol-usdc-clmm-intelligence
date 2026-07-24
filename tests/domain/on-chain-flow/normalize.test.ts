@@ -14,7 +14,7 @@ describe("normalizeOnChainFlow", () => {
         sourceEventId: "ws_001",
         observedAtUnixMs: 1700000000000,
         amountUsdc: "50000000",
-        direction: "inbound" as const,
+        direction: "outbound" as const,
         venue: "solana" as const,
         addressContext: { addressType: "wallet" as const, address: "abc123" },
         sourceReferences: ["https://helius.xyz/txn/abc123"],
@@ -33,6 +33,7 @@ describe("normalizeOnChainFlow", () => {
       };
       const result = normalizeOnChainFlow(event, Date.now());
       expect(result.eventType).toBe("whale_swap");
+      expect(result.direction).toBe("inbound");
     });
 
     it("whale swap with SOL delta < 0 and USDC delta > 0 produces outbound direction", () => {
@@ -41,7 +42,7 @@ describe("normalizeOnChainFlow", () => {
         sourceEventId: "ws_001",
         observedAtUnixMs: 1700000000000,
         amountUsdc: "50000000",
-        direction: "outbound" as const,
+        direction: "inbound" as const,
         venue: "solana" as const,
         addressContext: { addressType: "wallet" as const, address: "abc123" },
         sourceReferences: ["https://helius.xyz/txn/abc123"],
@@ -60,6 +61,7 @@ describe("normalizeOnChainFlow", () => {
       };
       const result = normalizeOnChainFlow(event, Date.now());
       expect(result.eventType).toBe("whale_swap");
+      expect(result.direction).toBe("outbound");
     });
 
     it("whale swap direction never uses address intent", () => {
@@ -68,7 +70,7 @@ describe("normalizeOnChainFlow", () => {
         sourceEventId: "ws_001",
         observedAtUnixMs: 1700000000000,
         amountUsdc: "50000000",
-        direction: "inbound" as const,
+        direction: "outbound" as const,
         venue: "solana" as const,
         addressContext: { addressType: "wallet" as const, address: "Mwallet123_swap" },
         sourceReferences: ["https://helius.xyz/txn/abc123"],
@@ -87,6 +89,7 @@ describe("normalizeOnChainFlow", () => {
       };
       const result = normalizeOnChainFlow(event, Date.now());
       expect(result.eventType).toBe("whale_swap");
+      expect(result.direction).toBe("inbound");
     });
   });
 
