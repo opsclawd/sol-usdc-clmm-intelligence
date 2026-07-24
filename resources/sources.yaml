@@ -110,3 +110,37 @@ sources:
       - ecosystem_context
       - infra_context
       - network_activity
+
+  - name: helius-flow
+    priority: critical
+    type: authenticated-api
+    env: HELIUS_FLOW_API_URL
+    apiKeyEnv: HELIUS_API_KEY
+    purpose:
+      - whale_transfer
+      - whale_swap
+      - stablecoin_flow
+      - cex_flow_proxy
+    policy:
+      timeoutMs: 10000
+      maxAttempts: 2
+    limitations:
+      - Requires Helius API key with flow subscription.
+      - Returns realtime transaction-level flow events within the configured lookback window.
+      - CEX flow attribution is probabilistic and may be noisy; explicit confidence threshold required.
+      - Bounded retention: license must declare "bounded" retention mode.
+
+  - name: birdeye-flow
+    priority: critical
+    type: authenticated-api
+    env: BIRDEYE_FLOW_API_URL
+    apiKeyEnv: BIRDEYE_API_KEY
+    purpose:
+      - dex_net_flow
+    policy:
+      timeoutMs: 10000
+      maxAttempts: 2
+    limitations:
+      - Requires Birdeye API key with flow data subscription.
+      - Returns windowed DEX net flow data (buy/sell volume and net flow).
+      - Bounded retention: license must declare "bounded" retention mode.
