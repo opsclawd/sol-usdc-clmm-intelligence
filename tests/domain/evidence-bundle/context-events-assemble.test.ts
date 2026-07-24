@@ -217,7 +217,9 @@ function makeSelectedContextEvent(
   row: NormalizedObservationRow,
   payload: ScheduledEventPayloadV1 | ProtocolIncidentPayloadV1
 ): SelectedContextEvent {
-  return { row, payload };
+  const eventFamily =
+    payload.eventType === "scheduled_event" ? "scheduled_event" : "protocol_incident";
+  return { row, payload, eventFamily };
 }
 
 describe("context-events assembly", () => {

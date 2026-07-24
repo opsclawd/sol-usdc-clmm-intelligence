@@ -1,0 +1,11 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P2",
+      "summary": "The test file excludes `scheduled_event` and `protocol_incident` from the `observationKinds` array, causing them to be missed in the generic registry tests.",
+      "file": "tests/domain/taxonomy/registry.test.ts",
+      "suggested_fix": "Add `\"scheduled_event\"` and `\"protocol_incident\"` to the `observationKinds` array in `describe(\"observationKindRegistry\")`."
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P3",
+      "summary": "Test name `preserves configured source ordering in outcomes` contradicts its assertion which expects alphabetical order (`[\"birdeye-api\", \"helius-api\"]`).",
+      "file": "tests/jobs/on-chain-flow-job.test.ts",
+      "suggested_fix": "Rename the test to `sorts source outcomes alphabetically regardless of configuration order` or remove it entirely since it duplicates logic already tested in the `returns outcomes in stable source-name order` describe block."
+    },
+    {
+      "severity": "P3",
+      "summary": "In the concurrent completion order test, the mock setup resolves `heliusPromise` on the first call and `birdeyePromise` on the second, but because the job sorts sources alphabetically, `birdeye-api` erroneously receives the Helius promise.",
+      "file": "tests/jobs/on-chain-flow-job.test.ts",
+      "suggested_fix": "Swap the mock setup order to align with alphabetical execution: `mockCollectOnChainFlow.mockResolvedValueOnce(birdeyePromise).mockResolvedValueOnce(heliusPromise);`."
+    },
+    {
+      "severity": "P3",
+      "summary": "Redundant defensive validations: the `deps.sources.length === 0` zero-length check and the `hasDuplicates` check are fully subsumed by the exact length and individual source count checks.",
+      "file": "src/jobs/on-chain-flow-job.ts",
+      "suggested_fix": "Remove the zero-length and duplicate checks, relying entirely on the `length !== 2`, `heliusCount !== 1`, and `birdeyeCount !== 1` assertions to validate the configuration."
+    }
+  ]
+}

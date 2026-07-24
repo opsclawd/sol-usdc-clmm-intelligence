@@ -3,6 +3,7 @@ import type {
   ScheduledEventPayloadV1,
   ProtocolIncidentPayloadV1
 } from "../../contracts/index.js";
+import type { OnChainFlowPayloadV1 } from "../../contracts/on-chain-flow.js";
 
 export interface ContextEventSelectionRequest {
   readonly evaluationTimeUnixMs: number;
@@ -10,10 +11,17 @@ export interface ContextEventSelectionRequest {
   readonly maxItems: number;
 }
 
-export interface SelectedContextEvent {
-  readonly row: NormalizedObservationRow;
-  readonly payload: ScheduledEventPayloadV1 | ProtocolIncidentPayloadV1;
-}
+export type SelectedContextEvent =
+  | {
+      readonly row: NormalizedObservationRow;
+      readonly payload: ScheduledEventPayloadV1 | ProtocolIncidentPayloadV1;
+      readonly eventFamily: "scheduled_event" | "protocol_incident";
+    }
+  | {
+      readonly row: NormalizedObservationRow;
+      readonly payload: OnChainFlowPayloadV1;
+      readonly eventFamily: "on_chain_flow";
+    };
 
 const SEVERITY_RANK: Record<string, number> = {
   CRITICAL: 1,
@@ -29,11 +37,23 @@ interface IdentityKey {
 }
 
 function deriveIdentityKey(row: NormalizedObservationRow): IdentityKey | null {
-  const payload = row.payload as ScheduledEventPayloadV1 | ProtocolIncidentPayloadV1;
+  const payload = row.payload as
+    | ScheduledEventPayloadV1
+    | ProtocolIncidentPayloadV1
+    | OnChainFlowPayloadV1;
   if (!payload || typeof payload !== "object") {
     return null;
   }
-  if (payload.eventType !== "scheduled_event" && payload.eventType !== "protocol_incident") {
+  const eventType = (payload as { eventType: string }).eventType;
+  if (
+    eventType !== "scheduled_event" &&
+    eventType !== "protocol_incident" &&
+    eventType !== "whale_transfer" &&
+    eventType !== "whale_swap" &&
+    eventType !== "stablecoin_flow" &&
+    eventType !== "dex_net_flow" &&
+    eventType !== "cex_flow_proxy"
+  ) {
     return null;
   }
   return {
@@ -56,6 +76,20 @@ function isProtocolIncidentPayload(payload: unknown): payload is ProtocolInciden
     typeof payload === "object" &&
     payload !== null &&
     (payload as ProtocolIncidentPayloadV1).eventType === "protocol_incident"
+  );
+}
+
+function isOnChainFlowPayload(payload: unknown): payload is OnChainFlowPayloadV1 {
+  if (typeof payload !== "object" || payload === null) {
+    return false;
+  }
+  const eventType = (payload as OnChainFlowPayloadV1).eventType;
+  return (
+    eventType === "whale_transfer" ||
+    eventType === "whale_swap" ||
+    eventType === "stablecoin_flow" ||
+    eventType === "dex_net_flow" ||
+    eventType === "cex_flow_proxy"
   );
 }
 
@@ -209,9 +243,11 @@ export function selectCurrentContextEvents(
   for (const row of limited) {
     const payload = row.payload;
     if (isScheduledEventPayload(payload)) {
-      result.push({ row, payload });
+      result.push({ row, payload, eventFamily: "scheduled_event" });
     } else if (isProtocolIncidentPayload(payload)) {
-      result.push({ row, payload });
+      result.push({ row, payload, eventFamily: "protocol_incident" });
+    } else if (isOnChainFlowPayload(payload)) {
+      result.push({ row, payload, eventFamily: "on_chain_flow" });
     }
   }
 

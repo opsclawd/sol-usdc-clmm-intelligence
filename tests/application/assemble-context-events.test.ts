@@ -576,7 +576,7 @@ describe("assembleEvidenceBundle with contextual events", () => {
 
       expect(normalizedRepo.lastListCandidatesQuery).not.toBeNull();
       const query = normalizedRepo.lastListCandidatesQuery!;
-      expect(query.sourceKinds).toHaveLength(2);
+      expect(query.sourceKinds).toHaveLength(7);
       expect(query.sourceKinds).toContainEqual({
         source: "macro-calendar-api",
         observationKind: "scheduled_event"
@@ -584,6 +584,26 @@ describe("assembleEvidenceBundle with contextual events", () => {
       expect(query.sourceKinds).toContainEqual({
         source: "solana-status-api",
         observationKind: "protocol_incident"
+      });
+      expect(query.sourceKinds).toContainEqual({
+        source: "helius-api",
+        observationKind: "whale_transfer"
+      });
+      expect(query.sourceKinds).toContainEqual({
+        source: "helius-api",
+        observationKind: "whale_swap"
+      });
+      expect(query.sourceKinds).toContainEqual({
+        source: "helius-api",
+        observationKind: "stablecoin_flow"
+      });
+      expect(query.sourceKinds).toContainEqual({
+        source: "helius-api",
+        observationKind: "cex_flow_proxy"
+      });
+      expect(query.sourceKinds).toContainEqual({
+        source: "birdeye-api",
+        observationKind: "dex_net_flow"
       });
     });
 

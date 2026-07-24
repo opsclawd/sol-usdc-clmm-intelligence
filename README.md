@@ -330,7 +330,7 @@ The evidence bundle contract is pinned at a specific schema version with verifie
 
 - Schema file: `schemas/regime-engine/evidence-bundle.v1/schema.json`
 - Provenance manifest: `schemas/regime-engine/evidence-bundle.v1/provenance.json`
-- Schema SHA-256: `0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17`
+- Schema SHA-256: `74b5c974bd945f63c4f5d8948a8040542b2f89d6d697a4008543be1a89ba33af`
 
 The pinned contract (`createEvidenceBundleContract()`) verifies all asset hashes before performing validation. If any asset hash mismatches, validation aborts with `ASSET_HASH_MISMATCH`.
 

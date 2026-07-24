@@ -1,0 +1,11 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P2",
+      "summary": "WhaleSwapPayloadV1 and WhaleTransferPayloadV1 incorrectly include the `stablecoinOperation` property, which is semantically incorrect for a swap and redundant for a transfer.",
+      "file": "src/contracts/on-chain-flow.ts",
+      "suggested_fix": "Remove the `stablecoinOperation` property from the `WhaleSwapPayloadV1` and `WhaleTransferPayloadV1` types, and update the corresponding test payloads in `tests/contracts/on-chain-flow.test.ts` to remove this property."
+    }
+  ]
+}

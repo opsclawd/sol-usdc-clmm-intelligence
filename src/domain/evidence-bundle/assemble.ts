@@ -3,7 +3,8 @@ import type {
   DeterministicFeature,
   SourceReference,
   ContextualEvidence,
-  EventClaim
+  EventClaim,
+  FlowClaim
 } from "../../contracts/generated/evidence-bundle-v1.js";
 import type { SelectedFeatureSlot } from "./select.js";
 import type { EvidenceBundleQuality } from "./quality.js";
@@ -15,6 +16,7 @@ import type {
   ScheduledEventPayloadV1,
   ProtocolIncidentPayloadV1
 } from "../../contracts/context-events.js";
+import type { OnChainFlowPayloadV1 } from "../../contracts/on-chain-flow.js";
 
 export const EVIDENCE_BUNDLE_ASSEMBLE_VERSION = "mvp-evidence-bundle-assemble/v1";
 
@@ -223,45 +225,88 @@ function buildDeterministicFeature(
 function buildContextualEvidence(
   contextualEvents: readonly SelectedContextEvent[]
 ): ContextualEvidence {
-  const events: EventClaim[] = contextualEvents.map((selectedEvent): EventClaim => {
-    const { row, payload } = selectedEvent;
-    const typedPayload = payload as ScheduledEventPayloadV1 | ProtocolIncidentPayloadV1;
+  const events: EventClaim[] = [];
+  const flows: FlowClaim[] = [];
 
-    let kind: "scheduled_event" | "protocol_incident" | "network_incident";
-    if (typedPayload.eventType === "scheduled_event") {
-      kind = "scheduled_event";
-    } else if (typedPayload.eventType === "protocol_incident") {
-      kind = "protocol_incident";
+  for (const selectedEvent of contextualEvents) {
+    const { row, payload, eventFamily } = selectedEvent;
+
+    if (eventFamily === "on_chain_flow") {
+      const flowPayload = payload as OnChainFlowPayloadV1;
+      const onChainFlowKind = flowPayload.eventType as
+        | "whale_transfer"
+        | "whale_swap"
+        | "stablecoin_flow"
+        | "dex_net_flow"
+        | "cex_flow_proxy";
+
+      let direction: "bullish" | "bearish" | "neutral" | "mixed" | "unknown" = "unknown";
+      if (flowPayload.direction === "inbound") {
+        direction = "bullish";
+      } else if (flowPayload.direction === "outbound") {
+        direction = "bearish";
+      }
+
+      const claim = `${onChainFlowKind}: ${flowPayload.amountUsdc} USDC ${flowPayload.direction} for ${flowPayload.venue}`;
+
+      flows.push({
+        evidenceId:
+          `normalized-${row.id}` as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
+        kind: onChainFlowKind,
+        claim,
+        direction,
+        confidenceBps: Math.round(row.confidence.compositeScore * 10000),
+        observedAt: String(
+          flowPayload.observedAtUnixMs
+        ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
+        expiresAt: String(
+          flowPayload.observedAtUnixMs + 900000
+        ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
+        sourceReferenceIds: [`raw-${row.rawObservationId}`] as [
+          import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
+          ...import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
+        ],
+        provenanceMethod: "collected" as const
+      });
     } else {
-      kind = "network_incident";
+      const typedPayload = payload as ScheduledEventPayloadV1 | ProtocolIncidentPayloadV1;
+
+      let kind: "scheduled_event" | "protocol_incident" | "network_incident";
+      if (typedPayload.eventType === "scheduled_event") {
+        kind = "scheduled_event";
+      } else if (typedPayload.eventType === "protocol_incident") {
+        kind = "protocol_incident";
+      } else {
+        kind = "network_incident";
+      }
+
+      const claim = `${typedPayload.status}: ${typedPayload.title} — ${typedPayload.description}`;
+
+      events.push({
+        evidenceId:
+          `normalized-${row.id}` as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
+        kind,
+        claim,
+        direction: "unknown" as const,
+        confidenceBps: Math.round(row.confidence.compositeScore * 10000),
+        observedAt: String(
+          typedPayload.asOfUnixMs
+        ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
+        expiresAt: String(
+          typedPayload.expiresAtUnixMs
+        ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
+        sourceReferenceIds: [`raw-${row.rawObservationId}`] as [
+          import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
+          ...import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
+        ],
+        provenanceMethod: "collected" as const
+      });
     }
-
-    const claim = `${typedPayload.status}: ${typedPayload.title} — ${typedPayload.description}`;
-
-    return {
-      evidenceId:
-        `normalized-${row.id}` as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
-      kind,
-      claim,
-      direction: "unknown" as const,
-      confidenceBps: Math.round(row.confidence.compositeScore * 10000),
-      observedAt: String(
-        typedPayload.asOfUnixMs
-      ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
-      expiresAt: String(
-        typedPayload.expiresAtUnixMs
-      ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
-      sourceReferenceIds: [`raw-${row.rawObservationId}`] as [
-        import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
-        ...import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
-      ],
-      provenanceMethod: "collected" as const
-    };
-  });
+  }
 
   return {
     supportResistance: [],
-    flows: [],
+    flows,
     derivatives: [],
     events,
     newsRegulatory: []

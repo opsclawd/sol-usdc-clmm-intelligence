@@ -1,0 +1,11 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P2",
+      "summary": "sortEventsByIdentity and validation error logging ignore timestampUnixMs, causing non-deterministic processing order for birdeye_net_flow events and 'unknown' event IDs on validation failures.",
+      "file": "src/application/collect-on-chain-flow.ts",
+      "suggested_fix": "In sortEventsByIdentity, extract timestampUnixMs (e.g. `const aTime = (a as { timestampUnixMs?: number }).timestampUnixMs`) and include it in the sort key (`aId ?? aHash ?? aTime ?? \"\"`). In the validation catch block, also fall back to `(event as { timestampUnixMs?: number }).timestampUnixMs` before returning 'unknown'."
+    }
+  ]
+}

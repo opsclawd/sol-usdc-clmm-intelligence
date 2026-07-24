@@ -1,0 +1,11 @@
+{
+  "result": "fail",
+  "findings": [
+    {
+      "severity": "P2",
+      "summary": "WhaleTransferPayloadV1 and WhaleSwapPayloadV1 incorrectly include the `stablecoinOperation` field, which is specific to StablecoinFlowPayloadV1.",
+      "file": "src/contracts/on-chain-flow.ts",
+      "suggested_fix": "Remove the `stablecoinOperation` field from `WhaleTransferPayloadV1` and `WhaleSwapPayloadV1` (and their corresponding tests in tests/contracts/on-chain-flow.test.ts)."
+    }
+  ]
+}

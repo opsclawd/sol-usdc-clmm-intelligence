@@ -8,12 +8,12 @@
     {
       "sourcePath": "contracts/evidence-bundle/v1/evidence-bundle.schema.json",
       "localPath": "schema.json",
-      "sha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+      "sha256": "74b5c974bd945f63c4f5d8948a8040542b2f89d6d697a4008543be1a89ba33af"
     },
     {
       "sourcePath": "contracts/evidence-bundle/v1/hash-vectors.json",
       "localPath": "hash-vectors.json",
-      "sha256": "8fed9dea0d48906a3efeea1247a4cfced929db7bc2d9e1a4ef6a7761667e4ac6"
+      "sha256": "ab55c93dac26e4b8e412561099a79efa5fd7442226b5dc8a087ef3fbc297252b"
     },
     {
       "sourcePath": "contracts/evidence-bundle/v1/fixtures/valid/deterministic-only.json",
