@@ -225,7 +225,7 @@ describe("clusterNewsEvidence", () => {
         syndicationId: null,
         originatingReportId: "report-001",
         publisher: { publisherId: "pub-1", displayName: "Source A", tier: "primary" },
-        title: "Solana Price Now Trading at $100",
+        title: "Solana Price Update",
         factualSummary: "According to Source A, Solana is now trading at $100.",
         extractedClaims: ["Solana price is $100", "High trading volume reported"],
         sourceReferences: ["https://example.com/a"]
@@ -237,7 +237,7 @@ describe("clusterNewsEvidence", () => {
         syndicationId: null,
         originatingReportId: "report-002",
         publisher: { publisherId: "pub-2", displayName: "Source B", tier: "primary" },
-        title: "Solana Price Now Trading at $95",
+        title: "Solana Price Update",
         factualSummary: "According to Source B, Solana is now trading at $95.",
         extractedClaims: ["Solana price is $95", "High trading volume reported"],
         sourceReferences: ["https://example.com/b"]

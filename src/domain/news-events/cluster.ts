@@ -74,15 +74,25 @@ function normalizeText(text: string): string[] {
 
 function extractNumbers(text: string): string[] {
   const matches = text.match(/\$?\d+\.?\d*/g);
-  return matches ? matches.sort() : [];
+  return matches ? Array.from(matches) : [];
+}
+
+function normalizeForStructureComparison(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s.$]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\$?\d+\.?\d*/g, "#");
 }
 
 function claimsHaveSameStructureButDifferentNumbers(textA: string, textB: string): boolean {
   const numsA = extractNumbers(textA);
   const numsB = extractNumbers(textB);
+  if (numsA.length === 0 || numsB.length === 0) return false;
   if (numsA.length !== numsB.length) return false;
-  const normalizedA = textA.replace(/\$?\d+\.?\d*/g, "#");
-  const normalizedB = textB.replace(/\$?\d+\.?\d*/g, "#");
+  const normalizedA = normalizeForStructureComparison(textA);
+  const normalizedB = normalizeForStructureComparison(textB);
   if (normalizedA !== normalizedB) return false;
   for (let i = 0; i < numsA.length; i++) {
     if (numsA[i] !== numsB[i]) return true;
@@ -111,60 +121,51 @@ function computeJaccardIndex(tokensA: string[], tokensB: string[]): number {
   return union === 0 ? 0 : intersection / union;
 }
 
-function computeScopeTokens(
-  affectedAssets: readonly string[],
-  affectedProtocols: readonly string[],
-  affectedJurisdictions: readonly string[]
-): string[] {
-  return [...affectedAssets, ...affectedProtocols, ...affectedJurisdictions]
-    .map((s) => s.toLowerCase())
-    .sort();
+function hasScopeOverlap(payloadA: NewsEvidencePayload, payloadB: NewsEvidencePayload): boolean {
+  const scopeA = new Set(
+    [...payloadA.affectedAssets, ...payloadA.affectedProtocols].map((s) => s.toLowerCase())
+  );
+  const scopeB = new Set(
+    [...payloadB.affectedAssets, ...payloadB.affectedProtocols].map((s) => s.toLowerCase())
+  );
+  for (const value of scopeA) {
+    if (scopeB.has(value)) return true;
+  }
+  return false;
 }
 
-function computeTimeProximity(asOfA: number, asOfB: number): number {
-  const diff = Math.abs(asOfA - asOfB);
-  if (diff === 0) return 1;
-  if (diff >= TIME_WINDOW_MS) return 0;
-  return 1 - diff / TIME_WINDOW_MS;
+function isWithinTimeWindow(payloadA: NewsEvidencePayload, payloadB: NewsEvidencePayload): boolean {
+  const diff = Math.abs(payloadA.asOfUnixMs - payloadB.asOfUnixMs);
+  return diff < TIME_WINDOW_MS;
 }
 
-function computeContentSimilarity(
-  payloadA: NewsEvidencePayload,
-  payloadB: NewsEvidencePayload
-): number {
-  const titleTokensA = normalizeText(payloadA.title);
-  const titleTokensB = normalizeText(payloadB.title);
-  const claimsTokensA = payloadA.extractedClaims.flatMap(normalizeText);
-  const claimsTokensB = payloadB.extractedClaims.flatMap(normalizeText);
+function computeTitleTopicTokens(payload: NewsEvidencePayload): string[] {
+  const titleTokens = normalizeText(payload.title);
+  const topicTokens = payload.topicTags.map((t) => t.toLowerCase());
+  return [...new Set([...titleTokens, ...topicTokens])];
+}
 
-  const titleJaccard = computeJaccardIndex(titleTokensA, titleTokensB);
-  const claimsJaccard = computeJaccardIndex(claimsTokensA, claimsTokensB);
+function isNearDuplicate(payloadA: NewsEvidencePayload, payloadB: NewsEvidencePayload): boolean {
+  if (payloadA.evidenceKind !== payloadB.evidenceKind) return false;
+  if (!isWithinTimeWindow(payloadA, payloadB)) return false;
+  if (!hasScopeOverlap(payloadA, payloadB)) return false;
 
-  const scopeA = computeScopeTokens(
-    payloadA.affectedAssets,
-    payloadA.affectedProtocols,
-    payloadA.affectedJurisdictions
-  );
-  const scopeB = computeScopeTokens(
-    payloadB.affectedAssets,
-    payloadB.affectedProtocols,
-    payloadB.affectedJurisdictions
-  );
-  const scopeJaccard = computeJaccardIndex(scopeA, scopeB);
+  const tokensA = computeTitleTopicTokens(payloadA);
+  const tokensB = computeTitleTopicTokens(payloadB);
+  return computeJaccardIndex(tokensA, tokensB) >= JACCARD_THRESHOLD;
+}
 
-  const timeProximity = computeTimeProximity(payloadA.asOfUnixMs, payloadB.asOfUnixMs);
-
-  return titleJaccard * 0.2 + claimsJaccard * 0.3 + scopeJaccard * 0.15 + timeProximity * 0.35;
+function representativeTimestamp(payload: NewsEvidencePayload): number {
+  return payload.publishedAtUnixMs ?? payload.asOfUnixMs;
 }
 
 function deriveRepresentativeTuple(payload: NewsEvidencePayload): string {
-  const titleTokens = normalizeText(payload.title);
-  const scopeTokens = computeScopeTokens(
-    payload.affectedAssets,
-    payload.affectedProtocols,
-    payload.affectedJurisdictions
-  );
-  return [titleTokens.join(" "), scopeTokens.join("|"), payload.asOfUnixMs.toString()].join("::");
+  return [
+    representativeTimestamp(payload).toString(),
+    payload.publisher.publisherId,
+    payload.articleId,
+    payload.sourceVersionId
+  ].join("::");
 }
 
 async function deriveClusterId(representative: NewsEvidencePayload): Promise<string> {
@@ -174,9 +175,17 @@ async function deriveClusterId(representative: NewsEvidencePayload): Promise<str
 
 function sortByRepresentative(payloads: NewsEvidencePayload[]): NewsEvidencePayload[] {
   return [...payloads].sort((a, b) => {
-    const tupleA = deriveRepresentativeTuple(a);
-    const tupleB = deriveRepresentativeTuple(b);
-    return tupleA.localeCompare(tupleB);
+    const tsA = representativeTimestamp(a);
+    const tsB = representativeTimestamp(b);
+    if (tsA !== tsB) return tsA - tsB;
+
+    const publisherCompare = a.publisher.publisherId.localeCompare(b.publisher.publisherId);
+    if (publisherCompare !== 0) return publisherCompare;
+
+    const articleCompare = a.articleId.localeCompare(b.articleId);
+    if (articleCompare !== 0) return articleCompare;
+
+    return a.sourceVersionId.localeCompare(b.sourceVersionId);
   });
 }
 
@@ -296,10 +305,6 @@ function buildJaccardClusters(
 ): Map<string, string[]> {
   const clusters = new Map<string, string[]>();
   const assigned = new Set<string>();
-  const recordByKey = new Map<string, NewsEvidencePayload>();
-  for (const record of allRecords) {
-    recordByKey.set(getRecordKey(record), record);
-  }
 
   for (const record of allRecords) {
     const key = getRecordKey(record);
@@ -307,24 +312,19 @@ function buildJaccardClusters(
 
     const info = infoMap.get(key)!;
     if (info.correctionOf !== null) continue;
-    if (info.syndicationMatches.length > 0) continue;
 
     const clusterKeys = [key];
     assigned.add(key);
 
     for (const other of allRecords) {
       const otherKey = getRecordKey(other);
+      if (otherKey === key) continue;
       if (assigned.has(otherKey)) continue;
 
       const otherInfo = infoMap.get(otherKey)!;
-      if (record.publisher.publisherId === other.publisher.publisherId) {
-        continue;
-      }
       if (otherInfo.correctionOf !== null) continue;
-      if (otherInfo.syndicationMatches.length > 0) continue;
 
-      const similarity = computeContentSimilarity(record, other);
-      if (similarity >= JACCARD_THRESHOLD) {
+      if (isNearDuplicate(record, other)) {
         clusterKeys.push(otherKey);
         assigned.add(otherKey);
       }
@@ -407,13 +407,18 @@ function mergeAllClusters(
 }
 
 function isSyndicationCluster(infoMap: Map<string, RecordInfo>, keys: string[]): boolean {
+  let syndicationId: string | null = null;
   for (const k of keys) {
     const info = infoMap.get(k);
-    if (info && info.syndicationMatches.length > 0) {
-      return true;
+    const recordSyndicationId = info?.record.syndicationId ?? null;
+    if (recordSyndicationId === null) return false;
+    if (syndicationId === null) {
+      syndicationId = recordSyndicationId;
+    } else if (syndicationId !== recordSyndicationId) {
+      return false;
     }
   }
-  return false;
+  return syndicationId !== null;
 }
 
 async function resolveClusters(
@@ -443,7 +448,7 @@ async function resolveClusters(
     if (!representative) continue;
     const clusterIdHash = await deriveClusterId(representative);
 
-    const uniqueClaims = [...new Set(members.flatMap((p) => p.extractedClaims))];
+    const uniqueClaims = [...new Set(members.flatMap((p) => p.extractedClaims))].sort();
 
     const uniquePairs = new Set(
       members.map((p) => `${p.publisher.publisherId}::${p.originatingReportId}`)
