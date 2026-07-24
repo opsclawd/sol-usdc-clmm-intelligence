@@ -93,7 +93,7 @@ describe("HttpBirdeyeFlowSource", () => {
         netFlow: 20000000000,
         sourceReferences: ["https://birdeye.xyz/token/SOL"]
       });
-      expect((result.events[0] as Record<string, unknown>).unknownField).toBeUndefined();
+      expect((result.events[0] as unknown as Record<string, unknown>).unknownField).toBeUndefined();
     });
 
     it("rejects helius_transaction event kind as malformed", async () => {

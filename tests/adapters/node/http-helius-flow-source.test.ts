@@ -99,8 +99,10 @@ describe("HttpHeliusFlowSource", () => {
         nativeAmount: 1000000000,
         sourceReferences: ["https://helius.xyz/txn/txn_abc123"]
       });
-      expect((result.events[0] as Record<string, unknown>).unknownField).toBeUndefined();
-      expect((result.events[0] as Record<string, unknown>).inventedMotive).toBeUndefined();
+      expect((result.events[0] as unknown as Record<string, unknown>).unknownField).toBeUndefined();
+      expect(
+        (result.events[0] as unknown as Record<string, unknown>).inventedMotive
+      ).toBeUndefined();
     });
 
     it("rejects birdeye_net_flow event kind as malformed", async () => {
