@@ -11,6 +11,7 @@
     "collect:core": "tsx scripts/collectors/core-collection.ts",
     "collect:support-resistance": "tsx scripts/collectors/support-resistance.ts",
     "collect:context-events": "tsx scripts/collectors/context-events.ts",
+    "collect:news-evidence": "tsx scripts/collectors/news-evidence.ts",
     "derive:mvp": "tsx scripts/collectors/derive-mvp-features.ts",
     "assemble:bundle": "tsx scripts/collectors/assemble-evidence-bundle.ts",
     "publish:evidence": "tsx scripts/collectors/publish-evidence-bundle.ts",
