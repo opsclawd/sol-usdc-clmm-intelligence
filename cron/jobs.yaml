@@ -11,3 +11,6 @@ jobs:
   - name: context-events
     cron: "0 */4 * * *"
     messageFile: cron/routines/context-events.md
+  - name: news-evidence
+    cron: "0 */2 * * *"
+    messageFile: cron/routines/news-evidence.md

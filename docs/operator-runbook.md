@@ -755,6 +755,133 @@ Providers must declare non-empty `license` and `retention: "bounded"`. If a prov
 
 UNCONFIRMED incidents are correctly excluded from selection. Once the provider confirms the incident (e.g., via official post-mortem), a new normalized row with `status: ACTIVE` or `status: RESOLVED` will be created on the next collection run.
 
+## News Evidence Collection (`pnpm collect:news-evidence`)
+
+The `collect:news-evidence` command collects bounded factual extracts from two allowed news sources: `crypto-news-api` for ecosystem news and `regulatory-monitor-api` for regulatory risk. News evidence is lower-confidence contextual evidence that supplements core telemetry but never becomes execution authority.
+
+### Authority Boundary
+
+- **No trading recommendations**: This routine explicitly forbids headline-based trading recommendations. News evidence describes what happened; it does not indicate market direction or prescribe rebalancing.
+- **No LLM briefs**: Schema-constrained research brief generation is INT-BRIEFS (#12). This routine ends at persisted normalized observations.
+- **No policy synthesis**: Final PolicyInsight synthesis belongs to regime-engine.
+- **No full-text retention**: Only bounded factual extracts are stored (title, summary, claims, metadata). Full article bodies, copyrighted content, or paywalled material are not retained.
+- **Missing coverage not meaning no risk**: A source returning empty results or an unavailable source is a diagnostic outcome, not a "no risk" determination.
+
+### Two-Source Allowlist and Environment Variables
+
+Required environment variables:
+
+```bash
+# Comma-separated allowlist - must be exactly these two sources in this order
+NEWS_SOURCE_ALLOWLIST=crypto-news-api,regulatory-monitor-api
+
+# Crypto news API (ecosystem news)
+CRYPTO_NEWS_API_URL=https://api.example.com/news
+CRYPTO_NEWS_API_KEY=<optional-api-key>
+
+# Regulatory monitor API (regulatory risk)
+REGULATORY_MONITOR_API_URL=https://api.example.com/regulatory
+REGULATORY_MONITOR_API_KEY=<optional-api-key>
+```
+
+The allowlist is validated before any HTTP work begins. Duplicate entries, unknown source names, whitespace-only entries after trimming, and missing required URLs all cause collection to abort before external work.
+
+### Bounded Extract Limits and HTTPS/License/Robots/Terms Requirements
+
+Each article record carries `retentionMode: "bounded_factual_extract"` and contains:
+
+- Title, factual summary, extracted claims (max 20), topic tags
+- Publisher metadata (stable ID, display name, tier)
+- Source quality indicators (reliability score 0.0-1.0, completeness, confirmation status, paywall flag)
+- Immutable article identity (`articleId`) and version marker (`sourceVersionId`)
+- Correction reference (`correctsSourceVersionId`, null if not a correction)
+- Corroboration state (`unconfirmed`, `single_source`, `independently_corroborated`, `conflicting`)
+- Affected assets, protocols, and jurisdictions
+- Source references (HTTPS URLs only)
+
+**Compliance requirements:**
+
+- Provider must declare non-empty `license` string
+- `robotsCompliance: true` must be set (page was not scraped in violation of robots.txt)
+- `termsAccepted: true` must be set (content licensed for bounded retention)
+
+Missing or negative declarations cause collection to abort with `malformed` status.
+
+### Immutable Article/Version and Correction Semantics
+
+Each article has:
+
+- `articleId`: Stable provider-supplied article identity (never changes)
+- `sourceVersionId`: Immutable version marker for this specific content snapshot
+
+When an article is corrected:
+
+- A new record is created with `correctsSourceVersionId` pointing to the earlier version
+- The original version remains in the database as historical evidence
+- Corrections are new records, never mutations
+
+**Hard conflict**: If a provider reuses `sourceVersionId` for materially different content, this creates a hard conflict rather than an inferred correction. The pipeline fails closed to protect data integrity.
+
+### 24-Hour Ecosystem and 72-Hour Regulatory Freshness Caps
+
+| Evidence kind     | Freshness cap                              |
+| ----------------- | ------------------------------------------ |
+| `ecosystem_news`  | 24 hours (`retrievedAtUnixMs + 86400000`)  |
+| `regulatory_risk` | 72 hours (`retrievedAtUnixMs + 259200000`) |
+
+Stale articles (past `expiresAtUnixMs`) are excluded from selection but retained as historical evidence. Freshness is evaluated at collection time.
+
+### Syndication vs Independent Corroboration
+
+`corroborationState` distinguishes:
+
+- `unconfirmed`: Single source, unverified
+- `single_source`: Single source, verification status unknown
+- `independently_corroborated`: Multiple independent sources confirm the same facts
+- `conflicting`: Sources materially disagree on facts
+
+Syndicated content (same `syndicationId` across sources) is distinguished from independent reporting. Independent corroboration elevates confidence but does not create deterministic-evidence authority.
+
+### Conflict and Stale Behavior
+
+- **Hard conflict**: `sourceVersionId` collision with different content = fail closed
+- **Stale**: Past `expiresAtUnixMs` = excluded from selection, retained as historical
+- **Partial loop persistence**: Per-article persistence is not one transaction across a provider response. Valid earlier writes survive a later failure; source outcome becomes PARTIAL.
+
+### Command Exit Statuses
+
+| Status        | Exit Code | Meaning                                                         |
+| ------------- | --------- | --------------------------------------------------------------- |
+| `COMPLETE`    | 0         | All configured sources succeeded (or replayed identically)      |
+| `PARTIAL`     | 0         | At least one source succeeded; others failed or degraded        |
+| `UNAVAILABLE` | 1         | All sources unavailable (HTTP 429, 404, 5xx, timeouts)          |
+| `FAILED`      | 1         | Validation conflict, malformed payload, or zero usable evidence |
+
+### Troubleshooting
+
+#### Empty results from both sources
+
+Empty responses are valid (no recent ecosystem news or regulatory developments). Combined with a `degraded` status, this may indicate providers are filtering incorrectly. Verify `pair: "SOL/USDC"` and `network: "solana-mainnet"` are correct scope filters.
+
+#### License/retention validation failures
+
+Providers must declare non-empty `license` and `retention: "bounded"`, with `robotsCompliance: true` and `termsAccepted: true`. If a provider cannot supply these, the collector aborts. Contact the provider to update their API contract or use a compliant provider.
+
+#### Hard conflict on sourceVersionId reuse
+
+If a provider begins reusing `sourceVersionId` for changed content, collection will fail closed. Report this to the provider as a data quality issue. Do not modify collection logic to accept version collisions.
+
+#### All sources unavailable (UNAVAILABLE)
+
+Check:
+
+1. API endpoint status and rate limits
+2. Network connectivity
+3. Credentials correctness (if required)
+4. Diagnostic message for specifics
+
+A source outage is ambiguous: it may indicate genuine no-coverage or a service problem. The pipeline never fabricates a "clean" result to hide ambiguity.
+
 ## Publish-attempt persistence
 
 All SQL queries below are read-only. Do not manually mutate immutable publish-attempt audit rows.

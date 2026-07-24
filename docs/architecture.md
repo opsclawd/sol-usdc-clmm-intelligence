@@ -191,6 +191,38 @@ technical-analysis-api provider
 - Provider/run identity, side, timeframe, and thesis are part of equivalence identity for replay detection.
 - API credentials are redacted from diagnostics, logs, and persisted metadata.
 
+### News Evidence Collector (`crypto-news-api`, `regulatory-monitor-api`)
+
+The news evidence collector (`pnpm collect:news-evidence`) collects bounded factual extracts from two allowed news sources.
+
+**Source port**: `NewsSourcePort` in `src/ports/news-source.ts`
+**HTTP adapter**: `HttpNewsSource` in `src/adapters/node/http-news-source.ts`
+**Application use case**: `collectNewsEvidence` in `src/application/collect-news-evidence.ts`
+**Job**: `newsEvidenceJob` / `runNewsEvidenceJob` in `src/jobs/news-evidence-job.ts`
+**CLI script**: `scripts/collectors/news-evidence.ts`
+
+**Data flow**:
+
+```text
+crypto-news-api / regulatory-monitor-api provider
+         |
+         v (raw observation, append-only)
+  raw_observations
+         |
+         v (normalized, validated, bounded)
+  normalized_observations (ecosystem_news | regulatory_risk)
+```
+
+**Key invariants**:
+
+1. **Two-source allowlist**: Only `crypto-news-api` and `regulatory-monitor-api` are permitted. The allowlist is configured via `NEWS_SOURCE_ALLOWLIST` and validated before any HTTP work.
+2. **Bounded factual extract retention**: All articles carry `retentionMode: "bounded_factual_extract"` and a provider-supplied `license` string. Providers must supply stable `articleId` and `sourceVersionId` values, `robotsCompliance: true`, and `termsAccepted: true`. Missing or negative declarations cause collection to abort.
+3. **Immutable article/version identity**: Each article carries `articleId` (stable identity) and `sourceVersionId` (immutable version marker). A correction creates a new record with `correctsSourceVersionId` set, never a mutation. A provider reusing `sourceVersionId` for changed content creates a hard conflict, not an inferred correction.
+4. **Freshness caps**: Ecosystem news (`ecosystem_news`) has a 24-hour freshness window. Regulatory risk (`regulatory_risk`) has a 72-hour freshness window.
+5. **Syndication vs independent corroboration**: `corroborationState` distinguishes `unconfirmed`, `single_source`, `independently_corroborated`, and `conflicting`. Syndicated content shares `syndicationId` across sources. Independent corroboration elevates confidence but does not create deterministic authority.
+6. **Raw-first append-only lifecycle**: Raw observations are persisted before normalization. Per-article persistence is not one transaction across a provider response; valid earlier writes survive a later failure and the source outcome becomes PARTIAL.
+7. **Authority boundaries**: News evidence is lower-confidence contextual evidence. Missing coverage does not imply no risk. No full-text retention, LLM briefs, policy synthesis, or execution authority. The pipeline ends at persisted normalized observations.
+
 ## Deterministic Feature Derivation
 
 All seven canonical features are derived by code from normalized source observations. The derivation is deterministic: identical inputs produce bit-for-bit identical outputs.
