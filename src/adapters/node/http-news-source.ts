@@ -184,11 +184,11 @@ function acceptNewsSourceSnapshot(response: unknown, requestSource: string): New
 
     const r = record as Record<string, unknown>;
     const recordInput = {
+      ...r,
       source: obj.source,
       providerId: obj.providerId,
       providerRunId: obj.providerRunId,
-      retrievedAtUnixMs: obj.retrievedAtUnixMs,
-      ...r
+      retrievedAtUnixMs: obj.retrievedAtUnixMs
     };
 
     try {

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HttpClient } from "../../../src/ports/http.js";
 import { HttpRequestError } from "../../../src/ports/http.js";
-import type { NewsSourceError } from "../../../src/ports/news-source.js";
+import type { NewsSourceError, NewsSourcePort } from "../../../src/ports/news-source.js";
+import type { RetryControl } from "../../../src/ports/retry.js";
 
 function createMockHttpClient(behavior: {
   shouldTimeout?: boolean;
@@ -356,28 +357,132 @@ describe("HttpNewsSource", () => {
       }
     });
 
-    it("rejects records containing prohibited full-text fields", async () => {
+    it("ensures record-level envelope metadata fields cannot override snapshot envelope metadata", async () => {
       const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
 
-      const mockHttp = createMockHttpClient({
-        body: makeValidRawResponse("crypto-news-api", {
-          body: "Full article body content"
-        })
-      });
+      const rawResponse = {
+        source: "crypto-news-api",
+        providerId: "envelope-provider",
+        providerRunId: "envelope-run-123",
+        retrievedAtUnixMs: 1700000000000,
+        records: [
+          makeValidRawRecord({
+            source: "regulatory-monitor-api",
+            providerId: "malicious-record-provider",
+            providerRunId: "malicious-record-run",
+            retrievedAtUnixMs: 9999999999999
+          })
+        ]
+      };
 
+      const mockHttp = createMockHttpClient({ body: rawResponse });
       const source = new HttpNewsSource({
         http: mockHttp,
         url: "https://api.example.com/news"
       });
 
+      const result = await source.collect({
+        pair: "SOL/USDC",
+        source: "crypto-news-api",
+        fromUnixMs: 1699900000000,
+        toUnixMs: 1700000000000
+      });
+
+      expect(result.source).toBe("crypto-news-api");
+      expect(result.providerId).toBe("envelope-provider");
+      expect(result.providerRunId).toBe("envelope-run-123");
+      expect(result.retrievedAtUnixMs).toBe(1700000000000);
+
+      const record = result.records[0]!;
+      expect(record.source).toBe("crypto-news-api");
+      expect(record.providerId).toBe("envelope-provider");
+      expect(record.providerRunId).toBe("envelope-run-123");
+      expect(record.retrievedAtUnixMs).toBe(1700000000000);
+    });
+
+    it.each(["fullText", "body", "content", "html"])(
+      "rejects records containing prohibited field %s with malformed error",
+      async (prohibitedField) => {
+        const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
+
+        const mockHttp = createMockHttpClient({
+          body: makeValidRawResponse("crypto-news-api", {
+            [prohibitedField]: "Prohibited text content"
+          })
+        });
+
+        const source = new HttpNewsSource({
+          http: mockHttp,
+          url: "https://api.example.com/news"
+        });
+
+        try {
+          await source.collect({
+            pair: "SOL/USDC",
+            source: "crypto-news-api",
+            fromUnixMs: 1699900000000,
+            toUnixMs: 1700000000000
+          });
+          expect.fail("Should have thrown");
+        } catch (e) {
+          const error = e as NewsSourceError;
+          expect(error.kind).toBe("malformed");
+        }
+      }
+    );
+
+    it("rejects whitespace-only values for non-empty string fields and minimum array length checks", async () => {
+      const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
+
+      const whitespaceCases = [{ title: "   " }, { license: "   " }, { sourceReferences: ["   "] }];
+
+      for (const override of whitespaceCases) {
+        const mockHttp = createMockHttpClient({
+          body: makeValidRawResponse("crypto-news-api", override)
+        });
+
+        const source = new HttpNewsSource({
+          http: mockHttp,
+          url: "https://api.example.com/news"
+        });
+
+        try {
+          await source.collect({
+            pair: "SOL/USDC",
+            source: "crypto-news-api",
+            fromUnixMs: 1699900000000,
+            toUnixMs: 1700000000000
+          });
+          expect.fail(`Should have rejected whitespace override: ${JSON.stringify(override)}`);
+        } catch (e) {
+          const error = e as NewsSourceError;
+          expect(error.kind).toBe("malformed");
+        }
+      }
+    });
+
+    it("rejects regulatory-monitor-api record when affectedJurisdictions contains only whitespace strings", async () => {
+      const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
+
+      const mockHttp = createMockHttpClient({
+        body: makeValidRawResponse("regulatory-monitor-api", {
+          affectedJurisdictions: ["   ", " "]
+        })
+      });
+
+      const source = new HttpNewsSource({
+        http: mockHttp,
+        url: "https://api.example.com/regulatory"
+      });
+
       try {
         await source.collect({
           pair: "SOL/USDC",
-          source: "crypto-news-api",
+          source: "regulatory-monitor-api",
           fromUnixMs: 1699900000000,
           toUnixMs: 1700000000000
         });
-        expect.fail("Should have thrown");
+        expect.fail("Should have rejected whitespace-only affectedJurisdictions");
       } catch (e) {
         const error = e as NewsSourceError;
         expect(error.kind).toBe("malformed");
@@ -599,6 +704,31 @@ describe("HttpNewsSource", () => {
         expect(error.diagnostic).not.toContain("Bearer");
       }
     });
+
+    it("does not retry generic non-special 4xx (e.g. 400 Bad Request) and maps to network error", async () => {
+      const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
+
+      const mockHttp = createMockHttpClient({ httpStatus: 400 });
+      const source = new HttpNewsSource({
+        http: mockHttp,
+        url: "https://api.example.com/news",
+        maxAttempts: 2
+      });
+
+      try {
+        await source.collect({
+          pair: "SOL/USDC",
+          source: "crypto-news-api",
+          fromUnixMs: 1699900000000,
+          toUnixMs: 1700000000000
+        });
+        expect.fail("Should have thrown");
+      } catch (e) {
+        const error = e as NewsSourceError;
+        expect(error.kind).toBe("network");
+        expect(mockHttp.getJson).toHaveBeenCalledTimes(1);
+      }
+    });
   });
 
   describe("retry-loop and two-attempt ceiling", () => {
@@ -758,5 +888,97 @@ describe("HttpNewsSource", () => {
       expect(result.providerId).toBe("test-provider");
       expect(mockHttp.getJson).toHaveBeenCalledTimes(2);
     });
+
+    it("uses injected RetryControl to sleep with expected bounded backoff delay on retry", async () => {
+      const { HttpNewsSource } = await import("../../../src/adapters/node/http-news-source.js");
+
+      const mockHttp = createMockHttpClient({ networkError: true });
+      const mockRetryControl: RetryControl = {
+        sleep: vi.fn().mockResolvedValue(undefined),
+        jitterUnit: () => 0
+      };
+
+      const source = new HttpNewsSource({
+        http: mockHttp,
+        url: "https://api.example.com/news",
+        maxAttempts: 2,
+        retryControl: mockRetryControl
+      });
+
+      try {
+        await source.collect({
+          pair: "SOL/USDC",
+          source: "crypto-news-api",
+          fromUnixMs: 1699900000000,
+          toUnixMs: 1700000000000
+        });
+        expect.fail("Should have thrown");
+      } catch (e) {
+        const error = e as NewsSourceError;
+        expect(error.kind).toBe("network");
+        expect(mockRetryControl.sleep).toHaveBeenCalledTimes(1);
+        expect(mockRetryControl.sleep).toHaveBeenCalledWith(25);
+      }
+    });
+  });
+});
+
+describe("FakeNewsSource", () => {
+  it("returns configured canonical response on collect", async () => {
+    const { FakeNewsSource } = await import("../../fakes/fake-news-source.js");
+
+    const fake = new FakeNewsSource();
+    const expectedSnapshot = {
+      source: "crypto-news-api" as const,
+      providerId: "test-provider",
+      providerRunId: "run-1",
+      retrievedAtUnixMs: 1700000000000,
+      records: []
+    };
+
+    fake.setResponse(expectedSnapshot);
+
+    const request = {
+      pair: "SOL/USDC" as const,
+      source: "crypto-news-api" as const,
+      fromUnixMs: 1699900000000,
+      toUnixMs: 1700000000000
+    };
+
+    const actual = await fake.collect(request);
+    expect(actual).toEqual(expectedSnapshot);
+    expect(fake.calls).toHaveLength(1);
+    expect(fake.calls[0]!.request).toEqual(request);
+  });
+
+  it("throws configured NewsSourceError on collect when setError is called", async () => {
+    const { FakeNewsSource } = await import("../../fakes/fake-news-source.js");
+
+    const fake = new FakeNewsSource();
+    const expectedError: NewsSourceError = {
+      kind: "unavailable",
+      diagnostic: "Service down"
+    };
+
+    fake.setError(expectedError);
+
+    try {
+      await fake.collect({
+        pair: "SOL/USDC",
+        source: "crypto-news-api",
+        fromUnixMs: 1699900000000,
+        toUnixMs: 1700000000000
+      });
+      expect.fail("Should have thrown");
+    } catch (e) {
+      expect(e).toEqual(expectedError);
+    }
+  });
+
+  it("can be substituted anywhere NewsSourcePort is required", async () => {
+    const { FakeNewsSource } = await import("../../fakes/fake-news-source.js");
+
+    const fakePort: NewsSourcePort = new FakeNewsSource();
+    expect(fakePort.collect).toBeTypeOf("function");
   });
 });

@@ -30,7 +30,8 @@ const finiteInteger = () =>
     .refine(Number.isFinite, { message: "must be a finite number" })
     .refine(Number.isInteger, { message: "must be an integer" });
 
-const nonEmptyString = (message = "must be a non-empty string") => z.string().min(1, message);
+const nonEmptyString = (message = "must be a non-empty string") =>
+  z.string().trim().min(1, message);
 
 const publisherTierSchema = z.enum(["official", "primary", "secondary", "aggregator"]);
 
@@ -59,18 +60,26 @@ const newsSourceRecordInputSchema = z
     correctsSourceVersionId: z.string().nullable().optional(),
     title: nonEmptyString("title is required"),
     factualSummary: z.string(),
-    extractedClaims: z.array(z.string()).default([]),
-    topicTags: z.array(z.string()).default([]),
+    extractedClaims: z
+      .array(z.string().trim().min(1, "extracted claim cannot be empty"))
+      .default([]),
+    topicTags: z.array(z.string().trim().min(1, "topic tag cannot be empty")).default([]),
     publishedAtUnixMs: finiteInteger().nullable().optional(),
     sourceUpdatedAtUnixMs: finiteInteger().nullable().optional(),
     publisher: publisherSchema,
     sourceQuality: sourceQualitySchema,
     originatingReportId: nonEmptyString("originatingReportId is required"),
     syndicationId: z.string().nullable().optional(),
-    affectedAssets: z.array(z.string()).default([]),
-    affectedProtocols: z.array(z.string()).default([]),
-    affectedJurisdictions: z.array(z.string()).default([]),
-    sourceReferences: z.array(z.string()).min(1, "at least one source reference is required"),
+    affectedAssets: z.array(z.string().trim().min(1, "affected asset cannot be empty")).default([]),
+    affectedProtocols: z
+      .array(z.string().trim().min(1, "affected protocol cannot be empty"))
+      .default([]),
+    affectedJurisdictions: z
+      .array(z.string().trim().min(1, "affected jurisdiction cannot be empty"))
+      .default([]),
+    sourceReferences: z
+      .array(z.string().trim().min(1, "source reference cannot be empty"))
+      .min(1, "at least one source reference is required"),
     license: nonEmptyString("license is required"),
     retentionMode: z.literal("bounded_factual_extract", {
       errorMap: () => ({ message: "retentionMode must be bounded_factual_extract" })
@@ -80,10 +89,10 @@ const newsSourceRecordInputSchema = z
   })
   .passthrough()
   .superRefine((data, ctx) => {
-    if ("body" in data || "content" in data || "html" in data) {
+    if ("body" in data || "content" in data || "html" in data || "fullText" in data) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "prohibited long-form fields (body, content, html) are not allowed"
+        message: "prohibited long-form fields (body, content, html, fullText) are not allowed"
       });
     }
   })
