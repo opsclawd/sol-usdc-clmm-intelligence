@@ -1,6 +1,6 @@
 # Task Context: Task 3
 
-Title: Add the source port and both venue adapters
+Title: Add the LLM provider port and all implementations
 
 ## Workspace & Scope Constraints
 
@@ -10,122 +10,81 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-11
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-12
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-11
-Start Commit: d62ccad6f3f1f0812dc1d59b322256f63fbcf7ba
+Branch: ai/issue-12
+Start Commit: 9e740ad51c6cc14733d2261f4f854d90a3505ead
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/ports/perp-liquidation-source.ts`
-- Create: `src/adapters/node/http-binance-fapi-source.ts`
-- Create: `src/adapters/node/http-drift-source.ts`
-- Create: `tests/fakes/fake-perp-liquidation-source.ts`
+- Modify: `package.json`
+- Modify: `pnpm-lock.yaml`
+- Create: `src/ports/llm-provider.ts`
+- Modify: `src/ports/index.ts`
+- Create: `src/adapters/node/openai-llm-provider.ts`
+- Create: `tests/fakes/fake-llm-provider.ts`
 - Modify: `tests/fakes/index.ts`
-- Create: `tests/adapters/node/http-binance-fapi-source.test.ts`
-- Create: `tests/adapters/node/http-drift-source.test.ts`
+- Create: `tests/adapters/node/openai-llm-provider.test.ts`
 
-- [ ] **Step 1: Write failing port/adapter tests**
+This task intentionally keeps the new `LlmProvider.generateStructured` method, its production adapter, and test fake in one typecheck-safe change. `NodeRuntime` remains unchanged so existing collector runtime fixtures continue to typecheck; the brief CLI constructs the adapter from the runtime's existing HTTP/environment ports in Task 5.
 
-  Name and cover:
-  - `keeps venue response fields inside adapters and emits only canonical source facts`;
-  - `retries retryable source failures and never retries malformed responses`;
-  - `marks Binance liquidation coverage unavailable without calling a user-data endpoint`;
-  - `maps Drift liquidation precision only from configured documented precision`;
-  - malformed numeric strings, non-finite values, wrong market/symbol, HTTP 404/429/5xx, timeout, and secret-redacted diagnostics.
+- [ ] **Step 1: Add failing adapter tests**
 
-- [ ] **Step 2: Verify adapter tests fail**
+Test strict JSON-schema request construction, authorization redaction boundaries, configured endpoint/model/timeout, `zod-to-json-schema` conversion, successful metadata extraction, HTTP error rejection, absent output rejection, invalid JSON rejection, and Zod-invalid output rejection. The adapter must make one HTTP attempt; retry/failover is not introduced here.
 
-  Run: `pnpm vitest run tests/adapters/node/http-binance-fapi-source.test.ts tests/adapters/node/http-drift-source.test.ts`
+- [ ] **Step 2: Run the focused test and confirm missing port/adapter failures**
 
-  Expected: FAIL because the port and adapters do not exist.
+Run: `pnpm test tests/adapters/node/openai-llm-provider.test.ts`
 
-- [ ] **Step 3: Add the port and fake in the same task as every implementation**
+Expected: FAIL because `LlmProvider` and `OpenAiLlmProvider` do not exist.
 
-  Define a single method so the interface and all implementations compile together:
+- [ ] **Step 3: Add `zod-to-json-schema` and define the port**
 
-  ```ts
-  export interface PerpLiquidationSourceRequest {
-    readonly pair: "SOL/USDC";
-    readonly fromUnixMs: number;
-    readonly toUnixMs: number;
-  }
+Add the runtime dependency with `pnpm add zod-to-json-schema`. Define one request-object method:
 
-  export interface PerpLiquidationSourceSnapshot {
-    readonly source: "binance-fapi" | "drift-api";
-    readonly providerRunId: string;
-    readonly asOfUnixMs: number;
-    readonly coverage: Readonly<Record<PerpMetricKind, PerpMetricCoverage>>;
-    readonly facts: readonly PerpLiquidationSourceFact[];
-  }
+```ts
+generateStructured<T>(request: StructuredGenerationRequest<T>): Promise<StructuredGeneration<T>>
+```
 
-  export interface PerpLiquidationSourcePort {
-    collect(request: PerpLiquidationSourceRequest): Promise<PerpLiquidationSourceSnapshot>;
-  }
-  ```
+The request carries system prompt, bounded context, Zod schema, schema name, and timeout. The result carries validated output plus provider/model/model-version metadata. The port must not expose API keys or raw provider response bodies.
 
-  `PerpLiquidationSourceFact` is a discriminated union with venue-neutral field names and decimal strings. `PerpLiquidationSourceError` has `timeout | network | unavailable | malformed`.
+- [ ] **Step 4: Implement every provider implementation and runtime binding**
 
-- [ ] **Step 4: Implement Binance public market-data collection**
+Implement `OpenAiLlmProvider` over the existing `HttpClient.postJsonRaw`, using an OpenAI-compatible strict `json_schema` response format and `maxAttempts: 1`. Add `FakeLlmProvider` with queued resolve/reject outcomes and captured requests. Constructor options carry base URL, API key, model, optional model version, and no secret is exposed through results or errors.
 
-  Use only documented public market-data paths under a configurable base URL:
+- [ ] **Step 5: Pass focused checks and commit**
 
-  | Metric      | Binance path/behavior                                                        |
-  | ----------- | ---------------------------------------------------------------------------- |
-  | funding     | funding-rate history for the configured symbol                               |
-  | OI          | open-interest statistics, 5-minute period, enough samples to span four hours |
-  | basis       | mark/index price or documented basis response                                |
-  | leverage    | global or top-trader long/short ratio, with methodology recorded             |
-  | liquidation | no request; coverage is `unavailable` with a non-secret diagnostic           |
+Run: `pnpm test tests/adapters/node/openai-llm-provider.test.ts`
 
-  Fetch independent metric endpoints concurrently, preserving per-metric coverage rather than rejecting the entire snapshot when one fails. Use bounded exponential backoff with injected `RetryControl`; retry only timeout/network/429/5xx. Never include headers, keys, signed query strings, or full response bodies in facts or diagnostics.
+Expected: PASS.
 
-- [ ] **Step 5: Implement Drift public data collection**
+Run: `pnpm exec eslint src/ports/llm-provider.ts src/ports/index.ts src/adapters/node/openai-llm-provider.ts tests/fakes/fake-llm-provider.ts tests/fakes/index.ts tests/adapters/node/openai-llm-provider.test.ts --max-warnings 0`
 
-  Accept a configurable base URL, SOL-PERP market index, endpoint paths, and documented integer precisions. Poll funding history, market state (OI plus mark/oracle values), and historical liquidation records for the request window. Emit a leverage proxy only when the response supplies a documented market net-position ratio; otherwise mark that metric unavailable. Reject rather than infer an undocumented precision or liquidation notional.
+Expected: exit 0.
 
-- [ ] **Step 6: Run focused tests and lint**
-
-  Run: `pnpm vitest run tests/adapters/node/http-binance-fapi-source.test.ts tests/adapters/node/http-drift-source.test.ts`
-
-  Expected: PASS.
-
-  Run: `pnpm exec eslint src/ports/perp-liquidation-source.ts src/adapters/node/http-binance-fapi-source.ts src/adapters/node/http-drift-source.ts tests/fakes/fake-perp-liquidation-source.ts tests/fakes/index.ts tests/adapters/node/http-binance-fapi-source.test.ts tests/adapters/node/http-drift-source.test.ts`
-
-  Expected: exit 0.
-
-- [ ] **Step 7: Commit**
-
-  ```bash
-  git add src/ports/perp-liquidation-source.ts src/adapters/node/http-binance-fapi-source.ts src/adapters/node/http-drift-source.ts tests/fakes/fake-perp-liquidation-source.ts tests/fakes/index.ts tests/adapters/node/http-binance-fapi-source.test.ts tests/adapters/node/http-drift-source.test.ts
-  git commit -m "feat: add Binance and Drift perp source adapters"
-  ```
+```bash
+git add package.json pnpm-lock.yaml src/ports/llm-provider.ts src/ports/index.ts src/adapters/node/openai-llm-provider.ts tests/fakes/fake-llm-provider.ts tests/fakes/index.ts tests/adapters/node/openai-llm-provider.test.ts
+git commit -m "feat(briefs): add structured LLM provider adapter"
+```
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/ports/perp-liquidation-source.ts
-- src/adapters/node/http-binance-fapi-source.ts
-- src/adapters/node/http-drift-source.ts
-- tests/fakes/fake-perp-liquidation-source.ts
+- package.json
+- pnpm-lock.yaml
+- src/ports/llm-provider.ts
+- src/ports/index.ts
+- src/adapters/node/openai-llm-provider.ts
+- tests/fakes/fake-llm-provider.ts
 - tests/fakes/index.ts
-- tests/adapters/node/http-binance-fapi-source.test.ts
-- tests/adapters/node/http-drift-source.test.ts
+- tests/adapters/node/openai-llm-provider.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm vitest run tests/adapters/node/http-binance-fapi-source.test.ts tests/adapters/node/http-drift-source.test.ts
-pnpm exec eslint src/ports/perp-liquidation-source.ts src/adapters/node/http-binance-fapi-source.ts src/adapters/node/http-drift-source.ts tests/fakes/fake-perp-liquidation-source.ts tests/fakes/index.ts tests/adapters/node/http-binance-fapi-source.test.ts tests/adapters/node/http-drift-source.test.ts
+pnpm test tests/adapters/node/openai-llm-provider.test.ts
+pnpm exec eslint src/ports/llm-provider.ts src/ports/index.ts src/adapters/node/openai-llm-provider.ts tests/fakes/fake-llm-provider.ts tests/fakes/index.ts tests/adapters/node/openai-llm-provider.test.ts --max-warnings 0
 ```
-
-## Behavioral Invariants
-
-You MUST implement the following behavioral invariants as named tests first (TDD):
-
-- **venue response isolation**: Adapters translate venue payloads to canonical source facts so venue-specific fields never enter domain inputs. (Test: `keeps venue response fields inside adapters and emits only canonical source facts`)
-- **bounded retry classification**: Timeout, network, 429, and 5xx failures retry within the configured bound while malformed and other non-retryable failures stop immediately. (Test: `retries retryable source failures and never retries malformed responses`)
-- **Binance liquidation absence is explicit**: The Binance adapter never calls a user-data force-order endpoint and reports liquidation coverage unavailable rather than zero. (Test: `marks Binance liquidation coverage unavailable without calling a user-data endpoint`)
