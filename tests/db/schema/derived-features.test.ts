@@ -35,6 +35,8 @@ describe("derivedFeatures schema", () => {
     expect(columns).toContain("derivationKey");
     expect(columns).toContain("poolId");
     expect(columns).toContain("positionId");
+    expect(columns).toContain("warnings");
+    expect(columns).toContain("reasons");
   });
 });
 

@@ -278,13 +278,13 @@ All seven canonical features are derived by code from normalized source observat
 
 **Formulas:**
 
-- `range_location`: `(currentPrice - lowerPrice) / (upperPrice - lowerPrice) * 1_000_000`, clamped to `[0, 1_000_000]`
-- `distance_to_lower`: `(currentPrice - lowerPrice) / currentPrice * 10_000`
-- `distance_to_upper`: `(upperPrice - currentPrice) / currentPrice * 10_000`
-- `oracle_dex_divergence`: `|dexPrice - oraclePrice| / oraclePrice * 10_000` (Pyth-only oracle)
-- `oracle_confidence_width`: `oracleConfidence / oraclePrice * 10_000`
-- `realized_volatility_1h`: `sqrt(sum(log(price[i]/price[i-1])^2 for i=1..n)) * 10_000` — nonannualized, Pyth-only
-- `volume_liquidity_ratio_24h`: `volume24hUsdc / tvlUsdc * 1_000_000`
+- `range_location`: `(currentPrice - lowerPrice) / (upperPrice - lowerPrice) * 1_000_000`, clamped to `[0, 1_000_000]` (PPM)
+- `distance_to_lower`: `(currentPrice - lowerPrice) / currentPrice * 1_000_000` (PPM)
+- `distance_to_upper`: `(upperPrice - currentPrice) / currentPrice * 1_000_000` (PPM)
+- `oracle_dex_divergence`: `|dexPrice - oraclePrice| / oraclePrice * 10_000` (BPS)
+- `oracle_confidence_width`: `oracleConfidence / oraclePrice * 10_000` (BPS)
+- `realized_volatility_1h`: `sqrt(sum(log(price[i]/price[i-1])^2 for i=1..n)) * 10_000` (BPS) — nonannualized, Pyth-only
+- `volume_liquidity_ratio_24h`: `volume24hUsdc / tvlUsdc * 1_000_000` (PPM)
 
 **Volatility window:** Inclusive one-hour window (`VOLATILITY_WINDOW_MS = 3_600_000`). Minimum 10 samples required. Minimum span of 45 minutes required (`VOLATILITY_MIN_SPAN_MS = 2_700_000`). Maximum gap between consecutive samples is 10 minutes (`VOLATILITY_MAX_GAP_MS = 600_000`).
 

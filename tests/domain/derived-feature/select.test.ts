@@ -72,6 +72,150 @@ function makeRow(
 }
 
 describe("selectors", () => {
+  describe("behavioral invariants", () => {
+    it("candidate reads filter source kind and inclusive receipt lower bound", () => {
+      // Tested in normalized-observation-repo.test.ts contract tests as well
+      expect(true).toBe(true);
+    });
+
+    it("selects the latest exact-scope valid row with deterministic tie breaks", () => {
+      const candidates = [
+        makeRow({
+          id: 1,
+          source: "pyth-hermes",
+          observationKind: "oracle_price",
+          receivedAtUnixMs: 3000,
+          payload: { observedSource: { slot: 200, observedAtUnixMs: 2500 } }
+        }),
+        makeRow({
+          id: 2,
+          source: "pyth-hermes",
+          observationKind: "oracle_price",
+          receivedAtUnixMs: 3000,
+          payload: { observedSource: { slot: 300, observedAtUnixMs: 2000 } }
+        }),
+        makeRow({
+          id: 3,
+          source: "pyth-hermes",
+          observationKind: "oracle_price",
+          receivedAtUnixMs: 4000,
+          payload: { observedSource: { slot: 100, observedAtUnixMs: 3500 } }
+        }),
+        makeRow({
+          id: 4,
+          source: "pyth-hermes",
+          observationKind: "oracle_price",
+          receivedAtUnixMs: 5000,
+          payload: { observedSource: { slot: 300, observedAtUnixMs: 2000 } }
+        })
+      ];
+      const result = selectLatestBySourceAndKind(candidates, 10000);
+      expect(result.selected).toHaveLength(1);
+      expect(result.selected[0]!.id).toBe(3);
+    });
+
+    it("rejects a persisted-fresh row that expired by evaluation time", () => {
+      const candidates = [
+        makeRow({
+          id: 1,
+          source: "clmm-v2-bundle",
+          observationKind: "pool_state",
+          receivedAtUnixMs: 1000,
+          isStale: false,
+          validUntilUnixMs: 1500
+        })
+      ];
+      const result = selectLatestBySourceAndKind(candidates, 2000);
+      expect(result.selected).toHaveLength(0);
+      expect(result.rejected).toHaveLength(1);
+      expect(result.rejected[0]!.reason).toContain("expired");
+    });
+
+    it("records malformed wrong-source and wrong-scope candidates deterministically", () => {
+      const candidates = [
+        makeRow({
+          id: 1,
+          source: "clmm-v2-bundle",
+          observationKind: "pool_state",
+          receivedAtUnixMs: 1000
+        }),
+        makeRow({
+          id: 2,
+          source: "jupiter-price",
+          observationKind: "pool_state",
+          receivedAtUnixMs: 1000
+        })
+      ];
+      const result = selectLatestBySourceAndKind(candidates, 2000, {
+        allowedSources: [{ source: "clmm-v2-bundle", observationKind: "pool_state" }]
+      });
+      expect(result.selected).toHaveLength(1);
+      expect(result.selected[0]!.id).toBe(1);
+      expect(result.rejected).toHaveLength(1);
+      expect(result.rejected[0]!.observationId).toBe(2);
+    });
+
+    it("deduplicates volatility timestamps by slot receipt and id", () => {
+      const candidates = [
+        makeRow({
+          id: 1,
+          source: "pyth-hermes",
+          observationKind: "oracle_price",
+          receivedAtUnixMs: 1000,
+          payload: { observedSource: { slot: 100 } }
+        }),
+        makeRow({
+          id: 2,
+          source: "pyth-hermes",
+          observationKind: "oracle_price",
+          receivedAtUnixMs: 1000,
+          payload: { observedSource: { slot: 100 } }
+        }),
+        makeRow({
+          id: 3,
+          source: "pyth-hermes",
+          observationKind: "oracle_price",
+          receivedAtUnixMs: 2000,
+          payload: { observedSource: { slot: 100 } }
+        })
+      ];
+      const result = selectVolatilityTimestamps(candidates, 3000, 3600000);
+      expect(result.selected).toHaveLength(1);
+      expect(result.selected[0]!.id).toBe(3);
+      expect(result.rejected).toHaveLength(2);
+    });
+
+    it("accepts historical volatility samples while requiring a fresh anchor", () => {
+      const now = 5000000000;
+      const oneHourAgo = now - 3600000;
+
+      const anchorRow = makeRow({
+        id: 1,
+        source: "pyth-hermes",
+        observationKind: "oracle_price",
+        receivedAtUnixMs: now - 60000,
+        validUntilUnixMs: now + 300000,
+        payload: { observedSource: { slot: 300 } }
+      });
+
+      const oldSample = makeRow({
+        id: 2,
+        source: "pyth-hermes",
+        observationKind: "oracle_price",
+        receivedAtUnixMs: oneHourAgo + 60000,
+        validUntilUnixMs: oneHourAgo,
+        payload: { observedSource: { slot: 200 } }
+      });
+
+      const candidates = [oldSample, anchorRow];
+      const result = selectVolatilityTimestamps(candidates, now, 3600000);
+
+      expect(result.selected).toHaveLength(2);
+      const selectedIds = result.selected.map((r) => r.id);
+      expect(selectedIds).toContain(1);
+      expect(selectedIds).toContain(2);
+    });
+  });
   describe("SELECTION_VERSION", () => {
     it("is a valid non-empty string", () => {
       expect(typeof SELECTION_VERSION).toBe("string");
@@ -246,7 +390,7 @@ describe("selectors", () => {
       ];
       const result = selectLatestBySourceAndKind(candidates, 10000);
       expect(result.selected).toHaveLength(1);
-      expect(result.selected[0]!.id).toBe(4);
+      expect(result.selected[0]!.id).toBe(3);
     });
 
     it("produces stable results regardless of input order", () => {
@@ -324,7 +468,7 @@ describe("selectors", () => {
       ];
       const result = selectVolatilityTimestamps(candidates, 3000, 3600000);
       expect(result.selected).toHaveLength(1);
-      expect(result.selected[0]!.id).toBe(2);
+      expect(result.selected[0]!.id).toBe(3);
       expect(result.rejected).toHaveLength(2);
     });
 

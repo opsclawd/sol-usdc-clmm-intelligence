@@ -175,19 +175,29 @@ function buildLineage(
     }
 
     if (!rawRefMap.has(row.rawObservationId)) {
-      let payloadHash = `raw-hash-${row.rawObservationId}`;
-      const rawRef = row.provenance.rawObservationRefs.find(
-        (ref) => ref.id === row.rawObservationId
-      );
-      if (rawRef) {
-        payloadHash = rawRef.payloadHash;
-      }
       rawRefMap.set(row.rawObservationId, {
         refType: "raw_observation",
         id: row.rawObservationId,
         source: row.source,
-        payloadHash
+        payloadHash: `raw-hash-${row.rawObservationId}`
       });
+    }
+
+    if (row.provenance?.rawObservationRefs) {
+      for (const rawRef of row.provenance.rawObservationRefs) {
+        if (!rawRefMap.has(rawRef.id)) {
+          rawRefMap.set(rawRef.id, rawRef);
+        } else {
+          // If we previously added a synthetic placeholder with raw-hash-, update with the actual provenance ref if available
+          const existing = rawRefMap.get(rawRef.id)!;
+          if (
+            existing.payloadHash.startsWith("raw-hash-") &&
+            !rawRef.payloadHash.startsWith("raw-hash-")
+          ) {
+            rawRefMap.set(rawRef.id, rawRef);
+          }
+        }
+      }
     }
   }
 
@@ -244,13 +254,35 @@ function buildConfidence(
     }
   }
 
-  let rawComposite =
-    componentMinima.sourceReliability * effectiveWeights.sourceReliability +
-    componentMinima.dataCompleteness * effectiveWeights.dataCompleteness +
-    componentMinima.derivationConfidence * effectiveWeights.derivationConfidence;
+  const cappedComponents = {
+    sourceReliability: Math.min(
+      inputConfidence.components.sourceReliability,
+      componentMinima.sourceReliability
+    ),
+    dataCompleteness: Math.min(
+      inputConfidence.components.dataCompleteness,
+      componentMinima.dataCompleteness
+    ),
+    derivationConfidence: Math.min(
+      inputConfidence.components.derivationConfidence,
+      componentMinima.derivationConfidence
+    ),
+    llmConfidence:
+      inputConfidence.components.llmConfidence !== null
+        ? Math.min(
+            inputConfidence.components.llmConfidence,
+            componentMinima.llmConfidence ?? Infinity
+          )
+        : null
+  };
 
-  if (componentMinima.llmConfidence !== null && effectiveWeights.llmConfidence > 0) {
-    rawComposite += componentMinima.llmConfidence * effectiveWeights.llmConfidence;
+  let rawComposite =
+    cappedComponents.sourceReliability * effectiveWeights.sourceReliability +
+    cappedComponents.dataCompleteness * effectiveWeights.dataCompleteness +
+    cappedComponents.derivationConfidence * effectiveWeights.derivationConfidence;
+
+  if (cappedComponents.llmConfidence !== null && effectiveWeights.llmConfidence > 0) {
+    rawComposite += cappedComponents.llmConfidence * effectiveWeights.llmConfidence;
   } else {
     const nonZeroDenom =
       effectiveWeights.sourceReliability +
@@ -265,11 +297,13 @@ function buildConfidence(
     rawComposite = rawComposite * PARTIAL_DEGRADATION_FACTOR;
   }
 
+  rawComposite = Math.min(rawComposite, inputConfidence.compositeScore);
+
   const level: Confidence["level"] =
     rawComposite >= 0.7 ? "high" : rawComposite < 0.4 ? "low" : "medium";
 
   return {
-    components: { ...inputConfidence.components },
+    components: cappedComponents,
     compositeScore: rawComposite,
     level,
     weightingVersion: inputConfidence.weightingVersion,

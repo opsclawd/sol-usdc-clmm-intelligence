@@ -328,7 +328,7 @@ describe("deriveMvpFeatures", () => {
   });
 
   describe("validate before write", () => {
-    it("a programmer-invalid result throws and writes zero rows", async () => {
+    it("validates the complete tranche before the first insert", async () => {
       seedObservation(
         normalizedObservationRepo,
         "clmm-v2-bundle",

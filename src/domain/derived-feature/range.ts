@@ -204,7 +204,7 @@ export function calculateDistanceToLower(position: PositionStatePayloadV1): Feat
     return makeUnavailable(["numeric failure in distance-to-lower calculation"]);
   }
 
-  const scaledDistance = multiply(rationalDistance, { numerator: 10_000n, denominator: 1n });
+  const scaledDistance = multiply(rationalDistance, { numerator: 1_000_000n, denominator: 1n });
   const roundedDistance = roundToSafeInteger(scaledDistance);
   if (typeof roundedDistance === "string") {
     return makeUnavailable(["numeric overflow in distance-to-lower"]);
@@ -267,7 +267,7 @@ export function calculateDistanceToUpper(position: PositionStatePayloadV1): Feat
     return makeUnavailable(["numeric failure in distance-to-upper calculation"]);
   }
 
-  const scaledDistance = multiply(rationalDistance, { numerator: 10_000n, denominator: 1n });
+  const scaledDistance = multiply(rationalDistance, { numerator: 1_000_000n, denominator: 1n });
   const roundedDistance = roundToSafeInteger(scaledDistance);
   if (typeof roundedDistance === "string") {
     return makeUnavailable(["numeric overflow in distance-to-upper"]);

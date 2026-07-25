@@ -391,6 +391,54 @@ describe("NormalizedObservationRepo contract", () => {
   });
 
   describe("listCandidates", () => {
+    it("candidate reads filter source kind and inclusive receipt lower bound", async () => {
+      const repo = new FakeNormalizedObservationRepo();
+      await repo.insert({
+        rawObservationId: 1,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 150.0 },
+        payloadHash: "hash-cand-1",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 500
+      });
+      await repo.insert({
+        rawObservationId: 2,
+        source: "clmm-v2-bundle",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 151.0 },
+        payloadHash: "hash-cand-2",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 1000
+      });
+      await repo.insert({
+        rawObservationId: 3,
+        source: "jupiter-price",
+        observationKind: "pool_state",
+        signalClass: "deterministic",
+        evidenceFamily: "clmm_state",
+        payload: { price: 152.0 },
+        payloadHash: "hash-cand-3",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: 2000
+      });
+
+      const results = await repo.listCandidates({
+        sourceKinds: [{ source: "clmm-v2-bundle", observationKind: "pool_state" }],
+        receivedAtOrAfterUnixMs: 1000
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.receivedAtUnixMs).toBe(1000);
+    });
+
     it("returns empty array when no candidates match", async () => {
       const repo = new FakeNormalizedObservationRepo();
       const results = await repo.listCandidates({

@@ -97,6 +97,9 @@ describe("assembleDerivedFeature", () => {
       expect(result.result.confidence.compositeScore).toBeLessThanOrEqual(
         lowestInputComposite + 1e-9
       );
+      expect(result.result.confidence.components.sourceReliability).toBe(0.3);
+      expect(result.result.confidence.components.dataCompleteness).toBe(0.3);
+      expect(result.result.confidence.components.derivationConfidence).toBe(0.3);
     });
 
     it("applies partial factor and still caps at lowest input", async () => {
@@ -142,6 +145,9 @@ describe("assembleDerivedFeature", () => {
       expect(result.result.confidence.compositeScore).toBeLessThanOrEqual(
         lowestInputComposite + 1e-9
       );
+      expect(result.result.confidence.components.sourceReliability).toBe(0.6);
+      expect(result.result.confidence.components.dataCompleteness).toBe(0.6);
+      expect(result.result.confidence.components.derivationConfidence).toBe(0.6);
       expect(result.result.status).toBe("PARTIAL");
     });
   });
