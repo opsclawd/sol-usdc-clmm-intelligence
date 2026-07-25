@@ -58,16 +58,18 @@ Durable core telemetry collection requires the following credentials and environ
 - `JUPITER_API_KEY`: Optional Jupiter API Key for high-frequency or production rate-limit environments.
 - `ORCA_API_BASE`: Base URL for Orca's public statistics API (defaults to `https://api.orca.so/v2/solana`).
 - `ORCA_SOL_USDC_WHIRLPOOL` / `WHIRLPOOL_ADDRESS`: The Orca whirlpool pool address (e.g. `HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw`).
+- `SOLANA_RPC_URL`: Base URL for Solana RPC endpoint (defaults to `https://api.mainnet-beta.solana.com`).
+- `SOLANA_RPC_API_KEY`: Optional API Key or auth query parameter for hosted Solana RPC endpoints.
 
-Ensure no actual credentials, keys, or authorization tokens are logged. The CLI automatically redacts headers and keys.
+Ensure no actual credentials, keys, or authorization tokens are logged. The CLI automatically redacts headers, URL credentials, and API keys. Note that `SOLANA_RPC_URL` measures only the configured RPC endpoint's health and slot rather than global Solana consensus.
 
 ## Core Collector Exit Behavior
 
 When running `pnpm collect:core` or `runCoreCollectionJob` via scheduling:
 
-1. **Complete Success (COMPLETE, Exit Code: 0)**: All core sources (CLMM, Pyth, Jupiter, Orca) collected, normalized, and persisted successfully (or replayed identically).
-2. **Partial Success (PARTIAL, Exit Code: 0)**: At least one source succeeded yielding a usable observation, but some other sources failed or degraded. Structured warnings are output, but no rollback of already committed sibling evidence occurs.
-3. **Unavailable (UNAVAILABLE, Exit Code: 1)**: All sources are unavailable (e.g. rate-limiting HTTP 429s, API timeouts, or service outages).
+1. **Complete Success (COMPLETE, Exit Code: 0)**: All five core sources (CLMM, Pyth, Jupiter, Orca, Solana RPC) collected, normalized, and persisted successfully (or replayed identically). Requires five fresh usable outcomes.
+2. **Partial Success (PARTIAL, Exit Code: 0)**: At least one source succeeded yielding a usable observation, but some other sources failed or degraded (e.g. a Solana-only outage producing `PARTIAL` when the other four are usable). Structured warnings are output, but no rollback of already committed sibling evidence occurs.
+3. **Unavailable (UNAVAILABLE, Exit Code: 1)**: All five sources are unavailable (e.g. rate-limiting HTTP 429s, API timeouts, or service outages).
 4. **Failure (FAILED, Exit Code: 1)**: Total failure with zero usable evidence, or any database uniqueness/identity conflict (replay conflict). The pipeline fails closed to protect data integrity.
 
 ### 429/Outage Troubleshooting
@@ -75,6 +77,14 @@ When running `pnpm collect:core` or `runCoreCollectionJob` via scheduling:
 1. Check endpoint rate-limits (unauthenticated endpoints like Jupiter and Orca may return 429). Configure `JUPITER_API_KEY` or wait for the rate limit window to reset.
 2. Confirm Pyth Hermes endpoint status and check if subscription credentials/API key are required.
 3. Check `clmm-v2` status and verify BFF API keys are correct.
+4. **Solana RPC Troubleshooting**:
+   - **Timeout / HTTP 408 / Network Error**: Verify connectivity to `SOLANA_RPC_URL`. Ensure timeout policy (5,000 ms, 2 max attempts) is respected.
+   - **HTTP 429 (Too Many Requests)**: Rate-limiting encountered. Configure `SOLANA_RPC_API_KEY` or switch to an authenticated RPC endpoint URL.
+   - **HTTP 5xx (Server Error)**: RPC node service disruption. The leaf-local retry will attempt twice before failing open into `PARTIAL` status (if other core sources succeed).
+   - **Malformed JSON-RPC Batch**: Ensure the endpoint supports standard JSON-RPC 2.0 batching for `getHealth` and `getSlot`. Raw 2xx responses are persisted before normalization; malformed batches map to unparseable warnings.
+   - **JSON-RPC Error Code -32005 (Node Unhealthy / Slot Unavailable)**: The node returned an internal RPC node error or health warning. The leaf produces a degraded observation with `node_behind` or `slot_unavailable` warning flags.
+
+Note: Contextual protocol incidents from `solana-status-api` remain documented separately under research evidence so operators do not confuse qualitative protocol incidents with live RPC node health probes.
 
 ## Support Resistance Collector Exit Behavior
 

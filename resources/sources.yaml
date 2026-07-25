@@ -73,6 +73,20 @@ sources:
       - 24-hour rolling statistics window for volume and fees.
       - Dependent on Orca public API availability.
 
+  - name: solana-rpc
+    priority: high
+    type: authenticated-api
+    env: SOLANA_RPC_URL
+    apiKeyEnv: SOLANA_RPC_API_KEY
+    purpose:
+      - network_status
+    policy:
+      timeoutMs: 5000
+      maxAttempts: 2
+    limitations:
+      - Measures the health and slot of the configured endpoint rather than global consensus.
+      - Requires standard JSON-RPC 2.0 endpoint supporting getHealth and getSlot batch calls.
+
   - name: defillama-solana
     priority: high
     type: public-api
@@ -101,7 +115,7 @@ sources:
       - outage_or_degradation_risk
       - ecosystem_catalysts
     limitations:
-      - Deferred Gap: Solana network-health/status ingestion is identified as a backlog gap after the deterministic vertical slice. It is not part of the core source count and is deferred for future implementation.
+      - Provides human/qualitative context on upgrades and incidents, separate from live deterministic RPC health probes.
 
   - name: helius-research
     priority: medium
