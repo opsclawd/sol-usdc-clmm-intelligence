@@ -17,8 +17,7 @@ Produce a strict JSON object conforming to the required schema with the followin
 - regimeAssessmentReasoning: Analytical reasoning explaining the regime support assessment.
 - confidenceScore: A numeric score between 0.0 and 1.0 representing confidence in this analysis.
 - confidenceReasoning: Reasoning for the confidence score based on input completeness and reliability.
-- sourceEvidenceIds: Array of evidence item IDs referenced in the brief.
-- sourceRefs: Provenance references mapping to source observations/features.
+- sourceEvidenceIds: Array of evidence item IDs referenced in the brief. Leave empty only if no evidence could be used.
 - unsupportedOrMissingInputs: Array of warning strings for missing, degraded, or unsupported evidence inputs.
 - degradationReason: (Optional) Reason code if the brief is degraded ("missing_inputs", "stale_data", "low_confidence_inputs", "conflicting_evidence", "model_error", "schema_validation_failed").
 `;

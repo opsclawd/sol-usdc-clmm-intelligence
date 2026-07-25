@@ -20,7 +20,6 @@ export interface LlmResearchBriefOutput {
   readonly confidenceScore: number;
   readonly confidenceReasoning: string;
   readonly sourceEvidenceIds: readonly string[];
-  readonly sourceRefs: readonly ProvenanceRef[];
   readonly unsupportedOrMissingInputs: readonly string[];
   readonly degradationReason?: ResearchBriefDegradationReason;
 }
@@ -46,6 +45,7 @@ export interface PersistedResearchBrief {
   readonly pair: "SOL/USDC";
   readonly generationStatus: ResearchBriefGenerationStatus;
   readonly llmOutput: LlmResearchBriefOutput;
+  readonly sourceRefs: readonly ProvenanceRef[];
   readonly providerMetadata: ResearchBriefProviderMetadata;
   readonly sourceBundleRef: ResearchBriefSourceBundleRef;
   readonly inputContextHash: string;

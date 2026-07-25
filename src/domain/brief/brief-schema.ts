@@ -56,8 +56,7 @@ export const LlmResearchBriefOutputSchema = z
     regimeAssessmentReasoning: z.string().min(1).max(5000).superRefine(validateNoPolicyLanguage),
     confidenceScore: z.number().min(0).max(1),
     confidenceReasoning: z.string().min(1).max(5000).superRefine(validateNoPolicyLanguage),
-    sourceEvidenceIds: z.array(z.string().min(1).max(128)).min(1).max(100),
-    sourceRefs: z.array(ProvenanceRefSchema).min(1).max(100),
+    sourceEvidenceIds: z.array(z.string().min(1).max(128)).min(0).max(100),
     unsupportedOrMissingInputs: z.array(z.string().min(1).max(1000)).max(50),
     degradationReason: ResearchBriefDegradationReasonSchema.optional()
   })
@@ -91,6 +90,7 @@ export const PersistedResearchBriefSchema = z
     pair: z.literal("SOL/USDC"),
     generationStatus: ResearchBriefGenerationStatusSchema,
     llmOutput: LlmResearchBriefOutputSchema,
+    sourceRefs: z.array(ProvenanceRefSchema).min(0).max(100),
     providerMetadata: ResearchBriefProviderMetadataSchema,
     sourceBundleRef: ResearchBriefSourceBundleRefSchema,
     inputContextHash: z.string().min(1).max(128),

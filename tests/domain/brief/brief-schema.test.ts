@@ -23,14 +23,6 @@ describe("Research Brief Contracts & Schemas", () => {
     confidenceScore: 0.85,
     confidenceReasoning: "High completeness across CLMM state and oracle prices.",
     sourceEvidenceIds: ["obs-1", "feat-1"],
-    sourceRefs: [
-      {
-        refType: "raw_observation",
-        id: 1,
-        source: "clmm-v2-bundle",
-        payloadHash: "abc123hash"
-      }
-    ],
     unsupportedOrMissingInputs: []
   };
 
@@ -39,6 +31,14 @@ describe("Research Brief Contracts & Schemas", () => {
     pair: "SOL/USDC" as const,
     generationStatus: "complete" as ResearchBriefGenerationStatus,
     llmOutput: validLlmOutput,
+    sourceRefs: [
+      {
+        refType: "raw_observation",
+        id: 1,
+        source: "clmm-v2-bundle",
+        payloadHash: "abc123hash"
+      }
+    ],
     providerMetadata: {
       provider: "google",
       model: "gemini-2.5-flash",
@@ -91,11 +91,13 @@ describe("Research Brief Contracts & Schemas", () => {
       expect(LlmResearchBriefOutputSchema.safeParse(invalidHigh).success).toBe(false);
     });
 
-    it("rejects empty sourceEvidenceIds or sourceRefs", () => {
-      const emptyIds = { ...validLlmOutput, sourceEvidenceIds: [] };
-      const emptyRefs = { ...validLlmOutput, sourceRefs: [] };
-      expect(LlmResearchBriefOutputSchema.safeParse(emptyIds).success).toBe(false);
-      expect(LlmResearchBriefOutputSchema.safeParse(emptyRefs).success).toBe(false);
+    it("allows empty sourceEvidenceIds for a fully degraded brief with no usable evidence", () => {
+      const emptyIds = {
+        ...validLlmOutput,
+        sourceEvidenceIds: [],
+        degradationReason: "missing_inputs"
+      };
+      expect(LlmResearchBriefOutputSchema.safeParse(emptyIds).success).toBe(true);
     });
 
     it("rejects overlong arrays and strings", () => {
@@ -153,6 +155,21 @@ describe("Research Brief Contracts & Schemas", () => {
       };
       const result = PersistedResearchBriefSchema.safeParse(invalid);
       expect(result.success).toBe(false);
+    });
+
+    it("allows an empty sourceRefs array for a fully degraded brief", () => {
+      const degraded = {
+        ...validPersistedBrief,
+        generationStatus: "degraded" as ResearchBriefGenerationStatus,
+        llmOutput: {
+          ...validLlmOutput,
+          sourceEvidenceIds: [],
+          degradationReason: "missing_inputs"
+        },
+        sourceRefs: []
+      };
+      const result = PersistedResearchBriefSchema.safeParse(degraded);
+      expect(result.success).toBe(true);
     });
   });
 
