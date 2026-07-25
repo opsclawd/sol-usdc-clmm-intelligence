@@ -274,7 +274,7 @@ describe("assembleEvidenceBundleCandidate", () => {
         makeAssembleInput(slots, makeQuality(), makeLineage())
       );
 
-      expect(result.deterministicFeatures).toHaveLength(7);
+      expect(result.deterministicFeatures).toHaveLength(MVP_FEATURE_KINDS.length);
     });
 
     it("deterministicFeatures are in canonical MVP_FEATURE_KINDS order", () => {
@@ -283,8 +283,7 @@ describe("assembleEvidenceBundleCandidate", () => {
         makeAssembleInput(slots, makeQuality(), makeLineage())
       );
 
-      const featureKinds = result.deterministicFeatures.map((f) => f.featureKind);
-      expect(featureKinds).toHaveLength(7);
+      expect(result.deterministicFeatures).toHaveLength(MVP_FEATURE_KINDS.length);
     });
 
     it("each feature uses upstream field names exactly", () => {

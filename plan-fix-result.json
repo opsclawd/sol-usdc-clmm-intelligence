@@ -1,5 +1,5 @@
 {
   "verdict": "done_with_fixes",
-  "summary": "Added `tests/domain/taxonomy/confidence.test.ts` to Task 1's affected files and `signature_changes` entry in both `plan.md` and `task-manifest.json`. Task 1 changes `ConfidenceReason` (adding `cex_proxy_quality_cap_applied`), but the test file that references `ConfidenceReason` was not declared as an affected file. The fix declares the test file as modified by Task 1 and adds a corresponding `signature_changes` entry to make the plan manifest self-consistent with the deterministic diagnostic.",
-  "rebuttal": null
+  "summary": "Fixed green-boundary violation in Task 1 by including MVP_FEATURE_KINDS, FeatureKind, and evidence-bundle updates in Task 1 so typechecks pass after Task 1. Added missing application state transition invariants to Task 6 (recovering stuck raw pending rows, returning degraded coverage, continuing after malformed facts) and synchronized task-manifest.json to match.",
+  "rebuttal": ""
 }

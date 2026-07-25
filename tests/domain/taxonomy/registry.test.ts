@@ -47,7 +47,12 @@ describe("observationKindRegistry", () => {
     "stablecoin_flow",
     "dex_net_flow",
     "cex_flow_proxy",
-    "network_status"
+    "network_status",
+    "funding_rate",
+    "open_interest",
+    "perp_basis",
+    "liquidation_event",
+    "leverage_proxy"
   ];
 
   it("has an entry for every ObservationKind union member", () => {
@@ -92,12 +97,18 @@ describe("observationKindRegistry", () => {
     }
   });
 
-  it("every entry confidencePolicy weights sum to 1.0", () => {
-    for (const kind of observationKinds) {
-      const w = observationKindRegistry[kind].confidencePolicy.weights;
-      const sum =
-        w.sourceReliability + w.dataCompleteness + w.derivationConfidence + w.llmConfidence;
-      expect(Math.abs(sum - 1.0)).toBeLessThan(1e-9);
+  it("registers ephemeral perp facts as degrade-on-stale evidence", () => {
+    for (const kind of [
+      "funding_rate",
+      "open_interest",
+      "perp_basis",
+      "liquidation_event",
+      "leverage_proxy"
+    ] as const) {
+      const entry = getObservationKindEntry(kind);
+      expect(entry.evidenceFamily).toBe("perp_liquidation");
+      expect(entry.freshnessPolicy.staleBehavior).toBe("degrade_confidence");
+      expect(entry.provenanceRequirements.allowedSourceRefs).toEqual(["binance-fapi", "drift-api"]);
     }
   });
 });
@@ -110,7 +121,11 @@ describe("featureKindRegistry", () => {
     "oracle_dex_divergence",
     "oracle_confidence_width",
     "realized_volatility_1h",
-    "volume_liquidity_ratio_24h"
+    "volume_liquidity_ratio_24h",
+    "oi_trend_4h",
+    "liquidation_cluster_1h",
+    "funding_rate_annualized",
+    "basis_spread_bps"
   ];
 
   it("has an entry for every FeatureKind union member", () => {

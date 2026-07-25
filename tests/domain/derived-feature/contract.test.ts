@@ -62,9 +62,9 @@ function buildMinimalFeature(overrides: Partial<DerivedFeatureV1> = {}): Derived
 
 describe("DerivedFeatureV1 contract", () => {
   describe("MVP_FEATURE_KINDS contains canonical members", () => {
-    it("has 13 members", async () => {
+    it("has 11 members", async () => {
       const { MVP_FEATURE_KINDS } = await import("../../../src/contracts/derived-feature.js");
-      expect(MVP_FEATURE_KINDS).toHaveLength(13);
+      expect(MVP_FEATURE_KINDS).toHaveLength(11);
     });
 
     it("contains range_location", async () => {

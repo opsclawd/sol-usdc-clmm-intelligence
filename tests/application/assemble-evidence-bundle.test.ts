@@ -42,8 +42,6 @@ const CALCULATOR_VERSIONS = {
   oracle_confidence_width: "1.0.0",
   realized_volatility_1h: "1.0.0",
   volume_liquidity_ratio_24h: "1.0.0",
-  funding_rate_annualized_15m: "1.0.0",
-  basis_annualized_15m: "1.0.0",
   oi_trend_4h: "1.0.0",
   liquidation_cluster_1h: "1.0.0",
   funding_rate_annualized: "1.0.0",

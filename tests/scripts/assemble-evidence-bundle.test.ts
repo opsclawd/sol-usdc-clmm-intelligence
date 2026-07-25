@@ -110,8 +110,6 @@ const VALID_REQUEST: AssembleEvidenceBundleJobRequest = {
     oracle_confidence_width: "oracle-confidence-width/v1",
     realized_volatility_1h: "realized-volatility-1h/v1",
     volume_liquidity_ratio_24h: "volume-liquidity-ratio-24h/v1",
-    funding_rate_annualized_15m: "funding-rate-annualized-15m/v1",
-    basis_annualized_15m: "basis-annualized-15m/v1",
     oi_trend_4h: "oi-trend-4h/v1",
     liquidation_cluster_1h: "liquidation-cluster-1h/v1",
     funding_rate_annualized: "funding-rate-annualized/v1",

@@ -51,8 +51,6 @@ export type FeatureKind =
   | "oracle_confidence_width"
   | "realized_volatility_1h"
   | "volume_liquidity_ratio_24h"
-  | "funding_rate_annualized_15m"
-  | "basis_annualized_15m"
   | "oi_trend_4h"
   | "liquidation_cluster_1h"
   | "funding_rate_annualized"

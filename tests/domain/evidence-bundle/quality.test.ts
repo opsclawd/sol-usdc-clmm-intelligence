@@ -421,7 +421,7 @@ describe("classifyEvidenceBundleQuality", () => {
 
       const result = classifyEvidenceBundleQuality(input);
 
-      expect(result.slotQualitySummaries).toHaveLength(7);
+      expect(result.slotQualitySummaries).toHaveLength(MVP_FEATURE_KINDS.length);
       expect(result.slotQualitySummaries.map((s) => s.featureKind)).toEqual([...MVP_FEATURE_KINDS]);
     });
   });

@@ -16,8 +16,6 @@ export const MVP_FEATURE_KINDS = [
   "oracle_confidence_width",
   "realized_volatility_1h",
   "volume_liquidity_ratio_24h",
-  "funding_rate_annualized_15m",
-  "basis_annualized_15m",
   "oi_trend_4h",
   "liquidation_cluster_1h",
   "funding_rate_annualized",
@@ -44,8 +42,6 @@ const BPS_KINDS = new Set([
   "oracle_dex_divergence",
   "oracle_confidence_width",
   "realized_volatility_1h",
-  "funding_rate_annualized_15m",
-  "basis_annualized_15m",
   ...PERP_BPS_KINDS
 ]);
 

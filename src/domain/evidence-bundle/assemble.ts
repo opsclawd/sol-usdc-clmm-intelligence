@@ -69,8 +69,6 @@ function mapFeatureKindToFamily(featureKind: FeatureKind): FeatureFamily {
       return "market_state";
     case "volume_liquidity_ratio_24h":
       return "liquidity";
-    case "funding_rate_annualized_15m":
-    case "basis_annualized_15m":
     case "oi_trend_4h":
     case "liquidation_cluster_1h":
     case "funding_rate_annualized":
@@ -90,8 +88,6 @@ function mapFeatureKindToKind(featureKind: FeatureKind): "number" | "boolean" | 
     case "oracle_confidence_width":
     case "realized_volatility_1h":
     case "volume_liquidity_ratio_24h":
-    case "funding_rate_annualized_15m":
-    case "basis_annualized_15m":
     case "oi_trend_4h":
     case "liquidation_cluster_1h":
     case "funding_rate_annualized":

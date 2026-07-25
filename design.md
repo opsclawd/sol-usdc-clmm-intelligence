@@ -1,61 +1,65 @@
-# Design Doc: Ingest Core Deterministic SOL/USDC Source Data (Issue #7)
+# Design Document: Perp and Liquidation Research Collectors (Pack C)
 
-## 1. Problem and Importance
+## Problem and Motivation
 
-The intelligence engine for the SOL/USDC pool requires a deterministic, highly reliable set of raw facts (pool state, LP positions, oracle prices, and DEX quotes) before it can generate any derived features or AI-driven research briefs. Without a resilient source-ingestion layer, the system either operates on stale data or halts completely when a downstream API fails transiently. This ingestion layer forms the foundation of the evidence pipeline, ensuring all subsequent intelligence derivations have a verifiable, auditable trail back to the exact source bytes.
+The SOL/USDC market often experiences sharp volatility driven by leverage unwinding and crowding. Currently, the intelligence pipeline lacks visibility into perpetual futures data such as funding rates, open interest (OI) trends, perp/spot basis, and liquidation cascades. Without this context, the downstream `regime-engine` cannot accurately identify leverage-driven market stress or directional crowding, potentially leading to unsafe LP positioning or misclassified market regimes. Integrating this evidence family allows the system to detect when the market is over-leveraged and vulnerable to cascades.
 
-## 2. Key Design Decisions & Trade-offs
+## Proposed Approach and Architecture
 
-- **Store-then-Parse (Event Sourcing Pattern):**
-  - _Decision:_ Raw payloads are persisted to the database (`raw_observations`) before any normalization or mapping occurs.
-  - _Trade-off:_ This requires slightly more storage but guarantees we have the exact JSON bytes received. It makes debugging easier and enables retroactive re-parsing if our normalization logic changes.
-- **Independent Parallel Execution:**
-  - _Decision:_ Fetching from CLMM, Pyth, Jupiter, and Orca happens concurrently but is guarded independently.
-  - _Trade-off:_ If one source times out, it does not block the others. A single slow API will not crash the entire pipeline run. The tradeoff is that the downstream system must handle missing data explicitly via warnings instead of assuming all data is present.
-- **Idempotency via Content Hashing:**
-  - _Decision:_ Raw payloads are hashed upon ingestion. If a payload's hash matches an already ingested row, the system performs a fast return (identical replay) rather than generating an error or duplicating data.
-  - _Trade-off:_ Imposes a minor CPU overhead to hash payloads, but makes retries perfectly safe and prevents infinite storage bloat for data that doesn't change frequently.
-- **Ports & Adapters (Hexagonal Architecture):**
-  - _Decision:_ HTTP fetching, time (clock), and database repository operations are abstracted behind interfaces (ports).
-  - _Trade-off:_ Increases the boilerplate needed to set up the adapters, but makes deterministic testing using fixtures trivial (e.g., passing an in-memory HTTP mock that returns static JSON).
+We will implement a new set of collectors focused on the `perp_liquidation` evidence family. The architecture will follow the existing layered monolith pattern:
 
-## 3. Proposed Approach
+1. **Taxonomy Extensions (`src/contracts/taxonomy.ts`)**:
+   - **ObservationKinds**: `funding_rate`, `open_interest`, `perp_basis`, `liquidation_event`, `leverage_proxy`.
+   - **FeatureKinds**: `oi_trend_4h`, `funding_rate_annualized`, `liquidation_cluster_1h`, `basis_spread_bps`.
+   - **Sources**: `binance-fapi` (for dominant CEX liquidity), `drift-api` (for dominant Solana on-chain liquidity).
 
-- **Collection Use Cases:**
-  - Implement distinct adapter use cases: `collectClmmBundle`, `collectPythPrice`, `collectJupiterQuote`, and `collectOrcaPoolStatistics`. Each injects dependencies like `HttpClient` and `RawObservationRepo`.
-- **Orchestration (`collect-core.ts`):**
-  - A core orchestrator (`collectCore`) will execute all collector functions concurrently via `Promise.all`. It wraps each individual promise in a `.catch()` that maps any error to a standardized `SourceCollectionOutcome` with warnings, ensuring partial success is supported.
-- **Ingestion Utility (`ingest-raw-observation.ts`):**
-  - Abstract the persist-then-parse logic into a generic `ingestRawObservation` function that accepts a raw payload, hashes it, stores it in `raw_observations`, and subsequently attempts to normalize it.
-- **Conflict Handling:**
-  - If a source payload for a given `sourceObservationKey` is observed with a different hash than what exists, it should throw a `RawObservationConflictError`.
+2. **Ports (`src/ports/perp-liquidation-source.ts`)**:
+   - Define a `PerpLiquidationSource` interface that abstracts the fetching of funding rates, OI, basis, and recent liquidations.
 
-## 4. Assumptions
+3. **Adapters (`src/adapters/node/`)**:
+   - `http-binance-fapi-source.ts`: Adapter for Binance USDⓈ-M Futures API (unauthenticated public endpoints).
+   - `http-drift-source.ts`: Adapter for Drift Protocol's public API / RPC.
 
-- Drizzle ORM and the `intelligence` Postgres schema (from INT-PERSIST #5) are already set up and available.
-- The evidence taxonomy types (from INT-TAXONOMY #6) (e.g., `Source`, `ParseStatus`) are fully defined.
-- The `clmm-v2` API remains the source of truth, returning a canonical JSON payload that fits comfortably in memory.
-- An overarching job or cron scheduler is responsible for invoking this deterministic ingestion layer periodically.
+4. **Domain (`src/domain/perp-liquidation/`)**:
+   - **Normalization**: Pure functions to transform raw venue responses into canonical `NormalizedObservationRow` shapes, ensuring no venue-specific quirks leak.
+   - **Derivation**: Pure functions to compute deterministic features (e.g., calculating a 4h OI trend from recent observations, or clustering liquidations over the last hour).
+   - **Freshness & Confidence**: Strict policies. Missing or stale data will explicitly degrade confidence but not fail the pipeline entirely.
 
-## 5. Scope
+5. **Application & Jobs**:
+   - `src/application/collect-perp-liquidation.ts`: Orchestrates fetching from ports, saving raw observations, normalizing, and storing.
+   - A new cron job entry to schedule collection at the appropriate cadence (e.g., every 5 minutes).
 
-**In Scope:**
+## Design Decisions and Trade-offs
 
-- Source adapters for `clmm-v2`, `pyth`, `jupiter`, and `orca`.
-- Raw observation capture, content hashing, and database persistence.
-- Normalized observation mapping to the standardized taxonomy.
-- Idempotent writes, retry handling, and error/warning accumulation.
-- Unit testing with static fixtures for success, timeout, and partial failure cases.
+- **CEX vs DEX Sourcing**:
+  - _Trade-off_: Binance has the most liquidity and leads price discovery, but is centralized. Drift is on-chain but has less volume.
+  - _Decision_: Implement adapters for both. Binance provides the macro leverage context, while Drift provides localized Solana ecosystem leverage context.
+- **Polling vs WebSockets**:
+  - _Trade-off_: Liquidations happen in real-time, but our system architecture is based on cron polling.
+  - _Decision_: Rely on REST API snapshots (e.g., recent liquidation history endpoints) rather than maintaining stateful WebSocket connections. This fits the existing pipeline design and is sufficient for 5-minute regime evaluations.
+- **Data Degradation vs Hard Failure**:
+  - _Trade-off_: If a perp API goes down, should we halt the pipeline?
+  - _Decision_: Missing or stale perp data will "degrade explicitly" via the confidence model (e.g., `stale_input_degraded`), allowing the downstream regime engine to proceed cautiously rather than flying blind or halting.
 
-**Out of Scope:**
+## Assumptions
 
-- Scraping or ingesting contextual news, macro-economic data, or on-chain flow / perp liquidation data.
-- Calculating higher-level final derived metrics (e.g., fee APR, oracle divergence).
-- Generating LLM-driven research briefs.
-- Synthesizing or communicating final `PolicyInsights`.
+- **Public API Access**: It is assumed that Binance's `fapi` and Drift's public APIs provide sufficient data without requiring authenticated rate-limit tiers for our polling frequency.
+- **Cron Frequency**: It is assumed the collection will run on a standard schedule (e.g., 5m or 15m), meaning we are looking for "clusters" of liquidations in the intervening time window, not millisecond-precise triggers.
+- **No LLM in Collection Phase**: It is assumed that summarizing the leverage state via LLM happens downstream (or in the research brief phase), and this epic purely handles raw data collection and deterministic derivations.
 
-## 6. Risks and Concerns
+## Scope Boundaries
 
-- **Upstream Rate Limits:** High frequency of collection could trigger HTTP 429s from Jupiter or Orca. The HTTP port should support basic retries, or the orchestrator must handle HTTP failures gracefully without panicking.
-- **Payload Schema Drift:** Upstream APIs might alter their response schema without warning. `validatePayload` must aggressively mark `ParseStatus = "failed"` rather than silently ingesting `null`s or invalid objects.
-- **Clock Skew / Freshness:** Oracle prices (like Pyth) must be evaluated against the current `Clock` port to ensure they aren't deeply stale. If Pyth returns a timestamp that is extremely old, the normalization step must flag the freshness as stale so derived features don't act on outdated prices.
+**In Scope**:
+
+- Definition of new taxonomy types for perp/liquidation data.
+- Implementation of `PerpLiquidationSource` port.
+- Concrete adapters for Binance (`binance-fapi`) and Drift (`drift-api`).
+- Logic for raw retention, normalization, and deterministic feature derivation.
+- Confidence and freshness models tailored for highly ephemeral leverage data.
+- Comprehensive unit tests covering both positive cases and failure modes (stale data, API unavailability).
+
+**Explicitly Out of Scope**:
+
+- Downstream policy decisions (e.g., what to do with the leverage data).
+- LLM final summarization prompts (handled in a separate brief generation step).
+- Integrating unsupported or low-quality venues (e.g., small off-shore CEXes or unverified lending protocols).
