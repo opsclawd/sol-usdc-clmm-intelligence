@@ -128,6 +128,11 @@ describe("generateResearchBrief", () => {
     expect(result.brief.generatedAt).toBe(new Date(evalTimeMs).toISOString());
     expect(result.brief.sourceBundleRef.bundleId).toBe(bundleRow.id);
     expect(result.brief.sourceBundleRef.bundleHash).toBe(bundleRow.payloadHash);
+    expect(result.row.evidenceFamily).toBe("market_regime");
+    expect(result.row.taxonomySummary).toEqual({
+      families: { market_regime: 1 },
+      dominantClass: "contextual"
+    });
 
     // Provider receives context projection, never raw bundle row
     const requests = llmProvider.capturedRequests();

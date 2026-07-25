@@ -305,8 +305,11 @@ export async function generateResearchBrief(
     modelProvider: providerMetadata.provider,
     structuredOutput: persistedBrief,
     signalClass: "contextual",
-    evidenceFamily: null,
-    taxonomySummary: null,
+    evidenceFamily: "market_regime",
+    taxonomySummary: {
+      families: { market_regime: 1 },
+      dominantClass: "contextual"
+    },
     confidence,
     confidenceComposite: confidenceScore,
     confidenceLevel: confidenceLevel,
