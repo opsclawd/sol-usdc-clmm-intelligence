@@ -11,6 +11,7 @@ import {
   getObservationKindEntry,
   getFeatureKindEntry
 } from "../../../src/domain/taxonomy/registry.js";
+import type { NetworkStatusPayloadV1 } from "../../../src/contracts/normalized-network-status.js";
 
 const VALID_EVIDENCE_FAMILIES: EvidenceFamily[] = [
   "clmm_state",
@@ -45,7 +46,8 @@ describe("observationKindRegistry", () => {
     "whale_swap",
     "stablecoin_flow",
     "dex_net_flow",
-    "cex_flow_proxy"
+    "cex_flow_proxy",
+    "network_status"
   ];
 
   it("has an entry for every ObservationKind union member", () => {
@@ -673,5 +675,46 @@ describe("on-chain flow confidence policies", () => {
         w.sourceReliability + w.dataCompleteness + w.derivationConfidence + w.llmConfidence;
       expect(Math.abs(sum - 1.0)).toBeLessThan(1e-9);
     }
+  });
+});
+
+describe("network_status registry", () => {
+  it("registers network status as deterministic execution safety evidence", () => {
+    const entry = getObservationKindEntry("network_status");
+    expect(entry).toBeDefined();
+    expect(entry.kind).toBe("network_status");
+    expect(entry.evidenceFamily).toBe("execution_safety");
+    expect(entry.signalClass).toBe("deterministic");
+    expect(entry.freshnessPolicy.maxObservedAgeMs).toBe(60_000);
+    expect(entry.freshnessPolicy.clockSkewToleranceMs).toBe(5_000);
+    expect(entry.freshnessPolicy.staleBehavior).toBe("exclude");
+    expect(entry.confidencePolicy.weights.sourceReliability).toBe(0.5);
+    expect(entry.confidencePolicy.weights.dataCompleteness).toBe(0.3);
+    expect(entry.confidencePolicy.weights.derivationConfidence).toBe(0.2);
+    expect(entry.confidencePolicy.weights.llmConfidence).toBe(0);
+    expect(entry.confidencePolicy.redistributeLlmWeight).toBe(true);
+    expect(entry.active).toBe(true);
+    expect(entry.schemaVersion).toBe(1);
+  });
+
+  it("allows only solana rpc provenance for network status", () => {
+    const entry = getObservationKindEntry("network_status");
+    expect(entry.provenanceRequirements.allowedSourceRefs).toEqual(["solana-rpc"]);
+  });
+
+  it("requires warnings instead of nullable fabricated health values", () => {
+    const healthy: NetworkStatusPayloadV1 = {
+      kind: "network_status",
+      schemaVersion: 1,
+      network: "solana-mainnet-beta",
+      observedAtUnixMs: 1715342400000,
+      health: "ok",
+      slot: 260000000,
+      slotsBehind: null,
+      warnings: []
+    };
+    expect(healthy.kind).toBe("network_status");
+    expect(healthy.health).toBe("ok");
+    expect(healthy.warnings).toEqual([]);
   });
 });

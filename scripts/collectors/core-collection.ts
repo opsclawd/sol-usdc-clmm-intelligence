@@ -18,6 +18,7 @@ export async function runCoreCollection(): Promise<void> {
   try {
     result = await runCoreCollectionJob({
       http: runtime.http,
+      retryControl: runtime.retryControl,
       jsonStore: runtime.jsonStore,
       env: runtime.env,
       clock: runtime.clock,

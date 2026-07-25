@@ -146,3 +146,52 @@ export function mapSourceError(
     diagnostic: redactDiagnostic(message)
   };
 }
+
+export function mapSolanaNetworkStatusOutcome(
+  result: import("./collect-solana-network-status.js").SolanaNetworkStatusSourceResult
+): SourceCollectionOutcome {
+  const warnings: import("../contracts/collection-run.js").SourceWarning[] = [];
+
+  for (const w of result.warnings) {
+    if (w === "node_behind") {
+      warnings.push({
+        source: "solana",
+        code: "node_behind",
+        message: "Solana RPC node is behind"
+      });
+    } else if (w === "slot_unavailable") {
+      warnings.push({
+        source: "solana",
+        code: "slot_unavailable",
+        message: "Solana RPC slot is unavailable"
+      });
+    } else {
+      warnings.push({
+        source: "solana",
+        code: String(w),
+        message: null
+      });
+    }
+  }
+
+  if (!result.hasUsableEvidence) {
+    warnings.push({
+      source: "solana",
+      code: `solana_rpc_${result.status}`,
+      message: null
+    });
+  }
+
+  return {
+    sourceKey: "solana",
+    source: "solana-rpc",
+    status: result.status,
+    hasUsableEvidence: result.hasUsableEvidence,
+    rawObservationId: result.rawObservationId,
+    normalizedCount: result.normalizedCount,
+    warnings,
+    freshness: result.freshness,
+    confidenceLevel: result.confidenceLevel,
+    diagnostic: result.diagnostic ? redactDiagnostic(result.diagnostic) : null
+  };
+}

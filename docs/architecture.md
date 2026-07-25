@@ -95,19 +95,20 @@ clmm-v2 /insights/sol-usdc/bundle/:walletId
      advisory output / operator review
 ```
 
-## Durable Core Data Flow (Four-Source Core Set)
+## Durable Core Data Flow (Five-Source Core Set)
 
-The core data ingestion pipeline collects observations from a four-source raw-first core set before normalizing them. All sources are collected in a raw-first flow and persisted to Postgres before normalization. The four core sources are:
+The core data ingestion pipeline collects observations from a five-source raw-first core set before normalizing them. All sources are collected in a raw-first flow and persisted to Postgres before normalization. The five core sources are:
 
 - **clmm-v2-insights** (CLMM Bundle): BFF API. Produces raw LP, positions, and alert facts.
 - **pyth-hermes** (Pyth Oracle): Authenticated oracle feed. Produces `oracle_price` observations.
 - **jupiter-quote** (Jupiter Quote): Public quote API. Produces `executable_quote` observations.
 - **orca-public-api** (Orca Stats): Public pool stats API. Produces `pool_statistics` observations.
+- **solana-rpc** (Solana RPC): Deterministic RPC node. Produces `network_status` observations.
 
 ```text
-  CLMM Bundle      Pyth Hermes      Jupiter Quote      Orca Stats
-       |                |                 |                 |
-       +----------------+--------+--------+-----------------+
+  CLMM Bundle      Pyth Hermes      Jupiter Quote      Orca Stats      Solana RPC
+       |                |                 |                 |              |
+       +----------------+--------+--------+-----------------+--------------+
                                  v
                   raw_observations (append-only)
                                  |
@@ -126,21 +127,27 @@ Key Architectural Invariants:
 1. **Postgres Authority**: The database tables (`raw_observations` and `normalized_observations`) are the absolute authority. Local JSON compatibility snapshots are fallbacks only.
 2. **One Explicit Run Context**: A single execution context (containing a unique `runId`) correlates all leaf operations within a single run. Leaf operations must never re-read the environment or regenerate their own `runId`.
 3. **Independent Persistence**: Sibling source collectors execute concurrently and persist their raw observations and normalized rows independently.
-4. **No Aggregate Transaction/Retry**: There are no cross-source database transactions or coordinator-level retries. A failure in one source does not roll back already committed evidence from sibling sources.
+4. **No Aggregate Transaction/Retry**: There are no cross-source database transactions or coordinator-level retries. A failure in one source does not roll back already committed evidence from sibling sources. Sibling leaves (such as Solana RPC) execute two-attempt leaf-local retries independently.
 5. **Fixed Status Truth Table**: The overall command run status is mapped via a pure reducer truth table based on individual source outcomes:
-   - **COMPLETE**: All sources succeed or replay identically.
-   - **PARTIAL**: At least one source succeeds (usable) while others fail or degrade.
+   - **COMPLETE**: Requiring five fresh usable outcomes across all five sources.
+   - **PARTIAL**: At least one source succeeds (usable) while others fail or degrade (e.g. a Solana-only outage producing `PARTIAL` when the other four are usable).
    - **UNAVAILABLE**: All sources are unavailable (e.g., due to rate-limiting 429s or outages).
    - **FAILED**: Any validation conflict, DB integrity issue, or total failure with zero usable evidence.
-6. **Orca pool_statistics Metrics**:
+6. **Solana RPC Batch and Status Semantics**:
+   - Executes batched JSON-RPC `getHealth` and `getSlot` requests over a single HTTP POST request.
+   - Persists raw-first observation for any HTTP 2xx response, even if the payload contains malformed JSON-RPC or application-level errors.
+   - Maps responses into `network_status` normalized observations with `node_behind` or `slot_unavailable` warnings when applicable.
+   - Redacts credentials from URL paths and query strings in diagnostics and metadata.
+   - Measures only the health and slot of the configured endpoint URL rather than global Solana consensus truth.
+7. **Orca pool_statistics Metrics**:
    - `tvlUsdc`: Orca's current pool TVL mark.
    - `volume24hUsdc`: Rolling traded notional.
    - `fees24hUsdc`: Rolling total swap fees.
      These metrics are decimal strings denominated in USDC. They are not raw liquidity, wallet fees, LP-only revenue, APR, or guaranteed fiat USD.
-7. **Solana Network-Health Deferment**: Solana network-health/status ingestion is identified as a separate backlog gap after the deterministic vertical slice. It is excluded from the core source count, and issue #24 completion does not depend on it.
-8. **No Execution Authority**: The pipeline collects evidence and advises only. It does not construct instructions, sign transactions, or execute swaps.
-9. **Operator Handoff**: `pnpm collect:core` is the canonical CLI/operator interface for gathering all four core telemetry sources. Legacy commands remain supported for backwards compatibility.
-10. **Contextual Evidence Boundary**: Missing or expired support/resistance levels are retained in bounded raw evidence and surfaced as degraded warnings, but never become normalized numeric evidence or execution authority.
+8. **Contextual Protocol Incidents vs Live RPC Health**: `solana-status-api` incident reports remain documented as contextual research evidence so operators do not confuse qualitative incident updates with live deterministic Solana RPC endpoint health.
+9. **No Execution Authority**: The pipeline collects evidence and advises only. It does not construct instructions, sign transactions, or execute swaps.
+10. **Operator Handoff**: `pnpm collect:core` is the canonical CLI/operator interface for gathering all five core telemetry sources. Legacy commands remain supported for backwards compatibility.
+11. **Contextual Evidence Boundary**: Missing or expired support/resistance levels are retained in bounded raw evidence and surfaced as degraded warnings, but never become normalized numeric evidence or execution authority.
 
 ## Contextual Research Collectors
 

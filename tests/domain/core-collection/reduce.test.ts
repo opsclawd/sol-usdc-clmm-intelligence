@@ -34,18 +34,20 @@ describe("core collection reducer", () => {
       createOutcome({ sourceKey: "clmm-v2", status: "conflict", hasUsableEvidence: false }),
       createOutcome({ sourceKey: "pyth", status: "accepted" }),
       createOutcome({ sourceKey: "jupiter", status: "accepted" }),
-      createOutcome({ sourceKey: "orca", status: "accepted" })
+      createOutcome({ sourceKey: "orca", status: "accepted" }),
+      createOutcome({ sourceKey: "solana", status: "accepted" })
     ];
     expect(reduceCoreCollectionStatus(outcomes)).toBe("FAILED");
   });
 
   it("classifies all complete contributions as COMPLETE", () => {
-    // 4 fresh/non-degraded accepted or identical_replay
+    // 5 fresh/non-degraded accepted or identical_replay
     const outcomes: SourceCollectionOutcome[] = [
       createOutcome({ sourceKey: "clmm-v2", status: "accepted" }),
       createOutcome({ sourceKey: "pyth", status: "identical_replay" }),
       createOutcome({ sourceKey: "jupiter", status: "accepted" }),
-      createOutcome({ sourceKey: "orca", status: "accepted" })
+      createOutcome({ sourceKey: "orca", status: "accepted" }),
+      createOutcome({ sourceKey: "solana", status: "accepted" })
     ];
     expect(reduceCoreCollectionStatus(outcomes)).toBe("COMPLETE");
   });
@@ -56,7 +58,8 @@ describe("core collection reducer", () => {
       createOutcome({ sourceKey: "clmm-v2", status: "accepted" }),
       createOutcome({ sourceKey: "pyth", status: "timeout", hasUsableEvidence: false }),
       createOutcome({ sourceKey: "jupiter", status: "degraded", hasUsableEvidence: true }),
-      createOutcome({ sourceKey: "orca", status: "failed", hasUsableEvidence: false })
+      createOutcome({ sourceKey: "orca", status: "failed", hasUsableEvidence: false }),
+      createOutcome({ sourceKey: "solana", status: "timeout", hasUsableEvidence: false })
     ];
     expect(reduceCoreCollectionStatus(outcomes)).toBe("PARTIAL");
   });
@@ -80,7 +83,8 @@ describe("core collection reducer", () => {
         freshness: staleFreshness,
         hasUsableEvidence: false
       }),
-      createOutcome({ sourceKey: "orca", status: "network", hasUsableEvidence: false })
+      createOutcome({ sourceKey: "orca", status: "network", hasUsableEvidence: false }),
+      createOutcome({ sourceKey: "solana", status: "unavailable", hasUsableEvidence: false })
     ];
     expect(reduceCoreCollectionStatus(outcomes)).toBe("UNAVAILABLE");
   });
@@ -91,13 +95,15 @@ describe("core collection reducer", () => {
       createOutcome({ sourceKey: "clmm-v2", status: "malformed", hasUsableEvidence: false }),
       createOutcome({ sourceKey: "pyth", status: "timeout", hasUsableEvidence: false }),
       createOutcome({ sourceKey: "jupiter", status: "degraded", hasUsableEvidence: false }), // all-null degraded / non-usable
-      createOutcome({ sourceKey: "orca", status: "failed", hasUsableEvidence: false })
+      createOutcome({ sourceKey: "orca", status: "failed", hasUsableEvidence: false }),
+      createOutcome({ sourceKey: "solana", status: "failed", hasUsableEvidence: false })
     ];
     expect(reduceCoreCollectionStatus(outcomes)).toBe("FAILED");
   });
 
   it("orders warnings by fixed source order then warning code", () => {
     const warnings: SourceWarning[] = [
+      { source: "solana", code: "SOL_ERR", message: "Solana error" },
       { source: "jupiter", code: "JUP_ERR_B", message: "Jup error B" },
       { source: "clmm-v2", code: "CLMM_ERR", message: "CLMM error" },
       { source: "jupiter", code: "JUP_ERR_A", message: "Jup error A" },
@@ -110,7 +116,8 @@ describe("core collection reducer", () => {
       { source: "pyth", code: "PYTH_ERR", message: "Pyth error" },
       { source: "jupiter", code: "JUP_ERR_A", message: "Jup error A" },
       { source: "jupiter", code: "JUP_ERR_B", message: "Jup error B" },
-      { source: "orca", code: "ORCA_ERR", message: "Orca error" }
+      { source: "orca", code: "ORCA_ERR", message: "Orca error" },
+      { source: "solana", code: "SOL_ERR", message: "Solana error" }
     ]);
   });
 
@@ -127,7 +134,8 @@ describe("core collection reducer", () => {
       createOutcome({ sourceKey: "clmm-v2", status: "accepted" }), // complete
       createOutcome({ sourceKey: "pyth", status: "degraded", hasUsableEvidence: true }), // partial
       createOutcome({ sourceKey: "jupiter", status: "accepted", freshness: staleFreshness }), // stale
-      createOutcome({ sourceKey: "orca", status: "failed" }) // absentOrFailed
+      createOutcome({ sourceKey: "orca", status: "failed" }), // absentOrFailed
+      createOutcome({ sourceKey: "solana", status: "timeout" }) // absentOrFailed
     ];
 
     const counts = countCoreCollectionOutcomes(outcomes);
@@ -135,7 +143,7 @@ describe("core collection reducer", () => {
       complete: 1,
       partial: 1,
       stale: 1,
-      absentOrFailed: 1
+      absentOrFailed: 2
     });
   });
 });

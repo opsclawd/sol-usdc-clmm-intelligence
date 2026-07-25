@@ -123,7 +123,7 @@ The ingestion layer should collect and normalize at least:
 - Orca pool/public stats for pool-level volume, fees, and TVL context where needed;
 - Pyth or equivalent canonical SOL/USD oracle observations;
 - Jupiter quotes and price observations for DEX comparison and route context;
-- [Deferred Gap] Solana network-health/status inputs (identified as a backlog gap after the deterministic vertical slice; not part of the core source count).
+- Solana RPC network status inputs for network health, cluster performance, and slot latency context.
 
 Raw responses should be persisted before normalization. Partial source failures should produce explicit warnings, not fabricated values.
 
@@ -259,14 +259,14 @@ clmm-v2 /insights/sol-usdc/bundle/:walletId
      advisory output / operator review
 ```
 
-Durable Core Data Flow (Four-Source Core Set):
+Durable Core Data Flow (Five-Source Core Set):
 
-All core sources (CLMM bundle, Pyth oracle updates, Jupiter executable quotes, and Orca pool statistics) are collected in a raw-first flow and persisted to Postgres before normalization. The Postgres database tables (`raw_observations` and `normalized_observations`) are the absolute authority. Local JSON compatibility snapshots are fallbacks only. Sibling source collectors execute concurrently and persist their raw observations and normalized rows independently within a single execution context (sharing a unique `runId`). A failure in one source does not roll back already committed evidence from sibling sources.
+All core sources (CLMM bundle, Pyth oracle updates, Jupiter executable quotes, Orca pool statistics, and Solana RPC network status) are collected in a raw-first flow and persisted to Postgres before normalization. The Postgres database tables (`raw_observations` and `normalized_observations`) are the absolute authority. Local JSON compatibility snapshots are fallbacks only. Sibling source collectors execute concurrently and persist their raw observations and normalized rows independently within a single execution context (sharing a unique `runId`). A failure in one source does not roll back already committed evidence from sibling sources.
 
 ```text
-  CLMM Bundle      Pyth Hermes      Jupiter Quote      Orca Stats
-       |                |                 |                 |
-       +----------------+--------+--------+-----------------+
+  CLMM Bundle      Pyth Hermes      Jupiter Quote      Orca Stats      Solana RPC
+       |                |                 |                 |              |
+       +----------------+--------+--------+-----------------+--------------+
                                  v
                   raw_observations (append-only)
                                  |
@@ -282,10 +282,12 @@ All core sources (CLMM bundle, Pyth oracle updates, Jupiter executable quotes, a
 
 The overall command run status is mapped via a pure reducer truth table based on individual source outcomes:
 
-- **COMPLETE**: All sources succeed or replay identically.
-- **PARTIAL**: At least one source succeeds (usable) while others fail or degrade.
-- **UNAVAILABLE**: All sources are unavailable (e.g. rate-limiting 429s or outages).
+- **COMPLETE**: All five core sources succeed or replay identically (requires five fresh usable outcomes).
+- **PARTIAL**: At least one source succeeds (usable) while others fail or degrade (e.g. a Solana-only outage producing `PARTIAL` when the other four are usable).
+- **UNAVAILABLE**: All sources are unavailable (e.g. rate-limiting 429s or total network outages).
 - **FAILED**: Any validation conflict, DB integrity issue, or total failure with zero usable evidence.
+
+Solana RPC collection queries `getHealth` and `getSlot` in a single JSON-RPC batch call, persisting HTTP 2xx responses raw-first. Local retry policy allows at most two attempts for the Solana leaf, while warnings such as `node_behind` or `slot_unavailable` allow observations to remain usable under degraded status. All credentials are redacted from log outputs and metadata; the endpoint URL measures only the configured RPC endpoint rather than global network consensus.
 
 Orca `pool_statistics` metrics are defined as:
 
@@ -293,8 +295,6 @@ Orca `pool_statistics` metrics are defined as:
 - `volume24hUsdc`: Rolling traded notional.
 - `fees24hUsdc`: Rolling total swap fees.
   Explicitly, these are decimal strings denominated in USDC and are not raw liquidity, wallet fees, LP-only revenue, APR, or guaranteed fiat USD.
-
-Solana network-health/status ingestion is identified as a separate backlog gap after the deterministic vertical slice; it is not part of the core source count, and issue #24 completion does not depend on it.
 
 ## Evidence flow (current)
 

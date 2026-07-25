@@ -23,7 +23,13 @@ const OBSERVATION_KINDS = new Set<ObservationKind>([
   "regulatory_risk",
   "support_resistance_level",
   "scheduled_event",
-  "protocol_incident"
+  "protocol_incident",
+  "whale_transfer",
+  "whale_swap",
+  "stablecoin_flow",
+  "dex_net_flow",
+  "cex_flow_proxy",
+  "network_status"
 ]);
 
 const FEATURE_KINDS = new Set<FeatureKind>([
@@ -49,7 +55,10 @@ const SOURCES = new Set<Source>([
   "regulatory-monitor-api",
   "technical-analysis-api",
   "macro-calendar-api",
-  "solana-status-api"
+  "solana-status-api",
+  "helius-api",
+  "birdeye-api",
+  "solana-rpc"
 ]);
 
 const SIGNAL_CLASSES = new Set<SignalClass>(["deterministic", "probabilistic", "contextual"]);

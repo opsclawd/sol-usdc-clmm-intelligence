@@ -35,7 +35,8 @@ export type ObservationKind =
   | "whale_swap"
   | "stablecoin_flow"
   | "dex_net_flow"
-  | "cex_flow_proxy";
+  | "cex_flow_proxy"
+  | "network_status";
 
 export type FeatureKind =
   | "range_location"
@@ -61,7 +62,8 @@ export type Source =
   | "crypto-news-api"
   | "regulatory-monitor-api"
   | "helius-api"
-  | "birdeye-api";
+  | "birdeye-api"
+  | "solana-rpc";
 
 export type ParseStatus = "pending" | "parsed" | "failed";
 
