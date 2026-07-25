@@ -16,6 +16,7 @@
     "collect:perp-liquidation": "tsx scripts/collectors/perp-liquidation.ts",
     "derive:mvp": "tsx scripts/collectors/derive-mvp-features.ts",
     "assemble:bundle": "tsx scripts/collectors/assemble-evidence-bundle.ts",
+    "generate:brief": "tsx scripts/generate/research-brief.ts",
     "publish:evidence": "tsx scripts/collectors/publish-evidence-bundle.ts",
     "cron:render": "tsx scripts/openclaw/render-cron-commands.ts",
     "cron:sync": "tsx scripts/openclaw/sync-cron.ts",

@@ -3,15 +3,20 @@ import type { HttpClient, HttpResponse } from "../ports/http.js";
 import { HttpRequestError } from "../ports/http.js";
 import type { EnvReader } from "../ports/env.js";
 import type { EvidenceBundleRepo, EvidenceBundleRow } from "../ports/bundle-repo.js";
+import type { ResearchBriefRepo } from "../ports/brief-repo.js";
 import type { PublishAttemptRepo, PublishAttemptInsert } from "../ports/publish-attempt-repo.js";
 import type { EvidenceBundleContract } from "../ports/evidence-bundle-contract.js";
 import type { RetryControl } from "../ports/retry.js";
+import type { PersistedResearchBrief } from "../contracts/research-brief.js";
+import type { EvidenceBundleV1 } from "../contracts/generated/evidence-bundle-v1.js";
+import { mapPersistedBriefToCanonicalBundle } from "../domain/brief/map-to-evidence-bundle.js";
 
 export interface PublishEvidenceBundleDeps {
   readonly clock: Clock;
   readonly http: HttpClient;
   readonly env: EnvReader;
   readonly bundleRepo: EvidenceBundleRepo;
+  readonly briefRepo?: ResearchBriefRepo;
   readonly publishAttemptRepo: PublishAttemptRepo;
   readonly contract: EvidenceBundleContract;
   readonly retry: RetryControl;
@@ -317,11 +322,67 @@ export async function publishEvidenceBundle(
     };
   }
 
-  const requestHash = latestBundle.payloadHash;
+  let payload = latestBundle.payload;
+  let payloadHash = latestBundle.payloadHash;
+  let idempotencyKey = latestBundle.idempotencyKey;
+  let selectedResearchBriefId: number | null = null;
+
+  if (deps.briefRepo) {
+    try {
+      const briefRows = await deps.briefRepo.findByBundleId(latestBundle.id);
+      const eligibleRows = briefRows
+        .filter((r) => {
+          if (!r.structuredOutput) return false;
+          const artifact = r.structuredOutput as PersistedResearchBrief;
+          if (artifact.generationStatus !== "complete") return false;
+          if (
+            artifact.sourceBundleRef?.bundleId !== latestBundle.id ||
+            artifact.sourceBundleRef?.bundleHash !== latestBundle.payloadHash
+          ) {
+            return false;
+          }
+          if (r.validUntilUnixMs !== null && r.validUntilUnixMs !== undefined) {
+            if (r.validUntilUnixMs <= receivedAtUnixMs) return false;
+          }
+          return true;
+        })
+        .sort((a, b) => {
+          if (b.receivedAtUnixMs !== a.receivedAtUnixMs) {
+            return b.receivedAtUnixMs - a.receivedAtUnixMs;
+          }
+          return b.id - a.id;
+        });
+
+      if (eligibleRows.length > 0 && eligibleRows[0]) {
+        const newestRow = eligibleRows[0];
+        const artifact = newestRow.structuredOutput as PersistedResearchBrief;
+        try {
+          const composedBundle = mapPersistedBriefToCanonicalBundle(
+            latestBundle.payload as EvidenceBundleV1,
+            artifact,
+            artifact.briefId
+          );
+          const canonicalComposed = await contract.validateCanonicalizeAndHash(composedBundle);
+          payload = composedBundle;
+          payloadHash = canonicalComposed.payloadHash;
+          idempotencyKey = canonicalComposed.idempotencyKey;
+          selectedResearchBriefId = newestRow.id;
+        } catch {
+          // Fail closed to base bundle if mapping or validation fails
+          payload = latestBundle.payload;
+          payloadHash = latestBundle.payloadHash;
+          idempotencyKey = latestBundle.idempotencyKey;
+          selectedResearchBriefId = null;
+        }
+      }
+    } catch {
+      // Fail closed to base bundle
+    }
+  }
+
+  const requestHash = payloadHash;
   const firstAttemptedAtUnixMs = receivedAtUnixMs;
   const target = endpoint.replace(/^https?:\/\//, "").split("/")[0] ?? "";
-  const payload = latestBundle.payload;
-  const idempotencyKey = latestBundle.idempotencyKey;
 
   onEvent?.({
     type: "publish_started",
@@ -356,7 +417,7 @@ export async function publishEvidenceBundle(
         target,
         targetEndpoint: endpoint,
         evidenceBundleId: latestBundle.id,
-        researchBriefId: null,
+        researchBriefId: selectedResearchBriefId,
         idempotencyKey,
         requestHash,
         payloadHash: latestBundle.payloadHash,
@@ -446,7 +507,7 @@ export async function publishEvidenceBundle(
         target,
         targetEndpoint: endpoint,
         evidenceBundleId: latestBundle.id,
-        researchBriefId: null,
+        researchBriefId: selectedResearchBriefId,
         idempotencyKey,
         requestHash,
         payloadHash: latestBundle.payloadHash,
@@ -519,7 +580,7 @@ export async function publishEvidenceBundle(
       target,
       targetEndpoint: endpoint,
       evidenceBundleId: latestBundle.id,
-      researchBriefId: null,
+      researchBriefId: selectedResearchBriefId,
       idempotencyKey,
       requestHash,
       payloadHash: latestBundle.payloadHash,

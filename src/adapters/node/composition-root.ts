@@ -22,6 +22,7 @@ import type { EvidenceBundleContract } from "../../ports/evidence-bundle-contrac
 import type { PublishAttemptRepo } from "../../ports/publish-attempt-repo.js";
 import type { RetryControl } from "../../ports/retry.js";
 import type { ConfiguredPerpLiquidationSource } from "../../ports/perp-liquidation-source.js";
+import type { LlmProvider } from "../../ports/llm-provider.js";
 import { UuidRunIdFactory } from "./uuid-run-id-factory.js";
 
 export interface Persistence {
@@ -46,6 +47,7 @@ export interface NodeRuntime {
   getDb(): Promise<DbConnection>;
   getPersistence(): Promise<Persistence>;
   getContract(): Promise<EvidenceBundleContract>;
+  getLlmProvider?(): Promise<LlmProvider>;
   getPerpLiquidationSources?(options: {
     binanceBaseUrl: string;
     binanceSymbol: string;
@@ -66,6 +68,7 @@ export function createNodeRuntime(): NodeRuntime {
   let dbPromise: Promise<DbConnection> | undefined;
   let persistencePromise: Promise<Persistence> | undefined;
   let contractPromise: Promise<EvidenceBundleContract> | undefined;
+  let llmProviderPromise: Promise<LlmProvider> | undefined;
 
   return {
     http: new FetchHttpClient(),
@@ -124,6 +127,32 @@ export function createNodeRuntime(): NodeRuntime {
         contractPromise = Promise.resolve(createEvidenceBundleContract());
       }
       return contractPromise;
+    },
+    async getLlmProvider() {
+      if (!llmProviderPromise) {
+        const { OpenAiLlmProvider } = await import("./openai-llm-provider.js");
+        const baseUrl = env.get("LLM_BASE_URL");
+        const apiKey = env.get("LLM_API_KEY");
+        const model = env.get("LLM_MODEL");
+        const modelVersion = env.getOptional("LLM_MODEL_VERSION");
+
+        if (!baseUrl || !apiKey || !model) {
+          throw new Error(
+            "Missing required LLM environment configuration (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL)"
+          );
+        }
+
+        llmProviderPromise = Promise.resolve(
+          new OpenAiLlmProvider({
+            http: this.http,
+            baseUrl,
+            apiKey,
+            model,
+            ...(modelVersion ? { modelVersion } : {})
+          })
+        );
+      }
+      return llmProviderPromise;
     },
     async getPerpLiquidationSources(options) {
       const { HttpBinanceFapiSource } = await import("./http-binance-fapi-source.js");
