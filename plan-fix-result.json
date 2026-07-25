@@ -1,5 +1,4 @@
 {
   "verdict": "done_with_fixes",
-  "summary": "Fixed green-boundary violation in Task 1 by including MVP_FEATURE_KINDS, FeatureKind, and evidence-bundle updates in Task 1 so typechecks pass after Task 1. Added missing application state transition invariants to Task 6 (recovering stuck raw pending rows, returning degraded coverage, continuing after malformed facts) and synchronized task-manifest.json to match.",
-  "rebuttal": ""
+  "summary": "Updated plan.md to add src/jobs/publish-evidence-bundle-job.ts and src/adapters/node/composition-root.ts to the global Affected Files list, ensuring all job and composition root wiring changes required by Task 6 are explicit. Synchronized top-level Behavioral Invariants across all tasks in plan.md, including Task 5 database connection lifecycle invariants and Task 6 retry payload stability invariants."
 }

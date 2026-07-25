@@ -47,7 +47,7 @@ export const researchBriefs = intelligence.table(
     ),
     check(
       "chk_brief_evidence_family",
-      sql`${t.evidenceFamily} IS NULL OR ${t.evidenceFamily} IN ('clmm_state', 'price_quality', 'clmm_economics', 'execution_safety', 'market_regime', 'support_resistance', 'on_chain_flow', 'perp_liquidation', 'macro_protocol_risk')`
+      sql`${t.evidenceFamily} IS NULL OR ${t.evidenceFamily} IN ('clmm_state', 'price_quality', 'clmm_economics', 'execution_safety', 'market_regime', 'support_resistance', 'on_chain_flow', 'perp_liquidation', 'macro_protocol_risk', 'news_evidence')`
     ),
     check(
       "chk_brief_confidence_composite",
