@@ -1,0 +1,156 @@
+import { describe, expect, test } from "vitest";
+import calmFixture from "../../fixtures/research-brief/calm.json" with { type: "json" };
+import type { EvidenceBundleV1 } from "../../../src/contracts/generated/evidence-bundle-v1.js";
+import type { PersistedResearchBrief } from "../../../src/contracts/research-brief.js";
+import { mapPersistedBriefToCanonicalBundle } from "../../../src/domain/brief/map-to-evidence-bundle.js";
+
+const calmBundle = calmFixture as unknown as EvidenceBundleV1;
+
+const validPersistedBrief: PersistedResearchBrief = {
+  briefId: "brief-complete-1",
+  pair: "SOL/USDC",
+  generationStatus: "complete",
+  llmOutput: {
+    summary: "SOL market remains stable within narrow band.",
+    keyTakeaways: ["Takeaway 1: Support holds at 140", "Takeaway 2: Fee APR active"],
+    supportsCurrentRegime: "supports",
+    regimeAssessmentReasoning: "Market indicators align with calm regime.",
+    confidenceScore: 0.9,
+    confidenceReasoning: "All key data points available and verified.",
+    sourceEvidenceIds: ["feat-sol-price", "feat-fee-apr", "sr-calm-1"],
+    unsupportedOrMissingInputs: []
+  },
+  sourceRefs: [
+    {
+      refType: "derived_feature",
+      id: 1,
+      source: "jupiter-price",
+      payloadHash: "hash123"
+    }
+  ],
+  providerMetadata: {
+    provider: "openai",
+    model: "gpt-4o-mini"
+  },
+  sourceBundleRef: {
+    bundleId: "run-calm-001",
+    bundleHash: "calmbundlehash"
+  },
+  inputContextHash: "inputctxhash",
+  priorBriefRef: null,
+  generatedAt: "2026-05-10T12:05:00.000Z",
+  promptVersion: "research-brief/v1"
+};
+
+const degradedPersistedBrief: PersistedResearchBrief = {
+  ...validPersistedBrief,
+  briefId: "brief-degraded-1",
+  generationStatus: "degraded",
+  llmOutput: {
+    ...validPersistedBrief.llmOutput,
+    degradationReason: "model_error"
+  }
+};
+
+describe("map-to-evidence-bundle", () => {
+  describe("canonical-mapping-resolves-lineage", () => {
+    test("canonical-mapping-resolves-lineage: mapped brief references only evidence IDs in source bundle", () => {
+      const mappedBundle = mapPersistedBriefToCanonicalBundle(
+        calmBundle,
+        validPersistedBrief,
+        "brief-complete-1"
+      );
+
+      expect(mappedBundle.researchBrief).not.toBeNull();
+      expect(mappedBundle.researchBrief?.briefId).toBe("brief-complete-1");
+      expect(mappedBundle.researchBrief?.summary).toBe(
+        "SOL market remains stable within narrow band."
+      );
+      expect(mappedBundle.researchBrief?.keyFindings).toEqual([
+        "Takeaway 1: Support holds at 140",
+        "Takeaway 2: Fee APR active"
+      ]);
+      expect(mappedBundle.researchBrief?.sourceEvidenceIds).toEqual([
+        "feat-sol-price",
+        "feat-fee-apr",
+        "sr-calm-1"
+      ]);
+
+      const sourceFeatureIds = calmBundle.deterministicFeatures.map((f) => f.featureId);
+      const sourceClaimIds = calmBundle.contextualEvidence.supportResistance.map(
+        (c) => c.evidenceId
+      );
+      const allSourceIds = new Set([...sourceFeatureIds, ...sourceClaimIds]);
+
+      for (const id of mappedBundle.researchBrief?.sourceEvidenceIds ?? []) {
+        expect(allSourceIds.has(id)).toBe(true);
+      }
+    });
+
+    test("throws if brief references evidence ID not present in source bundle", () => {
+      const ungroundedBrief: PersistedResearchBrief = {
+        ...validPersistedBrief,
+        llmOutput: {
+          ...validPersistedBrief.llmOutput,
+          sourceEvidenceIds: ["feat-sol-price", "non-existent-feature"]
+        }
+      };
+
+      expect(() =>
+        mapPersistedBriefToCanonicalBundle(calmBundle, ungroundedBrief, "brief-complete-1")
+      ).toThrowError(/unresolved evidence IDs/i);
+    });
+  });
+
+  test("leaves source bundle object untouched (non-mutating)", () => {
+    const originalJson = JSON.stringify(calmBundle);
+    mapPersistedBriefToCanonicalBundle(calmBundle, validPersistedBrief, "brief-complete-1");
+    expect(JSON.stringify(calmBundle)).toBe(originalJson);
+  });
+
+  test("rejects degraded persisted briefs", () => {
+    expect(() =>
+      mapPersistedBriefToCanonicalBundle(calmBundle, degradedPersistedBrief, "brief-degraded-1")
+    ).toThrowError(/degraded/i);
+  });
+
+  test("updates coverage to available and removes RESEARCH_BRIEF_UNAVAILABLE warning", () => {
+    const bundleWithWarning: EvidenceBundleV1 = {
+      ...calmBundle,
+      assessment: {
+        ...calmBundle.assessment,
+        coverage: {
+          ...calmBundle.assessment.coverage,
+          researchBrief: "unavailable"
+        },
+        warnings: [
+          {
+            code: "RESEARCH_BRIEF_UNAVAILABLE",
+            message: "No research brief available",
+            affectedFamilies: ["researchBrief"]
+          },
+          {
+            code: "OTHER_WARNING",
+            message: "Other warning",
+            affectedFamilies: ["market_state"]
+          }
+        ]
+      }
+    };
+
+    const mapped = mapPersistedBriefToCanonicalBundle(
+      bundleWithWarning,
+      validPersistedBrief,
+      "brief-complete-1"
+    );
+
+    expect(mapped.assessment.coverage.researchBrief).toBe("available");
+    expect(mapped.assessment.warnings).toEqual([
+      {
+        code: "OTHER_WARNING",
+        message: "Other warning",
+        affectedFamilies: ["market_state"]
+      }
+    ]);
+  });
+});

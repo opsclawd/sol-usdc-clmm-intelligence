@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "evidence-bundle.v1",
+  "pair": "SOL/USDC",
+  "scope": {
+    "kind": "pair"
+  },
+  "source": {
+    "publisher": "sol-usdc-clmm-intelligence",
+    "sourceId": "test-publisher-1",
+    "sourceVersion": "1.0.0"
+  },
+  "runId": "run-trending-001",
+  "correlationId": "corr-trending-001",
+  "createdAt": "2026-05-10T12:30:00.000Z",
+  "asOf": "2026-05-10T12:30:00.000Z",
+  "freshUntil": "2026-05-10T12:45:00.000Z",
+  "expiresAt": "2026-05-10T13:30:00.000Z",
+  "deterministicFeatures": [
+    {
+      "featureId": "feat-sol-price",
+      "family": "market_state",
+      "featureKind": "number",
+      "status": "available",
+      "value": 152.0,
+      "unit": "price_usdc_per_sol",
+      "observedAt": "2026-05-10T12:30:00.000Z",
+      "freshUntil": "2026-05-10T12:45:00.000Z",
+      "confidenceBps": 9500,
+      "calculator": { "name": "price-aggregator", "version": "1.0.0" },
+      "inputLineage": ["lineage-1"],
+      "warnings": []
+    }
+  ],
+  "contextualEvidence": {
+    "supportResistance": [],
+    "flows": [
+      {
+        "evidenceId": "flow-trending-1",
+        "kind": "spot_flow",
+        "claim": "Net spot inflow +5M USDC",
+        "direction": "bullish",
+        "confidenceBps": 8800,
+        "observedAt": "2026-05-10T12:30:00.000Z",
+        "expiresAt": "2026-05-10T18:30:00.000Z",
+        "sourceReferenceIds": ["flow-ref-1"],
+        "provenanceMethod": "collected"
+      }
+    ],
+    "derivatives": [],
+    "events": [],
+    "newsRegulatory": []
+  },
+  "researchBrief": null,
+  "sourceReferences": [
+    {
+      "referenceId": "flow-ref-1",
+      "sourceType": "api",
+      "locator": "https://api.example.com/flow",
+      "publishedAt": "2026-05-10T12:25:00.000Z",
+      "observedAt": "2026-05-10T12:30:00.000Z",
+      "contentHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
+  ],
+  "assessment": {
+    "overallConfidenceBps": 9000,
+    "quality": "complete",
+    "coverage": {
+      "deterministic": "available",
+      "supportResistance": "unavailable",
+      "flows": "available",
+      "derivatives": "unavailable",
+      "events": "unavailable",
+      "newsRegulatory": "unavailable",
+      "researchBrief": "unavailable"
+    },
+    "warnings": []
+  },
+  "provenance": {
+    "pipelineVersion": "1.0.0",
+    "gitCommit": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "environment": "test",
+    "upstreamRunIds": ["upstream-1"]
+  }
+}

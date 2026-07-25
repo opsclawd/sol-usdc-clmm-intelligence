@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "evidence-bundle.v1",
+  "pair": "SOL/USDC",
+  "scope": {
+    "kind": "pair"
+  },
+  "source": {
+    "publisher": "sol-usdc-clmm-intelligence",
+    "sourceId": "test-publisher-1",
+    "sourceVersion": "1.0.0"
+  },
+  "runId": "run-stressed-001",
+  "correlationId": "corr-stressed-001",
+  "createdAt": "2026-05-10T13:00:00.000Z",
+  "asOf": "2026-05-10T13:00:00.000Z",
+  "freshUntil": "2026-05-10T13:15:00.000Z",
+  "expiresAt": "2026-05-10T14:00:00.000Z",
+  "deterministicFeatures": [
+    {
+      "featureId": "feat-volatility",
+      "family": "risk",
+      "featureKind": "number",
+      "status": "available",
+      "value": 85.2,
+      "unit": "percent",
+      "observedAt": "2026-05-10T13:00:00.000Z",
+      "freshUntil": "2026-05-10T13:15:00.000Z",
+      "confidenceBps": 6000,
+      "calculator": { "name": "vol-calc", "version": "1.0.0" },
+      "inputLineage": ["lineage-risk"],
+      "warnings": ["HIGH_VOLATILITY_DETECTED"]
+    }
+  ],
+  "contextualEvidence": {
+    "supportResistance": [],
+    "flows": [],
+    "derivatives": [
+      {
+        "evidenceId": "deriv-stressed-1",
+        "kind": "liquidation",
+        "claim": "Massive long liquidations >10M USDC",
+        "direction": "bearish",
+        "confidenceBps": 7500,
+        "observedAt": "2026-05-10T13:00:00.000Z",
+        "expiresAt": "2026-05-10T19:00:00.000Z",
+        "sourceReferenceIds": ["deriv-ref-1"],
+        "provenanceMethod": "collected"
+      }
+    ],
+    "events": [],
+    "newsRegulatory": []
+  },
+  "researchBrief": null,
+  "sourceReferences": [
+    {
+      "referenceId": "deriv-ref-1",
+      "sourceType": "api",
+      "locator": "https://api.example.com/derivatives",
+      "publishedAt": "2026-05-10T12:58:00.000Z",
+      "observedAt": "2026-05-10T13:00:00.000Z",
+      "contentHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
+  ],
+  "assessment": {
+    "overallConfidenceBps": 6500,
+    "quality": "degraded",
+    "coverage": {
+      "deterministic": "available",
+      "supportResistance": "unavailable",
+      "flows": "unavailable",
+      "derivatives": "available",
+      "events": "unavailable",
+      "newsRegulatory": "unavailable",
+      "researchBrief": "unavailable"
+    },
+    "warnings": [
+      {
+        "code": "HIGH_VOLATILITY",
+        "message": "Market volatility exceeds threshold",
+        "affectedFamilies": ["risk"]
+      }
+    ]
+  },
+  "provenance": {
+    "pipelineVersion": "1.0.0",
+    "gitCommit": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "environment": "test",
+    "upstreamRunIds": ["upstream-1"]
+  }
+}
