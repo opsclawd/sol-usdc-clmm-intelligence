@@ -13,3 +13,12 @@ export {
   type EnrichPerpObservationInput,
   type EnrichedPerpObservation
 } from "./enrich.js";
+export {
+  derivePerpLiquidationFeatures,
+  calculateOiTrend4h,
+  calculateAnnualizedFundingBps,
+  calculateBasisSpreadBps,
+  calculateLiquidationClusterBps,
+  PERP_CALCULATOR_VERSIONS,
+  type DerivePerpLiquidationFeaturesOptions
+} from "./derive.js";
