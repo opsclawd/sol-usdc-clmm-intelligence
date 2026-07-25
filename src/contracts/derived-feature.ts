@@ -15,7 +15,11 @@ export const MVP_FEATURE_KINDS = [
   "oracle_dex_divergence",
   "oracle_confidence_width",
   "realized_volatility_1h",
-  "volume_liquidity_ratio_24h"
+  "volume_liquidity_ratio_24h",
+  "oi_trend_4h",
+  "liquidation_cluster_1h",
+  "funding_rate_annualized",
+  "basis_spread_bps"
 ] as const;
 
 export type FeatureStatus = "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
@@ -27,10 +31,18 @@ export function isCanonicalFeatureKind(kind: string): kind is FeatureKind {
   return FEATURE_KIND_SET.has(kind as FeatureKind);
 }
 
+export const PERP_BPS_KINDS = new Set([
+  "oi_trend_4h",
+  "funding_rate_annualized",
+  "liquidation_cluster_1h",
+  "basis_spread_bps"
+]);
+
 const BPS_KINDS = new Set([
   "oracle_dex_divergence",
   "oracle_confidence_width",
-  "realized_volatility_1h"
+  "realized_volatility_1h",
+  ...PERP_BPS_KINDS
 ]);
 
 const PPM_KINDS = new Set([
@@ -249,6 +261,36 @@ export function parseDerivedFeatureV1(value: unknown): DerivedFeatureV1 {
   );
 
   return parsed as DerivedFeatureV1;
+}
+
+export interface DerivedFeatureInsert {
+  featureKind: FeatureKind;
+  signalClass: SignalClass;
+  evidenceFamily: EvidenceFamily;
+  value?: number | null;
+  structuredPayload: unknown;
+  asOfUnixMs: number;
+  confidence: Confidence;
+  confidenceComposite?: number | null;
+  confidenceLevel?: string | null;
+  validUntilUnixMs?: number | null;
+  isStale?: boolean;
+  staleBehavior?: StaleBehavior | null;
+  provenance: Provenance;
+  payloadHash: string;
+  receivedAtUnixMs: number;
+  status: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
+  unit: "BPS" | "PPM";
+  pair?: string;
+  calculatorVersion?: string;
+  selectionVersion?: string;
+  inputObservationIds?: number[];
+  rejectedObservationIds?: number[];
+  derivationKey: string;
+  poolId?: string | null;
+  positionId?: string | null;
+  warnings?: readonly string[];
+  reasons?: readonly string[];
 }
 
 export interface DerivedFeatureRow {

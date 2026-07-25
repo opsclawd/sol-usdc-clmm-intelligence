@@ -1,6 +1,6 @@
 # Task Context: Task 1
 
-Title: Define deterministic network status contracts and taxonomy
+Title: Add canonical perp contracts and taxonomy policies
 
 ## Workspace & Scope Constraints
 
@@ -10,124 +10,139 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-7
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-11
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-7
-Start Commit: d9bb76998401dd5a7d8096b1d4f98db221c3ed23
+Branch: ai/issue-11
+Start Commit: d62ccad6f3f1f0812dc1d59b322256f63fbcf7ba
 
 ## Task Requirements
 
 **Files:**
 
+- Create: `src/contracts/perp-liquidation.ts`
+- Create: `tests/contracts/perp-liquidation.test.ts`
+- Create: `tests/fixtures/perp-liquidation.ts`
 - Modify: `src/contracts/taxonomy.ts`
-- Create: `src/contracts/normalized-network-status.ts`
+- Modify: `src/contracts/derived-feature.ts`
 - Modify: `src/contracts/index.ts`
 - Modify: `src/domain/taxonomy/registry.ts`
-- Modify: `src/domain/taxonomy/validation.ts`
-- Modify: `tests/domain/taxonomy/registry.test.ts` (only the observation-kind parity list and a new `network_status registry` describe block)
-- Modify: `tests/domain/taxonomy/validation.test.ts` (only the `runtime taxonomy parity` describe block)
+- Modify: `src/domain/evidence-bundle/assemble.ts`
+- Modify: `src/domain/evidence-bundle/quality.ts`
+- Modify: `src/domain/evidence-bundle/select.ts`
+- Modify: `src/application/assemble-evidence-bundle.ts`
+- Modify: `tests/domain/taxonomy/registry.test.ts` (only the canonical kind arrays and a new `perp_liquidation policies` describe block)
 
-**Behavioral invariants to test first:**
+- [ ] **Step 1: Write failing contract and registry tests**
 
-- `registers network status as deterministic execution safety evidence`
-- `allows only solana rpc provenance for network status`
-- `parses network status and solana rpc taxonomy literals`
-- `requires warnings instead of nullable fabricated health values`
-
-- [ ] **Step 1: Write the failing taxonomy and contract assertions**
-
-  Extend the observation-kind parity fixture with `"network_status"`. Add a focused registry describe block that asserts deterministic `execution_safety`, a 60-second maximum age, 5-second skew tolerance, `staleBehavior: "exclude"`, schema version 1, and only `"solana-rpc"` provenance. In runtime parity, assert `parseObservationKind("network_status")` and `parseSource("solana-rpc")`.
-
-  Use a compile-checked fixture with this exact public shape:
+  Test discriminated payloads for all five observation kinds, signed decimal funding, positive decimal amounts/prices, long/short liquidation side, canonical source names, and metric coverage. Add the new kinds to the existing exhaustive registry arrays and add:
 
   ```ts
-  const healthy: NetworkStatusPayloadV1 = {
-    kind: "network_status",
-    schemaVersion: 1,
-    network: "solana-mainnet-beta",
-    observedAtUnixMs: 1715342400000,
-    health: "ok",
-    slot: 260000000,
-    slotsBehind: null,
-    warnings: []
-  };
+  it("registers ephemeral perp facts as degrade-on-stale evidence", () => {
+    for (const kind of [
+      "funding_rate",
+      "open_interest",
+      "perp_basis",
+      "liquidation_event",
+      "leverage_proxy"
+    ] as const) {
+      const entry = getObservationKindEntry(kind);
+      expect(entry.evidenceFamily).toBe("perp_liquidation");
+      expect(entry.freshnessPolicy.staleBehavior).toBe("degrade_confidence");
+      expect(entry.provenanceRequirements.allowedSourceRefs).toEqual(["binance-fapi", "drift-api"]);
+    }
+  });
   ```
 
-  Run:
+- [ ] **Step 2: Verify the tests fail for absent kinds and contracts**
 
-  ```bash
-  pnpm test tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts
-  ```
+  Run: `pnpm vitest run tests/contracts/perp-liquidation.test.ts tests/domain/taxonomy/registry.test.ts`
 
-  Expected: FAIL because the new literals, payload contract, registry entry, and runtime validation entries do not exist.
+  Expected: FAIL because the new contract and registry entries do not exist.
 
-- [ ] **Step 2: Add the exported payload and taxonomy literals**
+- [ ] **Step 3: Define venue-neutral contracts and taxonomy members**
 
-  Add `"network_status"` to `ObservationKind` and `"solana-rpc"` to `Source`. Create and export:
+  Add `binance-fapi` and `drift-api` to `Source`; add the five observation kinds and four feature kinds requested by the design to `FeatureKind` and `MVP_FEATURE_KINDS`. Also update exhaustive `FeatureKind` handling in evidence-bundle helpers (`src/domain/evidence-bundle/*.ts` and `src/application/assemble-evidence-bundle.ts`) so typecheck passes. Define this core shape and discriminated payloads:
 
   ```ts
-  export type NetworkStatusWarning = "node_behind" | "slot_unavailable";
+  export type PerpVenue = "binance-fapi" | "drift-api";
+  export type PerpMetricKind =
+    | "funding_rate"
+    | "open_interest"
+    | "perp_basis"
+    | "liquidation_event"
+    | "leverage_proxy";
 
-  export interface NetworkStatusPayloadV1 {
-    readonly kind: "network_status";
+  export interface PerpObservationBaseV1 {
     readonly schemaVersion: 1;
-    readonly network: "solana-mainnet-beta";
+    readonly evidenceFamily: "perp_liquidation";
+    readonly pair: "SOL/USDC";
+    readonly venue: PerpVenue;
+    readonly instrument: string;
+    readonly sourceEventId: string;
     readonly observedAtUnixMs: number;
-    readonly health: "ok" | "behind";
-    readonly slot: number | null;
-    readonly slotsBehind: number | null;
-    readonly warnings: readonly NetworkStatusWarning[];
   }
+
+  export type PerpObservationPayloadV1 =
+    | FundingRatePayloadV1
+    | OpenInterestPayloadV1
+    | PerpBasisPayloadV1
+    | LiquidationEventPayloadV1
+    | LeverageProxyPayloadV1;
   ```
 
-  `health` is never nullable and never contains `"unknown"` or `"unavailable"`; absence stays in the source outcome rather than becoming fabricated evidence.
+  Use decimal strings for `fundingRate`, `openInterestBase`, `openInterestUsdc`, `perpPriceUsdc`, `spotPriceUsdc`, `amountBase`, `notionalUsdc`, and `longShortRatio`. Funding includes `fundingIntervalHours`; OI includes the provider sample window; basis includes both prices; liquidation includes `side`; leverage includes `methodology: "global_account_long_short_ratio" | "market_net_position_ratio"`. Coverage records must distinguish `available`, `unavailable`, and `malformed` with a diagnostic.
 
-- [ ] **Step 3: Register and validate the new taxonomy values**
+- [ ] **Step 4: Register freshness, confidence, and provenance policies**
 
-  Add the `network_status` registry entry beside the existing execution-safety kinds with deterministic weights `{ sourceReliability: 0.5, dataCompleteness: 0.3, derivationConfidence: 0.2, llmConfidence: 0 }`, standard thresholds, LLM redistribution enabled, and direct provenance restricted to `["solana-rpc"]`. Extend the literal arrays in `src/domain/taxonomy/validation.ts`.
+  Register all observation and feature kinds as deterministic `perp_liquidation` evidence. Use 15-minute maximum age for funding, OI, basis, and leverage; 60 minutes for individual liquidation events; four hours for `oi_trend_4h`; one hour for `liquidation_cluster_1h`; and 15 minutes for annualized funding and basis. All use `degrade_confidence`, allow both approved sources, and use the existing deterministic confidence weighting pattern.
 
-- [ ] **Step 4: Run task-scoped verification**
+- [ ] **Step 5: Run focused tests and formatting**
+
+  Run: `pnpm vitest run tests/contracts/perp-liquidation.test.ts tests/domain/taxonomy/registry.test.ts`
+
+  Expected: PASS.
+
+  Run: `pnpm exec eslint src/contracts/perp-liquidation.ts src/contracts/taxonomy.ts src/contracts/derived-feature.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/perp-liquidation.test.ts tests/fixtures/perp-liquidation.ts tests/domain/taxonomy/registry.test.ts`
+
+  Expected: exit 0.
+
+- [ ] **Step 6: Commit**
 
   ```bash
-  pnpm test tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts
-  pnpm exec eslint src/contracts/taxonomy.ts src/contracts/normalized-network-status.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts --max-warnings 0
-  pnpm exec prettier --check src/contracts/taxonomy.ts src/contracts/normalized-network-status.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts
-  ```
-
-  Expected: all commands pass. The implement loop’s automatic `pnpm -r typecheck` gate also passes after this task.
-
-- [ ] **Step 5: Commit**
-
-  ```bash
-  git add src/contracts/taxonomy.ts src/contracts/normalized-network-status.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts
-  git commit -m "feat: define deterministic Solana network status evidence"
+  git add src/contracts/perp-liquidation.ts src/contracts/taxonomy.ts src/contracts/derived-feature.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/evidence-bundle src/application/assemble-evidence-bundle.ts tests/contracts/perp-liquidation.test.ts tests/fixtures/perp-liquidation.ts tests/domain/taxonomy/registry.test.ts
+  git commit -m "feat: define perp liquidation evidence taxonomy"
   ```
 
 ## Repository Targets
 
 ### Expected Files
 
+- src/contracts/perp-liquidation.ts
+- tests/contracts/perp-liquidation.test.ts
+- tests/fixtures/perp-liquidation.ts
 - src/contracts/taxonomy.ts
-- src/contracts/normalized-network-status.ts
+- src/contracts/derived-feature.ts
 - src/contracts/index.ts
 - src/domain/taxonomy/registry.ts
-- src/domain/taxonomy/validation.ts
+- src/domain/evidence-bundle/assemble.ts
+- src/domain/evidence-bundle/quality.ts
+- src/domain/evidence-bundle/select.ts
+- src/application/assemble-evidence-bundle.ts
 - tests/domain/taxonomy/registry.test.ts
-- tests/domain/taxonomy/validation.test.ts
+- tests/domain/evidence-bundle/assemble.test.ts
+- tests/domain/evidence-bundle/context-events-assemble.test.ts
+- tests/domain/evidence-bundle/quality.test.ts
+- tests/domain/evidence-bundle/select.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm test tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts
-pnpm exec eslint src/contracts/taxonomy.ts src/contracts/normalized-network-status.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts --max-warnings 0
-pnpm exec prettier --check src/contracts/taxonomy.ts src/contracts/normalized-network-status.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts
+pnpm vitest run tests/contracts/perp-liquidation.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/evidence-bundle/assemble.test.ts tests/domain/evidence-bundle/context-events-assemble.test.ts tests/domain/evidence-bundle/quality.test.ts tests/domain/evidence-bundle/select.test.ts
+pnpm exec eslint src/contracts/perp-liquidation.ts src/contracts/taxonomy.ts src/contracts/derived-feature.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/perp-liquidation.test.ts tests/fixtures/perp-liquidation.ts tests/domain/taxonomy/registry.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **deterministic network status taxonomy**: network_status is deterministic execution-safety evidence with a short exclude-on-stale policy. (Test: `registers network status as deterministic execution safety evidence`)
-- **restricted RPC provenance**: Only solana-rpc can directly source a network_status observation. (Test: `allows only solana rpc provenance for network status`)
-- **runtime taxonomy parity**: Runtime parsers accept the same network_status and solana-rpc literals exposed by the TypeScript taxonomy. (Test: `parses network status and solana rpc taxonomy literals`)
-- **no fabricated health**: Normalized status requires ok or behind health and represents missing availability as an outcome rather than a nullable or unknown value. (Test: `requires warnings instead of nullable fabricated health values`)
+- **ephemeral perp facts degrade on stale input**: Every Pack C observation and feature uses the perp_liquidation family and degrade_confidence stale behavior. (Test: `registers ephemeral perp facts as degrade-on-stale evidence`)

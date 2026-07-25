@@ -1,6 +1,6 @@
 # Task Context: Task 2
 
-Title: Add exact decimal and rational arithmetic
+Title: Extend derived-feature persistence for Pack C kinds
 
 ## Workspace & Scope Constraints
 
@@ -10,74 +10,99 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-8
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-11
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-8
-Start Commit: 5701491d28b2b8489db6ce45b5b24d87d3570a52
+Branch: ai/issue-11
+Start Commit: d62ccad6f3f1f0812dc1d59b322256f63fbcf7ba
 
 ## Task Requirements
 
-**Files:** Create `src/domain/derived-feature/decimal.ts`, `src/domain/derived-feature/index.ts`, and `tests/domain/derived-feature/decimal.test.ts`.
+**Files:**
 
-**Behavioral invariants to test first**
+- Modify: `src/contracts/derived-feature.ts`
+- Modify: `src/db/schema/derived-features.ts`
+- Modify: `tests/domain/derived-feature/contract.test.ts` (only canonical-kind, BPS-unit, and pair-scope cases)
+- Modify: `tests/db/schema/derived-features.test.ts` (only the feature allowlist/unit invariant block)
+- Create: `tests/db/migrations/perp-liquidation-feature-kinds.test.ts`
+- Create: `drizzle/0007_perp_liquidation_feature_kinds.sql`
+- Create: `drizzle/meta/0007_snapshot.json`
+- Modify: `drizzle/meta/_journal.json`
 
-- `parses plain signed decimals without binary floating-point conversion`
-- `rejects empty exponent and non-finite decimal syntax`
-- `rounds rational ties away from zero`
-- `rejects zero divisors and unsafe integer outputs`
-- `rounds only after the complete scaled formula`
+- [ ] **Step 1: Write failing contract, schema, and migration tests**
 
-- [ ] Write failing tests for signs/scales, invalid syntax, ties, zero divisor, overflow, and golden BPS/PPM boundaries.
-- [ ] Implement exact `bigint` rational math:
+  Add one table-driven case for each new feature proving it is canonical, requires `BPS`, and requires null pool/position scope. The migration test must assert that the old allowlist and relevant BPS/scope checks are dropped and recreated with the four Pack C kinds, and that the migration contains no `DELETE`, `UPDATE`, or `TRUNCATE`.
 
-```ts
-export interface Rational {
-  readonly numerator: bigint;
-  readonly denominator: bigint;
-}
-export type NumericFailure = "invalid_decimal" | "division_by_zero" | "numeric_overflow";
-export function parseDecimal(value: string): Rational | NumericFailure;
-export function subtract(left: Rational, right: Rational): Rational;
-export function multiply(left: Rational, right: Rational): Rational;
-export function divide(left: Rational, right: Rational): Rational | NumericFailure;
-export function compare(left: Rational, right: Rational): -1 | 0 | 1;
-export function roundToSafeInteger(value: Rational): number | NumericFailure;
-```
+- [ ] **Step 2: Verify focused tests fail**
 
-Normalize signs/denominators, never parse through `number`, and round nearest with exact halves away from zero.
+  Run: `pnpm vitest run tests/domain/derived-feature/contract.test.ts tests/db/schema/derived-features.test.ts tests/db/migrations/perp-liquidation-feature-kinds.test.ts`
 
-- [ ] Export the helpers and run:
+  Expected: FAIL because the contract and database allowlists reject Pack C features.
 
-```bash
-pnpm exec vitest run tests/domain/derived-feature/decimal.test.ts
-pnpm exec eslint src/domain/derived-feature/decimal.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/decimal.test.ts --max-warnings 0
-pnpm exec prettier --check src/domain/derived-feature/decimal.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/decimal.test.ts
-```
+- [ ] **Step 3: Extend the application-level feature contract and bundle assembly**
 
-**Commit:** `feat: add exact feature arithmetic`
+  Add the four kinds to the canonical feature-kind set and BPS-kind set in `src/contracts/derived-feature.ts`. Keep `FeatureUnit` unchanged (`BPS | PPM`) and make the new kinds pair-scoped:
+
+  ```ts
+  const PERP_BPS_KINDS = new Set([
+    "oi_trend_4h",
+    "funding_rate_annualized",
+    "liquidation_cluster_1h",
+    "basis_spread_bps"
+  ]);
+  ```
+
+  `parseDerivedFeatureV1` must reject PPM for these kinds and reject non-null `poolId` or `positionId`.
+
+  In `src/domain/evidence-bundle/assemble.ts`, `src/domain/evidence-bundle/quality.ts`, `src/domain/evidence-bundle/select.ts`, and `src/application/assemble-evidence-bundle.ts`, update evidence bundle selection and assembly helpers to recognize the new pair-wide Pack C feature kinds alongside existing feature types. Ensure bundle selection logic queries and selects `oi_trend_4h`, `funding_rate_annualized`, `liquidation_cluster_1h`, and `basis_spread_bps` when assembling SOL/USDC evidence bundles.
+
+- [ ] **Step 4: Update Drizzle checks and generate a forward-only migration**
+
+  Update `chk_features_kind_allowlist`, BPS checks, and pair-wide scope checks in the schema. Run:
+
+  `pnpm exec drizzle-kit generate --name=perp_liquidation_feature_kinds`
+
+  Inspect the generated SQL. It may only drop/recreate check constraints; it must preserve existing rows and must not weaken status/value, uniqueness, or existing kind constraints. Ensure the generated paths are exactly `drizzle/0007_perp_liquidation_feature_kinds.sql` and `drizzle/meta/0007_snapshot.json`.
+
+- [ ] **Step 5: Run focused tests and formatting**
+
+  Run: `pnpm vitest run tests/domain/derived-feature/contract.test.ts tests/db/schema/derived-features.test.ts tests/db/migrations/perp-liquidation-feature-kinds.test.ts`
+
+  Expected: PASS.
+
+  Run: `pnpm exec prettier --check src/contracts/derived-feature.ts src/db/schema/derived-features.ts tests/domain/derived-feature/contract.test.ts tests/db/schema/derived-features.test.ts tests/db/migrations/perp-liquidation-feature-kinds.test.ts drizzle/meta/0007_snapshot.json drizzle/meta/_journal.json`
+
+  Expected: exit 0.
+
+- [ ] **Step 6: Commit**
+
+  ```bash
+  git add src/contracts/derived-feature.ts src/db/schema/derived-features.ts tests/domain/derived-feature/contract.test.ts tests/db/schema/derived-features.test.ts tests/db/migrations/perp-liquidation-feature-kinds.test.ts drizzle/0007_perp_liquidation_feature_kinds.sql drizzle/meta/0007_snapshot.json drizzle/meta/_journal.json
+  git commit -m "feat: persist perp liquidation feature kinds"
+  ```
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/domain/derived-feature/decimal.ts
-- src/domain/derived-feature/index.ts
-- tests/domain/derived-feature/decimal.test.ts
+- src/contracts/derived-feature.ts
+- src/db/schema/derived-features.ts
+- tests/domain/derived-feature/contract.test.ts
+- tests/db/schema/derived-features.test.ts
+- tests/db/migrations/perp-liquidation-feature-kinds.test.ts
+- drizzle/0007_perp_liquidation_feature_kinds.sql
+- drizzle/meta/0007_snapshot.json
+- drizzle/meta/\_journal.json
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/domain/derived-feature/decimal.test.ts
-pnpm exec eslint src/domain/derived-feature/decimal.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/decimal.test.ts --max-warnings 0
-pnpm exec prettier --check src/domain/derived-feature/decimal.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/decimal.test.ts
+pnpm vitest run tests/domain/derived-feature/contract.test.ts tests/db/schema/derived-features.test.ts tests/db/migrations/perp-liquidation-feature-kinds.test.ts
+pnpm exec prettier --check src/contracts/derived-feature.ts src/db/schema/derived-features.ts tests/domain/derived-feature/contract.test.ts tests/db/schema/derived-features.test.ts tests/db/migrations/perp-liquidation-feature-kinds.test.ts drizzle/meta/0007_snapshot.json drizzle/meta/_journal.json
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **exact decimal parsing**: Plain signed decimals become exact bigint rationals without binary floating-point conversion. (Test: `parses plain signed decimals without binary floating-point conversion`)
-- **invalid numeric syntax**: Exponent and non-finite syntax is rejected. (Test: `rejects empty exponent and non-finite decimal syntax`)
-- **tie rounding**: Exact half values round away from zero. (Test: `rounds rational ties away from zero`)
-- **numeric safety**: Zero division and unsafe integer conversion return typed failures. (Test: `rejects zero divisors and unsafe integer outputs`)
-- **single final rounding**: Scaled formulas round only after all exact rational operations. (Test: `rounds only after the complete scaled formula`)
+- **Pack C features are pair-scoped BPS**: All four Pack C features require BPS units and null pool and position identifiers. (Test: `accepts Pack C features only as pair-scoped BPS values`)
+- **migration preserves history**: The allowlist migration only replaces checks and never deletes, truncates, or rewrites existing feature rows. (Test: `broadens feature checks without rewriting historical rows`)

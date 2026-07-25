@@ -21,6 +21,7 @@ import type { ResearchBriefRepo } from "../../ports/brief-repo.js";
 import type { EvidenceBundleContract } from "../../ports/evidence-bundle-contract.js";
 import type { PublishAttemptRepo } from "../../ports/publish-attempt-repo.js";
 import type { RetryControl } from "../../ports/retry.js";
+import type { ConfiguredPerpLiquidationSource } from "../../ports/perp-liquidation-source.js";
 import { UuidRunIdFactory } from "./uuid-run-id-factory.js";
 
 export interface Persistence {
@@ -45,6 +46,17 @@ export interface NodeRuntime {
   getDb(): Promise<DbConnection>;
   getPersistence(): Promise<Persistence>;
   getContract(): Promise<EvidenceBundleContract>;
+  getPerpLiquidationSources?(options: {
+    binanceBaseUrl: string;
+    binanceSymbol: string;
+    driftBaseUrl: string;
+    driftMarketIndex: number;
+    driftPrecisions: {
+      pricePrecisionExp: number;
+      basePrecisionExp: number;
+      quotePrecisionExp: number;
+    };
+  }): Promise<readonly ConfiguredPerpLiquidationSource[]>;
 }
 
 export function createNodeRuntime(): NodeRuntime {
@@ -112,6 +124,30 @@ export function createNodeRuntime(): NodeRuntime {
         contractPromise = Promise.resolve(createEvidenceBundleContract());
       }
       return contractPromise;
+    },
+    async getPerpLiquidationSources(options) {
+      const { HttpBinanceFapiSource } = await import("./http-binance-fapi-source.js");
+      const { HttpDriftSource } = await import("./http-drift-source.js");
+
+      const binanceAdapter = new HttpBinanceFapiSource({
+        baseUrl: options.binanceBaseUrl,
+        symbol: options.binanceSymbol,
+        http: this.http,
+        retry: this.retryControl
+      });
+
+      const driftAdapter = new HttpDriftSource({
+        baseUrl: options.driftBaseUrl,
+        marketIndex: options.driftMarketIndex,
+        http: this.http,
+        retry: this.retryControl,
+        precisions: options.driftPrecisions
+      });
+
+      return [
+        { source: "binance-fapi", adapter: binanceAdapter },
+        { source: "drift-api", adapter: driftAdapter }
+      ];
     }
   };
 }

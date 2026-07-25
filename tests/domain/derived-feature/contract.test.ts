@@ -61,10 +61,10 @@ function buildMinimalFeature(overrides: Partial<DerivedFeatureV1> = {}): Derived
 }
 
 describe("DerivedFeatureV1 contract", () => {
-  describe("MVP_FEATURE_KINDS contains exactly seven canonical members", () => {
-    it("has seven members", async () => {
+  describe("MVP_FEATURE_KINDS contains canonical members", () => {
+    it("has 11 members", async () => {
       const { MVP_FEATURE_KINDS } = await import("../../../src/contracts/derived-feature.js");
-      expect(MVP_FEATURE_KINDS).toHaveLength(7);
+      expect(MVP_FEATURE_KINDS).toHaveLength(11);
     });
 
     it("contains range_location", async () => {
@@ -225,6 +225,51 @@ describe("DerivedFeatureV1 contract", () => {
         expect(() => parseDerivedFeatureV1(feature)).toThrow();
       });
     }
+  });
+
+  describe("Pack C features behavioral invariants", () => {
+    const packCKinds = [
+      "oi_trend_4h",
+      "funding_rate_annualized",
+      "liquidation_cluster_1h",
+      "basis_spread_bps"
+    ] as const;
+
+    it("accepts Pack C features only as pair-scoped BPS values", () => {
+      for (const kind of packCKinds) {
+        const validFeature = buildMinimalFeature({
+          featureKind: kind as DerivedFeatureV1["featureKind"],
+          unit: "BPS",
+          poolId: null,
+          positionId: null
+        });
+        expect(() => parseDerivedFeatureV1(validFeature)).not.toThrow();
+
+        const ppmFeature = buildMinimalFeature({
+          featureKind: kind as DerivedFeatureV1["featureKind"],
+          unit: "PPM",
+          poolId: null,
+          positionId: null
+        });
+        expect(() => parseDerivedFeatureV1(ppmFeature)).toThrow();
+
+        const poolFeature = buildMinimalFeature({
+          featureKind: kind as DerivedFeatureV1["featureKind"],
+          unit: "BPS",
+          poolId: "pool123",
+          positionId: null
+        });
+        expect(() => parseDerivedFeatureV1(poolFeature)).toThrow();
+
+        const posFeature = buildMinimalFeature({
+          featureKind: kind as DerivedFeatureV1["featureKind"],
+          unit: "BPS",
+          poolId: null,
+          positionId: "pos456"
+        });
+        expect(() => parseDerivedFeatureV1(posFeature)).toThrow();
+      }
+    });
   });
 
   describe("enforces feature scope identity by kind", () => {

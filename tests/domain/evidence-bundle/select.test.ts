@@ -100,7 +100,11 @@ function makeRequest(
     oracle_dex_divergence: "1.0",
     oracle_confidence_width: "1.0",
     realized_volatility_1h: "1.0",
-    volume_liquidity_ratio_24h: "1.0"
+    volume_liquidity_ratio_24h: "1.0",
+    oi_trend_4h: "1.0",
+    liquidation_cluster_1h: "1.0",
+    funding_rate_annualized: "1.0",
+    basis_spread_bps: "1.0"
   };
 
   const calculatorVersions: Readonly<Record<FeatureKind, string>> = overrides?.calculatorVersions
@@ -129,7 +133,7 @@ describe("selectEvidenceFeatureSlots", () => {
 
       const result = selectEvidenceFeatureSlots(request);
 
-      expect(result.slots).toHaveLength(7);
+      expect(result.slots).toHaveLength(MVP_FEATURE_KINDS.length);
       expect(result.slots.map((s) => s.featureKind)).toEqual([...MVP_FEATURE_KINDS]);
     });
 

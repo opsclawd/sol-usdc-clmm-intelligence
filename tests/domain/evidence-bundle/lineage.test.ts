@@ -268,7 +268,11 @@ function makeInput(): {
         oracle_dex_divergence: "1.0",
         oracle_confidence_width: "1.0",
         realized_volatility_1h: "1.0",
-        volume_liquidity_ratio_24h: "1.0"
+        volume_liquidity_ratio_24h: "1.0",
+        oi_trend_4h: "1.0",
+        liquidation_cluster_1h: "1.0",
+        funding_rate_annualized: "1.0",
+        basis_spread_bps: "1.0"
       },
       candidates: [derivedRow],
       poolId,

@@ -579,6 +579,146 @@ export const observationKindRegistry = {
     },
     active: true,
     schemaVersion: 1
+  },
+  funding_rate: {
+    kind: "funding_rate",
+    evidenceFamily: "perp_liquidation",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 900_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "degrade_confidence"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.4,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      ...DEFAULT_PROVENANCE_REQUIREMENTS,
+      allowedSourceRefs: ["binance-fapi", "drift-api"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  open_interest: {
+    kind: "open_interest",
+    evidenceFamily: "perp_liquidation",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 900_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "degrade_confidence"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.4,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      ...DEFAULT_PROVENANCE_REQUIREMENTS,
+      allowedSourceRefs: ["binance-fapi", "drift-api"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  perp_basis: {
+    kind: "perp_basis",
+    evidenceFamily: "perp_liquidation",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 900_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "degrade_confidence"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.4,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      ...DEFAULT_PROVENANCE_REQUIREMENTS,
+      allowedSourceRefs: ["binance-fapi", "drift-api"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  liquidation_event: {
+    kind: "liquidation_event",
+    evidenceFamily: "perp_liquidation",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 3_600_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "degrade_confidence"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.4,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      ...DEFAULT_PROVENANCE_REQUIREMENTS,
+      allowedSourceRefs: ["binance-fapi", "drift-api"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  leverage_proxy: {
+    kind: "leverage_proxy",
+    evidenceFamily: "perp_liquidation",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 900_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "degrade_confidence"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.4,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.3,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      ...DEFAULT_PROVENANCE_REQUIREMENTS,
+      allowedSourceRefs: ["binance-fapi", "drift-api"]
+    },
+    active: true,
+    schemaVersion: 1
   }
 } as const satisfies Record<ObservationKind, ObservationKindEntry>;
 
@@ -810,6 +950,138 @@ export const featureKindRegistry = {
       requireCodeVersion: true,
       requireRunId: false,
       allowedSourceRefs: ["clmm-v2-bundle", "orca-public-api"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  oi_trend_4h: {
+    kind: "oi_trend_4h",
+    evidenceFamily: "perp_liquidation",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 14_400_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "degrade_confidence"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.3,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.4,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      minRawObservationRefs: 1,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 1,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: ["binance-fapi", "drift-api"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  liquidation_cluster_1h: {
+    kind: "liquidation_cluster_1h",
+    evidenceFamily: "perp_liquidation",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 3_600_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "degrade_confidence"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.3,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.4,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      minRawObservationRefs: 1,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 1,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: ["binance-fapi", "drift-api"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  funding_rate_annualized: {
+    kind: "funding_rate_annualized",
+    evidenceFamily: "perp_liquidation",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 900_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "degrade_confidence"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.3,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.4,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      minRawObservationRefs: 1,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 1,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: ["binance-fapi", "drift-api"]
+    },
+    active: true,
+    schemaVersion: 1
+  },
+  basis_spread_bps: {
+    kind: "basis_spread_bps",
+    evidenceFamily: "perp_liquidation",
+    signalClass: "deterministic",
+    freshnessPolicy: {
+      maxObservedAgeMs: 900_000,
+      maxFetchLagMs: null,
+      validForMs: null,
+      clockSkewToleranceMs: 5_000,
+      staleBehavior: "degrade_confidence"
+    },
+    confidencePolicy: {
+      weights: {
+        sourceReliability: 0.3,
+        dataCompleteness: 0.3,
+        derivationConfidence: 0.4,
+        llmConfidence: 0
+      },
+      thresholds: DEFAULT_THRESHOLDS,
+      redistributeLlmWeight: true
+    },
+    provenanceRequirements: {
+      minRawObservationRefs: 1,
+      minDerivedFromRefs: 0,
+      minSourceRefs: 1,
+      requireProcessRef: true,
+      requireCodeVersion: true,
+      requireRunId: false,
+      allowedSourceRefs: ["binance-fapi", "drift-api"]
     },
     active: true,
     schemaVersion: 1

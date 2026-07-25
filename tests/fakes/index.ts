@@ -18,3 +18,4 @@ export { FakeScheduledEventSource } from "./fake-scheduled-event-source.js";
 export { FakeProtocolIncidentSource } from "./fake-protocol-incident-source.js";
 export { FakeNewsSource } from "./fake-news-source.js";
 export { FakeOnChainFlowSource } from "./fake-on-chain-flow-source.js";
+export { FakePerpLiquidationSource } from "./fake-perp-liquidation-source.js";

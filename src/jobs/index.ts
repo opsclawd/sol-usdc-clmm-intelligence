@@ -36,3 +36,12 @@ export {
   type OnChainFlowJobStatus,
   type OnChainFlowSourceOutcome
 } from "./on-chain-flow-job.js";
+export {
+  perpLiquidationJob,
+  runPerpLiquidationJob,
+  type ConfiguredPerpLiquidationSource,
+  type PerpLiquidationJobDeps,
+  type PerpLiquidationJobResult,
+  type PerpLiquidationJobStatus,
+  type PerpLiquidationSourceOutcome
+} from "./perp-liquidation-job.js";

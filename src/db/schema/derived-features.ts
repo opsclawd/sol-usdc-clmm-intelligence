@@ -73,7 +73,7 @@ export const derivedFeatures = intelligence.table(
     check("chk_features_unit", sql`${t.unit} IN ('BPS', 'PPM')`),
     check(
       "chk_features_kind_allowlist",
-      sql`${t.featureKind} IN ('range_location', 'distance_to_lower', 'distance_to_upper', 'oracle_dex_divergence', 'oracle_confidence_width', 'realized_volatility_1h', 'volume_liquidity_ratio_24h')`
+      sql`${t.featureKind} IN ('range_location', 'distance_to_lower', 'distance_to_upper', 'oracle_dex_divergence', 'oracle_confidence_width', 'realized_volatility_1h', 'volume_liquidity_ratio_24h', 'oi_trend_4h', 'funding_rate_annualized', 'liquidation_cluster_1h', 'basis_spread_bps')`
     ),
     check(
       "chk_features_status_value",
@@ -90,6 +90,22 @@ export const derivedFeatures = intelligence.table(
     check(
       "chk_features_unit_bps3",
       sql`((${t.featureKind} = 'realized_volatility_1h' AND ${t.unit} = 'BPS') OR (${t.featureKind} <> 'realized_volatility_1h'))`
+    ),
+    check(
+      "chk_features_unit_bps4",
+      sql`((${t.featureKind} = 'oi_trend_4h' AND ${t.unit} = 'BPS') OR (${t.featureKind} <> 'oi_trend_4h'))`
+    ),
+    check(
+      "chk_features_unit_bps5",
+      sql`((${t.featureKind} = 'funding_rate_annualized' AND ${t.unit} = 'BPS') OR (${t.featureKind} <> 'funding_rate_annualized'))`
+    ),
+    check(
+      "chk_features_unit_bps6",
+      sql`((${t.featureKind} = 'liquidation_cluster_1h' AND ${t.unit} = 'BPS') OR (${t.featureKind} <> 'liquidation_cluster_1h'))`
+    ),
+    check(
+      "chk_features_unit_bps7",
+      sql`((${t.featureKind} = 'basis_spread_bps' AND ${t.unit} = 'BPS') OR (${t.featureKind} <> 'basis_spread_bps'))`
     ),
     check(
       "chk_features_unit_ppm",
@@ -117,7 +133,7 @@ export const derivedFeatures = intelligence.table(
     ),
     check(
       "chk_features_scope_other",
-      sql`(((${t.featureKind} IN ('oracle_dex_divergence', 'oracle_confidence_width', 'realized_volatility_1h')) AND ${t.poolId} IS NULL AND ${t.positionId} IS NULL) OR (${t.featureKind} NOT IN ('oracle_dex_divergence', 'oracle_confidence_width', 'realized_volatility_1h')))`
+      sql`(((${t.featureKind} IN ('oracle_dex_divergence', 'oracle_confidence_width', 'realized_volatility_1h', 'oi_trend_4h', 'funding_rate_annualized', 'liquidation_cluster_1h', 'basis_spread_bps')) AND ${t.poolId} IS NULL AND ${t.positionId} IS NULL) OR (${t.featureKind} NOT IN ('oracle_dex_divergence', 'oracle_confidence_width', 'realized_volatility_1h', 'oi_trend_4h', 'funding_rate_annualized', 'liquidation_cluster_1h', 'basis_spread_bps')))`
     )
   ]
 );

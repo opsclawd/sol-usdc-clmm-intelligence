@@ -1,6 +1,6 @@
 # Task Context: Task 3
 
-Title: Add bounded candidate reads and deterministic selectors
+Title: Add the source port and both venue adapters
 
 ## Workspace & Scope Constraints
 
@@ -10,83 +10,122 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-8
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-11
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-8
-Start Commit: 5701491d28b2b8489db6ce45b5b24d87d3570a52
+Branch: ai/issue-11
+Start Commit: d62ccad6f3f1f0812dc1d59b322256f63fbcf7ba
 
 ## Task Requirements
 
-**Files:** Modify `src/ports/normalized-observation-repo.ts`, `src/adapters/node/drizzle-normalized-observation-repo.ts`, `tests/fakes/fake-normalized-observation-repo.ts`, `src/domain/derived-feature/index.ts`, `tests/ports/normalized-observation-repo.test.ts`, `tests/application/assemble-context-events.test.ts`, and `tests/application/assemble-evidence-bundle.test.ts`; create `src/domain/derived-feature/select.ts` and `tests/domain/derived-feature/select.test.ts`.
+**Files:**
 
-**Behavioral invariants to test first**
+- Create: `src/ports/perp-liquidation-source.ts`
+- Create: `src/adapters/node/http-binance-fapi-source.ts`
+- Create: `src/adapters/node/http-drift-source.ts`
+- Create: `tests/fakes/fake-perp-liquidation-source.ts`
+- Modify: `tests/fakes/index.ts`
+- Create: `tests/adapters/node/http-binance-fapi-source.test.ts`
+- Create: `tests/adapters/node/http-drift-source.test.ts`
 
-- `candidate reads filter source kind and inclusive receipt lower bound`
-- `selects the latest exact-scope valid row with deterministic tie breaks`
-- `rejects a persisted-fresh row that expired by evaluation time`
-- `records malformed wrong-source and wrong-scope candidates deterministically`
-- `deduplicates volatility timestamps by slot receipt and id`
-- `accepts historical volatility samples while requiring a fresh anchor`
+- [ ] **Step 1: Write failing port/adapter tests**
 
-- [ ] Write failing port/selector tests covering source-kind pairs, exact scope, malformed payloads, expiry, semantic time, slot/receipt/ID ties, inclusive lookback, and duplicate timestamps.
-- [ ] In one atomic interface-plus-implementations change, add:
+  Name and cover:
+  - `keeps venue response fields inside adapters and emits only canonical source facts`;
+  - `retries retryable source failures and never retries malformed responses`;
+  - `marks Binance liquidation coverage unavailable without calling a user-data endpoint`;
+  - `maps Drift liquidation precision only from configured documented precision`;
+  - malformed numeric strings, non-finite values, wrong market/symbol, HTTP 404/429/5xx, timeout, and secret-redacted diagnostics.
 
-```ts
-export interface NormalizedObservationCandidateQuery {
-  readonly sourceKinds: readonly {
-    readonly source: Source;
-    readonly observationKind: ObservationKind;
-  }[];
-  readonly receivedAtOrAfterUnixMs: number;
-}
-export interface NormalizedObservationRepo {
-  // existing members remain
-  listCandidates(query: NormalizedObservationCandidateQuery): Promise<NormalizedObservationRow[]>;
-}
-```
+- [ ] **Step 2: Verify adapter tests fail**
 
-Drizzle must build an `OR` over exact source/kind pairs, apply the inclusive receipt bound, and order by receipt then ID. The fake must mirror this behavior. Update any fake instantiations in `tests/application/assemble-context-events.test.ts` and `tests/application/assemble-evidence-bundle.test.ts` to satisfy the interface.
+  Run: `pnpm vitest run tests/adapters/node/http-binance-fapi-source.test.ts tests/adapters/node/http-drift-source.test.ts`
 
-- [ ] Add pure payload narrowing and selectors returning sorted selected rows and `{ observationId, reason }` rejections. Volatility duplicate selection uses highest provider slot, then receipt time, then ID; historical samples may be expired but the anchor may not.
-- [ ] Run:
+  Expected: FAIL because the port and adapters do not exist.
 
-```bash
-pnpm exec vitest run tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts
-pnpm exec eslint src/ports/normalized-observation-repo.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts src/domain/derived-feature/select.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts --max-warnings 0
-pnpm exec prettier --check src/ports/normalized-observation-repo.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts src/domain/derived-feature/select.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts
-```
+- [ ] **Step 3: Add the port and fake in the same task as every implementation**
 
-**Commit:** `feat: select bounded feature inputs deterministically`
+  Define a single method so the interface and all implementations compile together:
+
+  ```ts
+  export interface PerpLiquidationSourceRequest {
+    readonly pair: "SOL/USDC";
+    readonly fromUnixMs: number;
+    readonly toUnixMs: number;
+  }
+
+  export interface PerpLiquidationSourceSnapshot {
+    readonly source: "binance-fapi" | "drift-api";
+    readonly providerRunId: string;
+    readonly asOfUnixMs: number;
+    readonly coverage: Readonly<Record<PerpMetricKind, PerpMetricCoverage>>;
+    readonly facts: readonly PerpLiquidationSourceFact[];
+  }
+
+  export interface PerpLiquidationSourcePort {
+    collect(request: PerpLiquidationSourceRequest): Promise<PerpLiquidationSourceSnapshot>;
+  }
+  ```
+
+  `PerpLiquidationSourceFact` is a discriminated union with venue-neutral field names and decimal strings. `PerpLiquidationSourceError` has `timeout | network | unavailable | malformed`.
+
+- [ ] **Step 4: Implement Binance public market-data collection**
+
+  Use only documented public market-data paths under a configurable base URL:
+
+  | Metric      | Binance path/behavior                                                        |
+  | ----------- | ---------------------------------------------------------------------------- |
+  | funding     | funding-rate history for the configured symbol                               |
+  | OI          | open-interest statistics, 5-minute period, enough samples to span four hours |
+  | basis       | mark/index price or documented basis response                                |
+  | leverage    | global or top-trader long/short ratio, with methodology recorded             |
+  | liquidation | no request; coverage is `unavailable` with a non-secret diagnostic           |
+
+  Fetch independent metric endpoints concurrently, preserving per-metric coverage rather than rejecting the entire snapshot when one fails. Use bounded exponential backoff with injected `RetryControl`; retry only timeout/network/429/5xx. Never include headers, keys, signed query strings, or full response bodies in facts or diagnostics.
+
+- [ ] **Step 5: Implement Drift public data collection**
+
+  Accept a configurable base URL, SOL-PERP market index, endpoint paths, and documented integer precisions. Poll funding history, market state (OI plus mark/oracle values), and historical liquidation records for the request window. Emit a leverage proxy only when the response supplies a documented market net-position ratio; otherwise mark that metric unavailable. Reject rather than infer an undocumented precision or liquidation notional.
+
+- [ ] **Step 6: Run focused tests and lint**
+
+  Run: `pnpm vitest run tests/adapters/node/http-binance-fapi-source.test.ts tests/adapters/node/http-drift-source.test.ts`
+
+  Expected: PASS.
+
+  Run: `pnpm exec eslint src/ports/perp-liquidation-source.ts src/adapters/node/http-binance-fapi-source.ts src/adapters/node/http-drift-source.ts tests/fakes/fake-perp-liquidation-source.ts tests/fakes/index.ts tests/adapters/node/http-binance-fapi-source.test.ts tests/adapters/node/http-drift-source.test.ts`
+
+  Expected: exit 0.
+
+- [ ] **Step 7: Commit**
+
+  ```bash
+  git add src/ports/perp-liquidation-source.ts src/adapters/node/http-binance-fapi-source.ts src/adapters/node/http-drift-source.ts tests/fakes/fake-perp-liquidation-source.ts tests/fakes/index.ts tests/adapters/node/http-binance-fapi-source.test.ts tests/adapters/node/http-drift-source.test.ts
+  git commit -m "feat: add Binance and Drift perp source adapters"
+  ```
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/ports/normalized-observation-repo.ts
-- src/adapters/node/drizzle-normalized-observation-repo.ts
-- tests/fakes/fake-normalized-observation-repo.ts
-- src/domain/derived-feature/select.ts
-- src/domain/derived-feature/index.ts
-- tests/domain/derived-feature/select.test.ts
-- tests/ports/normalized-observation-repo.test.ts
-- tests/application/assemble-context-events.test.ts
-- tests/application/assemble-evidence-bundle.test.ts
+- src/ports/perp-liquidation-source.ts
+- src/adapters/node/http-binance-fapi-source.ts
+- src/adapters/node/http-drift-source.ts
+- tests/fakes/fake-perp-liquidation-source.ts
+- tests/fakes/index.ts
+- tests/adapters/node/http-binance-fapi-source.test.ts
+- tests/adapters/node/http-drift-source.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts
-pnpm exec eslint src/ports/normalized-observation-repo.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts src/domain/derived-feature/select.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts --max-warnings 0
-pnpm exec prettier --check src/ports/normalized-observation-repo.ts src/adapters/node/drizzle-normalized-observation-repo.ts tests/fakes/fake-normalized-observation-repo.ts src/domain/derived-feature/select.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/select.test.ts tests/ports/normalized-observation-repo.test.ts
+pnpm vitest run tests/adapters/node/http-binance-fapi-source.test.ts tests/adapters/node/http-drift-source.test.ts
+pnpm exec eslint src/ports/perp-liquidation-source.ts src/adapters/node/http-binance-fapi-source.ts src/adapters/node/http-drift-source.ts tests/fakes/fake-perp-liquidation-source.ts tests/fakes/index.ts tests/adapters/node/http-binance-fapi-source.test.ts tests/adapters/node/http-drift-source.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **bounded candidate query**: Candidate reads apply exact source-kind pairs and an inclusive receipt lower bound. (Test: `candidate reads filter source kind and inclusive receipt lower bound`)
-- **deterministic latest selection**: Selection uses semantic time, provider slot, receipt time, then normalized ID. (Test: `selects the latest exact-scope valid row with deterministic tie breaks`)
-- **dynamic expiry**: Evaluation-time expiry overrides a persisted fresh snapshot. (Test: `rejects a persisted-fresh row that expired by evaluation time`)
-- **deterministic rejection**: Malformed, wrong-source, and wrong-scope rejections are stable under input permutation. (Test: `records malformed wrong-source and wrong-scope candidates deterministically`)
-- **volatility deduplication**: Duplicate timestamps choose the highest slot, receipt time, then ID. (Test: `deduplicates volatility timestamps by slot receipt and id`)
-- **historical sample eligibility**: Expired historical samples may contribute while the latest anchor must be fresh. (Test: `accepts historical volatility samples while requiring a fresh anchor`)
+- **venue response isolation**: Adapters translate venue payloads to canonical source facts so venue-specific fields never enter domain inputs. (Test: `keeps venue response fields inside adapters and emits only canonical source facts`)
+- **bounded retry classification**: Timeout, network, 429, and 5xx failures retry within the configured bound while malformed and other non-retryable failures stop immediately. (Test: `retries retryable source failures and never retries malformed responses`)
+- **Binance liquidation absence is explicit**: The Binance adapter never calls a user-data force-order endpoint and reports liquidation coverage unavailable rather than zero. (Test: `marks Binance liquidation coverage unavailable without calling a user-data endpoint`)

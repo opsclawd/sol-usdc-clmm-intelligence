@@ -17,3 +17,6 @@ jobs:
   - name: on-chain-flow
     cron: "0 * * * *"
     messageFile: cron/routines/on-chain-flow.md
+  - name: perp-liquidation
+    cron: "*/5 * * * *"
+    messageFile: cron/routines/perp-liquidation.md
