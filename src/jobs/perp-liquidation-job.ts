@@ -1,5 +1,7 @@
-import type { PerpVenue } from "../contracts/perp-liquidation.js";
-import type { PerpLiquidationSourcePort } from "../ports/perp-liquidation-source.js";
+import type {
+  ConfiguredPerpLiquidationSource,
+  PerpLiquidationSourceKey
+} from "../ports/perp-liquidation-source.js";
 import type { RawObservationRepo } from "../ports/observation-repo.js";
 import type { NormalizedObservationRepo } from "../ports/normalized-observation-repo.js";
 import type { DerivedFeatureRepo } from "../ports/feature-repo.js";
@@ -14,12 +16,7 @@ import type { Clock } from "../ports/clock.js";
 import type { RunIdFactory } from "../ports/run-id.js";
 import { redactDiagnostic } from "../application/source-outcome.js";
 
-export type PerpLiquidationSourceKey = PerpVenue;
-
-export interface ConfiguredPerpLiquidationSource {
-  readonly source: PerpLiquidationSourceKey;
-  readonly adapter: PerpLiquidationSourcePort;
-}
+export type { ConfiguredPerpLiquidationSource, PerpLiquidationSourceKey };
 
 export interface PerpLiquidationJobDeps {
   readonly sources: readonly ConfiguredPerpLiquidationSource[];

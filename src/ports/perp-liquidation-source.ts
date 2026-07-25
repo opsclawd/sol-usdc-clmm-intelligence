@@ -40,3 +40,10 @@ export class PerpLiquidationSourceError extends Error {
     this.code = code;
   }
 }
+
+export type PerpLiquidationSourceKey = PerpVenue;
+
+export interface ConfiguredPerpLiquidationSource {
+  readonly source: PerpLiquidationSourceKey;
+  readonly adapter: PerpLiquidationSourcePort;
+}

@@ -21,6 +21,7 @@ import type { ResearchBriefRepo } from "../../ports/brief-repo.js";
 import type { EvidenceBundleContract } from "../../ports/evidence-bundle-contract.js";
 import type { PublishAttemptRepo } from "../../ports/publish-attempt-repo.js";
 import type { RetryControl } from "../../ports/retry.js";
+import type { ConfiguredPerpLiquidationSource } from "../../ports/perp-liquidation-source.js";
 import { UuidRunIdFactory } from "./uuid-run-id-factory.js";
 
 export interface Persistence {
@@ -55,9 +56,7 @@ export interface NodeRuntime {
       basePrecisionExp: number;
       quotePrecisionExp: number;
     };
-  }): Promise<
-    readonly import("../../jobs/perp-liquidation-job.js").ConfiguredPerpLiquidationSource[]
-  >;
+  }): Promise<readonly ConfiguredPerpLiquidationSource[]>;
 }
 
 export function createNodeRuntime(): NodeRuntime {
