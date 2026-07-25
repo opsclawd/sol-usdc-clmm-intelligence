@@ -175,19 +175,29 @@ function buildLineage(
     }
 
     if (!rawRefMap.has(row.rawObservationId)) {
-      let payloadHash = `raw-hash-${row.rawObservationId}`;
-      const rawRef = row.provenance.rawObservationRefs.find(
-        (ref) => ref.id === row.rawObservationId
-      );
-      if (rawRef) {
-        payloadHash = rawRef.payloadHash;
-      }
       rawRefMap.set(row.rawObservationId, {
         refType: "raw_observation",
         id: row.rawObservationId,
         source: row.source,
-        payloadHash
+        payloadHash: `raw-hash-${row.rawObservationId}`
       });
+    }
+
+    if (row.provenance?.rawObservationRefs) {
+      for (const rawRef of row.provenance.rawObservationRefs) {
+        if (!rawRefMap.has(rawRef.id)) {
+          rawRefMap.set(rawRef.id, rawRef);
+        } else {
+          // If we previously added a synthetic placeholder with raw-hash-, update with the actual provenance ref if available
+          const existing = rawRefMap.get(rawRef.id)!;
+          if (
+            existing.payloadHash.startsWith("raw-hash-") &&
+            !rawRef.payloadHash.startsWith("raw-hash-")
+          ) {
+            rawRefMap.set(rawRef.id, rawRef);
+          }
+        }
+      }
     }
   }
 
@@ -258,9 +268,12 @@ function buildConfidence(
       componentMinima.derivationConfidence
     ),
     llmConfidence:
-      inputConfidence.components.llmConfidence !== null && componentMinima.llmConfidence !== null
-        ? Math.min(inputConfidence.components.llmConfidence, componentMinima.llmConfidence)
-        : (inputConfidence.components.llmConfidence ?? componentMinima.llmConfidence)
+      inputConfidence.components.llmConfidence !== null
+        ? Math.min(
+            inputConfidence.components.llmConfidence,
+            componentMinima.llmConfidence ?? Infinity
+          )
+        : null
   };
 
   let rawComposite =
