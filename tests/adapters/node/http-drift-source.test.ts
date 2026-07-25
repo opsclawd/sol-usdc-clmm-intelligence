@@ -62,7 +62,7 @@ describe("HttpDriftSource", () => {
 
     for (const fact of snapshot.facts) {
       expect(fact.venue).toBe("drift-api");
-      const payload = fact.payload as Record<string, unknown>;
+      const payload = fact.payload as unknown as Record<string, unknown>;
       expect(payload).not.toHaveProperty("baseAssetAmountWithUnsettledLp");
       expect(payload).not.toHaveProperty("lastOraclePrice");
       expect(payload).not.toHaveProperty("baseAssetAmount");

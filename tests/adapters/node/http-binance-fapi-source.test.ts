@@ -56,7 +56,7 @@ describe("HttpBinanceFapiSource", () => {
 
     for (const fact of snapshot.facts) {
       expect(fact.venue).toBe("binance-fapi");
-      const payload = fact.payload as Record<string, unknown>;
+      const payload = fact.payload as unknown as Record<string, unknown>;
       expect(payload).not.toHaveProperty("sumOpenInterest");
       expect(payload).not.toHaveProperty("sumOpenInterestValue");
       expect(payload).not.toHaveProperty("markPrice");
