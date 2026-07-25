@@ -268,8 +268,27 @@ function buildConfidence(
   const level: Confidence["level"] =
     rawComposite >= 0.7 ? "high" : rawComposite < 0.4 ? "low" : "medium";
 
+  const cappedComponents = {
+    sourceReliability: Math.min(
+      inputConfidence.components.sourceReliability,
+      componentMinima.sourceReliability
+    ),
+    dataCompleteness: Math.min(
+      inputConfidence.components.dataCompleteness,
+      componentMinima.dataCompleteness
+    ),
+    derivationConfidence: Math.min(
+      inputConfidence.components.derivationConfidence,
+      componentMinima.derivationConfidence
+    ),
+    llmConfidence:
+      inputConfidence.components.llmConfidence !== null && componentMinima.llmConfidence !== null
+        ? Math.min(inputConfidence.components.llmConfidence, componentMinima.llmConfidence)
+        : (inputConfidence.components.llmConfidence ?? componentMinima.llmConfidence)
+  };
+
   return {
-    components: { ...inputConfidence.components },
+    components: cappedComponents,
     compositeScore: rawComposite,
     level,
     weightingVersion: inputConfidence.weightingVersion,

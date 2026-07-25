@@ -1,6 +1,6 @@
 # Task Context: Task 2
 
-Title: Validate normalize identify and enrich Solana RPC batches
+Title: Add exact decimal and rational arithmetic
 
 ## Workspace & Scope Constraints
 
@@ -10,160 +10,74 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-7
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-8
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-7
-Start Commit: d9bb76998401dd5a7d8096b1d4f98db221c3ed23
+Branch: ai/issue-8
+Start Commit: 5701491d28b2b8489db6ce45b5b24d87d3570a52
 
 ## Task Requirements
 
-**Files:**
+**Files:** Create `src/domain/derived-feature/decimal.ts`, `src/domain/derived-feature/index.ts`, and `tests/domain/derived-feature/decimal.test.ts`.
 
-- Create: `src/domain/network-status/solana-rpc.ts`
-- Create: `src/domain/network-status/identity.ts`
-- Create: `src/domain/network-status/normalize.ts`
-- Create: `src/domain/network-status/enrich.ts`
-- Create: `src/domain/network-status/index.ts`
-- Create: `tests/fixtures/solana-network-status.ts`
-- Create: `tests/domain/network-status/solana-rpc.test.ts`
-- Create: `tests/domain/network-status/identity.test.ts`
-- Create: `tests/domain/network-status/normalize.test.ts`
-- Create: `tests/domain/network-status/enrich.test.ts`
+**Behavioral invariants to test first**
 
-**Behavioral invariants to test first:**
+- `parses plain signed decimals without binary floating-point conversion`
+- `rejects empty exponent and non-finite decimal syntax`
+- `rounds rational ties away from zero`
+- `rejects zero divisors and unsafe integer outputs`
+- `rounds only after the complete scaled formula`
 
-- `accepts healthy getHealth and getSlot responses regardless of batch order`
-- `accepts Solana node-behind error minus 32005 as degraded health evidence`
-- `rejects duplicate missing unknown or mismatched JSON-RPC response ids`
-- `normalizes a healthy batch without warnings`
-- `normalizes node-behind and missing slot as explicit sorted warnings`
-- `derives stable identity from network and collection instant only`
-- `enriches network status with fresh deterministic direct provenance`
+- [ ] Write failing tests for signs/scales, invalid syntax, ties, zero divisor, overflow, and golden BPS/PPM boundaries.
+- [ ] Implement exact `bigint` rational math:
 
-- [ ] **Step 1: Add fixtures and failing strict-validation tests**
+```ts
+export interface Rational {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+export type NumericFailure = "invalid_decimal" | "division_by_zero" | "numeric_overflow";
+export function parseDecimal(value: string): Rational | NumericFailure;
+export function subtract(left: Rational, right: Rational): Rational;
+export function multiply(left: Rational, right: Rational): Rational;
+export function divide(left: Rational, right: Rational): Rational | NumericFailure;
+export function compare(left: Rational, right: Rational): -1 | 0 | 1;
+export function roundToSafeInteger(value: Rational): number | NumericFailure;
+```
 
-  Fixtures must cover: ordered and reversed healthy batches; health `-32005` with `{ numSlotsBehind: 12 }`; slot error; duplicate id; missing id; unknown id; wrong `jsonrpc`; unsafe/negative slot; unsafe/negative slots-behind; and arbitrary provider fields. Define the accepted domain shape:
+Normalize signs/denominators, never parse through `number`, and round nearest with exact halves away from zero.
 
-  ```ts
-  export interface AcceptedSolanaNetworkStatus {
-    readonly health: "ok" | "behind";
-    readonly slot: number | null;
-    readonly slotsBehind: number | null;
-    readonly slotUnavailable: boolean;
-  }
+- [ ] Export the helpers and run:
 
-  export function acceptSolanaNetworkStatusBatch(input: unknown): AcceptedSolanaNetworkStatus;
-  ```
+```bash
+pnpm exec vitest run tests/domain/derived-feature/decimal.test.ts
+pnpm exec eslint src/domain/derived-feature/decimal.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/decimal.test.ts --max-warnings 0
+pnpm exec prettier --check src/domain/derived-feature/decimal.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/decimal.test.ts
+```
 
-  Run:
-
-  ```bash
-  pnpm test tests/domain/network-status/solana-rpc.test.ts
-  ```
-
-  Expected: FAIL because the network-status domain does not exist.
-
-- [ ] **Step 2: Implement strict id-correlated validation**
-
-  Require an array containing exactly one `"health"` and one `"slot"` JSON-RPC 2.0 response. Accept only `"ok"` or error code `-32005` for health. Require safe non-negative integers for slot and `numSlotsBehind`. A slot error is allowed and represented as `slot: null`; a health error other than `-32005`, mixed result/error members, duplicates, missing ids, or unknown ids throws `SolanaNetworkStatusValidationError`.
-
-- [ ] **Step 3: Write failing identity and normalization tests**
-
-  Define:
-
-  ```ts
-  export function deriveSolanaNetworkStatusObservationKey(input: {
-    readonly network: "solana-mainnet-beta";
-    readonly observedAtUnixMs: number;
-  }): Promise<string>;
-
-  export function normalizeSolanaNetworkStatus(input: {
-    readonly accepted: AcceptedSolanaNetworkStatus;
-    readonly observedAtUnixMs: number;
-  }): NetworkStatusPayloadV1;
-  ```
-
-  Assert response ordering and provider-only extra fields do not affect identity. Assert warnings are sorted and deduplicated, healthy status has no warnings, `behind` always has `node_behind`, and a missing slot always has `slot_unavailable`.
-
-  Run:
-
-  ```bash
-  pnpm test tests/domain/network-status/identity.test.ts tests/domain/network-status/normalize.test.ts
-  ```
-
-  Expected: FAIL because identity and normalization are not implemented.
-
-- [ ] **Step 4: Implement identity normalization and deterministic enrichment**
-
-  Hash `{ identityVersion: 1, network, observedAtUnixMs }` with `canonicalHash`. Normalize only accepted facts. Implement enrichment using `getObservationKindEntry("network_status")`, `computeFreshness`, `computeConfidence`, `validateProvenance`, and `canonicalizePayload`, following `src/domain/pool-statistics/enrich.ts`. Use direct raw provenance from `"solana-rpc"`, collector `"collect-solana-network-status"`, job name `"core-collection-job"`, source reliability `0.95`, completeness `1` with slot or `0.7` without it, derivation confidence `1`, and no LLM confidence.
-
-  The enrichment test must assert `signalClass: "deterministic"`, `evidenceFamily: "execution_safety"`, one raw/source ref, the supplied run/code versions, and freshness based on the collection instant.
-
-  Export the concrete enrichment result as `EnrichedNetworkStatusObservation` and keep the callable signature consistent across the domain barrel and collector:
-
-  ```ts
-  export function enrichNetworkStatus(input: {
-    readonly rawObservationId: number;
-    readonly sourceObservationKey: string;
-    readonly rawPayloadHash: string;
-    readonly observedAtUnixMs: number;
-    readonly fetchedAtUnixMs: number;
-    readonly receivedAtUnixMs: number;
-    readonly payload: NetworkStatusPayloadV1;
-    readonly nowMs: number;
-    readonly codeVersion: string;
-    readonly runId: string | null;
-  }): Promise<EnrichedNetworkStatusObservation>;
-  ```
-
-- [ ] **Step 5: Run task-scoped verification**
-
-  ```bash
-  pnpm test tests/domain/network-status/solana-rpc.test.ts tests/domain/network-status/identity.test.ts tests/domain/network-status/normalize.test.ts tests/domain/network-status/enrich.test.ts
-  pnpm exec eslint src/domain/network-status/solana-rpc.ts src/domain/network-status/identity.ts src/domain/network-status/normalize.ts src/domain/network-status/enrich.ts src/domain/network-status/index.ts tests/fixtures/solana-network-status.ts tests/domain/network-status/solana-rpc.test.ts tests/domain/network-status/identity.test.ts tests/domain/network-status/normalize.test.ts tests/domain/network-status/enrich.test.ts --max-warnings 0
-  pnpm exec prettier --check src/domain/network-status/solana-rpc.ts src/domain/network-status/identity.ts src/domain/network-status/normalize.ts src/domain/network-status/enrich.ts src/domain/network-status/index.ts tests/fixtures/solana-network-status.ts tests/domain/network-status/solana-rpc.test.ts tests/domain/network-status/identity.test.ts tests/domain/network-status/normalize.test.ts tests/domain/network-status/enrich.test.ts
-  ```
-
-  Expected: all commands pass. The implement loop’s automatic `pnpm -r typecheck` gate also passes after this task.
-
-- [ ] **Step 6: Commit**
-
-  ```bash
-  git add src/domain/network-status tests/fixtures/solana-network-status.ts tests/domain/network-status
-  git commit -m "feat: normalize Solana RPC health observations"
-  ```
+**Commit:** `feat: add exact feature arithmetic`
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/domain/network-status/solana-rpc.ts
-- src/domain/network-status/identity.ts
-- src/domain/network-status/normalize.ts
-- src/domain/network-status/enrich.ts
-- src/domain/network-status/index.ts
-- tests/fixtures/solana-network-status.ts
-- tests/domain/network-status/solana-rpc.test.ts
-- tests/domain/network-status/identity.test.ts
-- tests/domain/network-status/normalize.test.ts
-- tests/domain/network-status/enrich.test.ts
+- src/domain/derived-feature/decimal.ts
+- src/domain/derived-feature/index.ts
+- tests/domain/derived-feature/decimal.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm test tests/domain/network-status/solana-rpc.test.ts tests/domain/network-status/identity.test.ts tests/domain/network-status/normalize.test.ts tests/domain/network-status/enrich.test.ts
-pnpm exec eslint src/domain/network-status/solana-rpc.ts src/domain/network-status/identity.ts src/domain/network-status/normalize.ts src/domain/network-status/enrich.ts src/domain/network-status/index.ts tests/fixtures/solana-network-status.ts tests/domain/network-status/solana-rpc.test.ts tests/domain/network-status/identity.test.ts tests/domain/network-status/normalize.test.ts tests/domain/network-status/enrich.test.ts --max-warnings 0
-pnpm exec prettier --check src/domain/network-status/solana-rpc.ts src/domain/network-status/identity.ts src/domain/network-status/normalize.ts src/domain/network-status/enrich.ts src/domain/network-status/index.ts tests/fixtures/solana-network-status.ts tests/domain/network-status/solana-rpc.test.ts tests/domain/network-status/identity.test.ts tests/domain/network-status/normalize.test.ts tests/domain/network-status/enrich.test.ts
+pnpm exec vitest run tests/domain/derived-feature/decimal.test.ts
+pnpm exec eslint src/domain/derived-feature/decimal.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/decimal.test.ts --max-warnings 0
+pnpm exec prettier --check src/domain/derived-feature/decimal.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/decimal.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **batch order independence**: JSON-RPC ids, not response array positions, determine health and slot meaning. (Test: `accepts healthy getHealth and getSlot responses regardless of batch order`)
-- **recognized behind state**: Error -32005 with a valid numSlotsBehind is accepted as degraded factual health. (Test: `accepts Solana node-behind error minus 32005 as degraded health evidence`)
-- **unambiguous response ids**: Duplicate, missing, unknown, or malformed JSON-RPC ids are rejected before normalization. (Test: `rejects duplicate missing unknown or mismatched JSON-RPC response ids`)
-- **healthy normalization**: A healthy response retains the slot and emits no warnings. (Test: `normalizes a healthy batch without warnings`)
-- **degraded warning normalization**: Behind health and unavailable slot produce explicit sorted warnings without fabricated facts. (Test: `normalizes node-behind and missing slot as explicit sorted warnings`)
-- **stable observation identity**: Only network and collection instant affect identity; response member order does not. (Test: `derives stable identity from network and collection instant only`)
-- **direct deterministic enrichment**: Network status receives deterministic execution-safety classification with fresh direct raw provenance. (Test: `enriches network status with fresh deterministic direct provenance`)
+- **exact decimal parsing**: Plain signed decimals become exact bigint rationals without binary floating-point conversion. (Test: `parses plain signed decimals without binary floating-point conversion`)
+- **invalid numeric syntax**: Exponent and non-finite syntax is rejected. (Test: `rejects empty exponent and non-finite decimal syntax`)
+- **tie rounding**: Exact half values round away from zero. (Test: `rounds rational ties away from zero`)
+- **numeric safety**: Zero division and unsafe integer conversion return typed failures. (Test: `rejects zero divisors and unsafe integer outputs`)
+- **single final rounding**: Scaled formulas round only after all exact rational operations. (Test: `rounds only after the complete scaled formula`)
