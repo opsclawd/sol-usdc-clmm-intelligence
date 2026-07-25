@@ -244,30 +244,6 @@ function buildConfidence(
     }
   }
 
-  let rawComposite =
-    componentMinima.sourceReliability * effectiveWeights.sourceReliability +
-    componentMinima.dataCompleteness * effectiveWeights.dataCompleteness +
-    componentMinima.derivationConfidence * effectiveWeights.derivationConfidence;
-
-  if (componentMinima.llmConfidence !== null && effectiveWeights.llmConfidence > 0) {
-    rawComposite += componentMinima.llmConfidence * effectiveWeights.llmConfidence;
-  } else {
-    const nonZeroDenom =
-      effectiveWeights.sourceReliability +
-      effectiveWeights.dataCompleteness +
-      effectiveWeights.derivationConfidence;
-    if (nonZeroDenom > 0) {
-      rawComposite = rawComposite / nonZeroDenom;
-    }
-  }
-
-  if (status === "PARTIAL") {
-    rawComposite = rawComposite * PARTIAL_DEGRADATION_FACTOR;
-  }
-
-  const level: Confidence["level"] =
-    rawComposite >= 0.7 ? "high" : rawComposite < 0.4 ? "low" : "medium";
-
   const cappedComponents = {
     sourceReliability: Math.min(
       inputConfidence.components.sourceReliability,
@@ -286,6 +262,32 @@ function buildConfidence(
         ? Math.min(inputConfidence.components.llmConfidence, componentMinima.llmConfidence)
         : (inputConfidence.components.llmConfidence ?? componentMinima.llmConfidence)
   };
+
+  let rawComposite =
+    cappedComponents.sourceReliability * effectiveWeights.sourceReliability +
+    cappedComponents.dataCompleteness * effectiveWeights.dataCompleteness +
+    cappedComponents.derivationConfidence * effectiveWeights.derivationConfidence;
+
+  if (cappedComponents.llmConfidence !== null && effectiveWeights.llmConfidence > 0) {
+    rawComposite += cappedComponents.llmConfidence * effectiveWeights.llmConfidence;
+  } else {
+    const nonZeroDenom =
+      effectiveWeights.sourceReliability +
+      effectiveWeights.dataCompleteness +
+      effectiveWeights.derivationConfidence;
+    if (nonZeroDenom > 0) {
+      rawComposite = rawComposite / nonZeroDenom;
+    }
+  }
+
+  if (status === "PARTIAL") {
+    rawComposite = rawComposite * PARTIAL_DEGRADATION_FACTOR;
+  }
+
+  rawComposite = Math.min(rawComposite, inputConfidence.compositeScore);
+
+  const level: Confidence["level"] =
+    rawComposite >= 0.7 ? "high" : rawComposite < 0.4 ? "low" : "medium";
 
   return {
     components: cappedComponents,
