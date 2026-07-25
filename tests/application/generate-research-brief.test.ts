@@ -144,11 +144,6 @@ describe("generateResearchBrief", () => {
       provider: "openai",
       model: "gpt-4o"
     });
-    llmProvider.enqueueResult({
-      output: validLlmOutput,
-      provider: "openai",
-      model: "gpt-4o"
-    });
 
     const first = await generateResearchBrief(
       { bundleRepo, briefRepo, llmProvider },
@@ -175,6 +170,7 @@ describe("generateResearchBrief", () => {
     if (first.outcome === "generated_complete" && second.outcome === "reused") {
       expect(second.row.id).toBe(first.row.id);
     }
+    expect(llmProvider.capturedRequests().length).toBe(1);
   });
 
   it("prior-context-is-bounded", async () => {

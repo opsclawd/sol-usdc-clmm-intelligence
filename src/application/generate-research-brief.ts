@@ -129,6 +129,31 @@ export async function generateResearchBrief(
     projectionError = err as Error;
   }
 
+  const initialWarnings: string[] = [];
+  if (projectionError || !projectedContext) {
+    initialWarnings.push(
+      projectionError?.message ?? "Failed to project context from evidence bundle."
+    );
+  }
+
+  const inputContextHash = projectedContext
+    ? projectedContext.inputContextHash
+    : await canonicalHash({ pair: params.pair, warnings: initialWarnings });
+
+  // Early idempotency check: reuse existing brief for the same bundle and context hash
+  const existingBriefs = await deps.briefRepo.findByBundleId(latestBundleRow.id);
+  const existingMatch = existingBriefs.find((r) => {
+    const artifact = r.structuredOutput as PersistedResearchBrief;
+    return artifact && artifact.inputContextHash === inputContextHash;
+  });
+  if (existingMatch) {
+    return {
+      outcome: "reused",
+      row: existingMatch,
+      brief: existingMatch.structuredOutput as PersistedResearchBrief
+    };
+  }
+
   let llmOutput: LlmResearchBriefOutput | null = null;
   let providerMetadata: ResearchBriefProviderMetadata = {
     provider: "unknown",
@@ -136,7 +161,7 @@ export async function generateResearchBrief(
   };
   let generationStatus: ResearchBriefGenerationStatus = "complete";
   let degradationReason: ResearchBriefDegradationReason | undefined = undefined;
-  const warnings: string[] = [];
+  const warnings: string[] = [...initialWarnings];
 
   if (projectionError || !projectedContext) {
     generationStatus = "degraded";
@@ -148,7 +173,6 @@ export async function generateResearchBrief(
     } else {
       degradationReason = "missing_inputs";
     }
-    warnings.push(projectionError?.message ?? "Failed to project context from evidence bundle.");
   } else {
     try {
       const generation = await deps.llmProvider.generateStructured({
@@ -212,10 +236,6 @@ export async function generateResearchBrief(
           degradationReason: degradationReason ?? "model_error"
         };
 
-  const inputContextHash = projectedContext
-    ? projectedContext.inputContextHash
-    : await canonicalHash({ pair: params.pair, warnings });
-
   const briefId = `brief:${latestBundleRow.id}:${inputContextHash.slice(0, 12)}`;
 
   const sourceRefs: ProvenanceRef[] = [
@@ -257,15 +277,6 @@ export async function generateResearchBrief(
   }) as PersistedResearchBrief;
 
   const payloadHash = await canonicalHash(persistedBrief);
-
-  const existingRow = await deps.briefRepo.findByHash(latestBundleRow.id, payloadHash);
-  if (existingRow) {
-    return {
-      outcome: "reused",
-      row: existingRow,
-      brief: existingRow.structuredOutput as PersistedResearchBrief
-    };
-  }
 
   const confidenceScore = generationStatus === "complete" ? finalLlmOutput.confidenceScore : 0;
   const confidenceLevel =
