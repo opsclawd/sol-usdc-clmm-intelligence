@@ -3,7 +3,9 @@ import { derivePerpLiquidationFeatures } from "../../../src/domain/perp-liquidat
 import type { NormalizedObservationRow } from "../../../src/contracts/normalized-observation.js";
 import type {
   PerpObservationPayloadV1,
-  PerpCoverageRecordV1
+  PerpCoverageRecordV1,
+  OpenInterestPayloadV1,
+  FundingRatePayloadV1
 } from "../../../src/contracts/perp-liquidation.js";
 
 function makeNormalizedRow(
@@ -308,7 +310,12 @@ describe("perp-liquidation derive", () => {
       selectionVersion
     });
 
-    const liqFeature = results.find((r) => r.featureKind === "liquidation_cluster_1h");
+    const liqFeature = results.find(
+      (r) =>
+        r.featureKind === "liquidation_cluster_1h" &&
+        (r.structuredPayload as { calculationMetadata?: { venue?: string } }).calculationMetadata
+          ?.venue === "drift-api"
+    );
     expect(liqFeature?.status).toBe("UNAVAILABLE");
     expect(liqFeature?.value).toBeNull();
   });
@@ -390,5 +397,416 @@ describe("perp-liquidation derive", () => {
     expect(basisFeature?.value).toBe(100); // (151.50 - 150.00)*10000 / 150.00 = 100 BPS
     expect(basisFeature?.inputObservationIds).toEqual([30]);
     expect(basisFeature?.provenance.rawObservationRefs.map((r) => r.id)).toEqual([130]);
+  });
+
+  it("handles zero OI baseline by marking OI trend unavailable", async () => {
+    const oiZero = makeNormalizedRow(
+      1,
+      101,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "oi-0",
+        observedAtUnixMs: asOf - 4 * 3_600_000,
+        kind: "open_interest",
+        openInterestBase: "0",
+        openInterestUsdc: "0",
+        sampleWindowSeconds: 300
+      },
+      asOf - 4 * 3_600_000
+    );
+
+    const oiLatest = makeNormalizedRow(
+      2,
+      102,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "oi-2",
+        observedAtUnixMs: asOf,
+        kind: "open_interest",
+        openInterestBase: "100",
+        openInterestUsdc: "1000",
+        sampleWindowSeconds: 300
+      },
+      asOf
+    );
+
+    const results = await derivePerpLiquidationFeatures({
+      candidates: [oiZero, oiLatest],
+      coverage: allAvailableCoverage,
+      evaluationAsOfUnixMs: asOf,
+      runId,
+      codeVersion,
+      calculatorVersion,
+      selectionVersion
+    });
+
+    const oiFeature = results.find((r) => r.featureKind === "oi_trend_4h");
+    expect(oiFeature?.status).toBe("UNAVAILABLE");
+    expect(oiFeature?.reasons).toContain("zero_or_negative_earliest_oi");
+  });
+
+  it("calculates positive and negative basis spread in BPS correctly", async () => {
+    // Positive basis: perp = 151.5, spot = 150.0 => +100 BPS
+    const basisPos = makeNormalizedRow(
+      40,
+      140,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "basis-pos",
+        observedAtUnixMs: asOf,
+        kind: "perp_basis",
+        perpPriceUsdc: "151.50",
+        spotPriceUsdc: "150.00"
+      },
+      asOf
+    );
+
+    // Negative basis: perp = 148.5, spot = 150.0 => -100 BPS
+    const basisNeg = makeNormalizedRow(
+      41,
+      141,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "drift-api",
+        instrument: "SOL-PERP",
+        sourceEventId: "basis-neg",
+        observedAtUnixMs: asOf,
+        kind: "perp_basis",
+        perpPriceUsdc: "148.50",
+        spotPriceUsdc: "150.00"
+      },
+      asOf
+    );
+
+    const results = await derivePerpLiquidationFeatures({
+      candidates: [basisPos, basisNeg],
+      coverage: allAvailableCoverage,
+      evaluationAsOfUnixMs: asOf,
+      runId,
+      codeVersion,
+      calculatorVersion,
+      selectionVersion
+    });
+
+    const posFeature = results.find(
+      (r) =>
+        r.featureKind === "basis_spread_bps" &&
+        (r.structuredPayload as { calculationMetadata?: { venue?: string } }).calculationMetadata
+          ?.venue === "binance-fapi"
+    );
+    expect(posFeature?.status).toBe("AVAILABLE");
+    expect(posFeature?.value).toBe(100);
+
+    const negFeature = results.find(
+      (r) =>
+        r.featureKind === "basis_spread_bps" &&
+        (r.structuredPayload as { calculationMetadata?: { venue?: string } }).calculationMetadata
+          ?.venue === "drift-api"
+    );
+    expect(negFeature?.status).toBe("AVAILABLE");
+    expect(negFeature?.value).toBe(-100);
+  });
+
+  it("aggregates mixed long and short liquidations in 1h liquidation cluster", async () => {
+    const oi = makeNormalizedRow(
+      50,
+      150,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "oi-50",
+        observedAtUnixMs: asOf,
+        kind: "open_interest",
+        openInterestBase: "1000",
+        openInterestUsdc: "100000",
+        sampleWindowSeconds: 300
+      },
+      asOf
+    );
+
+    const liqLong = makeNormalizedRow(
+      51,
+      151,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "liq-long",
+        observedAtUnixMs: asOf - 1800_000,
+        kind: "liquidation_event",
+        side: "long",
+        amountBase: "10",
+        notionalUsdc: "3000"
+      },
+      asOf - 1800_000
+    );
+
+    const liqShort = makeNormalizedRow(
+      52,
+      152,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "liq-short",
+        observedAtUnixMs: asOf - 900_000,
+        kind: "liquidation_event",
+        side: "short",
+        amountBase: "5",
+        notionalUsdc: "2000"
+      },
+      asOf - 900_000
+    );
+
+    const results = await derivePerpLiquidationFeatures({
+      candidates: [oi, liqLong, liqShort],
+      coverage: allAvailableCoverage,
+      evaluationAsOfUnixMs: asOf,
+      runId,
+      codeVersion,
+      calculatorVersion,
+      selectionVersion
+    });
+
+    const liqFeature = results.find((r) => r.featureKind === "liquidation_cluster_1h");
+    expect(liqFeature?.status).toBe("AVAILABLE");
+    // total notional = 3000 + 2000 = 5000 USDC. OI = 100,000 USDC. (5000 * 10000) / 100,000 = 500 BPS
+    expect(liqFeature?.value).toBe(500);
+  });
+
+  it("handles stale inputs by degrading feature status to PARTIAL and adding stale warning", async () => {
+    const basisStale = makeNormalizedRow(
+      60,
+      160,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "basis-stale",
+        observedAtUnixMs: asOf,
+        kind: "perp_basis",
+        perpPriceUsdc: "151.50",
+        spotPriceUsdc: "150.00"
+      },
+      asOf,
+      { isStale: true }
+    );
+
+    const results = await derivePerpLiquidationFeatures({
+      candidates: [basisStale],
+      coverage: allAvailableCoverage,
+      evaluationAsOfUnixMs: asOf,
+      runId,
+      codeVersion,
+      calculatorVersion,
+      selectionVersion
+    });
+
+    const basisFeature = results.find((r) => r.featureKind === "basis_spread_bps");
+    expect(basisFeature?.status).toBe("PARTIAL");
+    expect(basisFeature?.warnings).toContain("stale_input_degraded");
+  });
+
+  it("deduplicates candidate observations with duplicate IDs", async () => {
+    const basisRow1 = makeNormalizedRow(
+      70,
+      170,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "basis-dup",
+        observedAtUnixMs: asOf,
+        kind: "perp_basis",
+        perpPriceUsdc: "151.50",
+        spotPriceUsdc: "150.00"
+      },
+      asOf
+    );
+
+    // Duplicate candidate row with identical ID 70
+    const basisRow2 = { ...basisRow1 };
+
+    const results = await derivePerpLiquidationFeatures({
+      candidates: [basisRow1, basisRow2],
+      coverage: allAvailableCoverage,
+      evaluationAsOfUnixMs: asOf,
+      runId,
+      codeVersion,
+      calculatorVersion,
+      selectionVersion
+    });
+
+    const basisFeature = results.find((r) => r.featureKind === "basis_spread_bps");
+    expect(basisFeature?.status).toBe("AVAILABLE");
+    expect(basisFeature?.inputObservationIds).toEqual([70]);
+  });
+
+  it("enforces cross-venue isolation across multiple venues", async () => {
+    const binanceFunding = makeNormalizedRow(
+      80,
+      180,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "fr-b",
+        observedAtUnixMs: asOf,
+        kind: "funding_rate",
+        fundingRate: "0.0001",
+        fundingIntervalHours: 8
+      },
+      asOf
+    );
+
+    const driftFunding = makeNormalizedRow(
+      81,
+      181,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "drift-api",
+        instrument: "SOL-PERP",
+        sourceEventId: "fr-d",
+        observedAtUnixMs: asOf,
+        kind: "funding_rate",
+        fundingRate: "0.0002",
+        fundingIntervalHours: 1
+      },
+      asOf
+    );
+
+    const results = await derivePerpLiquidationFeatures({
+      candidates: [binanceFunding, driftFunding],
+      coverage: allAvailableCoverage,
+      evaluationAsOfUnixMs: asOf,
+      runId,
+      codeVersion,
+      calculatorVersion,
+      selectionVersion
+    });
+
+    const fundingFeatures = results.filter((r) => r.featureKind === "funding_rate_annualized");
+    expect(fundingFeatures).toHaveLength(2);
+
+    const bFeature = fundingFeatures.find(
+      (r) =>
+        (r.structuredPayload as { calculationMetadata?: { venue?: string } }).calculationMetadata
+          ?.venue === "binance-fapi"
+    );
+    const dFeature = fundingFeatures.find(
+      (r) =>
+        (r.structuredPayload as { calculationMetadata?: { venue?: string } }).calculationMetadata
+          ?.venue === "drift-api"
+    );
+
+    expect(bFeature?.status).toBe("AVAILABLE");
+    expect(bFeature?.value).toBe(1095);
+
+    // drift: 0.0002 * 24 * 365 * 10000 = 17520 BPS
+    expect(dFeature?.status).toBe("AVAILABLE");
+    expect(dFeature?.value).toBe(17520);
+  });
+
+  it("rejects intermediate OI candidates when calculating OI trend", async () => {
+    const oi1 = makeNormalizedRow(
+      90,
+      190,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "oi-earliest",
+        observedAtUnixMs: asOf - 4 * 3_600_000,
+        kind: "open_interest",
+        openInterestBase: "100",
+        openInterestUsdc: "1000",
+        sampleWindowSeconds: 300
+      },
+      asOf - 4 * 3_600_000
+    );
+
+    const oiMid = makeNormalizedRow(
+      91,
+      191,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "oi-mid",
+        observedAtUnixMs: asOf - 2 * 3_600_000,
+        kind: "open_interest",
+        openInterestBase: "105",
+        openInterestUsdc: "1050",
+        sampleWindowSeconds: 300
+      },
+      asOf - 2 * 3_600_000
+    );
+
+    const oi3 = makeNormalizedRow(
+      92,
+      192,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "oi-latest",
+        observedAtUnixMs: asOf,
+        kind: "open_interest",
+        openInterestBase: "110",
+        openInterestUsdc: "1100",
+        sampleWindowSeconds: 300
+      },
+      asOf
+    );
+
+    const results = await derivePerpLiquidationFeatures({
+      candidates: [oi1, oiMid, oi3],
+      coverage: allAvailableCoverage,
+      evaluationAsOfUnixMs: asOf,
+      runId,
+      codeVersion,
+      calculatorVersion,
+      selectionVersion
+    });
+
+    const oiFeature = results.find((r) => r.featureKind === "oi_trend_4h");
+    expect(oiFeature?.status).toBe("AVAILABLE");
+    expect(oiFeature?.inputObservationIds).toEqual([90, 92]);
+    expect(oiFeature?.rejectedObservationIds).toEqual([91]);
   });
 });

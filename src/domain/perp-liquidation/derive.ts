@@ -7,9 +7,11 @@ import type {
   FundingRatePayloadV1,
   OpenInterestPayloadV1,
   PerpBasisPayloadV1,
-  LiquidationEventPayloadV1
+  LiquidationEventPayloadV1,
+  Confidence,
+  Provenance,
+  DerivedFeatureInsert
 } from "../../contracts/index.js";
-import type { DerivedFeatureInsert } from "../../ports/feature-repo.js";
 import { assembleDerivedFeature, type FeatureCalculation } from "../derived-feature/assemble.js";
 import {
   parseDecimal,
@@ -62,13 +64,13 @@ function toDerivedFeatureInsert(
     value: v1.value,
     structuredPayload: v1,
     asOfUnixMs: v1.asOfUnixMs,
-    confidence: v1.confidence,
+    confidence: v1.confidence as unknown as Confidence,
     confidenceComposite: v1.confidence.compositeScore,
     confidenceLevel: v1.confidence.level,
     validUntilUnixMs: v1.expiresAtUnixMs,
     isStale: v1.freshness.isStale,
     staleBehavior: "degrade_confidence",
-    provenance: v1.provenance,
+    provenance: v1.provenance as unknown as Provenance,
     payloadHash,
     receivedAtUnixMs,
     status: v1.status,
@@ -95,6 +97,7 @@ export function calculateOiTrend4h(
 
   const earliest = oiObs[0]!;
   const latest = oiObs[oiObs.length - 1]!;
+  const venue = latest.payload.venue;
 
   const earliestOiRat = parseDecimal(earliest.payload.openInterestUsdc);
   const latestOiRat = parseDecimal(latest.payload.openInterestUsdc);
@@ -127,6 +130,8 @@ export function calculateOiTrend4h(
     warnings: [],
     reasons: [],
     metadata: {
+      venue,
+      venues: [venue],
       earliestOiUsdc: earliest.payload.openInterestUsdc,
       latestOiUsdc: latest.payload.openInterestUsdc,
       earliestObservedAtUnixMs: earliest.payload.observedAtUnixMs,
@@ -170,6 +175,8 @@ export function calculateAnnualizedFundingBps(payload: FundingRatePayloadV1): Fe
     warnings: [],
     reasons: [],
     metadata: {
+      venue: payload.venue,
+      venues: [payload.venue],
       fundingRate: payload.fundingRate,
       fundingIntervalHours: payload.fundingIntervalHours
     }
@@ -208,6 +215,8 @@ export function calculateBasisSpreadBps(payload: PerpBasisPayloadV1): FeatureCal
     warnings: [],
     reasons: [],
     metadata: {
+      venue: payload.venue,
+      venues: [payload.venue],
       perpPriceUsdc: payload.perpPriceUsdc,
       spotPriceUsdc: payload.spotPriceUsdc
     }
@@ -216,10 +225,18 @@ export function calculateBasisSpreadBps(payload: PerpBasisPayloadV1): FeatureCal
 
 export function calculateLiquidationClusterBps(
   liquidations: readonly { row: NormalizedObservationRow; payload: LiquidationEventPayloadV1 }[],
-  latestOi: { row: NormalizedObservationRow; payload: OpenInterestPayloadV1 } | undefined
+  latestOi: { row: NormalizedObservationRow; payload: OpenInterestPayloadV1 } | undefined,
+  fallbackVenue?: string
 ): FeatureCalculation {
+  const venue = latestOi?.payload.venue ?? fallbackVenue ?? liquidations[0]?.payload.venue;
   if (!latestOi) {
-    return makeUnavailable(["no_same_venue_oi_denominator"]);
+    return {
+      status: "UNAVAILABLE",
+      value: null,
+      warnings: [],
+      reasons: ["no_same_venue_oi_denominator"],
+      metadata: venue ? { venue, venues: [venue] } : {}
+    };
   }
 
   const oiVenue = latestOi.payload.venue;
@@ -269,6 +286,7 @@ export function calculateLiquidationClusterBps(
     reasons: [],
     metadata: {
       venue: oiVenue,
+      venues: [oiVenue],
       liquidationCount: seenIds.size,
       denominatorOiUsdc: latestOi.payload.openInterestUsdc
     }
@@ -288,8 +306,17 @@ export async function derivePerpLiquidationFeatures(
     selectionVersion = "perp-select/v1"
   } = options;
 
+  // Deduplicate candidates by ID if duplicate IDs are present
+  const uniqueCandidatesMap = new Map<number, NormalizedObservationRow>();
+  for (const candidate of candidates) {
+    if (!uniqueCandidatesMap.has(candidate.id)) {
+      uniqueCandidatesMap.set(candidate.id, candidate);
+    }
+  }
+  const uniqueCandidates = Array.from(uniqueCandidatesMap.values());
+
   // Filter candidates within windows and sort by observedAtUnixMs, then ID
-  const sortedCandidates = [...candidates].sort((a, b) => {
+  const sortedCandidates = [...uniqueCandidates].sort((a, b) => {
     const pA = a.payload as PerpObservationPayloadV1;
     const pB = b.payload as PerpObservationPayloadV1;
     if (pA.observedAtUnixMs !== pB.observedAtUnixMs) {
@@ -306,23 +333,38 @@ export async function derivePerpLiquidationFeatures(
     return p.observedAtUnixMs >= fourHourStart && p.observedAtUnixMs <= evaluationAsOfUnixMs;
   });
 
-  // Extract typed payload wrappers
-  const oiCandidates: { row: NormalizedObservationRow; payload: OpenInterestPayloadV1 }[] = [];
-  const fundingCandidates: { row: NormalizedObservationRow; payload: FundingRatePayloadV1 }[] = [];
-  const basisCandidates: { row: NormalizedObservationRow; payload: PerpBasisPayloadV1 }[] = [];
-  const liqCandidates: { row: NormalizedObservationRow; payload: LiquidationEventPayloadV1 }[] = [];
+  // Group candidates by venue
+  const candidatesByVenue = new Map<
+    string,
+    {
+      oi: { row: NormalizedObservationRow; payload: OpenInterestPayloadV1 }[];
+      funding: { row: NormalizedObservationRow; payload: FundingRatePayloadV1 }[];
+      basis: { row: NormalizedObservationRow; payload: PerpBasisPayloadV1 }[];
+      liq: { row: NormalizedObservationRow; payload: LiquidationEventPayloadV1 }[];
+    }
+  >();
+
+  function getVenueContainer(venue: string) {
+    let container = candidatesByVenue.get(venue);
+    if (!container) {
+      container = { oi: [], funding: [], basis: [], liq: [] };
+      candidatesByVenue.set(venue, container);
+    }
+    return container;
+  }
 
   for (const row of validCandidates) {
     const p = row.payload as PerpObservationPayloadV1;
+    const container = getVenueContainer(p.venue);
     if (p.kind === "open_interest") {
-      oiCandidates.push({ row, payload: p });
+      container.oi.push({ row, payload: p });
     } else if (p.kind === "funding_rate") {
-      fundingCandidates.push({ row, payload: p });
+      container.funding.push({ row, payload: p });
     } else if (p.kind === "perp_basis") {
-      basisCandidates.push({ row, payload: p });
+      container.basis.push({ row, payload: p });
     } else if (p.kind === "liquidation_event") {
       if (p.observedAtUnixMs >= oneHourStart) {
-        liqCandidates.push({ row, payload: p });
+        container.liq.push({ row, payload: p });
       }
     }
   }
@@ -446,76 +488,88 @@ export async function derivePerpLiquidationFeatures(
     );
   }
 
-  // 1. OI Trend 4h
+  // Determine list of venues to evaluate from candidates, or default to binance-fapi if none present
+  const venuesToEvaluate =
+    candidatesByVenue.size > 0 ? Array.from(candidatesByVenue.keys()).sort() : ["binance-fapi"];
+
   const oiCoverage = getCoverage("open_interest");
-  const selectedOiRows = oiCandidates.map((c) => c.row);
-  const calcOi = calculateOiTrend4h(oiCandidates);
-  await assembleAndPush("oi_trend_4h", calcOi, selectedOiRows, [], oiCoverage);
-
-  // 2. Annualized Funding
   const fundingCoverage = getCoverage("funding_rate");
-  const latestFunding = fundingCandidates[fundingCandidates.length - 1];
-  const selectedFundingRows = latestFunding ? [latestFunding.row] : [];
-  const rejectedFundingRows = fundingCandidates.slice(0, -1).map((c) => c.row);
-  const calcFunding = latestFunding
-    ? calculateAnnualizedFundingBps(latestFunding.payload)
-    : makeUnavailable(["no_funding_rate_observations"]);
-  await assembleAndPush(
-    "funding_rate_annualized",
-    calcFunding,
-    selectedFundingRows,
-    rejectedFundingRows,
-    fundingCoverage
-  );
-
-  // 3. Basis Spread Bps
   const basisCoverage = getCoverage("perp_basis");
-  const latestBasis = basisCandidates[basisCandidates.length - 1];
-  const selectedBasisRows = latestBasis ? [latestBasis.row] : [];
-  const rejectedBasisRows = basisCandidates.slice(0, -1).map((c) => c.row);
-  const calcBasis = latestBasis
-    ? calculateBasisSpreadBps(latestBasis.payload)
-    : makeUnavailable(["no_perp_basis_observations"]);
-  await assembleAndPush(
-    "basis_spread_bps",
-    calcBasis,
-    selectedBasisRows,
-    rejectedBasisRows,
-    basisCoverage
-  );
-
-  // 4. Liquidation Cluster 1h
   const liqCoverage = getCoverage("liquidation_event");
 
-  // Determine venue for liquidations (if any) or default to earliest liquidation venue / latest OI venue
-  let targetVenue: string | undefined = undefined;
-  if (liqCandidates.length > 0) {
-    targetVenue = liqCandidates[0]!.payload.venue;
-  } else if (oiCandidates.length > 0) {
-    targetVenue = oiCandidates[oiCandidates.length - 1]!.payload.venue;
-  }
+  for (const venue of venuesToEvaluate) {
+    const venueCandidates = candidatesByVenue.get(venue) ?? {
+      oi: [],
+      funding: [],
+      basis: [],
+      liq: []
+    };
 
-  const sameVenueOi = oiCandidates
-    .filter((c) => targetVenue === undefined || c.payload.venue === targetVenue)
-    .pop();
-
-  const sameVenueLiqCandidates = targetVenue
-    ? liqCandidates.filter((c) => c.payload.venue === targetVenue)
-    : liqCandidates;
-
-  const calcLiq = calculateLiquidationClusterBps(sameVenueLiqCandidates, sameVenueOi);
-
-  const selectedLiqRows: NormalizedObservationRow[] = [];
-  if (calcLiq.status !== "UNAVAILABLE") {
-    for (const c of sameVenueLiqCandidates) {
-      selectedLiqRows.push(c.row);
+    // 1. OI Trend 4h per venue
+    const oiObs = venueCandidates.oi;
+    let selectedOiRows: NormalizedObservationRow[] = [];
+    let rejectedOiRows: NormalizedObservationRow[] = [];
+    if (oiObs.length >= 2) {
+      const earliest = oiObs[0]!;
+      const latest = oiObs[oiObs.length - 1]!;
+      selectedOiRows = [earliest.row, latest.row];
+      rejectedOiRows = oiObs.slice(1, -1).map((c) => c.row);
+    } else {
+      selectedOiRows = oiObs.map((c) => c.row);
+      rejectedOiRows = [];
     }
-    if (sameVenueOi && !selectedLiqRows.some((r) => r.id === sameVenueOi.row.id)) {
-      selectedLiqRows.push(sameVenueOi.row);
-    }
-  }
+    const calcOi = calculateOiTrend4h(oiObs);
+    await assembleAndPush("oi_trend_4h", calcOi, selectedOiRows, rejectedOiRows, oiCoverage);
 
-  await assembleAndPush("liquidation_cluster_1h", calcLiq, selectedLiqRows, [], liqCoverage);
+    // 2. Annualized Funding per venue
+    const fundingObs = venueCandidates.funding;
+    const latestFunding = fundingObs[fundingObs.length - 1];
+    const selectedFundingRows = latestFunding ? [latestFunding.row] : [];
+    const rejectedFundingRows = fundingObs.slice(0, -1).map((c) => c.row);
+    const calcFunding = latestFunding
+      ? calculateAnnualizedFundingBps(latestFunding.payload)
+      : makeUnavailable(["no_funding_rate_observations"]);
+    await assembleAndPush(
+      "funding_rate_annualized",
+      calcFunding,
+      selectedFundingRows,
+      rejectedFundingRows,
+      fundingCoverage
+    );
+
+    // 3. Basis Spread Bps per venue
+    const basisObs = venueCandidates.basis;
+    const latestBasis = basisObs[basisObs.length - 1];
+    const selectedBasisRows = latestBasis ? [latestBasis.row] : [];
+    const rejectedBasisRows = basisObs.slice(0, -1).map((c) => c.row);
+    const calcBasis = latestBasis
+      ? calculateBasisSpreadBps(latestBasis.payload)
+      : makeUnavailable(["no_perp_basis_observations"]);
+    await assembleAndPush(
+      "basis_spread_bps",
+      calcBasis,
+      selectedBasisRows,
+      rejectedBasisRows,
+      basisCoverage
+    );
+
+    // 4. Liquidation Cluster 1h per venue
+    const sameVenueOi = oiObs[oiObs.length - 1];
+    const sameVenueLiqCandidates = venueCandidates.liq;
+    const calcLiq = calculateLiquidationClusterBps(sameVenueLiqCandidates, sameVenueOi, venue);
+
+    const selectedLiqRows: NormalizedObservationRow[] = [];
+    if (calcLiq.status !== "UNAVAILABLE") {
+      for (const c of sameVenueLiqCandidates) {
+        selectedLiqRows.push(c.row);
+      }
+      if (sameVenueOi && !selectedLiqRows.some((r) => r.id === sameVenueOi.row.id)) {
+        selectedLiqRows.push(sameVenueOi.row);
+      }
+    }
+
+    await assembleAndPush("liquidation_cluster_1h", calcLiq, selectedLiqRows, [], liqCoverage);
+  }
 
   return results;
 }
