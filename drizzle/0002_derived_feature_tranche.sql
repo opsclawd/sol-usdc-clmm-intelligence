@@ -15,6 +15,8 @@ ALTER TABLE "intelligence"."derived_features" ADD COLUMN "rejected_observation_i
 ALTER TABLE "intelligence"."derived_features" ADD COLUMN "derivation_key" varchar(128);--> statement-breakpoint
 ALTER TABLE "intelligence"."derived_features" ADD COLUMN "pool_id" varchar(64);--> statement-breakpoint
 ALTER TABLE "intelligence"."derived_features" ADD COLUMN "position_id" varchar(64);--> statement-breakpoint
+ALTER TABLE "intelligence"."derived_features" ADD COLUMN "warnings" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "intelligence"."derived_features" ADD COLUMN "reasons" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
 ALTER TABLE "intelligence"."derived_features" ALTER COLUMN "status" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "intelligence"."derived_features" ALTER COLUMN "unit" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "intelligence"."derived_features" ALTER COLUMN "pair" SET NOT NULL;--> statement-breakpoint

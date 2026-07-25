@@ -13,8 +13,6 @@ ALTER TABLE "intelligence"."derived_features" ALTER COLUMN "input_observation_id
 ALTER TABLE "intelligence"."derived_features" ALTER COLUMN "rejected_observation_ids" SET DEFAULT '{}';--> statement-breakpoint
 ALTER TABLE "intelligence"."evidence_bundles" ALTER COLUMN "schema_version" SET DATA TYPE varchar(32);--> statement-breakpoint
 ALTER TABLE "intelligence"."raw_observations" ALTER COLUMN "source_observation_key" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "intelligence"."derived_features" ADD COLUMN "warnings" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
-ALTER TABLE "intelligence"."derived_features" ADD COLUMN "reasons" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
 ALTER TABLE "intelligence"."derived_features" ADD CONSTRAINT "chk_features_status_value" CHECK ((("intelligence"."derived_features"."status" = 'UNAVAILABLE' AND "intelligence"."derived_features"."value" IS NULL) OR ("intelligence"."derived_features"."status" <> 'UNAVAILABLE' AND "intelligence"."derived_features"."value" IS NOT NULL)));--> statement-breakpoint
 ALTER TABLE "intelligence"."derived_features" ADD CONSTRAINT "chk_features_unit_bps" CHECK ((("intelligence"."derived_features"."feature_kind" = 'oracle_dex_divergence' AND "intelligence"."derived_features"."unit" = 'BPS') OR ("intelligence"."derived_features"."feature_kind" <> 'oracle_dex_divergence')));--> statement-breakpoint
 ALTER TABLE "intelligence"."derived_features" ADD CONSTRAINT "chk_features_unit_bps2" CHECK ((("intelligence"."derived_features"."feature_kind" = 'oracle_confidence_width' AND "intelligence"."derived_features"."unit" = 'BPS') OR ("intelligence"."derived_features"."feature_kind" <> 'oracle_confidence_width')));--> statement-breakpoint
