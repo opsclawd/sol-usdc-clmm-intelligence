@@ -18,7 +18,10 @@ describe("perp-liquidation normalize", () => {
     };
 
     const normalizedPos = normalizePerpObservation(posInput);
-    expect(normalizedPos.fundingRate).toBe("0.00015");
+    expect(normalizedPos.kind).toBe("funding_rate");
+    if (normalizedPos.kind === "funding_rate") {
+      expect(normalizedPos.fundingRate).toBe("0.00015");
+    }
 
     const negInput = {
       ...posInput,
@@ -27,7 +30,10 @@ describe("perp-liquidation normalize", () => {
     };
 
     const normalizedNeg = normalizePerpObservation(negInput);
-    expect(normalizedNeg.fundingRate).toBe("-0.00032");
+    expect(normalizedNeg.kind).toBe("funding_rate");
+    if (normalizedNeg.kind === "funding_rate") {
+      expect(normalizedNeg.fundingRate).toBe("-0.00032");
+    }
   });
 
   it("normalizes basis with both positive and negative spread", () => {
@@ -50,7 +56,9 @@ describe("perp-liquidation normalize", () => {
     if (normalizedPos.kind === "perp_basis") {
       expect(normalizedPos.perpPriceUsdc).toBe("155.00");
       expect(normalizedPos.spotPriceUsdc).toBe("150.00");
-      expect((normalizedPos as Record<string, unknown>).providerSpreadBps).toBeUndefined();
+      expect(
+        (normalizedPos as unknown as Record<string, unknown>).providerSpreadBps
+      ).toBeUndefined();
     }
 
     const negSpreadInput = {
