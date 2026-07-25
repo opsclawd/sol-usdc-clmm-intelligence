@@ -91,29 +91,21 @@ export class HttpBinanceFapiSource implements PerpLiquidationSourcePort {
     throw lastError ?? new Error(`Failed to fetch ${url}`);
   }
 
-  async collect(request: PerpLiquidationSourceRequest): Promise<PerpLiquidationSourceSnapshot> {
-    const asOfUnixMs = Date.now();
-    const providerRunId = `binance-fapi-${asOfUnixMs}`;
-
-    const facts: PerpLiquidationSourceFact[] = [];
-    const coverage: Record<PerpObservationKind, PerpMetricCoverage> = {
-      funding_rate: { kind: "funding_rate", status: "unavailable", diagnostic: "Not collected" },
-      open_interest: { kind: "open_interest", status: "unavailable", diagnostic: "Not collected" },
-      perp_basis: { kind: "perp_basis", status: "unavailable", diagnostic: "Not collected" },
-      liquidation_event: {
-        kind: "liquidation_event",
-        status: "unavailable",
-        diagnostic: "User-data force-order endpoint excluded"
-      },
-      leverage_proxy: { kind: "leverage_proxy", status: "unavailable", diagnostic: "Not collected" }
+  private async fetchFundingRate(
+    request: PerpLiquidationSourceRequest
+  ): Promise<{ coverage: PerpMetricCoverage; facts: PerpLiquidationSourceFact[] }> {
+    let coverage: PerpMetricCoverage = {
+      kind: "funding_rate",
+      status: "unavailable",
+      diagnostic: "Not collected"
     };
+    const facts: PerpLiquidationSourceFact[] = [];
 
-    // 1. Funding Rate
     try {
       const url = `${this.baseUrl}/fapi/v1/fundingRate?symbol=${this.symbol}&limit=10`;
       const res = await this.fetchWithRetry<unknown>(url);
       if (!Array.isArray(res)) {
-        coverage.funding_rate = {
+        coverage = {
           kind: "funding_rate",
           status: "malformed",
           diagnostic: "Expected array from fundingRate endpoint"
@@ -148,13 +140,13 @@ export class HttpBinanceFapiSource implements PerpLiquidationSourcePort {
           }
         }
         if (malformed && fundingFacts.length === 0) {
-          coverage.funding_rate = {
+          coverage = {
             kind: "funding_rate",
             status: "malformed",
             diagnostic: "Malformed funding rate items"
           };
         } else {
-          coverage.funding_rate = { kind: "funding_rate", status: "available" };
+          coverage = { kind: "funding_rate", status: "available" };
           facts.push(...fundingFacts);
         }
       }
@@ -165,13 +157,13 @@ export class HttpBinanceFapiSource implements PerpLiquidationSourcePort {
         msg.includes("SyntaxError") ||
         msg.includes("not json")
       ) {
-        coverage.funding_rate = {
+        coverage = {
           kind: "funding_rate",
           status: "malformed",
           diagnostic: sanitizeDiagnostic(msg)
         };
       } else {
-        coverage.funding_rate = {
+        coverage = {
           kind: "funding_rate",
           status: "unavailable",
           diagnostic: sanitizeDiagnostic(msg)
@@ -179,12 +171,24 @@ export class HttpBinanceFapiSource implements PerpLiquidationSourcePort {
       }
     }
 
-    // 2. Open Interest History
+    return { coverage, facts };
+  }
+
+  private async fetchOpenInterest(
+    request: PerpLiquidationSourceRequest
+  ): Promise<{ coverage: PerpMetricCoverage; facts: PerpLiquidationSourceFact[] }> {
+    let coverage: PerpMetricCoverage = {
+      kind: "open_interest",
+      status: "unavailable",
+      diagnostic: "Not collected"
+    };
+    const facts: PerpLiquidationSourceFact[] = [];
+
     try {
       const url = `${this.baseUrl}/futures/data/openInterestHist?symbol=${this.symbol}&period=5m&limit=48`;
       const res = await this.fetchWithRetry<unknown>(url);
       if (!Array.isArray(res)) {
-        coverage.open_interest = {
+        coverage = {
           kind: "open_interest",
           status: "malformed",
           diagnostic: "Expected array from openInterestHist endpoint"
@@ -221,13 +225,13 @@ export class HttpBinanceFapiSource implements PerpLiquidationSourcePort {
           }
         }
         if (malformed) {
-          coverage.open_interest = {
+          coverage = {
             kind: "open_interest",
             status: "malformed",
             diagnostic: "Malformed open interest items"
           };
         } else {
-          coverage.open_interest = { kind: "open_interest", status: "available" };
+          coverage = { kind: "open_interest", status: "available" };
           facts.push(...oiFacts);
         }
       }
@@ -238,13 +242,13 @@ export class HttpBinanceFapiSource implements PerpLiquidationSourcePort {
         msg.includes("SyntaxError") ||
         msg.includes("not json")
       ) {
-        coverage.open_interest = {
+        coverage = {
           kind: "open_interest",
           status: "malformed",
           diagnostic: sanitizeDiagnostic(msg)
         };
       } else {
-        coverage.open_interest = {
+        coverage = {
           kind: "open_interest",
           status: "unavailable",
           diagnostic: sanitizeDiagnostic(msg)
@@ -252,7 +256,19 @@ export class HttpBinanceFapiSource implements PerpLiquidationSourcePort {
       }
     }
 
-    // 3. Perp Basis (Premium Index / Prices)
+    return { coverage, facts };
+  }
+
+  private async fetchPerpBasis(
+    request: PerpLiquidationSourceRequest
+  ): Promise<{ coverage: PerpMetricCoverage; facts: PerpLiquidationSourceFact[] }> {
+    let coverage: PerpMetricCoverage = {
+      kind: "perp_basis",
+      status: "unavailable",
+      diagnostic: "Not collected"
+    };
+    const facts: PerpLiquidationSourceFact[] = [];
+
     try {
       const url = `${this.baseUrl}/fapi/v1/premiumIndex?symbol=${this.symbol}`;
       const res = await this.fetchWithRetry<unknown>(url);
@@ -277,10 +293,10 @@ export class HttpBinanceFapiSource implements PerpLiquidationSourcePort {
           perpPriceUsdc: String(row.markPrice),
           spotPriceUsdc: String(row.indexPrice)
         };
-        coverage.perp_basis = { kind: "perp_basis", status: "available" };
+        coverage = { kind: "perp_basis", status: "available" };
         facts.push({ venue: "binance-fapi", kind: "perp_basis", payload });
       } else {
-        coverage.perp_basis = {
+        coverage = {
           kind: "perp_basis",
           status: "malformed",
           diagnostic: "Malformed premiumIndex response"
@@ -289,13 +305,13 @@ export class HttpBinanceFapiSource implements PerpLiquidationSourcePort {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("Expected") || msg.includes("SyntaxError") || msg.includes("not json")) {
-        coverage.perp_basis = {
+        coverage = {
           kind: "perp_basis",
           status: "malformed",
           diagnostic: sanitizeDiagnostic(msg)
         };
       } else {
-        coverage.perp_basis = {
+        coverage = {
           kind: "perp_basis",
           status: "unavailable",
           diagnostic: sanitizeDiagnostic(msg)
@@ -303,12 +319,24 @@ export class HttpBinanceFapiSource implements PerpLiquidationSourcePort {
       }
     }
 
-    // 4. Leverage Proxy (Top Long/Short Ratio)
+    return { coverage, facts };
+  }
+
+  private async fetchLeverageProxy(
+    request: PerpLiquidationSourceRequest
+  ): Promise<{ coverage: PerpMetricCoverage; facts: PerpLiquidationSourceFact[] }> {
+    let coverage: PerpMetricCoverage = {
+      kind: "leverage_proxy",
+      status: "unavailable",
+      diagnostic: "Not collected"
+    };
+    const facts: PerpLiquidationSourceFact[] = [];
+
     try {
       const url = `${this.baseUrl}/futures/data/topLongShortPositionRatio?symbol=${this.symbol}&period=5m&limit=1`;
       const res = await this.fetchWithRetry<unknown>(url);
       if (!Array.isArray(res) || res.length === 0) {
-        coverage.leverage_proxy = {
+        coverage = {
           kind: "leverage_proxy",
           status: "unavailable",
           diagnostic: "Empty leverage ratio response"
@@ -335,10 +363,10 @@ export class HttpBinanceFapiSource implements PerpLiquidationSourcePort {
             longShortRatio: String(row.longShortRatio),
             methodology: "global_account_long_short_ratio"
           };
-          coverage.leverage_proxy = { kind: "leverage_proxy", status: "available" };
+          coverage = { kind: "leverage_proxy", status: "available" };
           facts.push({ venue: "binance-fapi", kind: "leverage_proxy", payload });
         } else {
-          coverage.leverage_proxy = {
+          coverage = {
             kind: "leverage_proxy",
             status: "malformed",
             diagnostic: "Malformed topLongShortPositionRatio item"
@@ -348,19 +376,52 @@ export class HttpBinanceFapiSource implements PerpLiquidationSourcePort {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("Expected") || msg.includes("SyntaxError") || msg.includes("not json")) {
-        coverage.leverage_proxy = {
+        coverage = {
           kind: "leverage_proxy",
           status: "malformed",
           diagnostic: sanitizeDiagnostic(msg)
         };
       } else {
-        coverage.leverage_proxy = {
+        coverage = {
           kind: "leverage_proxy",
           status: "unavailable",
           diagnostic: sanitizeDiagnostic(msg)
         };
       }
     }
+
+    return { coverage, facts };
+  }
+
+  async collect(request: PerpLiquidationSourceRequest): Promise<PerpLiquidationSourceSnapshot> {
+    const asOfUnixMs = Date.now();
+    const providerRunId = `binance-fapi-${asOfUnixMs}`;
+
+    const [fundingRes, oiRes, basisRes, leverageRes] = await Promise.all([
+      this.fetchFundingRate(request),
+      this.fetchOpenInterest(request),
+      this.fetchPerpBasis(request),
+      this.fetchLeverageProxy(request)
+    ]);
+
+    const coverage: Record<PerpObservationKind, PerpMetricCoverage> = {
+      funding_rate: fundingRes.coverage,
+      open_interest: oiRes.coverage,
+      perp_basis: basisRes.coverage,
+      liquidation_event: {
+        kind: "liquidation_event",
+        status: "unavailable",
+        diagnostic: "User-data force-order endpoint excluded"
+      },
+      leverage_proxy: leverageRes.coverage
+    };
+
+    const facts: PerpLiquidationSourceFact[] = [
+      ...fundingRes.facts,
+      ...oiRes.facts,
+      ...basisRes.facts,
+      ...leverageRes.facts
+    ];
 
     return {
       source: "binance-fapi",

@@ -106,29 +106,21 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
     throw lastError ?? new Error(`Failed to fetch ${url}`);
   }
 
-  async collect(request: PerpLiquidationSourceRequest): Promise<PerpLiquidationSourceSnapshot> {
-    const asOfUnixMs = Date.now();
-    const providerRunId = `drift-api-${asOfUnixMs}`;
-
-    const facts: PerpLiquidationSourceFact[] = [];
-    const coverage: Record<PerpObservationKind, PerpMetricCoverage> = {
-      funding_rate: { kind: "funding_rate", status: "unavailable", diagnostic: "Not collected" },
-      open_interest: { kind: "open_interest", status: "unavailable", diagnostic: "Not collected" },
-      perp_basis: { kind: "perp_basis", status: "unavailable", diagnostic: "Not collected" },
-      liquidation_event: {
-        kind: "liquidation_event",
-        status: "unavailable",
-        diagnostic: "Not collected"
-      },
-      leverage_proxy: { kind: "leverage_proxy", status: "unavailable", diagnostic: "Not collected" }
+  private async fetchFundingRates(
+    request: PerpLiquidationSourceRequest
+  ): Promise<{ coverage: PerpMetricCoverage; facts: PerpLiquidationSourceFact[] }> {
+    let coverage: PerpMetricCoverage = {
+      kind: "funding_rate",
+      status: "unavailable",
+      diagnostic: "Not collected"
     };
+    const facts: PerpLiquidationSourceFact[] = [];
 
-    // 1. Funding Rates
     try {
       const url = `${this.baseUrl}/fundingRates?marketIndex=${this.marketIndex}`;
       const res = await this.fetchWithRetry<unknown>(url);
       if (!Array.isArray(res)) {
-        coverage.funding_rate = {
+        coverage = {
           kind: "funding_rate",
           status: "malformed",
           diagnostic: "Expected array from fundingRates endpoint"
@@ -163,12 +155,12 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
             fundingFacts.push({ venue: "drift-api", kind: "funding_rate", payload });
           }
         }
-        coverage.funding_rate = { kind: "funding_rate", status: "available" };
+        coverage = { kind: "funding_rate", status: "available" };
         facts.push(...fundingFacts);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      coverage.funding_rate = {
+      coverage = {
         kind: "funding_rate",
         status:
           msg.includes("Expected") || msg.includes("SyntaxError") ? "malformed" : "unavailable",
@@ -176,7 +168,29 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
       };
     }
 
-    // 2. Market State (OI & Basis)
+    return { coverage, facts };
+  }
+
+  private async fetchMarketState(
+    request: PerpLiquidationSourceRequest,
+    asOfUnixMs: number
+  ): Promise<{
+    oiCoverage: PerpMetricCoverage;
+    basisCoverage: PerpMetricCoverage;
+    facts: PerpLiquidationSourceFact[];
+  }> {
+    let oiCoverage: PerpMetricCoverage = {
+      kind: "open_interest",
+      status: "unavailable",
+      diagnostic: "Not collected"
+    };
+    let basisCoverage: PerpMetricCoverage = {
+      kind: "perp_basis",
+      status: "unavailable",
+      diagnostic: "Not collected"
+    };
+    const facts: PerpLiquidationSourceFact[] = [];
+
     try {
       const url = `${this.baseUrl}/marketState?marketIndex=${this.marketIndex}`;
       const res = await this.fetchWithRetry<unknown>(url);
@@ -223,7 +237,7 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
             openInterestUsdc: usdcOiDecimal,
             sampleWindowSeconds: 300
           };
-          coverage.open_interest = { kind: "open_interest", status: "available" };
+          oiCoverage = { kind: "open_interest", status: "available" };
           facts.push({ venue: "drift-api", kind: "open_interest", payload: oiPayload });
 
           const basisPayload: PerpBasisPayloadV1 = {
@@ -238,27 +252,27 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
             perpPriceUsdc: markPriceDecimal,
             spotPriceUsdc: oraclePriceDecimal
           };
-          coverage.perp_basis = { kind: "perp_basis", status: "available" };
+          basisCoverage = { kind: "perp_basis", status: "available" };
           facts.push({ venue: "drift-api", kind: "perp_basis", payload: basisPayload });
         } else {
-          coverage.open_interest = {
+          oiCoverage = {
             kind: "open_interest",
             status: "malformed",
             diagnostic: "Missing base asset amount or prices in marketState"
           };
-          coverage.perp_basis = {
+          basisCoverage = {
             kind: "perp_basis",
             status: "malformed",
             diagnostic: "Missing prices in marketState"
           };
         }
       } else {
-        coverage.open_interest = {
+        oiCoverage = {
           kind: "open_interest",
           status: "malformed",
           diagnostic: "Malformed marketState response"
         };
-        coverage.perp_basis = {
+        basisCoverage = {
           kind: "perp_basis",
           status: "malformed",
           diagnostic: "Malformed marketState response"
@@ -269,16 +283,28 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
       const diag = sanitizeDiagnostic(msg);
       const status =
         msg.includes("Expected") || msg.includes("SyntaxError") ? "malformed" : "unavailable";
-      coverage.open_interest = { kind: "open_interest", status, diagnostic: diag };
-      coverage.perp_basis = { kind: "perp_basis", status, diagnostic: diag };
+      oiCoverage = { kind: "open_interest", status, diagnostic: diag };
+      basisCoverage = { kind: "perp_basis", status, diagnostic: diag };
     }
 
-    // 3. Liquidations
+    return { oiCoverage, basisCoverage, facts };
+  }
+
+  private async fetchLiquidations(
+    request: PerpLiquidationSourceRequest
+  ): Promise<{ coverage: PerpMetricCoverage; facts: PerpLiquidationSourceFact[] }> {
+    let coverage: PerpMetricCoverage = {
+      kind: "liquidation_event",
+      status: "unavailable",
+      diagnostic: "Not collected"
+    };
+    const facts: PerpLiquidationSourceFact[] = [];
+
     try {
       const url = `${this.baseUrl}/liquidations?marketIndex=${this.marketIndex}&fromMs=${request.fromUnixMs}&toMs=${request.toUnixMs}`;
       const res = await this.fetchWithRetry<unknown>(url);
       if (!Array.isArray(res)) {
-        coverage.liquidation_event = {
+        coverage = {
           kind: "liquidation_event",
           status: "malformed",
           diagnostic: "Expected array from liquidations endpoint"
@@ -321,12 +347,12 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
             liqFacts.push({ venue: "drift-api", kind: "liquidation_event", payload });
           }
         }
-        coverage.liquidation_event = { kind: "liquidation_event", status: "available" };
+        coverage = { kind: "liquidation_event", status: "available" };
         facts.push(...liqFacts);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      coverage.liquidation_event = {
+      coverage = {
         kind: "liquidation_event",
         status:
           msg.includes("Expected") || msg.includes("SyntaxError") ? "malformed" : "unavailable",
@@ -334,7 +360,20 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
       };
     }
 
-    // 4. Net Position Ratio (Leverage Proxy)
+    return { coverage, facts };
+  }
+
+  private async fetchNetPositionRatio(
+    request: PerpLiquidationSourceRequest,
+    asOfUnixMs: number
+  ): Promise<{ coverage: PerpMetricCoverage; facts: PerpLiquidationSourceFact[] }> {
+    let coverage: PerpMetricCoverage = {
+      kind: "leverage_proxy",
+      status: "unavailable",
+      diagnostic: "Not collected"
+    };
+    const facts: PerpLiquidationSourceFact[] = [];
+
     try {
       const url = `${this.baseUrl}/netPositionRatio?marketIndex=${this.marketIndex}`;
       const res = await this.fetchWithRetry<unknown>(url);
@@ -356,10 +395,10 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
           longShortRatio: row.netPositionRatio as string,
           methodology: "market_net_position_ratio"
         };
-        coverage.leverage_proxy = { kind: "leverage_proxy", status: "available" };
+        coverage = { kind: "leverage_proxy", status: "available" };
         facts.push({ venue: "drift-api", kind: "leverage_proxy", payload });
       } else {
-        coverage.leverage_proxy = {
+        coverage = {
           kind: "leverage_proxy",
           status: "unavailable",
           diagnostic: "Net position ratio not supplied"
@@ -367,13 +406,42 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      coverage.leverage_proxy = {
+      coverage = {
         kind: "leverage_proxy",
         status:
           msg.includes("Expected") || msg.includes("SyntaxError") ? "malformed" : "unavailable",
         diagnostic: sanitizeDiagnostic(msg)
       };
     }
+
+    return { coverage, facts };
+  }
+
+  async collect(request: PerpLiquidationSourceRequest): Promise<PerpLiquidationSourceSnapshot> {
+    const asOfUnixMs = Date.now();
+    const providerRunId = `drift-api-${asOfUnixMs}`;
+
+    const [fundingRes, marketStateRes, liqRes, leverageRes] = await Promise.all([
+      this.fetchFundingRates(request),
+      this.fetchMarketState(request, asOfUnixMs),
+      this.fetchLiquidations(request),
+      this.fetchNetPositionRatio(request, asOfUnixMs)
+    ]);
+
+    const coverage: Record<PerpObservationKind, PerpMetricCoverage> = {
+      funding_rate: fundingRes.coverage,
+      open_interest: marketStateRes.oiCoverage,
+      perp_basis: marketStateRes.basisCoverage,
+      liquidation_event: liqRes.coverage,
+      leverage_proxy: leverageRes.coverage
+    };
+
+    const facts: PerpLiquidationSourceFact[] = [
+      ...fundingRes.facts,
+      ...marketStateRes.facts,
+      ...liqRes.facts,
+      ...leverageRes.facts
+    ];
 
     return {
       source: "drift-api",
