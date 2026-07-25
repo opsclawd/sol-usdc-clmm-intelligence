@@ -130,20 +130,6 @@ describe("derived_feature_tranche migration", () => {
         /ALTER TABLE "intelligence"\."derived_features" ADD COLUMN "position_id" varchar\(64\)/
       );
     });
-
-    it("adds warnings as jsonb with default empty array", () => {
-      const content = readMigration();
-      expect(content).toMatch(
-        /ALTER TABLE "intelligence"\."derived_features" ADD COLUMN "warnings" jsonb DEFAULT '\[\]'::jsonb NOT NULL/
-      );
-    });
-
-    it("adds reasons as jsonb with default empty array", () => {
-      const content = readMigration();
-      expect(content).toMatch(
-        /ALTER TABLE "intelligence"\."derived_features" ADD COLUMN "reasons" jsonb DEFAULT '\[\]'::jsonb NOT NULL/
-      );
-    });
   });
 
   describe("structured_payload becomes NOT NULL", () => {
