@@ -279,8 +279,8 @@ All seven canonical features are derived by code from normalized source observat
 **Formulas:**
 
 - `range_location`: `(currentPrice - lowerPrice) / (upperPrice - lowerPrice) * 1_000_000`, clamped to `[0, 1_000_000]` (PPM)
-- `distance_to_lower`: `(currentPrice - lowerPrice) / currentPrice * 10_000` (PPM)
-- `distance_to_upper`: `(upperPrice - currentPrice) / currentPrice * 10_000` (PPM)
+- `distance_to_lower`: `(currentPrice - lowerPrice) / currentPrice * 1_000_000` (PPM)
+- `distance_to_upper`: `(upperPrice - currentPrice) / currentPrice * 1_000_000` (PPM)
 - `oracle_dex_divergence`: `|dexPrice - oraclePrice| / oraclePrice * 10_000` (BPS)
 - `oracle_confidence_width`: `oracleConfidence / oraclePrice * 10_000` (BPS)
 - `realized_volatility_1h`: `sqrt(sum(log(price[i]/price[i-1])^2 for i=1..n)) * 10_000` (BPS) — nonannualized, Pyth-only

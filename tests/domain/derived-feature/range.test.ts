@@ -472,7 +472,7 @@ describe("range calculators", () => {
       expect(result.value).toBe(500_000);
     });
 
-    it("distance_to_lower: exact 0.3333... becomes 3333 BPS (1/3 of 10000)", () => {
+    it("distance_to_lower: exact 0.3333... becomes 333333 PPM (1/3 of 1_000_000)", () => {
       const pos = makePositionState({
         currentPrice: 150,
         currentPriceLabel: "150",
@@ -483,11 +483,11 @@ describe("range calculators", () => {
       const result = calculateDistanceToLower(pos);
       expect(result.status).toBe("AVAILABLE");
       const diff = 150 - 100;
-      const expectedBps = (diff / 150) * 10000;
-      expect(result.value).toBe(Math.round(expectedBps));
+      const expectedPpm = (diff / 150) * 1_000_000;
+      expect(result.value).toBe(Math.round(expectedPpm));
     });
 
-    it("distance_to_upper: exact 0.25 becomes 2500 BPS (50/200 * 10000)", () => {
+    it("distance_to_upper: exact 0.25 becomes 250000 PPM (50/200 * 1_000_000)", () => {
       const pos = makePositionState({
         currentPrice: 150,
         currentPriceLabel: "150",
@@ -498,11 +498,11 @@ describe("range calculators", () => {
       const result = calculateDistanceToUpper(pos);
       expect(result.status).toBe("AVAILABLE");
       const diff = 200 - 150;
-      const expectedBps = (diff / 150) * 10000;
-      expect(result.value).toBe(Math.round(expectedBps));
+      const expectedPpm = (diff / 150) * 1_000_000;
+      expect(result.value).toBe(Math.round(expectedPpm));
     });
 
-    it("handles fractional BPS that rounds up (0.5 BPS rounds to 1)", () => {
+    it("handles fractional PPM that rounds up (0.5 PPM rounds to 1)", () => {
       const pos = makePositionState({
         currentPrice: 101,
         currentPriceLabel: "101",
@@ -513,12 +513,12 @@ describe("range calculators", () => {
       const result = calculateDistanceToLower(pos);
       expect(result.status).toBe("AVAILABLE");
       const diff = 101 - 100;
-      const expectedBps = (diff / 101) * 10000;
-      const rounded = Math.round(expectedBps);
+      const expectedPpm = (diff / 101) * 1_000_000;
+      const rounded = Math.round(expectedPpm);
       expect(result.value).toBe(rounded);
     });
 
-    it("handles negative fractional BPS that rounds away from zero", () => {
+    it("handles negative fractional PPM that rounds away from zero", () => {
       const pos = makePositionState({
         currentPrice: 99,
         currentPriceLabel: "99",
@@ -529,8 +529,8 @@ describe("range calculators", () => {
       const result = calculateDistanceToLower(pos);
       expect(result.status).toBe("AVAILABLE");
       const diff = 99 - 100;
-      const expectedBps = (diff / 99) * 10000;
-      const rounded = Math.round(expectedBps);
+      const expectedPpm = (diff / 99) * 1_000_000;
+      const rounded = Math.round(expectedPpm);
       expect(result.value).toBe(rounded);
       expect(rounded).toBeLessThan(0);
     });
