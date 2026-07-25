@@ -347,6 +347,108 @@ describe("generateResearchBrief", () => {
     }
   });
 
+  it("does-not-reuse-degraded-briefs-on-retry", async () => {
+    await insertTestBundle();
+    llmProvider.enqueueError(new Error("LLM API Timeout"));
+
+    const first = await generateResearchBrief(
+      { bundleRepo, briefRepo, llmProvider },
+      {
+        pair: "SOL/USDC",
+        evaluationTimeUnixMs: evalTimeMs,
+        codeVersion: "1.0.0"
+      }
+    );
+    expect(first.outcome).toBe("generated_degraded");
+
+    // Enqueue successful response for retry
+    llmProvider.enqueueResult({
+      output: validLlmOutput,
+      provider: "openai",
+      model: "gpt-4o"
+    });
+
+    const second = await generateResearchBrief(
+      { bundleRepo, briefRepo, llmProvider },
+      {
+        pair: "SOL/USDC",
+        evaluationTimeUnixMs: evalTimeMs,
+        codeVersion: "1.0.0"
+      }
+    );
+
+    expect(second.outcome).toBe("generated_complete");
+    expect(llmProvider.capturedRequests().length).toBe(2);
+  });
+
+  it("provenance-derivedFromRefs-includes-prior-brief", async () => {
+    const olderTime = evalTimeMs - 2 * 24 * 60 * 60 * 1000;
+    const olderBundleRow = await insertTestBundle(calmFixture, olderTime, olderTime + 3600000);
+
+    const priorPersisted: PersistedResearchBrief = {
+      briefId: `brief-${olderBundleRow.id}-hash`,
+      pair: "SOL/USDC",
+      generationStatus: "complete",
+      llmOutput: validLlmOutput,
+      sourceRefs: [],
+      providerMetadata: { provider: "openai", model: "gpt-4o" },
+      sourceBundleRef: { bundleId: olderBundleRow.id, bundleHash: olderBundleRow.payloadHash },
+      inputContextHash: "hash-older-context",
+      priorBriefRef: null,
+      generatedAt: new Date(olderTime).toISOString(),
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+    };
+
+    const priorPayloadHash = await canonicalHash(priorPersisted);
+    const priorRow = await briefRepo.insert({
+      evidenceBundleId: olderBundleRow.id,
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+      modelProvider: "openai",
+      structuredOutput: priorPersisted,
+      signalClass: "contextual",
+      confidence: DEFAULT_CONFIDENCE,
+      payloadHash: priorPayloadHash,
+      provenance: {
+        ...DEFAULT_PROVENANCE,
+        sourceRefs: [
+          {
+            refType: "evidence_bundle",
+            id: olderBundleRow.id,
+            source: "clmm-v2-bundle",
+            payloadHash: olderBundleRow.payloadHash
+          }
+        ]
+      },
+      receivedAtUnixMs: olderTime
+    });
+
+    await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs);
+    llmProvider.enqueueResult({
+      output: validLlmOutput,
+      provider: "openai",
+      model: "gpt-4o"
+    });
+
+    const result = await generateResearchBrief(
+      { bundleRepo, briefRepo, llmProvider },
+      {
+        pair: "SOL/USDC",
+        evaluationTimeUnixMs: evalTimeMs,
+        codeVersion: "1.0.0"
+      }
+    );
+
+    expect(result.outcome).toBe("generated_complete");
+    if (result.outcome === "generated_complete") {
+      const prov = result.row.provenance;
+      expect(prov.sourceRefs.length).toBe(1);
+      expect(prov.sourceRefs[0]?.refType).toBe("evidence_bundle");
+      expect(prov.derivedFromRefs.length).toBe(2);
+      expect(prov.derivedFromRefs[1]?.refType).toBe("research_brief");
+      expect(prov.derivedFromRefs[1]?.id).toBe(priorRow.id);
+    }
+  });
+
   it("propagates repository write failure without catching as degraded", async () => {
     await insertTestBundle();
     llmProvider.enqueueResult({

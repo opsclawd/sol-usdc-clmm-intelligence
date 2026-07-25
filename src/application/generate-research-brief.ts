@@ -31,7 +31,7 @@ import {
   RESEARCH_BRIEF_PROMPT_VERSION
 } from "../domain/brief/prompts.js";
 import { canonicalHash } from "../domain/content-hash.js";
-import type { Confidence, ProvenanceRef } from "../contracts/taxonomy.js";
+import type { Confidence, ProvenanceRef, Source } from "../contracts/taxonomy.js";
 import type { EvidenceBundleV1 } from "../contracts/generated/evidence-bundle-v1.js";
 
 export interface GenerateResearchBriefDeps {
@@ -98,18 +98,29 @@ export async function generateResearchBrief(
   let priorBrief: PersistedResearchBrief | null = null;
   let priorBriefRow: ResearchBriefRow | null = null;
 
-  for (const cand of candidateBundles) {
-    const briefs = await deps.briefRepo.findByBundleId(cand.id);
-    const sortedBriefs = [...briefs].sort((a, b) => b.receivedAtUnixMs - a.receivedAtUnixMs);
-    for (const bRow of sortedBriefs) {
-      const artifact = bRow.structuredOutput as PersistedResearchBrief;
-      if (artifact && artifact.generationStatus === "complete") {
-        priorBrief = artifact;
-        priorBriefRow = bRow;
-        break;
+  if (candidateBundles.length > 0) {
+    const candidateBundleIds = candidateBundles.map((b) => b.id);
+    const candidateBriefRows = deps.briefRepo.findByBundleIds
+      ? await deps.briefRepo.findByBundleIds(candidateBundleIds)
+      : (
+          await Promise.all(candidateBundleIds.map((id) => deps.briefRepo.findByBundleId(id)))
+        ).flat();
+
+    for (const cand of candidateBundles) {
+      const briefsForCand = candidateBriefRows
+        .filter((b) => b.evidenceBundleId === cand.id)
+        .sort((a, b) => b.receivedAtUnixMs - a.receivedAtUnixMs);
+
+      for (const bRow of briefsForCand) {
+        const artifact = bRow.structuredOutput as PersistedResearchBrief;
+        if (artifact && artifact.generationStatus === "complete") {
+          priorBrief = artifact;
+          priorBriefRow = bRow;
+          break;
+        }
       }
+      if (priorBrief) break;
     }
-    if (priorBrief) break;
   }
 
   // Project context
@@ -140,11 +151,15 @@ export async function generateResearchBrief(
     ? projectedContext.inputContextHash
     : await canonicalHash({ pair: params.pair, warnings: initialWarnings });
 
-  // Early idempotency check: reuse existing brief for the same bundle and context hash
+  // Early idempotency check: reuse existing COMPLETE brief for the same bundle and context hash
   const existingBriefs = await deps.briefRepo.findByBundleId(latestBundleRow.id);
   const existingMatch = existingBriefs.find((r) => {
     const artifact = r.structuredOutput as PersistedResearchBrief;
-    return artifact && artifact.inputContextHash === inputContextHash;
+    return (
+      artifact &&
+      artifact.inputContextHash === inputContextHash &&
+      artifact.generationStatus === "complete"
+    );
   });
   if (existingMatch) {
     return {
@@ -238,20 +253,23 @@ export async function generateResearchBrief(
 
   const briefId = `brief:${latestBundleRow.id}:${inputContextHash.slice(0, 12)}`;
 
-  const sourceRefs: ProvenanceRef[] = [
-    {
-      refType: "evidence_bundle",
-      id: latestBundleRow.id,
-      source: "clmm-v2-bundle",
-      payloadHash: latestBundleRow.payloadHash
-    }
-  ];
+  const bundleRef: ProvenanceRef = {
+    refType: "evidence_bundle",
+    id: latestBundleRow.id,
+    source: "clmm-v2-bundle",
+    payloadHash: latestBundleRow.payloadHash
+  };
 
+  const sourceRefs: ProvenanceRef[] = [bundleRef];
+
+  const derivedFromRefs: ProvenanceRef[] = [bundleRef];
   if (priorBriefRow) {
-    sourceRefs.push({
+    const priorSource: Source =
+      (priorBriefRow.provenance?.sourceRefs?.[0]?.source as Source) ?? "clmm-v2-bundle";
+    derivedFromRefs.push({
       refType: "research_brief",
       id: priorBriefRow.id,
-      source: "clmm-v2-bundle",
+      source: priorSource,
       payloadHash: priorBriefRow.payloadHash
     });
   }
@@ -319,14 +337,7 @@ export async function generateResearchBrief(
     provenance: {
       sourceRefs,
       rawObservationRefs: [],
-      derivedFromRefs: [
-        {
-          refType: "evidence_bundle",
-          id: latestBundleRow.id,
-          source: "clmm-v2-bundle",
-          payloadHash: latestBundleRow.payloadHash
-        }
-      ],
+      derivedFromRefs,
       processRef: {
         collector: "generate_research_brief",
         jobName: "research_brief_generator",

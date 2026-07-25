@@ -41,6 +41,11 @@ export class FakeBriefRepo implements ResearchBriefRepo {
     return this.store.filter((r) => r.evidenceBundleId === evidenceBundleId);
   }
 
+  async findByBundleIds(evidenceBundleIds: readonly number[]): Promise<ResearchBriefRow[]> {
+    const set = new Set(evidenceBundleIds);
+    return this.store.filter((r) => set.has(r.evidenceBundleId));
+  }
+
   async findByHash(
     evidenceBundleId: number,
     payloadHash: string
