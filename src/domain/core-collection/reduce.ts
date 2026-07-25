@@ -100,7 +100,8 @@ export function orderCoreWarnings(warnings: readonly SourceWarning[]): readonly 
     "clmm-v2": 0,
     pyth: 1,
     jupiter: 2,
-    orca: 3
+    orca: 3,
+    solana: 4
   };
 
   return [...warnings].sort((a, b) => {

@@ -46,6 +46,14 @@ vi.mock("../../src/application/collect-orca-pool-statistics.js", () => {
   };
 });
 
+const mockCollectSolanaNetworkStatus = vi.fn();
+vi.mock("../../src/application/collect-solana-network-status.js", () => {
+  return {
+    collectSolanaNetworkStatus: (deps: unknown, context: unknown) =>
+      mockCollectSolanaNetworkStatus(deps, context)
+  };
+});
+
 // We will import core-collection-job and the script after mock setup
 import { coreCollectionJob } from "../../src/jobs/core-collection-job.js";
 import { runCoreCollection } from "../../scripts/collectors/core-collection.js";
@@ -62,6 +70,7 @@ vi.mock("../../src/adapters/node/composition-root.js", () => {
   return {
     createNodeRuntime: vi.fn(() => ({
       http: {},
+      retryControl: {},
       jsonStore: {},
       env: {
         get: vi.fn((name: string) => {
@@ -82,6 +91,7 @@ interface MockCollectCoreDeps {
   pyth: (ctx: unknown) => Promise<unknown>;
   jupiter: (ctx: unknown) => Promise<unknown>;
   orca: (ctx: unknown) => Promise<unknown>;
+  solana: (ctx: unknown) => Promise<unknown>;
 }
 
 describe("Core Collection", () => {
@@ -98,6 +108,7 @@ describe("Core Collection", () => {
     mockCollectPythPrice.mockReset();
     mockCollectJupiterQuote.mockReset();
     mockCollectOrcaPoolStatistics.mockReset();
+    mockCollectSolanaNetworkStatus.mockReset();
     mockClose.mockReset();
   });
 
@@ -108,7 +119,7 @@ describe("Core Collection", () => {
   });
 
   describe("coreCollectionJob", () => {
-    it("creates one context then binds clmm pyth jupiter and orca leaves", async () => {
+    it("creates one context then binds clmm pyth jupiter orca and solana leaves", async () => {
       const mockContext = { runId: "test-run-id" };
       mockCreateCollectionRunContext.mockReturnValue(mockContext);
 
@@ -120,6 +131,7 @@ describe("Core Collection", () => {
 
       const deps = {
         http: {},
+        retryControl: {},
         jsonStore: {},
         env: {},
         clock: {},
@@ -140,8 +152,9 @@ describe("Core Collection", () => {
       expect(passedDeps.pyth).toBeTypeOf("function");
       expect(passedDeps.jupiter).toBeTypeOf("function");
       expect(passedDeps.orca).toBeTypeOf("function");
+      expect(passedDeps.solana).toBeTypeOf("function");
 
-      // Verify they pass the SAME context
+      // Verify they pass the SAME context and dependencies
       mockCollectClmmBundle.mockResolvedValue({ rawOutcome: { outcome: "accepted" } });
       await passedDeps.clmmV2(mockContext);
       expect(mockCollectClmmBundle).toHaveBeenCalledWith(deps, mockContext);
@@ -157,6 +170,14 @@ describe("Core Collection", () => {
       mockCollectOrcaPoolStatistics.mockResolvedValue({ status: "accepted" });
       await passedDeps.orca(mockContext);
       expect(mockCollectOrcaPoolStatistics).toHaveBeenCalledWith(deps, mockContext);
+
+      mockCollectSolanaNetworkStatus.mockResolvedValue({
+        status: "accepted",
+        hasUsableEvidence: true,
+        warnings: []
+      });
+      await passedDeps.solana(mockContext);
+      expect(mockCollectSolanaNetworkStatus).toHaveBeenCalledWith(deps, mockContext);
     });
   });
 
@@ -169,7 +190,8 @@ describe("Core Collection", () => {
         clmmV2: { status: "accepted", warnings: [] },
         pyth: { status: "accepted", warnings: [] },
         jupiter: { status: "accepted", warnings: [] },
-        orca: { status: "accepted", warnings: [] }
+        orca: { status: "accepted", warnings: [] },
+        solana: { status: "accepted", warnings: [] }
       });
       mockCreateCollectionRunContext.mockReturnValue({ runId: "test-run-id" });
 
@@ -177,6 +199,7 @@ describe("Core Collection", () => {
       expect(logSpy).toHaveBeenCalled();
       let printed = JSON.parse(logSpy.mock.calls[0]![0] as string);
       expect(printed.status).toBe("COMPLETE");
+      expect(printed.solana.status).toBe("accepted");
       expect(process.exitCode).toBe(0);
 
       // Reset and test FAILED status -> exit code 1
@@ -187,13 +210,15 @@ describe("Core Collection", () => {
         clmmV2: { status: "failed", diagnostic: "Error API_KEY=secret" },
         pyth: { status: "failed" },
         jupiter: { status: "failed" },
-        orca: { status: "failed" }
+        orca: { status: "failed" },
+        solana: { status: "failed" }
       });
 
       await runCoreCollection();
       expect(logSpy).toHaveBeenCalled();
       printed = JSON.parse(logSpy.mock.calls[0]![0] as string);
       expect(printed.status).toBe("FAILED");
+      expect(printed.solana.status).toBe("failed");
       // Assert no secret keys or api keys in unredacted diagnostic
       expect(JSON.stringify(printed)).not.toContain("API_KEY=secret");
       expect(JSON.stringify(printed)).not.toContain("secret");

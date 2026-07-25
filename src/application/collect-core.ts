@@ -19,20 +19,22 @@ export interface CollectCoreDeps {
   readonly pyth: CoreLeaf;
   readonly jupiter: CoreLeaf;
   readonly orca: CoreLeaf;
+  readonly solana: CoreLeaf;
 }
 
 const PROVENANCE_SOURCES: Record<CoreSourceKey, Source> = {
   "clmm-v2": "clmm-v2-bundle",
   pyth: "pyth-hermes",
   jupiter: "jupiter-quote",
-  orca: "orca-public-api"
+  orca: "orca-public-api",
+  solana: "solana-rpc"
 };
 
 export async function collectCore(
   deps: CollectCoreDeps,
   context: CollectionRunContext
 ): Promise<CoreCollectionResult> {
-  // Start all four promises before awaiting any, and guard each rejection independently
+  // Start all five promises before awaiting any, and guard each rejection independently
   const clmmV2Promise = deps
     .clmmV2(context)
     .catch((err) => mapSourceError("clmm-v2", PROVENANCE_SOURCES["clmm-v2"], err));
@@ -49,15 +51,20 @@ export async function collectCore(
     .orca(context)
     .catch((err) => mapSourceError("orca", PROVENANCE_SOURCES.orca, err));
 
+  const solanaPromise = deps
+    .solana(context)
+    .catch((err) => mapSourceError("solana", PROVENANCE_SOURCES.solana, err));
+
   // Await the guarded promises together
-  const [clmmV2, pyth, jupiter, orca] = await Promise.all([
+  const [clmmV2, pyth, jupiter, orca, solana] = await Promise.all([
     clmmV2Promise,
     pythPromise,
     jupiterPromise,
-    orcaPromise
+    orcaPromise,
+    solanaPromise
   ]);
 
-  const outcomes = [clmmV2, pyth, jupiter, orca];
+  const outcomes = [clmmV2, pyth, jupiter, orca, solana];
 
   // Pass fixed outcomes to the pure helpers
   const status = reduceCoreCollectionStatus(outcomes);
@@ -76,6 +83,7 @@ export async function collectCore(
     pyth,
     jupiter,
     orca,
+    solana,
     warnings: orderedWarnings,
     counts,
     status,

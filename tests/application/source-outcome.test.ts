@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   mapPriceSourceOutcome,
   mapClmmSourceOutcome,
+  mapSolanaNetworkStatusOutcome,
   mapSourceError,
   redactDiagnostic
 } from "../../src/application/source-outcome.js";
@@ -9,6 +10,7 @@ import { PostPersistenceOutputError } from "../../src/application/ingest-raw-obs
 import { ClmmObservationConflictError } from "../../src/application/collect-clmm-bundle.js";
 import type { PriceSourceResult } from "../../src/application/price-source-result.js";
 import type { CollectClmmBundleResult } from "../../src/application/collect-clmm-bundle.js";
+import type { SolanaNetworkStatusSourceResult } from "../../src/application/collect-solana-network-status.js";
 
 import type { RawObservationRow } from "../../src/ports/observation-repo.js";
 
@@ -220,6 +222,76 @@ describe("source-outcome mapping", () => {
       expect(mapped.diagnostic).toContain("Failed to write compatibility file");
       expect(mapped.diagnostic).not.toContain("123");
       expect(mapped.diagnostic?.toLowerCase()).toContain("[redacted]");
+    });
+  });
+
+  describe("mapSolanaNetworkStatusOutcome", () => {
+    it("maps degraded Solana status to usable core evidence with explicit warnings", () => {
+      const result: SolanaNetworkStatusSourceResult = {
+        status: "degraded",
+        hasUsableEvidence: true,
+        rawObservationId: 42,
+        normalizedCount: 1,
+        warnings: ["node_behind", "slot_unavailable"],
+        freshness: {
+          isStale: false,
+          validUntilUnixMs: 1000,
+          derivedAt: 500,
+          policyKind: "network_status",
+          reasons: []
+        },
+        confidenceLevel: "medium",
+        diagnostic: null
+      };
+
+      const mapped = mapSolanaNetworkStatusOutcome(result);
+      expect(mapped.sourceKey).toBe("solana");
+      expect(mapped.source).toBe("solana-rpc");
+      expect(mapped.status).toBe("degraded");
+      expect(mapped.hasUsableEvidence).toBe(true);
+      expect(mapped.rawObservationId).toBe(42);
+      expect(mapped.normalizedCount).toBe(1);
+      expect(mapped.freshness).toBe(result.freshness);
+      expect(mapped.confidenceLevel).toBe("medium");
+      expect(mapped.diagnostic).toBeNull();
+      expect(mapped.warnings).toEqual([
+        { source: "solana", code: "node_behind", message: "Solana RPC node is behind" },
+        { source: "solana", code: "slot_unavailable", message: "Solana RPC slot is unavailable" }
+      ]);
+    });
+
+    it("maps unavailable Solana status to an explicit aggregate warning without fabricating evidence", () => {
+      const statuses: SolanaNetworkStatusSourceResult["status"][] = [
+        "timeout",
+        "network",
+        "unavailable",
+        "malformed",
+        "conflict",
+        "failed"
+      ];
+
+      for (const status of statuses) {
+        const result: SolanaNetworkStatusSourceResult = {
+          status,
+          hasUsableEvidence: false,
+          rawObservationId: null,
+          normalizedCount: 0,
+          warnings: [],
+          freshness: null,
+          confidenceLevel: null,
+          diagnostic: `error detail for ${status}`
+        };
+
+        const mapped = mapSolanaNetworkStatusOutcome(result);
+        expect(mapped.sourceKey).toBe("solana");
+        expect(mapped.source).toBe("solana-rpc");
+        expect(mapped.status).toBe(status);
+        expect(mapped.hasUsableEvidence).toBe(false);
+        expect(mapped.warnings).toEqual([
+          { source: "solana", code: `solana_rpc_${status}`, message: null }
+        ]);
+        expect(mapped.diagnostic).toBe(`error detail for ${status}`);
+      }
     });
   });
 });

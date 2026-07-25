@@ -5,7 +5,7 @@ export interface CollectionRunContext {
   readonly startedAtUnixMs: number;
 }
 
-export type CoreSourceKey = "clmm-v2" | "pyth" | "jupiter" | "orca";
+export type CoreSourceKey = "clmm-v2" | "pyth" | "jupiter" | "orca" | "solana";
 
 export type SourceOutcomeStatus =
   | "accepted"
@@ -54,6 +54,7 @@ export interface CoreCollectionResult {
   readonly pyth: SourceCollectionOutcome;
   readonly jupiter: SourceCollectionOutcome;
   readonly orca: SourceCollectionOutcome;
+  readonly solana: SourceCollectionOutcome;
   readonly warnings: readonly SourceWarning[];
   readonly counts: CoreCollectionCounts;
   readonly status: CoreCollectionStatus;

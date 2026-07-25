@@ -1,616 +1,624 @@
 <!-- plan-review-required -->
 
-# On-Chain Flow Research Collectors Pack B Implementation Plan
+# Deterministic Solana Network Status Ingestion Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Collect SOL/USDC-relevant whale, stablecoin, DEX-pressure, and defensible CEX-proxy facts from Helius and Birdeye; persist qualifying raw events before normalized observations; and expose auditable freshness, provenance, and confidence without inferring motive or policy.
+**Goal:** Complete issue #7’s deterministic core-ingestion acceptance criteria by adding raw-first Solana RPC health observations and availability warnings to the existing CLMM, Pyth, Jupiter, and Orca core collection run.
 
-**Architecture:** Add a provider-neutral `OnChainFlowSourcePort` with Helius and Birdeye HTTP adapters. Each provider response is converted to bounded source events, then a pure on-chain-flow domain validates, thresholds, normalizes, identifies, and enriches each event before the application layer uses the existing `ingestRawObservation` lifecycle. A multi-source job and thin CLI compose the adapters, DB repositories, run context, and documented environment configuration.
+**Architecture:** Preserve the existing four collectors and shared `ingestRawObservation` lifecycle. Add a deterministic `network_status` taxonomy entry and pure Solana JSON-RPC batch validation/normalization, then collect `getHealth` plus `getSlot` through the existing HTTP/retry/repository ports. Extend the guarded core coordinator from four to five leaves so a Solana outage is explicit but never rolls back usable sibling evidence.
 
-**Tech Stack:** TypeScript 5, Zod, Vitest, the existing `HttpClient`/retry abstractions, Drizzle-backed observation repositories, pnpm, ESLint, and Prettier.
+**Tech Stack:** TypeScript 5, Vitest, the existing `HttpClient`, `RetryControl`, `RawObservationRepo`, and `NormalizedObservationRepo` ports, Zod-free strict domain validation consistent with the Orca domain, pnpm, ESLint, Prettier, and dependency-cruiser.
 
 ---
 
-**Assumptions and design resolution**
+## Current-state resolution and assumptions
 
-- Helius is the transaction-level source for `whale_transfer`, `whale_swap`, `stablecoin_flow`, and `cex_flow_proxy`; Birdeye is the windowed source for `dex_net_flow`.
-- Provider endpoints return bounded factual extracts in the repository-owned source-port envelope described in Task 2. Provisioning provider accounts or translating a materially different commercial API contract is operational work, not part of this implementation.
-- Thresholds are integer USDC amounts represented as decimal strings and parsed without floating-point arithmetic. Defaults are documented, but the CLI always passes explicit validated values to the job.
-- Thresholding happens before raw insertion. “Raw retention” therefore means every qualifying accepted event has a separate immutable raw row; below-threshold noise and malformed events do not consume DB retention.
-- Event identity never uses pagination or request time. Transaction events use provider source, transaction signature, event index, and observation kind. Windowed DEX pressure uses provider source, venue, window start/end, and observation kind.
-- Provider-supplied CEX address labels are facts about attribution, not facts about motive. CEX proxies are `probabilistic`, require a minimum attribution confidence, and always carry explicit proxy/noise caveats.
-- Existing JSONB observation tables and repository methods are sufficient. No database migration and no repository port/interface change is planned.
-- The plan has retry paths and durable DB writes, so `plan-review-required` is present on the first line.
+- `collectClmmBundle`, `collectPythPrice`, `collectJupiterQuote`, `collectOrcaPoolStatistics`, `ingestRawObservation`, content hashing, repository idempotency, HTTP timeout/retry support for GET sources, and four-leaf partial-failure orchestration already exist on this branch. Reimplementing them is a non-goal.
+- The issue still explicitly requires “Solana network/status inputs needed for deterministic availability warnings.” Current `solana-status-api` protocol incidents are contextual reports, not a live deterministic availability observation. This plan adds a distinct `solana-rpc` source.
+- `SOLANA_RPC_URL` points to one operator-selected mainnet RPC endpoint. This is endpoint health evidence, not proof that every Solana validator or RPC provider is healthy.
+- One JSON-RPC batch request contains `getHealth` with id `"health"` and `getSlot` with id `"slot"`. Responses are correlated by id, never by array order.
+- The repository’s established “raw” representation is canonical JSON (`payloadCanonical`), not original whitespace-preserving HTTP bytes. This plan follows that existing persistence contract.
+- A successful HTTP 2xx body is inserted with `parseStatus: "pending"` before strict JSON-RPC validation or normalization. Transport failures and non-2xx responses have no accepted observation body and therefore do not create raw rows.
+- `getHealth: "ok"` is healthy. JSON-RPC error `-32005` with a non-negative safe-integer `numSlotsBehind` is a valid degraded observation. Other health errors are unavailable/malformed outcomes and never fabricate a healthy value.
+- A failed `getSlot` alongside valid health is retained as usable degraded health evidence with `slot_unavailable`; it does not erase the valid `getHealth` fact.
+- Retries are leaf-local: at most two total identical POST attempts, retrying only timeout/network failures and HTTP 408, 429, or 5xx. There is no coordinator retry and no cross-source transaction.
+- No DB migration or repository-port method is required because both observation tables already store extensible JSON payloads and the required insert/query methods already exist.
+- This plan contains a bounded retry loop and irreversible database inserts, so `plan-review-required` is present on the first line.
 
-**Non-goals**
+## Non-goals
 
-- No PolicyInsight, rebalance recommendation, range decision, transaction construction, or regime classification.
-- No LLM narrative, motive inference, or claim that exchange deposits imply selling (or withdrawals imply buying).
-- No custom Solana RPC indexer, address-label maintenance system, historical backfill, or third-party account provisioning.
-- No evidence-bundle assembly/publication changes; this issue ends at persisted normalized observations.
-- No mutation or deletion of existing observations, and no DB schema change.
+- Do not alter the semantics or payload contracts of the existing CLMM, Pyth, Jupiter, or Orca collectors.
+- Do not replace the contextual `protocol_incident` collector or merge incident narratives into deterministic RPC status.
+- Do not build RPC fan-out, quorum health, validator monitoring, transaction simulation, or signing/execution behavior.
+- Do not calculate derived features, regimes, recommendations, PolicyInsights, research briefs, or evidence publication.
+- Do not persist API keys, authorization headers, credential-bearing RPC paths, or unredacted endpoint URLs in metadata or diagnostics.
+- Do not add a new HTTP, retry, clock, or repository port method.
 
-**Affected files from repository root**
+## Affected files from repository root
 
 - Modify: `src/contracts/taxonomy.ts`
-- Create: `src/contracts/on-chain-flow.ts`
+- Create: `src/contracts/normalized-network-status.ts`
 - Modify: `src/contracts/index.ts`
 - Modify: `src/domain/taxonomy/registry.ts`
+- Modify: `src/domain/taxonomy/validation.ts`
 - Modify: `tests/domain/taxonomy/registry.test.ts`
-- Modify: `tests/domain/taxonomy/confidence.test.ts`
-- Create: `tests/contracts/on-chain-flow.test.ts`
-- Create: `src/ports/on-chain-flow-source.ts`
-- Modify: `src/ports/index.ts`
-- Create: `src/adapters/node/http-helius-flow-source.ts`
-- Create: `src/adapters/node/http-birdeye-flow-source.ts`
-- Create: `tests/fakes/fake-on-chain-flow-source.ts`
-- Modify: `tests/fakes/index.ts`
-- Create: `tests/adapters/node/http-helius-flow-source.test.ts`
-- Create: `tests/adapters/node/http-birdeye-flow-source.test.ts`
-- Create: `tests/fixtures/on-chain-flow.ts`
-- Create: `src/domain/on-chain-flow/validate.ts`
-- Create: `src/domain/on-chain-flow/threshold.ts`
-- Create: `src/domain/on-chain-flow/normalize.ts`
-- Create: `src/domain/on-chain-flow/identity.ts`
-- Create: `src/domain/on-chain-flow/enrich.ts`
-- Create: `src/domain/on-chain-flow/index.ts`
-- Create: `tests/domain/on-chain-flow/validate.test.ts`
-- Create: `tests/domain/on-chain-flow/threshold.test.ts`
-- Create: `tests/domain/on-chain-flow/normalize.test.ts`
-- Create: `tests/domain/on-chain-flow/identity.test.ts`
-- Create: `tests/domain/on-chain-flow/enrich.test.ts`
-- Create: `src/application/collect-on-chain-flow.ts`
-- Create: `tests/application/collect-on-chain-flow.test.ts`
-- Create: `src/jobs/on-chain-flow-job.ts`
-- Modify: `src/jobs/index.ts`
-- Create: `tests/jobs/on-chain-flow-job.test.ts`
-- Create: `scripts/collectors/on-chain-flow.ts`
-- Modify: `package.json`
+- Modify: `tests/domain/taxonomy/validation.test.ts`
+- Create: `src/domain/network-status/solana-rpc.ts`
+- Create: `src/domain/network-status/identity.ts`
+- Create: `src/domain/network-status/normalize.ts`
+- Create: `src/domain/network-status/enrich.ts`
+- Create: `src/domain/network-status/index.ts`
+- Create: `tests/fixtures/solana-network-status.ts`
+- Create: `tests/domain/network-status/solana-rpc.test.ts`
+- Create: `tests/domain/network-status/identity.test.ts`
+- Create: `tests/domain/network-status/normalize.test.ts`
+- Create: `tests/domain/network-status/enrich.test.ts`
+- Create: `src/application/collect-solana-network-status.ts`
+- Create: `tests/application/collect-solana-network-status.test.ts`
+- Modify: `src/contracts/collection-run.ts`
+- Modify: `src/application/collect-core.ts`
+- Modify: `src/application/source-outcome.ts`
+- Modify: `src/domain/core-collection/reduce.ts`
+- Modify: `src/jobs/core-collection-job.ts`
+- Modify: `scripts/collectors/core-collection.ts`
+- Modify: `tests/application/collect-core.test.ts`
+- Modify: `tests/application/source-outcome.test.ts`
+- Modify: `tests/domain/core-collection/reduce.test.ts`
+- Modify: `tests/scripts/core-collection.test.ts`
+- Modify: `.env.example`
 - Modify: `resources/sources.yaml`
+- Modify: `README.md`
 - Modify: `docs/architecture.md`
 - Modify: `docs/operator-runbook.md`
-- Create: `tests/scripts/on-chain-flow.test.ts`
 
-## Task 1: Define on-chain flow contracts and taxonomy entries
+## Behavioral invariants
+
+The named invariants below are test names to write before implementation. They cover the stateful and logic-heavy behavior that must not be left implicit.
+
+1. `accepts healthy getHealth and getSlot responses regardless of batch order`: ids, not array positions, determine meaning.
+2. `accepts Solana node-behind error minus 32005 as degraded health evidence`: a recognized unhealthy response is a fact, not a malformed payload.
+3. `rejects duplicate missing unknown or mismatched JSON-RPC response ids`: ambiguous batches never normalize.
+4. `normalizes a healthy batch without warnings`: health is `ok`, slot is retained, and slots-behind is null.
+5. `normalizes node-behind and missing slot as explicit sorted warnings`: health is `behind`; no healthy or slot value is invented.
+6. `derives stable identity from network and collection instant only`: replaying the same run targets the same raw identity regardless of response member order.
+7. `persists a 2xx response before validating and normalizing it`: the event order is raw insert, normalized insert, then parsed status.
+8. `marks a persisted malformed RPC batch failed without normalized rows`: schema drift remains auditable and unusable.
+9. `replays identical network status without duplicate raw or normalized rows`: parsed replays recover the linked normalized status.
+10. `rejects a same-identity different-payload replay as conflict`: existing raw and normalized evidence remain unchanged.
+11. `retries timeout network 408 429 and 5xx at most twice with the identical batch`: retry input and credential handling do not drift.
+12. `does not retry permanent 4xx or malformed successful bodies`: non-retryable failures stop immediately.
+13. `returns degraded usable evidence for node-behind or slot-unavailable status`: warnings are explicit while the health fact remains usable.
+14. `never exposes RPC credentials or credential-bearing paths in metadata or diagnostics`: only a safe host label and method names are retained.
+15. `starts all five leaves before awaiting and invokes each exactly once`: the new source preserves independent parallel execution.
+16. `preserves four-source evidence when Solana RPC is unavailable`: overall status is `PARTIAL`, no sibling result is rewritten, and the command remains successful.
+17. `returns COMPLETE only when all five sources contribute fresh usable evidence`: the result shape and count reflect the fifth source.
+18. `maps unavailable Solana status to an explicit aggregate warning without fabricating evidence`: absence is visible without a normalized placeholder.
+19. `orders Solana warnings after the four existing source groups`: output is deterministic regardless of promise completion order.
+
+## Task 1: Define deterministic network status contracts and taxonomy
 
 **Files:**
 
 - Modify: `src/contracts/taxonomy.ts`
-- Create: `src/contracts/on-chain-flow.ts`
+- Create: `src/contracts/normalized-network-status.ts`
 - Modify: `src/contracts/index.ts`
 - Modify: `src/domain/taxonomy/registry.ts`
-- Modify: `tests/domain/taxonomy/registry.test.ts` (only the `observationKinds` list and a new `on-chain flow registry` describe block)
-- Modify: `tests/domain/taxonomy/confidence.test.ts` (only to cover the new `cex_proxy_quality_cap_applied` reason)
-- Create: `tests/contracts/on-chain-flow.test.ts`
+- Modify: `src/domain/taxonomy/validation.ts`
+- Modify: `tests/domain/taxonomy/registry.test.ts` (only the observation-kind parity list and a new `network_status registry` describe block)
+- Modify: `tests/domain/taxonomy/validation.test.ts` (only the `runtime taxonomy parity` describe block)
 
 **Behavioral invariants to test first:**
 
-- `registers deterministic on-chain transaction facts and probabilistic CEX proxies`: transfer, swap, stablecoin, and DEX entries use `on_chain_flow`; only `cex_flow_proxy` uses `probabilistic`.
-- `allows only the source providers that can emit each flow kind`: Helius is allowed for transaction kinds and CEX proxy; Birdeye is allowed for DEX net flow.
-- `requires explicit CEX proxy noise metadata`: the CEX payload schema cannot be represented without attribution confidence, attribution provider, proxy quality, and caveats.
-- `does not provide a motive field on any normalized flow payload`: contract fixtures contain factual direction/context only.
+- `registers network status as deterministic execution safety evidence`
+- `allows only solana rpc provenance for network status`
+- `parses network status and solana rpc taxonomy literals`
+- `requires warnings instead of nullable fabricated health values`
 
-- [ ] **Step 1: Write the failing contract and registry tests**
+- [ ] **Step 1: Write the failing taxonomy and contract assertions**
 
-  Add exact tests named above. In `tests/contracts/on-chain-flow.test.ts`, use `satisfies OnChainFlowPayloadV1` fixtures and assert the discriminated union contains:
-  - common fields: `schemaVersion`, `eventFamily`, `eventType`, `sourceEventId`, `observedAtUnixMs`, `amountUsdc`, `direction`, `venue`, `addressContext`, `sourceReferences`, `sourceQuality`, `freshnessContext`;
-  - transaction identity: `transactionSignature`, `eventIndex`, `slot`;
-  - stablecoin operation: `mint | burn | transfer`;
-  - DEX window: `windowStartUnixMs`, `windowEndUnixMs`, `buyVolumeUsdc`, `sellVolumeUsdc`, `netFlowUsdc`;
-  - CEX noise: `{ quality: "proxy"; attributionConfidence; attributionProvider; caveats }`.
+  Extend the observation-kind parity fixture with `"network_status"`. Add a focused registry describe block that asserts deterministic `execution_safety`, a 60-second maximum age, 5-second skew tolerance, `staleBehavior: "exclude"`, schema version 1, and only `"solana-rpc"` provenance. In runtime parity, assert `parseObservationKind("network_status")` and `parseSource("solana-rpc")`.
+
+  Use a compile-checked fixture with this exact public shape:
+
+  ```ts
+  const healthy: NetworkStatusPayloadV1 = {
+    kind: "network_status",
+    schemaVersion: 1,
+    network: "solana-mainnet-beta",
+    observedAtUnixMs: 1715342400000,
+    health: "ok",
+    slot: 260000000,
+    slotsBehind: null,
+    warnings: []
+  };
+  ```
 
   Run:
 
   ```bash
-  pnpm test tests/contracts/on-chain-flow.test.ts tests/domain/taxonomy/registry.test.ts
+  pnpm test tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts
   ```
 
-  Expected: FAIL because the new types, sources, kinds, and registry entries do not exist.
+  Expected: FAIL because the new literals, payload contract, registry entry, and runtime validation entries do not exist.
 
-- [ ] **Step 2: Add the contracts and taxonomy**
+- [ ] **Step 2: Add the exported payload and taxonomy literals**
 
-  Extend `ObservationKind` with:
-
-  ```ts
-  | "whale_transfer"
-  | "whale_swap"
-  | "stablecoin_flow"
-  | "dex_net_flow"
-  | "cex_flow_proxy"
-  ```
-
-  Extend `Source` with `"helius-api" | "birdeye-api"` and `ConfidenceReason` with `"cex_proxy_quality_cap_applied"`.
-
-  In `src/contracts/on-chain-flow.ts`, define `OnChainFlowDirection`, `OnChainAddressContext`, `OnChainFlowSourceQuality`, the five `*PayloadV1` interfaces, their `OnChainFlowPayloadV1` union, and:
+  Add `"network_status"` to `ObservationKind` and `"solana-rpc"` to `Source`. Create and export:
 
   ```ts
-  export interface OnChainFlowThresholds {
-    readonly whaleTransferMinUsdc: string;
-    readonly whaleSwapMinUsdc: string;
-    readonly stablecoinFlowMinUsdc: string;
-    readonly dexNetFlowMinUsdc: string;
-    readonly cexFlowProxyMinUsdc: string;
-    readonly cexMinAttributionConfidence: number;
+  export type NetworkStatusWarning = "node_behind" | "slot_unavailable";
+
+  export interface NetworkStatusPayloadV1 {
+    readonly kind: "network_status";
+    readonly schemaVersion: 1;
+    readonly network: "solana-mainnet-beta";
+    readonly observedAtUnixMs: number;
+    readonly health: "ok" | "behind";
+    readonly slot: number | null;
+    readonly slotsBehind: number | null;
+    readonly warnings: readonly NetworkStatusWarning[];
   }
   ```
 
-  Keep numeric money fields as canonical non-negative decimal strings, except signed `netFlowUsdc`. Do not add narrative, motive, recommendation, or policy fields. Export the file from `src/contracts/index.ts`.
+  `health` is never nullable and never contains `"unknown"` or `"unavailable"`; absence stays in the source outcome rather than becoming fabricated evidence.
 
-- [ ] **Step 3: Register the five kinds**
+- [ ] **Step 3: Register and validate the new taxonomy values**
 
-  Add five version-1 entries to `observationKindRegistry`, all with `evidenceFamily: "on_chain_flow"`, 15-minute max age, 5-second skew tolerance, and `staleBehavior: "allow_context_only"`. Use `deterministic` for blockchain/window facts and `probabilistic` for `cex_flow_proxy`. Give CEX proxy greater weight to source reliability, and restrict provenance sources as described in the invariants.
+  Add the `network_status` registry entry beside the existing execution-safety kinds with deterministic weights `{ sourceReliability: 0.5, dataCompleteness: 0.3, derivationConfidence: 0.2, llmConfidence: 0 }`, standard thresholds, LLM redistribution enabled, and direct provenance restricted to `["solana-rpc"]`. Extend the literal arrays in `src/domain/taxonomy/validation.ts`.
 
 - [ ] **Step 4: Run task-scoped verification**
 
   ```bash
-  pnpm test tests/contracts/on-chain-flow.test.ts tests/domain/taxonomy/registry.test.ts
-  pnpm exec eslint src/contracts/taxonomy.ts src/contracts/on-chain-flow.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/on-chain-flow.test.ts tests/domain/taxonomy/registry.test.ts --max-warnings 0
-  pnpm exec prettier --check src/contracts/taxonomy.ts src/contracts/on-chain-flow.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/on-chain-flow.test.ts tests/domain/taxonomy/registry.test.ts
+  pnpm test tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts
+  pnpm exec eslint src/contracts/taxonomy.ts src/contracts/normalized-network-status.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts --max-warnings 0
+  pnpm exec prettier --check src/contracts/taxonomy.ts src/contracts/normalized-network-status.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts
   ```
 
-  Expected: all commands pass.
+  Expected: all commands pass. The implement loop’s automatic `pnpm -r typecheck` gate also passes after this task.
 
 - [ ] **Step 5: Commit**
 
   ```bash
-  git add src/contracts/taxonomy.ts src/contracts/on-chain-flow.ts src/contracts/index.ts src/domain/taxonomy/registry.ts tests/contracts/on-chain-flow.test.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/confidence.test.ts
-  git commit -m "feat: define on-chain flow evidence taxonomy"
+  git add src/contracts/taxonomy.ts src/contracts/normalized-network-status.ts src/contracts/index.ts src/domain/taxonomy/registry.ts src/domain/taxonomy/validation.ts tests/domain/taxonomy/registry.test.ts tests/domain/taxonomy/validation.test.ts
+  git commit -m "feat: define deterministic Solana network status evidence"
   ```
 
-## Task 2: Add source port, Helius adapter, and Birdeye adapter
+## Task 2: Validate normalize identify and enrich Solana RPC batches
 
 **Files:**
 
-- Create: `src/ports/on-chain-flow-source.ts`
-- Modify: `src/ports/index.ts`
-- Create: `src/adapters/node/http-helius-flow-source.ts`
-- Create: `src/adapters/node/http-birdeye-flow-source.ts`
-- Create: `tests/fakes/fake-on-chain-flow-source.ts`
-- Modify: `tests/fakes/index.ts`
-- Create: `tests/adapters/node/http-helius-flow-source.test.ts`
-- Create: `tests/adapters/node/http-birdeye-flow-source.test.ts`
-- Create: `tests/fixtures/on-chain-flow.ts`
-
-**Port/interface atomicity:** This task adds `OnChainFlowSourcePort.collect` and, in the same task, adds every known implementation: `HttpHeliusFlowSource`, `HttpBirdeyeFlowSource`, and `FakeOnChainFlowSource`. Do not merge the port without all three implementations.
+- Create: `src/domain/network-status/solana-rpc.ts`
+- Create: `src/domain/network-status/identity.ts`
+- Create: `src/domain/network-status/normalize.ts`
+- Create: `src/domain/network-status/enrich.ts`
+- Create: `src/domain/network-status/index.ts`
+- Create: `tests/fixtures/solana-network-status.ts`
+- Create: `tests/domain/network-status/solana-rpc.test.ts`
+- Create: `tests/domain/network-status/identity.test.ts`
+- Create: `tests/domain/network-status/normalize.test.ts`
+- Create: `tests/domain/network-status/enrich.test.ts`
 
 **Behavioral invariants to test first:**
 
-- `Helius adapter maps transaction facts without adding motive`: accepted fields are copied into bounded source events; no narrative direction is inferred.
-- `Birdeye adapter maps buy sell volumes and signed net flow for the requested window`: the request always targets `SOL/USDC`.
-- `adapter rejects a malformed source envelope before application persistence`: missing stable identity, timestamps, source references, or non-finite attribution quality produces `{ kind: "malformed" }`.
-- `adapter retries retryable failures up to maxAttempts`: timeout, 429, and 5xx retry with injected `RetryControl`; invalid JSON and non-retryable 4xx do not retry.
-- `adapter redacts configured API keys from diagnostics`: thrown source errors never contain the secret.
-- `adapter preserves an empty event list as a successful snapshot`: no-event is distinct from unavailable.
+- `accepts healthy getHealth and getSlot responses regardless of batch order`
+- `accepts Solana node-behind error minus 32005 as degraded health evidence`
+- `rejects duplicate missing unknown or mismatched JSON-RPC response ids`
+- `normalizes a healthy batch without warnings`
+- `normalizes node-behind and missing slot as explicit sorted warnings`
+- `derives stable identity from network and collection instant only`
+- `enriches network status with fresh deterministic direct provenance`
 
-- [ ] **Step 1: Write adapter tests and fixtures**
+- [ ] **Step 1: Add fixtures and failing strict-validation tests**
 
-  Define the provider-neutral port surface:
+  Fixtures must cover: ordered and reversed healthy batches; health `-32005` with `{ numSlotsBehind: 12 }`; slot error; duplicate id; missing id; unknown id; wrong `jsonrpc`; unsafe/negative slot; unsafe/negative slots-behind; and arbitrary provider fields. Define the accepted domain shape:
 
   ```ts
-  export interface OnChainFlowSourceRequest {
-    readonly pair: "SOL/USDC";
-    readonly fromUnixMs: number;
-    readonly toUnixMs: number;
+  export interface AcceptedSolanaNetworkStatus {
+    readonly health: "ok" | "behind";
+    readonly slot: number | null;
+    readonly slotsBehind: number | null;
+    readonly slotUnavailable: boolean;
   }
 
-  export interface OnChainFlowSourceSnapshot {
-    readonly source: "helius-api" | "birdeye-api";
-    readonly providerId: string;
-    readonly providerRunId: string;
-    readonly asOfUnixMs: number;
-    readonly license: string;
-    readonly retention: "bounded";
-    readonly events: readonly OnChainFlowSourceEvent[];
-  }
-
-  export interface OnChainFlowSourcePort {
-    collect(request: OnChainFlowSourceRequest): Promise<OnChainFlowSourceSnapshot>;
-  }
+  export function acceptSolanaNetworkStatusBatch(input: unknown): AcceptedSolanaNetworkStatus;
   ```
-
-  `OnChainFlowSourceEvent` is a discriminated source-event union containing provider facts needed by Task 3. `OnChainFlowSourceError` has `timeout | network | unavailable | malformed`. Fixtures must include one event of every kind and an empty snapshot.
 
   Run:
 
   ```bash
-  pnpm test tests/adapters/node/http-helius-flow-source.test.ts tests/adapters/node/http-birdeye-flow-source.test.ts
+  pnpm test tests/domain/network-status/solana-rpc.test.ts
   ```
 
-  Expected: FAIL because the port and adapters do not exist.
+  Expected: FAIL because the network-status domain does not exist.
 
-- [ ] **Step 2: Implement the port, fake, and exports**
+- [ ] **Step 2: Implement strict id-correlated validation**
 
-  Export the port from `src/ports/index.ts`. Implement a configurable fake that records requests and either returns a snapshot or throws a configured typed error; export it from `tests/fakes/index.ts`.
+  Require an array containing exactly one `"health"` and one `"slot"` JSON-RPC 2.0 response. Accept only `"ok"` or error code `-32005` for health. Require safe non-negative integers for slot and `numSlotsBehind`. A slot error is allowed and represented as `slot: null`; a health error other than `-32005`, mixed result/error members, duplicates, missing ids, or unknown ids throws `SolanaNetworkStatusValidationError`.
 
-- [ ] **Step 3: Implement both HTTP adapters**
+- [ ] **Step 3: Write failing identity and normalization tests**
 
-  Each adapter must validate `pair`, append encoded `fromUnixMs`/`toUnixMs` query parameters, authenticate using its configured header, call `HttpClient.getJson` with one HTTP attempt per outer adapter attempt, strictly validate the provider envelope and event discriminants, freeze the result, and map/redact failures. Use injected `RetryControl` and the established bounded exponential backoff pattern.
+  Define:
 
-  Helius accepts transaction-backed events only. Birdeye accepts `dex_net_flow` only. A provider emitting a kind outside its allowlist is `malformed`.
+  ```ts
+  export function deriveSolanaNetworkStatusObservationKey(input: {
+    readonly network: "solana-mainnet-beta";
+    readonly observedAtUnixMs: number;
+  }): Promise<string>;
+
+  export function normalizeSolanaNetworkStatus(input: {
+    readonly accepted: AcceptedSolanaNetworkStatus;
+    readonly observedAtUnixMs: number;
+  }): NetworkStatusPayloadV1;
+  ```
+
+  Assert response ordering and provider-only extra fields do not affect identity. Assert warnings are sorted and deduplicated, healthy status has no warnings, `behind` always has `node_behind`, and a missing slot always has `slot_unavailable`.
+
+  Run:
+
+  ```bash
+  pnpm test tests/domain/network-status/identity.test.ts tests/domain/network-status/normalize.test.ts
+  ```
+
+  Expected: FAIL because identity and normalization are not implemented.
+
+- [ ] **Step 4: Implement identity normalization and deterministic enrichment**
+
+  Hash `{ identityVersion: 1, network, observedAtUnixMs }` with `canonicalHash`. Normalize only accepted facts. Implement enrichment using `getObservationKindEntry("network_status")`, `computeFreshness`, `computeConfidence`, `validateProvenance`, and `canonicalizePayload`, following `src/domain/pool-statistics/enrich.ts`. Use direct raw provenance from `"solana-rpc"`, collector `"collect-solana-network-status"`, job name `"core-collection-job"`, source reliability `0.95`, completeness `1` with slot or `0.7` without it, derivation confidence `1`, and no LLM confidence.
+
+  The enrichment test must assert `signalClass: "deterministic"`, `evidenceFamily: "execution_safety"`, one raw/source ref, the supplied run/code versions, and freshness based on the collection instant.
+
+  Export the concrete enrichment result as `EnrichedNetworkStatusObservation` and keep the callable signature consistent across the domain barrel and collector:
+
+  ```ts
+  export function enrichNetworkStatus(input: {
+    readonly rawObservationId: number;
+    readonly sourceObservationKey: string;
+    readonly rawPayloadHash: string;
+    readonly observedAtUnixMs: number;
+    readonly fetchedAtUnixMs: number;
+    readonly receivedAtUnixMs: number;
+    readonly payload: NetworkStatusPayloadV1;
+    readonly nowMs: number;
+    readonly codeVersion: string;
+    readonly runId: string | null;
+  }): Promise<EnrichedNetworkStatusObservation>;
+  ```
+
+- [ ] **Step 5: Run task-scoped verification**
+
+  ```bash
+  pnpm test tests/domain/network-status/solana-rpc.test.ts tests/domain/network-status/identity.test.ts tests/domain/network-status/normalize.test.ts tests/domain/network-status/enrich.test.ts
+  pnpm exec eslint src/domain/network-status/solana-rpc.ts src/domain/network-status/identity.ts src/domain/network-status/normalize.ts src/domain/network-status/enrich.ts src/domain/network-status/index.ts tests/fixtures/solana-network-status.ts tests/domain/network-status/solana-rpc.test.ts tests/domain/network-status/identity.test.ts tests/domain/network-status/normalize.test.ts tests/domain/network-status/enrich.test.ts --max-warnings 0
+  pnpm exec prettier --check src/domain/network-status/solana-rpc.ts src/domain/network-status/identity.ts src/domain/network-status/normalize.ts src/domain/network-status/enrich.ts src/domain/network-status/index.ts tests/fixtures/solana-network-status.ts tests/domain/network-status/solana-rpc.test.ts tests/domain/network-status/identity.test.ts tests/domain/network-status/normalize.test.ts tests/domain/network-status/enrich.test.ts
+  ```
+
+  Expected: all commands pass. The implement loop’s automatic `pnpm -r typecheck` gate also passes after this task.
+
+- [ ] **Step 6: Commit**
+
+  ```bash
+  git add src/domain/network-status tests/fixtures/solana-network-status.ts tests/domain/network-status
+  git commit -m "feat: normalize Solana RPC health observations"
+  ```
+
+## Task 3: Collect Solana status with raw-first persistence and bounded retries
+
+**Files:**
+
+- Create: `src/application/collect-solana-network-status.ts`
+- Create: `tests/application/collect-solana-network-status.test.ts`
+
+**Behavioral invariants to test first:**
+
+- `persists a 2xx response before validating and normalizing it`
+- `marks a persisted malformed RPC batch failed without normalized rows`
+- `replays identical network status without duplicate raw or normalized rows`
+- `rejects a same-identity different-payload replay as conflict`
+- `retries timeout network 408 429 and 5xx at most twice with the identical batch`
+- `does not retry permanent 4xx or malformed successful bodies`
+- `returns degraded usable evidence for node-behind or slot-unavailable status`
+- `never exposes RPC credentials or credential-bearing paths in metadata or diagnostics`
+
+- [ ] **Step 1: Write failing collector lifecycle tests**
+
+  Build dependencies from `FakeHttp`, `FakeRetry`, `FakeEnv`, `FakeObservationRepo`, `FakeNormalizedObservationRepo`, and `FakeJsonStore`. Record repository event order. Use this exported surface:
+
+  ```ts
+  export interface CollectSolanaNetworkStatusDeps {
+    readonly http: HttpClient;
+    readonly retryControl: RetryControl;
+    readonly jsonStore: JsonStore;
+    readonly env: EnvReader;
+    readonly rawObservationRepo: RawObservationRepo;
+    readonly normalizedObservationRepo: NormalizedObservationRepo;
+  }
+
+  export interface SolanaNetworkStatusSourceResult {
+    readonly status:
+      | "accepted"
+      | "identical_replay"
+      | "degraded"
+      | "timeout"
+      | "network"
+      | "unavailable"
+      | "malformed"
+      | "conflict"
+      | "failed";
+    readonly hasUsableEvidence: boolean;
+    readonly rawObservationId: number | null;
+    readonly normalizedCount: number;
+    readonly warnings: readonly NetworkStatusWarning[];
+    readonly freshness: Freshness | null;
+    readonly confidenceLevel: ConfidenceLevel | null;
+    readonly diagnostic: string | null;
+  }
+
+  export function collectSolanaNetworkStatus(
+    deps: CollectSolanaNetworkStatusDeps,
+    context: CollectionRunContext
+  ): Promise<SolanaNetworkStatusSourceResult>;
+  ```
+
+  Run:
+
+  ```bash
+  pnpm test tests/application/collect-solana-network-status.test.ts
+  ```
+
+  Expected: FAIL because the collector does not exist.
+
+- [ ] **Step 2: Implement the stable request and bounded retry loop**
+
+  Read required `SOLANA_RPC_URL`, optional `SOLANA_RPC_API_KEY`, and optional `INTELLIGENCE_CODE_VERSION`. Construct one immutable request value:
+
+  ```ts
+  const request = [
+    { jsonrpc: "2.0", id: "health", method: "getHealth" },
+    { jsonrpc: "2.0", id: "slot", method: "getSlot", params: [{ commitment: "confirmed" }] }
+  ] as const;
+  ```
+
+  Call `postJsonRaw` with `timeoutMs: 5_000` and a bearer header only when configured. Perform at most two total attempts. Retry thrown `HttpRequestError` values only when `retryable`, and retry response statuses 408, 429, or 5xx. Sleep once between attempts with the established bounded delay `25 + jitterUnit() * 25`. Permanent 4xx returns `unavailable`; exhausted timeout/network retains its specific status. Do not retry a 2xx body even when its JSON-RPC shape is malformed.
+
+- [ ] **Step 3: Implement raw-first ingestion and outcome mapping**
+
+  For a 2xx response, canonicalize `response.body`, derive the identity from mainnet plus `context.startedAtUnixMs`, and call `ingestRawObservation` before `acceptSolanaNetworkStatusBatch`. Persist request metadata containing only method `"POST"`, a sanitized host label, network, RPC method names, code version, and run id—never headers, API key, full URL, query, or path.
+
+  The ingestion callbacks must:
+  1. validate stored canonical JSON;
+  2. normalize exactly one `NetworkStatusPayloadV1`;
+  3. enrich exactly one deterministic observation;
+  4. insert it through `NormalizedObservationRepo.insertMany`;
+  5. mark the raw row parsed only after normalized insertion.
+
+  On parsed replay, recover the linked normalized row with `findByRawObservation(rawId, "network_status")`. Map `behind` or any warning to usable `degraded`; a clean replay to `identical_replay`; `RawObservationConflictError` to `conflict`; validation failure after insertion to `malformed` with the durable raw id; and unexpected persistence/enrichment failure to `failed`. Diagnostics must use stable redacted messages rather than echoing the configured URL or headers.
 
 - [ ] **Step 4: Run task-scoped verification**
 
   ```bash
-  pnpm test tests/adapters/node/http-helius-flow-source.test.ts tests/adapters/node/http-birdeye-flow-source.test.ts
-  pnpm exec eslint src/ports/on-chain-flow-source.ts src/ports/index.ts src/adapters/node/http-helius-flow-source.ts src/adapters/node/http-birdeye-flow-source.ts tests/fakes/fake-on-chain-flow-source.ts tests/fakes/index.ts tests/adapters/node/http-helius-flow-source.test.ts tests/adapters/node/http-birdeye-flow-source.test.ts tests/fixtures/on-chain-flow.ts --max-warnings 0
-  pnpm exec prettier --check src/ports/on-chain-flow-source.ts src/ports/index.ts src/adapters/node/http-helius-flow-source.ts src/adapters/node/http-birdeye-flow-source.ts tests/fakes/fake-on-chain-flow-source.ts tests/fakes/index.ts tests/adapters/node/http-helius-flow-source.test.ts tests/adapters/node/http-birdeye-flow-source.test.ts tests/fixtures/on-chain-flow.ts
+  pnpm test tests/application/collect-solana-network-status.test.ts
+  pnpm exec eslint src/application/collect-solana-network-status.ts tests/application/collect-solana-network-status.test.ts --max-warnings 0
+  pnpm exec prettier --check src/application/collect-solana-network-status.ts tests/application/collect-solana-network-status.test.ts
   ```
 
-  Expected: all commands pass.
+  Expected: all commands pass. The implement loop’s automatic `pnpm -r typecheck` gate also passes after this task.
 
 - [ ] **Step 5: Commit**
 
   ```bash
-  git add src/ports/on-chain-flow-source.ts src/ports/index.ts src/adapters/node/http-helius-flow-source.ts src/adapters/node/http-birdeye-flow-source.ts tests/fakes/fake-on-chain-flow-source.ts tests/fakes/index.ts tests/adapters/node/http-helius-flow-source.test.ts tests/adapters/node/http-birdeye-flow-source.test.ts tests/fixtures/on-chain-flow.ts
-  git commit -m "feat: add Helius and Birdeye flow source adapters"
+  git add src/application/collect-solana-network-status.ts tests/application/collect-solana-network-status.test.ts
+  git commit -m "feat: ingest Solana RPC status raw first"
   ```
 
-## Task 3: Validate, threshold, and normalize flow facts
+## Task 4: Integrate Solana status into the five-source core run
 
 **Files:**
 
-- Create: `src/domain/on-chain-flow/validate.ts`
-- Create: `src/domain/on-chain-flow/threshold.ts`
-- Create: `src/domain/on-chain-flow/normalize.ts`
-- Create: `src/domain/on-chain-flow/index.ts`
-- Create: `tests/domain/on-chain-flow/validate.test.ts`
-- Create: `tests/domain/on-chain-flow/threshold.test.ts`
-- Create: `tests/domain/on-chain-flow/normalize.test.ts`
+- Modify: `src/contracts/collection-run.ts`
+- Modify: `src/application/collect-core.ts`
+- Modify: `src/application/source-outcome.ts`
+- Modify: `src/domain/core-collection/reduce.ts`
+- Modify: `src/jobs/core-collection-job.ts`
+- Modify: `scripts/collectors/core-collection.ts`
+- Modify: `tests/application/collect-core.test.ts`
+- Modify: `tests/application/source-outcome.test.ts`
+- Modify: `tests/domain/core-collection/reduce.test.ts`
+- Modify: `tests/scripts/core-collection.test.ts`
+
+**Atomic required-shape change:** `CoreSourceKey`, `CollectCoreDeps`, `CoreCollectionResult`, and `CoreCollectionJobDeps` gain required Solana members in this task. Every production constructor/caller and test implementation is updated in the same task so the automatic workspace typecheck remains green.
 
 **Behavioral invariants to test first:**
 
-- `accepts canonical factual events and rejects unknown or narrative fields`: strict schemas reject motive, recommendation, NaN, negative unsigned amounts, invalid time windows, and missing references.
-- `includes an event when amount equals its configured threshold`: comparisons are exact decimal comparisons, not `Number` conversions.
-- `filters an event when amount is below its kind threshold`: filtered events never reach raw persistence.
-- `filters CEX proxy below attribution confidence even when amount qualifies`: both gates must pass.
-- `normalizes transaction direction from explicit asset deltas only`: whale swap direction is `buy_sol`, `sell_sol`, or `unknown` based on supplied SOL/USDC deltas, never address intent.
-- `normalizes stablecoin mint burn and transfer as separate operations`: operation is retained exactly.
-- `normalizes DEX net flow with a signed net equal to buy minus sell`: inconsistent provider net values are rejected rather than silently corrected.
-- `always attaches CEX proxy noise caveats and never upgrades it to deterministic`: address attribution remains probabilistic.
+- `starts all five leaves before awaiting and invokes each exactly once`
+- `passes the same collection context object to all five leaves`
+- `preserves four-source evidence when Solana RPC is unavailable`
+- `returns COMPLETE only when all five sources contribute fresh usable evidence`
+- `maps degraded Solana status to usable core evidence with explicit warnings`
+- `maps unavailable Solana status to an explicit aggregate warning without fabricating evidence`
+- `orders Solana warnings after the four existing source groups`
+- `binds the Solana collector with the shared retry and persistence dependencies`
+- `prints the Solana outcome and preserves existing exit semantics`
 
-- [ ] **Step 1: Write failing pure-domain tests**
+- [ ] **Step 1: Update failing coordinator and reducer tests**
 
-  Tests must name each invariant exactly and use boundary values such as `999999.99`, `1000000`, and `1000000.01`. Include a precision case beyond JavaScript’s safe integer range.
+  Change all `CollectCoreDeps` fixtures from four to five leaves, all “four” assertions to “five,” and all total-count expectations from 4 to 5. Add `"solana"` / `"solana-rpc"` outcomes. Assert:
+  - all five promises start before the aggregate await;
+  - a Solana timeout plus four accepted leaves is `PARTIAL`, `shouldFailCommand: false`, with counts `{ complete: 4, partial: 0, stale: 0, absentOrFailed: 1 }`;
+  - all five accepted/replayed fresh leaves is `COMPLETE`;
+  - a Solana conflict is `FAILED`;
+  - warning order is CLMM, Pyth, Jupiter, Orca, Solana.
 
   Run:
 
   ```bash
-  pnpm test tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/threshold.test.ts tests/domain/on-chain-flow/normalize.test.ts
+  pnpm test tests/application/collect-core.test.ts tests/domain/core-collection/reduce.test.ts
   ```
 
-  Expected: FAIL because the domain modules do not exist.
+  Expected: FAIL because the core contracts and coordinator still contain four sources.
 
-- [ ] **Step 2: Implement strict validation and exact decimal comparison**
+- [ ] **Step 2: Expand the core contracts reducer and coordinator atomically**
 
-  Implement:
+  Make the required public shapes:
 
   ```ts
-  acceptOnChainFlowSourceEvent(input: unknown): AcceptedOnChainFlowSourceEvent
-  parseOnChainFlowThresholds(input: OnChainFlowThresholds): ParsedOnChainFlowThresholds
-  qualifiesOnChainFlow(event, thresholds): boolean
-  normalizeOnChainFlow(event, retrievedAtUnixMs): OnChainFlowPayloadV1
+  export type CoreSourceKey = "clmm-v2" | "pyth" | "jupiter" | "orca" | "solana";
+
+  export interface CollectCoreDeps {
+    readonly clmmV2: CoreLeaf;
+    readonly pyth: CoreLeaf;
+    readonly jupiter: CoreLeaf;
+    readonly orca: CoreLeaf;
+    readonly solana: CoreLeaf;
+  }
   ```
 
-  Parse decimals into sign, digits, and scale; compare aligned integer digits without floating point. Reject scientific notation, infinities, and non-canonical leading signs. Require CEX attribution confidence in `[0, 1]`.
+  Add `readonly solana: SourceCollectionOutcome` to `CoreCollectionResult`. Start and independently guard the fifth leaf before `Promise.all`, include it in the fixed outcome list, and add `solana: 4` to deterministic warning ordering. Do not change the reducer truth table: usable mixed runs remain `PARTIAL`, all absent/stale remain `UNAVAILABLE`, total malformed/unexpected failures remain `FAILED`, and any conflict remains `FAILED`.
 
-- [ ] **Step 3: Implement factual normalization**
+- [ ] **Step 3: Add and test Solana source-outcome mapping**
 
-  Sort/deduplicate source references and address labels. Copy provider timestamps and venue/address facts. For DEX pressure, verify exact `buyVolumeUsdc - sellVolumeUsdc === netFlowUsdc`. Build `freshnessContext` from source observation and retrieval timestamps. Do not add interpretations.
-
-- [ ] **Step 4: Run task-scoped verification**
-
-  ```bash
-  pnpm test tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/threshold.test.ts tests/domain/on-chain-flow/normalize.test.ts
-  pnpm exec eslint src/domain/on-chain-flow/validate.ts src/domain/on-chain-flow/threshold.ts src/domain/on-chain-flow/normalize.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/threshold.test.ts tests/domain/on-chain-flow/normalize.test.ts --max-warnings 0
-  pnpm exec prettier --check src/domain/on-chain-flow/validate.ts src/domain/on-chain-flow/threshold.ts src/domain/on-chain-flow/normalize.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/threshold.test.ts tests/domain/on-chain-flow/normalize.test.ts
-  ```
-
-  Expected: all commands pass.
-
-- [ ] **Step 5: Commit**
-
-  ```bash
-  git add src/domain/on-chain-flow/validate.ts src/domain/on-chain-flow/threshold.ts src/domain/on-chain-flow/normalize.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/threshold.test.ts tests/domain/on-chain-flow/normalize.test.ts
-  git commit -m "feat: validate and normalize on-chain flow facts"
-  ```
-
-## Task 4: Derive stable identities and enrich normalized observations
-
-**Files:**
-
-- Create: `src/domain/on-chain-flow/identity.ts`
-- Create: `src/domain/on-chain-flow/enrich.ts`
-- Modify: `src/domain/on-chain-flow/index.ts`
-- Create: `tests/domain/on-chain-flow/identity.test.ts`
-- Create: `tests/domain/on-chain-flow/enrich.test.ts`
-
-**Behavioral invariants to test first:**
-
-- `transaction identity is stable across pagination and collection runs`: only source, kind, signature, and event index affect the source observation key.
-- `different events in one transaction have different identities`: event index or kind changes the key.
-- `DEX window identity changes when venue or window bounds change`: separate pressure windows cannot collide.
-- `enrichment computes freshness from source time and retrieval time`: expired data is marked stale under the taxonomy policy.
-- `enrichment validates raw-first provenance`: source/raw refs point to the actual raw row and allowed provider.
-- `CEX confidence is capped by attribution quality and records the cap reason`: high generic provider quality cannot erase proxy uncertainty.
-- `non-CEX confidence does not receive the CEX cap`: deterministic facts retain ordinary component weighting.
-
-- [ ] **Step 1: Write failing identity and enrichment tests**
-
-  Run:
-
-  ```bash
-  pnpm test tests/domain/on-chain-flow/identity.test.ts tests/domain/on-chain-flow/enrich.test.ts
-  ```
-
-  Expected: FAIL because the identity and enrichment modules do not exist.
-
-- [ ] **Step 2: Implement stable identity**
-
-  Export `deriveOnChainFlowObservationKey`. Canonicalize the relevant identity tuple and hash it. Explicitly exclude provider run ID, pagination cursor, fetched time, and payload hash from transaction identity so retries do not duplicate the same chain event. Use window bounds for DEX observations, which have no transaction signature.
-
-- [ ] **Step 3: Implement enrichment**
-
-  Export `enrichOnChainFlow`. Canonicalize the normalized payload, load its taxonomy entry, compute freshness and confidence, build/validate provenance, and return the fields needed by `NormalizedObservationInsert`. Compute completeness from required context availability. For CEX proxy, cap `sourceReliability` at `attributionConfidence`, cap final composite confidence at `0.69`, force at most `medium`, and append `cex_proxy_quality_cap_applied` when a cap changes the result.
-
-- [ ] **Step 4: Run task-scoped verification**
-
-  ```bash
-  pnpm test tests/domain/on-chain-flow/identity.test.ts tests/domain/on-chain-flow/enrich.test.ts
-  pnpm exec eslint src/domain/on-chain-flow/identity.ts src/domain/on-chain-flow/enrich.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/identity.test.ts tests/domain/on-chain-flow/enrich.test.ts --max-warnings 0
-  pnpm exec prettier --check src/domain/on-chain-flow/identity.ts src/domain/on-chain-flow/enrich.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/identity.test.ts tests/domain/on-chain-flow/enrich.test.ts
-  ```
-
-  Expected: all commands pass.
-
-- [ ] **Step 5: Commit**
-
-  ```bash
-  git add src/domain/on-chain-flow/identity.ts src/domain/on-chain-flow/enrich.ts src/domain/on-chain-flow/index.ts tests/domain/on-chain-flow/identity.test.ts tests/domain/on-chain-flow/enrich.test.ts
-  git commit -m "feat: identify and enrich on-chain flow observations"
-  ```
-
-## Task 5: Implement raw-first per-event collection
-
-**Files:**
-
-- Create: `src/application/collect-on-chain-flow.ts`
-- Create: `tests/application/collect-on-chain-flow.test.ts`
-
-**Behavioral invariants to test first:**
-
-- `large event transitions absent to raw pending to normalized and raw parsed`: raw insert precedes normalized insert and the result is accepted.
-- `identical duplicate transitions parsed to identical replay without normalized insert`: replay produces no duplicate raw or normalized row.
-- `same identity with changed payload transitions to conflict and failed`: the existing immutable row is preserved.
-- `below-threshold event remains absent`: neither repository is called.
-- `malformed-only snapshot remains absent and returns malformed`: no raw row is written.
-- `valid event followed by malformed event preserves the valid write and returns partial`: per-event failures do not roll back earlier immutable facts.
-- `empty snapshot returns accepted with zero counts`: no-event is not treated as unavailable.
-- `stale qualifying event is retained raw and normalized but returns degraded`: stale context is visible and cannot masquerade as fresh evidence.
-- `CEX proxy below address-quality threshold remains absent`: defensibility gate runs before persistence.
-
-- [ ] **Step 1: Write the failing application tests**
-
-  Use the existing fake raw/normalized repositories and `FakeOnChainFlowSource`. Assert call ordering as well as returned counts/IDs.
-
-  Run:
-
-  ```bash
-  pnpm test tests/application/collect-on-chain-flow.test.ts
-  ```
-
-  Expected: FAIL because `collectOnChainFlow` does not exist.
-
-- [ ] **Step 2: Implement collection**
-
-  Export:
+  Add:
 
   ```ts
-  collectOnChainFlow(
-    deps: CollectOnChainFlowDeps,
-    context: CollectionRunContext,
-    input: { source: "helius-api" | "birdeye-api"; thresholds: OnChainFlowThresholds; lookbackMs: number }
-  ): Promise<OnChainFlowCollectionResult>
+  export function mapSolanaNetworkStatusOutcome(
+    result: SolanaNetworkStatusSourceResult
+  ): SourceCollectionOutcome;
   ```
 
-  Fetch one bounded window ending at `context.startedAtUnixMs`. For each returned event: validate; apply threshold/attribution gates; normalize; derive stable identity; canonicalize the accepted source event; and call `ingestRawObservation` with an enrichment callback and normalized insert callback. Process in deterministic event-identity order. Track `accepted`, `filtered`, `replayed`, and `failed` counts plus failed source IDs. Redact diagnostics. Return `accepted | partial | degraded | identical_replay | malformed | timeout | network | unavailable | failed`.
-
-  The lifecycle is:
-
-  ```text
-  source event -> validate -> threshold gate -> raw pending
-    -> normalize/enrich -> normalized insert -> raw parsed
-  ```
-
-  A validation failure occurs before `raw pending`; an enrichment/persistence failure after raw insertion marks that raw row `failed`.
-
-- [ ] **Step 3: Run task-scoped verification**
-
-  ```bash
-  pnpm test tests/application/collect-on-chain-flow.test.ts
-  pnpm exec eslint src/application/collect-on-chain-flow.ts tests/application/collect-on-chain-flow.test.ts --max-warnings 0
-  pnpm exec prettier --check src/application/collect-on-chain-flow.ts tests/application/collect-on-chain-flow.test.ts
-  ```
-
-  Expected: all commands pass.
-
-- [ ] **Step 4: Commit**
-
-  ```bash
-  git add src/application/collect-on-chain-flow.ts tests/application/collect-on-chain-flow.test.ts
-  git commit -m "feat: collect raw-first on-chain flow evidence"
-  ```
-
-## Task 6: Orchestrate multi-source collection and status reduction
-
-**Files:**
-
-- Create: `src/jobs/on-chain-flow-job.ts`
-- Modify: `src/jobs/index.ts`
-- Create: `tests/jobs/on-chain-flow-job.test.ts`
-
-**Behavioral invariants to test first:**
-
-- `all usable sources reduce to COMPLETE without command failure`.
-- `one usable and one unavailable source reduce to PARTIAL without command failure`.
-- `all unavailable sources reduce to UNAVAILABLE with command failure`.
-- `zero usable sources with malformed or persistence failure reduce to FAILED with command failure`.
-- `duplicate configured source names abort before collection`.
-- `one run context and one threshold set are passed to both collectors`.
-- `outcomes are returned in stable source-name order regardless of completion order`.
-
-- [ ] **Step 1: Write failing job tests**
+  It sets `sourceKey: "solana"`, `source: "solana-rpc"`, preserves status/usability/durable ids/freshness/confidence/diagnostic, and converts each payload warning to `{ source: "solana", code, message }`. Use stable messages: `"Solana RPC node is behind"` and `"Solana RPC slot is unavailable"`. For a non-usable status, also emit exactly one status warning—`solana_rpc_timeout`, `solana_rpc_network`, `solana_rpc_unavailable`, `solana_rpc_malformed`, `solana_rpc_conflict`, or `solana_rpc_failed`—so partial failure is visible in the aggregate warning list without inventing a normalized health value.
 
   Run:
 
   ```bash
-  pnpm test tests/jobs/on-chain-flow-job.test.ts
+  pnpm test tests/application/source-outcome.test.ts
   ```
 
-  Expected: FAIL because the job does not exist.
+  Expected: FAIL until the mapper is present, then PASS after implementation.
 
-- [ ] **Step 2: Implement job and exports**
+- [ ] **Step 4: Wire the job and CLI in the same required-shape change**
 
-  Export `ConfiguredOnChainFlowSource`, `OnChainFlowJobDeps`, `OnChainFlowJobResult`, `onChainFlowJob`, and `runOnChainFlowJob`. Validate exactly one Helius and one Birdeye source, create one run context, run sources independently with the same explicit thresholds/lookback, redact rejected diagnostics, sort outcomes by source, and reduce status using the truth table in the invariants. Export the public job surface from `src/jobs/index.ts`.
+  Add `retryControl: RetryControl` to `CoreCollectionJobDeps`. Bind a `solana` leaf that calls `collectSolanaNetworkStatus(deps, context)` and maps it with `mapSolanaNetworkStatusOutcome`; guard unexpected rejection with `mapSourceError("solana", "solana-rpc", err)`. Pass `runtime.retryControl` from `scripts/collectors/core-collection.ts`.
 
-- [ ] **Step 3: Run task-scoped verification**
+  In `tests/scripts/core-collection.test.ts`, mock the new collector, add `retryControl` to runtime/dependency fixtures, assert the same context and dependencies reach the Solana leaf, include `solana` in printed COMPLETE/FAILED fixtures, and preserve connection-close plus exit-code assertions.
+
+- [ ] **Step 5: Run task-scoped verification**
 
   ```bash
-  pnpm test tests/jobs/on-chain-flow-job.test.ts
-  pnpm exec eslint src/jobs/on-chain-flow-job.ts src/jobs/index.ts tests/jobs/on-chain-flow-job.test.ts --max-warnings 0
-  pnpm exec prettier --check src/jobs/on-chain-flow-job.ts src/jobs/index.ts tests/jobs/on-chain-flow-job.test.ts
+  pnpm test tests/application/collect-core.test.ts tests/application/source-outcome.test.ts tests/domain/core-collection/reduce.test.ts tests/scripts/core-collection.test.ts
+  pnpm exec eslint src/contracts/collection-run.ts src/application/collect-core.ts src/application/source-outcome.ts src/domain/core-collection/reduce.ts src/jobs/core-collection-job.ts scripts/collectors/core-collection.ts tests/application/collect-core.test.ts tests/application/source-outcome.test.ts tests/domain/core-collection/reduce.test.ts tests/scripts/core-collection.test.ts --max-warnings 0
+  pnpm exec prettier --check src/contracts/collection-run.ts src/application/collect-core.ts src/application/source-outcome.ts src/domain/core-collection/reduce.ts src/jobs/core-collection-job.ts scripts/collectors/core-collection.ts tests/application/collect-core.test.ts tests/application/source-outcome.test.ts tests/domain/core-collection/reduce.test.ts tests/scripts/core-collection.test.ts
+  pnpm exec depcruise --config .dependency-cruiser.cjs src/contracts/collection-run.ts src/application/collect-core.ts src/application/source-outcome.ts src/domain/core-collection/reduce.ts src/jobs/core-collection-job.ts
   ```
 
-  Expected: all commands pass.
+  Expected: all commands pass. The implement loop’s automatic `pnpm -r typecheck` gate also passes after this task.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 6: Commit**
 
   ```bash
-  git add src/jobs/on-chain-flow-job.ts src/jobs/index.ts tests/jobs/on-chain-flow-job.test.ts
-  git commit -m "feat: orchestrate on-chain flow source collection"
+  git add src/contracts/collection-run.ts src/application/collect-core.ts src/application/source-outcome.ts src/domain/core-collection/reduce.ts src/jobs/core-collection-job.ts scripts/collectors/core-collection.ts tests/application/collect-core.test.ts tests/application/source-outcome.test.ts tests/domain/core-collection/reduce.test.ts tests/scripts/core-collection.test.ts
+  git commit -m "feat: add Solana status to core collection"
   ```
 
-## Task 7: Add CLI configuration and operator documentation
+## Task 5: Document configure and operate the five-source core
 
 **Files:**
 
-- Create: `scripts/collectors/on-chain-flow.ts`
-- Modify: `package.json`
+- Modify: `.env.example`
 - Modify: `resources/sources.yaml`
+- Modify: `README.md`
 - Modify: `docs/architecture.md`
 - Modify: `docs/operator-runbook.md`
-- Create: `tests/scripts/on-chain-flow.test.ts`
 
-**Behavioral invariants to test first:**
+- [ ] **Step 1: Add operator-safe configuration**
 
-- `missing provider URL or API key fails before opening persistence`.
-- `invalid negative non-decimal or unsafe threshold fails before HTTP and persistence`.
-- `configured values create both adapters and pass explicit thresholds to the job`.
-- `COMPLETE and PARTIAL exit zero while UNAVAILABLE and FAILED exit nonzero`.
-- `provider keys are redacted from logs and close failures`.
-- `database connection closes exactly once after a started run`.
+  Add:
 
-- [ ] **Step 1: Write failing CLI tests**
+  ```dotenv
+  SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+  SOLANA_RPC_API_KEY=
+  ```
 
-  Test exported `runOnChainFlowCollect` through injected runtime/adapter/job factories rather than mutating real environment or opening a DB.
+  Register `solana-rpc` in `resources/sources.yaml` as a high-priority deterministic RPC source for `network_status`, with 5-second timeout, two attempts, and limitations stating that it measures the configured endpoint rather than global consensus. Remove the old deterministic network-health deferment note while retaining the separate contextual protocol-incident source.
 
-  Run:
+- [ ] **Step 2: Update architecture and runbook semantics**
+
+  Change four-source diagrams/text to five sources and add Solana RPC alongside CLMM, Pyth, Jupiter, and Orca. Document:
+  - `getHealth` and `getSlot` batch collection;
+  - raw-first persistence for 2xx bodies;
+  - `node_behind` and `slot_unavailable`;
+  - two-attempt leaf-local retry behavior;
+  - `COMPLETE` requiring five fresh usable outcomes;
+  - a Solana-only outage producing `PARTIAL` when the other four are usable;
+  - credential redaction and the configured-endpoint limitation;
+  - troubleshooting for timeout, 408, 429, 5xx, malformed JSON-RPC, and `-32005`.
+
+  Keep `solana-status-api` protocol incidents documented as contextual evidence so operators do not confuse it with live RPC health.
+
+- [ ] **Step 3: Run task-scoped verification**
 
   ```bash
-  pnpm test tests/scripts/on-chain-flow.test.ts
+  git diff --check -- .env.example resources/sources.yaml README.md docs/architecture.md docs/operator-runbook.md
+  pnpm exec prettier --check resources/sources.yaml README.md docs/architecture.md docs/operator-runbook.md
+  sed -n '30,48p' .env.example
+  sed -n '55,92p' resources/sources.yaml
+  sed -n '258,310p' README.md
+  sed -n '100,150p' docs/architecture.md
+  sed -n '48,92p' docs/operator-runbook.md
   ```
 
-  Expected: FAIL because the entrypoint does not exist.
+  Expected: diff/prettier checks pass; the scoped excerpts show the two environment variables, five-source flow, status semantics, and no deferment claim or credential value.
 
-- [ ] **Step 2: Implement the thin CLI and package command**
-
-  Add `"collect:on-chain-flow": "tsx scripts/collectors/on-chain-flow.ts"` to `package.json`. Read and validate:
-
-  ```text
-  HELIUS_FLOW_API_URL
-  HELIUS_API_KEY
-  BIRDEYE_FLOW_API_URL
-  BIRDEYE_API_KEY
-  ON_CHAIN_WHALE_TRANSFER_MIN_USDC
-  ON_CHAIN_WHALE_SWAP_MIN_USDC
-  ON_CHAIN_STABLECOIN_FLOW_MIN_USDC
-  ON_CHAIN_DEX_NET_FLOW_MIN_USDC
-  ON_CHAIN_CEX_PROXY_MIN_USDC
-  ON_CHAIN_CEX_MIN_ATTRIBUTION_CONFIDENCE
-  ON_CHAIN_FLOW_LOOKBACK_MS
-  ```
-
-  Defaults: `1000000` for transaction/stablecoin/CEX thresholds, `5000000` for DEX net flow, `0.8` attribution confidence, and `900000` lookback. Instantiate both adapters, obtain persistence only after configuration validation, call `runOnChainFlowJob`, print secret-redacted JSON, map status to exit code, and close the connection in `finally`.
-
-- [ ] **Step 3: Document source policy and operations**
-
-  Add both sources to `resources/sources.yaml`, including authentication variables, purpose/kind allowlists, timeout/retry policy, bounded-retention requirement, attribution limitations, and threshold variables. Add architecture and runbook sections covering:
-  - factual-vs-motive authority boundary;
-  - per-event raw-first flow and stable identities;
-  - threshold defaults and exact decimal semantics;
-  - CEX proxy confidence/noise behavior;
-  - environment variables, command, statuses, troubleshooting, retention, and no-event semantics.
-
-- [ ] **Step 4: Run task-scoped verification**
+- [ ] **Step 4: Commit**
 
   ```bash
-  pnpm test tests/scripts/on-chain-flow.test.ts
-  pnpm exec eslint scripts/collectors/on-chain-flow.ts tests/scripts/on-chain-flow.test.ts --max-warnings 0
-  pnpm exec prettier --check scripts/collectors/on-chain-flow.ts tests/scripts/on-chain-flow.test.ts package.json resources/sources.yaml docs/architecture.md docs/operator-runbook.md
+  git add .env.example resources/sources.yaml README.md docs/architecture.md docs/operator-runbook.md
+  git commit -m "docs: operate five-source deterministic collection"
   ```
 
-  Expected: all commands pass and documentation names every configured variable.
+## Tests to add or update
 
-- [ ] **Step 5: Commit**
+- Add strict JSON-RPC batch validation tests in `tests/domain/network-status/solana-rpc.test.ts`.
+- Add stable source identity tests in `tests/domain/network-status/identity.test.ts`.
+- Add health/warning normalization tests in `tests/domain/network-status/normalize.test.ts`.
+- Add freshness, confidence, and provenance tests in `tests/domain/network-status/enrich.test.ts`.
+- Add raw-first, replay, conflict, retry, failure-classification, and credential-redaction tests in `tests/application/collect-solana-network-status.test.ts`.
+- Update taxonomy registry/runtime parity tests for `network_status` and `solana-rpc`.
+- Update core coordinator/reducer tests from four to five required leaves and add Solana partial-failure/conflict/warning-order cases.
+- Update source-outcome tests for payload-warning mapping.
+- Update core job/CLI tests for dependency binding, printed outcome, cleanup, and exit behavior.
+- Existing CLMM, Pyth, Jupiter, Orca, shared ingestion, HTTP, and repository tests remain regression coverage and are not rewritten.
 
-  ```bash
-  git add scripts/collectors/on-chain-flow.ts package.json resources/sources.yaml docs/architecture.md docs/operator-runbook.md tests/scripts/on-chain-flow.test.ts
-  git commit -m "feat: expose on-chain flow collector command"
-  ```
+## Validation commands
 
-**Tests added or updated**
-
-- Contract/taxonomy: payload discriminants, required factual metadata, source allowlists, signal classes, freshness, and confidence policy.
-- Adapter: provider mapping, empty response, malformed response, retry/no-retry behavior, kind allowlists, and secret redaction.
-- Pure domain: strict validation, exact decimal threshold boundaries, factual normalization, DEX arithmetic, CEX quality gates, identity stability, freshness, provenance, and confidence caps.
-- Application: large event, duplicate, conflict, below-threshold, malformed-only, partial persistence, no-event, stale, and low-quality CEX cases.
-- Job: complete/partial/unavailable/failed reduction, duplicate configuration, shared run context, and deterministic ordering.
-- CLI: configuration validation, dependency wiring, exit codes, secret redaction, and connection lifecycle.
-
-**Validation commands**
-
-Each task contains file-scoped acceptance commands. After all implementation tasks, the orchestrator’s dedicated validate phase may run the repository-standard gate:
+The implement loop runs `pnpm -r typecheck` after every task. Task-specific commands are listed inside each task and operate only on files explicitly in that task. After all implementation tasks, the dedicated validation phase may run the repository’s standard aggregate checks:
 
 ```bash
 pnpm verify
 ```
 
-This is not an implementation task and must not be converted into one.
+Expected: typecheck, lint, formatting, all Vitest suites, and dependency boundaries pass. This is not a standalone implementation task.
 
-**Risk areas**
+## Risk areas
 
-- Commercial provider payloads may differ from the bounded envelope assumed here; do not weaken validation to accommodate undocumented fields.
-- Decimal threshold and signed net-flow arithmetic can silently lose precision if converted to JavaScript `number`.
-- Transaction identity must distinguish multiple events in one signature without including pagination/run metadata.
-- Per-event persistence intentionally permits partial success; status reduction must never report `COMPLETE` after a failed qualifying event.
-- CEX address attribution can be stale or wrong; its explicit quality gate and confidence cap are an authority boundary, not presentation metadata.
-- Retrying at both `HttpClient` and adapter layers can multiply attempts; adapters must call the client with `maxAttempts: 1`.
-- Provider responses can be large; adapters must preserve bounded extracts and the configured time window rather than retaining arbitrary transaction bodies.
-- DB writes are durable and append-only. Tests must prove validation/thresholding happens before insertion and conflicts never overwrite rows.
+- **Endpoint versus network truth:** one RPC node can be degraded while Solana remains healthy, or vice versa. Payload naming and docs must say “configured endpoint” and must not overclaim global consensus.
+- **Raw-first malformed data:** a 2xx malformed batch must leave a failed raw row, while transport/non-2xx failures have no accepted body to normalize. Tests must distinguish these cases.
+- **JSON-RPC correlation:** batch order is not stable. Correlating by array position can swap health and slot facts.
+- **Retry multiplication:** only the Solana leaf retries, at most twice. Do not add coordinator retries or pass hidden retry counts into `postJsonRaw`.
+- **Idempotency identity:** using response order, slot, payload hash, request id generation, or endpoint URL in `sourceObservationKey` would destabilize replay semantics.
+- **Required-shape blast radius:** expanding `CoreSourceKey`, `CollectCoreDeps`, `CoreCollectionResult`, and `CoreCollectionJobDeps` must update every caller in Task 4.
+- **Secret leakage:** hosted RPC URLs often contain credentials in paths or query strings. Metadata and diagnostics must never retain the full configured URL.
+- **Taxonomy collision:** deterministic `network_status` must remain distinct from contextual `protocol_incident`.
+- **Test-file size:** `tests/domain/taxonomy/registry.test.ts` exceeds 500 lines, but Task 1 is a contract/taxonomy implementation task, not a primary test-update task; modifications are explicitly restricted to parity data and one new describe block.
 
-**Stop conditions**
+## Stop conditions
 
-- Abort if Helius or Birdeye cannot contractually supply stable event IDs/signatures, source timestamps, non-empty source references, or bounded-retention/license permission.
-- Abort if the actual provider contract cannot distinguish transaction facts from provider interpretation, or cannot expose the attribution confidence needed for defensible CEX proxies.
-- Abort if DEX buy/sell pressure cannot be denominated consistently in USDC or reconciled exactly to the signed net value.
-- Abort if implementation would require mutating existing raw/normalized observations, changing DB uniqueness constraints, or bypassing `ingestRawObservation`; revise the design first.
-- Abort if a requested change would publish policy, infer motive, create transactions, or cross the regime-engine authority boundary.
-- Abort and split the provider into a follow-up issue if API pagination/backfill is required to meet basic collection; this plan deliberately covers one bounded window per run.
+Abort implementation and report the blocker instead of continuing if any of these conditions is discovered:
 
-**Completion criteria**
-
-- Every qualifying accepted event has an immutable raw row and a separately persisted normalized row with amount, direction, venue/address context, source refs, freshness, provenance, and confidence.
-- Exact replays create no duplicates, changed payloads under the same chain identity conflict, and below-threshold/malformed events create no raw rows.
-- All five required flow kinds are represented, with DEX pressure sourced from Birdeye and transaction flows sourced from Helius.
-- CEX proxies remain probabilistic and visibly noisy; no output claims motive or policy.
-- The new command, configuration, source policy, and operator behavior are documented and all task-scoped tests pass.
+- `SOLANA_RPC_URL` is intended to represent a quorum/fan-out provider contract rather than standard Solana JSON-RPC 2.0; that changes identity, payload, and health semantics.
+- The target RPC does not support batched `getHealth` and `getSlot`, and choosing separate-request persistence semantics would require a product decision.
+- The existing database schema or repository rejects the new taxonomy literals or JSON payload without a migration; schema work is outside this plan and must be replanned explicitly.
+- A new port/interface method becomes necessary. Stop and revise the relevant task so the port change and every adapter/fake implementation remain atomic.
+- The operator requires retention of literal HTTP wire bytes rather than the repository’s established canonical-JSON raw representation.
+- Tests reveal that adding a fifth required core leaf would break a documented external consumer that cannot accept the additive `solana` result member.
+- Safe diagnostics cannot be produced without exposing credential-bearing endpoint material.
+- Implementing the source would require transaction submission, signing, wallet access, or any authority prohibited by `AGENTS.md`.

@@ -1,72 +1,61 @@
-# Design Document: On-Chain Flow Research Collectors Pack B
+# Design Doc: Ingest Core Deterministic SOL/USDC Source Data (Issue #7)
 
-## The Problem and Why It Matters
+## 1. Problem and Importance
 
-The intelligence agent requires context about SOL/USDC-relevant market pressure to better understand broader market regimes and price action drivers. Currently, it relies on local pool data, price data, and news, but lacks direct observation of massive on-chain flows (whales, stablecoin mints/burns, and broader DEX/CEX flows) that often precede or explain significant market moves. Capturing these flows allows the system to provide higher-quality, evidence-backed contextual signals to the regime engine, separating the deterministic facts (e.g., "$100M USDC minted") from interpretative inferences (e.g., "institutions are buying").
+The intelligence engine for the SOL/USDC pool requires a deterministic, highly reliable set of raw facts (pool state, LP positions, oracle prices, and DEX quotes) before it can generate any derived features or AI-driven research briefs. Without a resilient source-ingestion layer, the system either operates on stale data or halts completely when a downstream API fails transiently. This ingestion layer forms the foundation of the evidence pipeline, ensuring all subsequent intelligence derivations have a verifiable, auditable trail back to the exact source bytes.
 
-## Key Design Decisions and Trade-offs Considered
+## 2. Key Design Decisions & Trade-offs
 
-1. **Source Selection & Source Adapters:**
-   - _Considered:_ Building custom RPC indexers vs. using specialized data providers (e.g., Helius, Birdeye, SolanaFM).
-   - _Decision:_ Utilize specialized data providers via external HTTP APIs, mapping them into the `Source` taxonomy. This reduces maintenance overhead of low-level RPC indexing while providing acceptable latency for intelligence gathering. We will introduce new `Source` types (e.g., `helius-api`, `birdeye-api`) in `src/contracts/taxonomy.ts`.
+- **Store-then-Parse (Event Sourcing Pattern):**
+  - _Decision:_ Raw payloads are persisted to the database (`raw_observations`) before any normalization or mapping occurs.
+  - _Trade-off:_ This requires slightly more storage but guarantees we have the exact JSON bytes received. It makes debugging easier and enables retroactive re-parsing if our normalization logic changes.
+- **Independent Parallel Execution:**
+  - _Decision:_ Fetching from CLMM, Pyth, Jupiter, and Orca happens concurrently but is guarded independently.
+  - _Trade-off:_ If one source times out, it does not block the others. A single slow API will not crash the entire pipeline run. The tradeoff is that the downstream system must handle missing data explicitly via warnings instead of assuming all data is present.
+- **Idempotency via Content Hashing:**
+  - _Decision:_ Raw payloads are hashed upon ingestion. If a payload's hash matches an already ingested row, the system performs a fast return (identical replay) rather than generating an error or duplicating data.
+  - _Trade-off:_ Imposes a minor CPU overhead to hash payloads, but makes retries perfectly safe and prevents infinite storage bloat for data that doesn't change frequently.
+- **Ports & Adapters (Hexagonal Architecture):**
+  - _Decision:_ HTTP fetching, time (clock), and database repository operations are abstracted behind interfaces (ports).
+  - _Trade-off:_ Increases the boilerplate needed to set up the adapters, but makes deterministic testing using fixtures trivial (e.g., passing an in-memory HTTP mock that returns static JSON).
 
-2. **Differentiating Facts vs. Interpretations:**
-   - _Considered:_ Enhancing observation payloads with inferred motives directly in the normalization phase.
-   - _Decision:_ Strictly adhere to the guardrail that "a transfer is a fact; motive is an interpretation". Normalized payloads will strictly contain facts (amount, direction, venue, address context). Any interpretation will be deferred or handled separately, explicitly separated from deterministic fact storage. The `signalClass` for these observations will be marked as `contextual` or `probabilistic` if uncertainty is involved (like CEX proxies), but the flow itself will be treated as `deterministic` facts of the blockchain event.
+## 3. Proposed Approach
 
-3. **CEX Proxy Noise Handling:**
-   - _Decision:_ CEX flow proxies inherently suffer from address attribution errors. We will mandate that the `ConfidencePolicy` and `ConfidenceComponents` for these specific proxies are configured with lower default source reliability or data completeness, ensuring the noise/confidence metadata is passed downstream to the regime engine.
+- **Collection Use Cases:**
+  - Implement distinct adapter use cases: `collectClmmBundle`, `collectPythPrice`, `collectJupiterQuote`, and `collectOrcaPoolStatistics`. Each injects dependencies like `HttpClient` and `RawObservationRepo`.
+- **Orchestration (`collect-core.ts`):**
+  - A core orchestrator (`collectCore`) will execute all collector functions concurrently via `Promise.all`. It wraps each individual promise in a `.catch()` that maps any error to a standardized `SourceCollectionOutcome` with warnings, ensuring partial success is supported.
+- **Ingestion Utility (`ingest-raw-observation.ts`):**
+  - Abstract the persist-then-parse logic into a generic `ingestRawObservation` function that accepts a raw payload, hashes it, stores it in `raw_observations`, and subsequently attempts to normalize it.
+- **Conflict Handling:**
+  - If a source payload for a given `sourceObservationKey` is observed with a different hash than what exists, it should throw a `RawObservationConflictError`.
 
-4. **Thresholding and Deduplication:**
-   - _Considered:_ Hardcoding thresholds in adapters.
-   - _Decision:_ Thresholds (e.g., "whale" definition of >$1M) must be configurable (via environment or job configuration) and documented. Deduplication will be handled by robust `payloadHash` and `sourceObservationKey` generation to prevent identical on-chain events observed multiple times from duplicating records in the database.
+## 4. Assumptions
 
-## Proposed Approach with Rationale
+- Drizzle ORM and the `intelligence` Postgres schema (from INT-PERSIST #5) are already set up and available.
+- The evidence taxonomy types (from INT-TAXONOMY #6) (e.g., `Source`, `ParseStatus`) are fully defined.
+- The `clmm-v2` API remains the source of truth, returning a canonical JSON payload that fits comfortably in memory.
+- An overarching job or cron scheduler is responsible for invoking this deterministic ingestion layer periodically.
 
-1. **Taxonomy Updates (`src/contracts/taxonomy.ts`):**
-   - **ObservationKinds:** Add `whale_transfer`, `whale_swap`, `stablecoin_flow`, `dex_net_flow`, `cex_flow_proxy`.
-   - **Sources:** Add necessary sources (e.g., `helius-api`, `solana-fm-api`).
-   - Associate these new kinds with the existing `EvidenceFamily` of `"on_chain_flow"`.
+## 5. Scope
 
-2. **Domain & Contracts:**
-   - Define payload interfaces for each new `ObservationKind` (e.g., `WhaleTransferPayload`, `DexNetFlowPayload`), ensuring they include fields for `amount`, `direction`, `venue`, `addressContext`, `freshness`, and `confidence`.
+**In Scope:**
 
-3. **Ports & Adapters:**
-   - Create new port interfaces in `src/ports/` (e.g., `OnChainFlowSource`).
-   - Implement Node adapters in `src/adapters/node/` (e.g., `http-helius-flow-source.ts`) for fetching data.
+- Source adapters for `clmm-v2`, `pyth`, `jupiter`, and `orca`.
+- Raw observation capture, content hashing, and database persistence.
+- Normalized observation mapping to the standardized taxonomy.
+- Idempotent writes, retry handling, and error/warning accumulation.
+- Unit testing with static fixtures for success, timeout, and partial failure cases.
 
-4. **Application Layer (Use Cases):**
-   - Create a new use case, e.g., `src/application/collect-on-chain-flow.ts`, which coordinates fetching from sources, raw retention (saving to `RawObservationRepo`), normalization, and threshold filtering, and then saves to `NormalizedObservationRepo`.
-   - Ensure the use case filters out events below configured thresholds (e.g., small transfers that do not qualify as "whale").
+**Out of Scope:**
 
-5. **Tests:**
-   - Ensure unit tests for the use case cover scenarios with large events, duplicate events (verifying idempotency via hashes), malformed API responses, and empty (no-event) scenarios.
+- Scraping or ingesting contextual news, macro-economic data, or on-chain flow / perp liquidation data.
+- Calculating higher-level final derived metrics (e.g., fee APR, oracle divergence).
+- Generating LLM-driven research briefs.
+- Synthesizing or communicating final `PolicyInsights`.
 
-## Assumptions Made
+## 6. Risks and Concerns
 
-- We assume the existence of third-party API keys (e.g., Helius, Birdeye) that will be injected via environment variables.
-- We assume the existing `RawObservationRepo` and `NormalizedObservationRepo` interfaces are flexible enough to accommodate the new on-chain flow payloads without schema changes, since payloads are stored as `unknown` or JSONB in the database.
-- We assume cron orchestration will schedule these flow collectors at an appropriate cadence (e.g., every 5-15 minutes) to ensure data freshness without exceeding rate limits.
-- We assume "CEX flow proxies" rely on known CEX hot wallet labels provided by our selected data sources.
-
-## What is In Scope
-
-- Expanding the `ObservationKind` and `Source` taxonomies.
-- Source adapter implementations for fetching on-chain flow data.
-- The use case for raw retention, normalization, and deduplication.
-- Application of confidence scaling and explicit noise handling for CEX proxies.
-- Configuration for event size thresholds.
-- Comprehensive unit tests covering the new use case and normalization logic.
-
-## What is Explicitly Out of Scope
-
-- Making policy decisions based on this flow data (handled by regime-engine).
-- Speculative motive inference of the flows as deterministic truth.
-- LLM final summarization or research brief generation over these flows (to be handled in separate brief-generation jobs).
-- Provisioning or paying for third-party API access (an operational task).
-
-## Risks or Concerns Identified
-
-- **Data Source Reliability:** Upstream indexers or APIs might have high latency or downtime, requiring resilient retry logic in the `fetch-http` adapter.
-- **Data Volume:** Defining thresholds too low could spam the `raw_observations` and `normalized_observations` tables. Thresholds must be strictly enforced before database insertion.
-- **Deduplication Flaws:** If `sourceObservationKey` is not constructed consistently (e.g., differing based on pagination offsets instead of transaction hashes), we risk polluting the database with duplicate events. We must rely on canonical on-chain identifiers (like transaction signatures) for deduplication.
+- **Upstream Rate Limits:** High frequency of collection could trigger HTTP 429s from Jupiter or Orca. The HTTP port should support basic retries, or the orchestrator must handle HTTP failures gracefully without panicking.
+- **Payload Schema Drift:** Upstream APIs might alter their response schema without warning. `validatePayload` must aggressively mark `ParseStatus = "failed"` rather than silently ingesting `null`s or invalid objects.
+- **Clock Skew / Freshness:** Oracle prices (like Pyth) must be evaluated against the current `Clock` port to ensure they aren't deeply stale. If Pyth returns a timestamp that is extremely old, the normalization step must flag the freshness as stale so derived features don't act on outdated prices.

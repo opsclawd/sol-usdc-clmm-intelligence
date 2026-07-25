@@ -1,46 +1,52 @@
-# feat: add on-chain flow research collectors pack B
+# feat: ingest core deterministic SOL/USDC source data
 
 ## Summary
 
-Add the on-chain-flow collector pack for SOL/USDC-relevant market pressure context.
+Implement the core deterministic source-ingestion layer for the SOL/USDC intelligence engine.
 
-## Required evidence families
+## Required sources for this issue
 
-- whale transfers;
-- whale swaps;
-- stablecoin mint/burn and transfer flows;
-- DEX net flow / SOL buy-sell pressure;
-- CEX flow proxies where address-quality is defensible.
+At minimum ingest and normalize:
+
+- clmm-v2 SOL/USDC insight bundle for raw LP/pool/alert facts;
+- Orca pool/public stats where needed for pool-level volume/fees/TVL context;
+- Pyth or equivalent canonical SOL/USD oracle observations;
+- Jupiter quotes / price observations for DEX comparison and route context;
+- Solana network/status inputs needed for deterministic availability warnings.
 
 ## Scope
 
 In scope:
 
-- source adapters / indexer integrations;
-- raw retention and normalization;
-- thresholding / deduplication;
-- provenance and source-quality handling;
-- tests.
+- source adapters;
+- raw-observation capture;
+- normalized observation mappers;
+- retry / timeout / idempotency behavior;
+- data-quality warnings;
+- fixtures/tests.
 
 Out of scope:
 
-- policy decisions;
-- speculative motive inference as deterministic truth;
-- LLM final summarization.
+- contextual news / macro collectors;
+- on-chain-flow collectors;
+- perp/liquidation collectors;
+- final derived metrics;
+- LLM summarization.
 
 ## Guardrails
 
-- A transfer is a fact; motive is an interpretation.
-- Keep transfer/swap observations separate from LLM narrative.
-- CEX-proxy signals must carry explicit noise/confidence metadata.
+- clmm-v2 remains the source of truth for user/position/execution facts.
+- The intelligence engine may store a historical copy for analysis, but it must not become the operational authority for live LP state.
+- Source adapters collect facts; they do not synthesize final recommendations.
 
 ## Acceptance criteria
 
-- [ ] The system stores raw on-chain flow observations and normalized events separately.
-- [ ] Deterministic facts and speculative interpretations are not conflated.
-- [ ] Evidence includes amount, direction, venue/address context where available, source refs, freshness, and confidence.
-- [ ] Thresholds are configurable and documented.
-- [ ] Tests cover large event, duplicate event, malformed event, and no-event cases.
+- [ ] Each required source can be collected through a dedicated adapter.
+- [ ] Raw responses are persisted before normalization.
+- [ ] Normalized observations use the common taxonomy/freshness/provenance model.
+- [ ] Partial source failures produce explicit warnings rather than fabricated values.
+- [ ] The ingestion layer can run repeatedly without duplicating identical raw payloads unnecessarily.
+- [ ] Tests cover success, timeout, malformed source response, and partial failure cases.
 
 ## Parent
 
@@ -51,3 +57,4 @@ Part of opsclawd/sol-usdc-clmm-intelligence#2.
 - opsclawd/sol-usdc-clmm-intelligence#3
 - opsclawd/sol-usdc-clmm-intelligence#5
 - opsclawd/sol-usdc-clmm-intelligence#6
+- opsclawd/sol-usdc-clmm-intelligence#4

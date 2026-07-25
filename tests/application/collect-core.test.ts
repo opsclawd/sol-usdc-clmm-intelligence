@@ -43,7 +43,7 @@ function mockOutcome(
 }
 
 describe("collectCore", () => {
-  it("starts all four leaves before awaiting and invokes each exactly once", async () => {
+  it("starts all five leaves before awaiting and invokes each exactly once", async () => {
     let activeInvocations = 0;
     const startOrder: string[] = [];
 
@@ -61,18 +61,19 @@ describe("collectCore", () => {
       clmmV2: createLeaf("clmmV2", mockOutcome("clmm-v2", "clmm-v2-bundle")),
       pyth: createLeaf("pyth", mockOutcome("pyth", "pyth-hermes")),
       jupiter: createLeaf("jupiter", mockOutcome("jupiter", "jupiter-quote")),
-      orca: createLeaf("orca", mockOutcome("orca", "orca-public-api"))
+      orca: createLeaf("orca", mockOutcome("orca", "orca-public-api")),
+      solana: createLeaf("solana", mockOutcome("solana", "solana-rpc"))
     };
 
     const resultPromise = collectCore(deps, VALID_CONTEXT);
-    // While the promise is running, all four should have been called
-    expect(startOrder.length).toBe(4);
+    // While the promise is running, all five should have been called
+    expect(startOrder.length).toBe(5);
     const result = await resultPromise;
     expect(result.status).toBe("COMPLETE");
-    expect(activeInvocations).toBe(4);
+    expect(activeInvocations).toBe(5);
   });
 
-  it("passes the same collection context object to all four leaves", async () => {
+  it("passes the same collection context object to all five leaves", async () => {
     const receivedContexts: CollectionRunContext[] = [];
     const createLeaf = (sourceKey: CoreSourceKey, source: Source): CoreLeaf => {
       return async (ctx) => {
@@ -85,41 +86,54 @@ describe("collectCore", () => {
       clmmV2: createLeaf("clmm-v2", "clmm-v2-bundle"),
       pyth: createLeaf("pyth", "pyth-hermes"),
       jupiter: createLeaf("jupiter", "jupiter-quote"),
-      orca: createLeaf("orca", "orca-public-api")
+      orca: createLeaf("orca", "orca-public-api"),
+      solana: createLeaf("solana", "solana-rpc")
     };
 
     await collectCore(deps, VALID_CONTEXT);
-    expect(receivedContexts.length).toBe(4);
+    expect(receivedContexts.length).toBe(5);
     receivedContexts.forEach((ctx) => {
       expect(ctx).toBe(VALID_CONTEXT);
     });
   });
 
-  it("preserves successful outcomes when sibling leaves reject", async () => {
+  it("preserves four-source evidence when Solana RPC is unavailable", async () => {
     const deps: CollectCoreDeps = {
       clmmV2: async () => mockOutcome("clmm-v2", "clmm-v2-bundle"),
       pyth: async () => mockOutcome("pyth", "pyth-hermes"),
-      jupiter: async () => {
-        throw new Error("Jupiter query failed");
-      },
-      orca: async () => mockOutcome("orca", "orca-public-api")
+      jupiter: async () => mockOutcome("jupiter", "jupiter-quote"),
+      orca: async () => mockOutcome("orca", "orca-public-api"),
+      solana: async () =>
+        mockOutcome("solana", "solana-rpc", {
+          status: "timeout",
+          hasUsableEvidence: false,
+          warnings: [{ source: "solana", code: "solana_rpc_timeout", message: null }]
+        })
     };
 
     const result = await collectCore(deps, VALID_CONTEXT);
+    expect(result.status).toBe("PARTIAL");
+    expect(result.shouldFailCommand).toBe(false);
+    expect(result.counts).toEqual({
+      complete: 4,
+      partial: 0,
+      stale: 0,
+      absentOrFailed: 1
+    });
     expect(result.clmmV2.status).toBe("accepted");
     expect(result.pyth.status).toBe("accepted");
-    expect(result.jupiter.status).toBe("failed");
-    expect(result.jupiter.diagnostic).toContain("Jupiter query failed");
+    expect(result.jupiter.status).toBe("accepted");
     expect(result.orca.status).toBe("accepted");
-    expect(result.status).toBe("PARTIAL");
+    expect(result.solana.status).toBe("timeout");
   });
 
-  it("returns COMPLETE for four accepted or replayed fresh contributions", async () => {
+  it("returns COMPLETE only when all five sources contribute fresh usable evidence", async () => {
     const deps: CollectCoreDeps = {
       clmmV2: async () => mockOutcome("clmm-v2", "clmm-v2-bundle", { status: "accepted" }),
       pyth: async () => mockOutcome("pyth", "pyth-hermes", { status: "identical_replay" }),
       jupiter: async () => mockOutcome("jupiter", "jupiter-quote", { status: "accepted" }),
-      orca: async () => mockOutcome("orca", "orca-public-api", { status: "accepted" })
+      orca: async () => mockOutcome("orca", "orca-public-api", { status: "accepted" }),
+      solana: async () => mockOutcome("solana", "solana-rpc", { status: "accepted" })
     };
 
     const result = await collectCore(deps, VALID_CONTEXT);
@@ -141,9 +155,10 @@ describe("collectCore", () => {
         clmmV2: async () => mockOutcome("clmm-v2", "clmm-v2-bundle", { status: "accepted" }),
         pyth: async () => mockOutcome("pyth", "pyth-hermes", { status: "accepted" }),
         jupiter: async () => mockOutcome("jupiter", "jupiter-quote", { status: "accepted" }),
-        orca: async () => {
+        orca: async () => mockOutcome("orca", "orca-public-api", { status: "accepted" }),
+        solana: async () => {
           if (status === "stale") {
-            return mockOutcome("orca", "orca-public-api", {
+            return mockOutcome("solana", "solana-rpc", {
               status: "stale",
               freshness: {
                 isStale: true,
@@ -155,12 +170,12 @@ describe("collectCore", () => {
             });
           }
           if (status === "degraded") {
-            return mockOutcome("orca", "orca-public-api", {
+            return mockOutcome("solana", "solana-rpc", {
               status: "degraded",
               hasUsableEvidence: true
             });
           }
-          return mockOutcome("orca", "orca-public-api", { status, hasUsableEvidence: false });
+          return mockOutcome("solana", "solana-rpc", { status, hasUsableEvidence: false });
         }
       };
 
@@ -178,7 +193,9 @@ describe("collectCore", () => {
       jupiter: async () =>
         mockOutcome("jupiter", "jupiter-quote", { status: "failed", hasUsableEvidence: false }),
       orca: async () =>
-        mockOutcome("orca", "orca-public-api", { status: "unavailable", hasUsableEvidence: false })
+        mockOutcome("orca", "orca-public-api", { status: "unavailable", hasUsableEvidence: false }),
+      solana: async () =>
+        mockOutcome("solana", "solana-rpc", { status: "timeout", hasUsableEvidence: false })
     };
 
     const result = await collectCore(deps, VALID_CONTEXT);
@@ -204,7 +221,9 @@ describe("collectCore", () => {
       jupiter: async () =>
         mockOutcome("jupiter", "jupiter-quote", { status: "network", hasUsableEvidence: false }),
       orca: async () =>
-        mockOutcome("orca", "orca-public-api", { status: "unavailable", hasUsableEvidence: false })
+        mockOutcome("orca", "orca-public-api", { status: "unavailable", hasUsableEvidence: false }),
+      solana: async () =>
+        mockOutcome("solana", "solana-rpc", { status: "timeout", hasUsableEvidence: false })
     };
 
     const result = await collectCore(deps, VALID_CONTEXT);
@@ -221,7 +240,9 @@ describe("collectCore", () => {
       jupiter: async () =>
         mockOutcome("jupiter", "jupiter-quote", { status: "malformed", hasUsableEvidence: false }),
       orca: async () =>
-        mockOutcome("orca", "orca-public-api", { status: "failed", hasUsableEvidence: false })
+        mockOutcome("orca", "orca-public-api", { status: "failed", hasUsableEvidence: false }),
+      solana: async () =>
+        mockOutcome("solana", "solana-rpc", { status: "failed", hasUsableEvidence: false })
     };
 
     const result = await collectCore(deps, VALID_CONTEXT);
@@ -233,9 +254,10 @@ describe("collectCore", () => {
     const deps: CollectCoreDeps = {
       clmmV2: async () => mockOutcome("clmm-v2", "clmm-v2-bundle", { status: "accepted" }),
       pyth: async () => mockOutcome("pyth", "pyth-hermes", { status: "accepted" }),
-      jupiter: async () =>
-        mockOutcome("jupiter", "jupiter-quote", { status: "conflict", hasUsableEvidence: false }),
-      orca: async () => mockOutcome("orca", "orca-public-api", { status: "accepted" })
+      jupiter: async () => mockOutcome("jupiter", "jupiter-quote", { status: "accepted" }),
+      orca: async () => mockOutcome("orca", "orca-public-api", { status: "accepted" }),
+      solana: async () =>
+        mockOutcome("solana", "solana-rpc", { status: "conflict", hasUsableEvidence: false })
     };
 
     const result = await collectCore(deps, VALID_CONTEXT);
@@ -243,9 +265,7 @@ describe("collectCore", () => {
     expect(result.shouldFailCommand).toBe(true);
   });
 
-  it("orders named outcomes and warnings independently of promise completion timing", async () => {
-    // We want to verify that regardless of the completion order (by delaying some promises),
-    // the returned object assigns the correct outcomes to each name, and warnings are sorted consistently.
+  it("orders Solana warnings after the four existing source groups", async () => {
     const createDelayedLeaf = (
       sourceKey: CoreSourceKey,
       source: Source,
@@ -261,17 +281,20 @@ describe("collectCore", () => {
     };
 
     const deps: CollectCoreDeps = {
-      clmmV2: createDelayedLeaf("clmm-v2", "clmm-v2-bundle", 40, [
+      clmmV2: createDelayedLeaf("clmm-v2", "clmm-v2-bundle", 50, [
         { code: "W_CLMM", message: "clmm warn" }
       ]),
       pyth: createDelayedLeaf("pyth", "pyth-hermes", 10, [
         { code: "W_PYTH", message: "pyth warn" }
       ]),
-      jupiter: createDelayedLeaf("jupiter", "jupiter-quote", 30, [
+      jupiter: createDelayedLeaf("jupiter", "jupiter-quote", 40, [
         { code: "W_JUP", message: "jup warn" }
       ]),
-      orca: createDelayedLeaf("orca", "orca-public-api", 20, [
+      orca: createDelayedLeaf("orca", "orca-public-api", 30, [
         { code: "W_ORCA", message: "orca warn" }
+      ]),
+      solana: createDelayedLeaf("solana", "solana-rpc", 20, [
+        { code: "W_SOLANA", message: "solana warn" }
       ])
     };
 
@@ -280,12 +303,14 @@ describe("collectCore", () => {
     expect(result.pyth.sourceKey).toBe("pyth");
     expect(result.jupiter.sourceKey).toBe("jupiter");
     expect(result.orca.sourceKey).toBe("orca");
+    expect(result.solana.sourceKey).toBe("solana");
 
-    // Warnings rank order: clmm-v2 (0), pyth (1), jupiter (2), orca (3)
-    expect(result.warnings.length).toBe(4);
+    // Warnings rank order: clmm-v2 (0), pyth (1), jupiter (2), orca (3), solana (4)
+    expect(result.warnings.length).toBe(5);
     expect(result.warnings[0]!.code).toBe("W_CLMM");
     expect(result.warnings[1]!.code).toBe("W_PYTH");
     expect(result.warnings[2]!.code).toBe("W_JUP");
     expect(result.warnings[3]!.code).toBe("W_ORCA");
+    expect(result.warnings[4]!.code).toBe("W_SOLANA");
   });
 });

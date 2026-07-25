@@ -1,4 +1,5 @@
 import type { HttpClient } from "../ports/http.js";
+import type { RetryControl } from "../ports/retry.js";
 import type { JsonStore } from "../ports/json-store.js";
 import type { EnvReader } from "../ports/env.js";
 import type { Clock } from "../ports/clock.js";
@@ -11,15 +12,18 @@ import { collectClmmBundle } from "../application/collect-clmm-bundle.js";
 import { collectPythPrice } from "../application/collect-pyth-price.js";
 import { collectJupiterQuote } from "../application/collect-jupiter-quote.js";
 import { collectOrcaPoolStatistics } from "../application/collect-orca-pool-statistics.js";
+import { collectSolanaNetworkStatus } from "../application/collect-solana-network-status.js";
 import {
   mapClmmSourceOutcome,
   mapPriceSourceOutcome,
+  mapSolanaNetworkStatusOutcome,
   mapSourceError
 } from "../application/source-outcome.js";
 import type { CoreCollectionResult } from "../contracts/collection-run.js";
 
 export interface CoreCollectionJobDeps {
   http: HttpClient;
+  retryControl: RetryControl;
   jsonStore: JsonStore;
   env: EnvReader;
   clock: Clock;
@@ -76,6 +80,14 @@ export async function runCoreCollectionJob(
           return await collectOrcaPoolStatistics(deps, ctx);
         } catch (err) {
           return mapSourceError("orca", "orca-public-api", err);
+        }
+      },
+      solana: async (ctx) => {
+        try {
+          const result = await collectSolanaNetworkStatus(deps, ctx);
+          return mapSolanaNetworkStatusOutcome(result);
+        } catch (err) {
+          return mapSourceError("solana", "solana-rpc", err);
         }
       }
     },
