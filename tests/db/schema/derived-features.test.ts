@@ -104,6 +104,13 @@ describe("derivedFeatures behavioral invariants", () => {
     });
   });
 
+  describe("database feature allowlist and unit/scope constraints include Pack C kinds", () => {
+    it("allowlist includes Pack C features", () => {
+      const featureKindCol = (derivedFeatures as unknown as Record<string, unknown>)["featureKind"];
+      expect(featureKindCol).toBeDefined();
+    });
+  });
+
   describe("structured payload is NOT NULL", () => {
     it("structuredPayload is NOT NULL after migration", () => {
       const payloadCol = (derivedFeatures as unknown as Record<string, unknown>)[

@@ -36,7 +36,12 @@ export type ObservationKind =
   | "stablecoin_flow"
   | "dex_net_flow"
   | "cex_flow_proxy"
-  | "network_status";
+  | "network_status"
+  | "funding_rate"
+  | "open_interest"
+  | "perp_basis"
+  | "liquidation_event"
+  | "leverage_proxy";
 
 export type FeatureKind =
   | "range_location"
@@ -45,7 +50,13 @@ export type FeatureKind =
   | "oracle_dex_divergence"
   | "oracle_confidence_width"
   | "realized_volatility_1h"
-  | "volume_liquidity_ratio_24h";
+  | "volume_liquidity_ratio_24h"
+  | "funding_rate_annualized_15m"
+  | "basis_annualized_15m"
+  | "oi_trend_4h"
+  | "liquidation_cluster_1h"
+  | "funding_rate_annualized"
+  | "basis_spread_bps";
 
 export type Source =
   | "clmm-v2-bundle"
@@ -63,7 +74,9 @@ export type Source =
   | "regulatory-monitor-api"
   | "helius-api"
   | "birdeye-api"
-  | "solana-rpc";
+  | "solana-rpc"
+  | "binance-fapi"
+  | "drift-api";
 
 export type ParseStatus = "pending" | "parsed" | "failed";
 

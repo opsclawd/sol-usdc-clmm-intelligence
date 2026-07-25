@@ -15,7 +15,13 @@ export const MVP_FEATURE_KINDS = [
   "oracle_dex_divergence",
   "oracle_confidence_width",
   "realized_volatility_1h",
-  "volume_liquidity_ratio_24h"
+  "volume_liquidity_ratio_24h",
+  "funding_rate_annualized_15m",
+  "basis_annualized_15m",
+  "oi_trend_4h",
+  "liquidation_cluster_1h",
+  "funding_rate_annualized",
+  "basis_spread_bps"
 ] as const;
 
 export type FeatureStatus = "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
@@ -27,10 +33,20 @@ export function isCanonicalFeatureKind(kind: string): kind is FeatureKind {
   return FEATURE_KIND_SET.has(kind as FeatureKind);
 }
 
+export const PERP_BPS_KINDS = new Set([
+  "oi_trend_4h",
+  "funding_rate_annualized",
+  "liquidation_cluster_1h",
+  "basis_spread_bps"
+]);
+
 const BPS_KINDS = new Set([
   "oracle_dex_divergence",
   "oracle_confidence_width",
-  "realized_volatility_1h"
+  "realized_volatility_1h",
+  "funding_rate_annualized_15m",
+  "basis_annualized_15m",
+  ...PERP_BPS_KINDS
 ]);
 
 const PPM_KINDS = new Set([
