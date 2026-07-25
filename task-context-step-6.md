@@ -1,6 +1,6 @@
 # Task Context: Task 6
 
-Title: Orchestrate multi-source collection and status reduction
+Title: Implement oracle and pool market calculators
 
 ## Workspace & Scope Constraints
 
@@ -10,84 +10,72 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-10
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-8
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-10
-Start Commit: dfdc6c6a72b0862f77922bc0061053324d906eef
+Branch: ai/issue-8
+Start Commit: 5701491d28b2b8489db6ce45b5b24d87d3570a52
 
 ## Task Requirements
 
-**Files:**
+**Files:** Create `src/domain/derived-feature/market.ts` and `tests/domain/derived-feature/market.test.ts`; modify `src/domain/derived-feature/index.ts`.
 
-- Create: `src/jobs/on-chain-flow-job.ts`
-- Modify: `src/jobs/index.ts`
-- Create: `tests/jobs/on-chain-flow-job.test.ts`
+**Behavioral invariants to test first**
 
-**Behavioral invariants to test first:**
+- `calculates absolute oracle DEX divergence only from Pyth and executable Jupiter quote`
+- `makes divergence unavailable for missing route stale input or excessive skew`
+- `retains a partial divergence value for nonfatal input quality`
+- `measures wide oracle confidence as partial rather than missing`
+- `accepts zero volume only with positive TVL`
 
-- `all usable sources reduce to COMPLETE without command failure`.
-- `one usable and one unavailable source reduce to PARTIAL without command failure`.
-- `all unavailable sources reduce to UNAVAILABLE with command failure`.
-- `zero usable sources with malformed or persistence failure reduce to FAILED with command failure`.
-- `duplicate configured source names abort before collection`.
-- `one run context and one threshold set are passed to both collectors`.
-- `outcomes are returned in stable source-name order regardless of completion order`.
+- [ ] Write failing golden tests for all three formulas, ties, stale/missing inputs, route availability, 30-second skew, wide confidence, zero volume, and invalid TVL.
+- [ ] Implement:
 
-- [ ] **Step 1: Write failing job tests**
+```ts
+// abs(dex-oracle)/oracle * 10_000 BPS
+export function calculateOracleDexDivergence(
+  oracle: OraclePricePayloadV1,
+  quote: DexQuotePayloadV1
+): FeatureCalculation;
+// confidence/oracle * 10_000 BPS
+export function calculateOracleConfidenceWidth(oracle: OraclePricePayloadV1): FeatureCalculation;
+// volume24hUsdc/tvlUsdc * 1_000_000 PPM
+export function calculateVolumeLiquidityRatio24h(pool: PoolStatisticsPayloadV1): FeatureCalculation;
+```
 
-  Run:
+Never substitute pool price for Jupiter; preserve numeric values as `PARTIAL` for nonfatal quality warnings, and use null `UNAVAILABLE` results for missing/invalid operands.
 
-  ```bash
-  pnpm test tests/jobs/on-chain-flow-job.test.ts
-  ```
+- [ ] Run:
 
-  Expected: FAIL because the job does not exist.
+```bash
+pnpm exec vitest run tests/domain/derived-feature/market.test.ts
+pnpm exec eslint src/domain/derived-feature/market.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/market.test.ts --max-warnings 0
+pnpm exec prettier --check src/domain/derived-feature/market.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/market.test.ts
+```
 
-- [ ] **Step 2: Implement job and exports**
-
-  Export `ConfiguredOnChainFlowSource`, `OnChainFlowJobDeps`, `OnChainFlowJobResult`, `onChainFlowJob`, and `runOnChainFlowJob`. Validate exactly one Helius and one Birdeye source, create one run context, run sources independently with the same explicit thresholds/lookback, redact rejected diagnostics, sort outcomes by source, and reduce status using the truth table in the invariants. Export the public job surface from `src/jobs/index.ts`.
-
-- [ ] **Step 3: Run task-scoped verification**
-
-  ```bash
-  pnpm test tests/jobs/on-chain-flow-job.test.ts
-  pnpm exec eslint src/jobs/on-chain-flow-job.ts src/jobs/index.ts tests/jobs/on-chain-flow-job.test.ts --max-warnings 0
-  pnpm exec prettier --check src/jobs/on-chain-flow-job.ts src/jobs/index.ts tests/jobs/on-chain-flow-job.test.ts
-  ```
-
-  Expected: all commands pass.
-
-- [ ] **Step 4: Commit**
-
-  ```bash
-  git add src/jobs/on-chain-flow-job.ts src/jobs/index.ts tests/jobs/on-chain-flow-job.test.ts
-  git commit -m "feat: orchestrate on-chain flow source collection"
-  ```
+**Commit:** `feat: calculate oracle and pool market features`
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/jobs/on-chain-flow-job.ts
-- src/jobs/index.ts
-- tests/jobs/on-chain-flow-job.test.ts
+- src/domain/derived-feature/market.ts
+- src/domain/derived-feature/index.ts
+- tests/domain/derived-feature/market.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm test tests/jobs/on-chain-flow-job.test.ts
-pnpm exec eslint src/jobs/on-chain-flow-job.ts src/jobs/index.ts tests/jobs/on-chain-flow-job.test.ts --max-warnings 0
-pnpm exec prettier --check src/jobs/on-chain-flow-job.ts src/jobs/index.ts tests/jobs/on-chain-flow-job.test.ts
+pnpm exec vitest run tests/domain/derived-feature/market.test.ts
+pnpm exec eslint src/domain/derived-feature/market.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/market.test.ts --max-warnings 0
+pnpm exec prettier --check src/domain/derived-feature/market.ts src/domain/derived-feature/index.ts tests/domain/derived-feature/market.test.ts
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **complete reduction**: All usable sources produce COMPLETE and do not fail the command. (Test: `all usable sources reduce to COMPLETE without command failure`)
-- **partial reduction**: A usable source plus an unavailable source produces PARTIAL and exits successfully. (Test: `one usable and one unavailable source reduce to PARTIAL without command failure`)
-- **unavailable reduction**: All unavailable sources produce UNAVAILABLE and fail the command. (Test: `all unavailable sources reduce to UNAVAILABLE with command failure`)
-- **failed reduction**: No usable evidence plus malformed or persistence failure produces FAILED. (Test: `zero usable sources with malformed or persistence failure reduce to FAILED with command failure`)
-- **unique source configuration**: Duplicate source names abort before any source is called. (Test: `duplicate configured source names abort before collection`)
-- **shared run configuration**: Both collectors receive one run context and the same explicit threshold set. (Test: `one run context and one threshold set are passed to both collectors`)
-- **stable outcome order**: Result ordering is source-name stable regardless of asynchronous completion. (Test: `outcomes are returned in stable source-name order regardless of completion order`)
+- **source-specific divergence**: Divergence uses only Pyth oracle and executable Jupiter quote within allowed skew. (Test: `calculates absolute oracle DEX divergence only from Pyth and executable Jupiter quote`)
+- **fatal divergence quality**: Missing route, stale input, or excessive skew yields unavailable null. (Test: `makes divergence unavailable for missing route stale input or excessive skew`)
+- **nonfatal divergence quality**: Nonfatal warnings retain a numeric partial result. (Test: `retains a partial divergence value for nonfatal input quality`)
+- **oracle width status**: Wide valid confidence is partial while invalid oracle operands are unavailable. (Test: `measures wide oracle confidence as partial rather than missing`)
+- **zero volume semantics**: Zero volume is available only when TVL is positive. (Test: `accepts zero volume only with positive TVL`)

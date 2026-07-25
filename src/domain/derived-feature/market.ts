@@ -60,6 +60,10 @@ export function calculateOracleDexDivergence(
 ): DivergenceResult {
   const warnings: string[] = [];
 
+  if (oracle.observedSource.source !== "pyth-hermes") {
+    return makeUnavailable(["invalid_oracle_source"]);
+  }
+
   if (!checkOracleFreshness(oracle, evaluationAsOfUnixMs)) {
     return makeUnavailable(["oracle_price_stale"]);
   }

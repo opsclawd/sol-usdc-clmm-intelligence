@@ -214,6 +214,26 @@ describe("calculates absolute oracle DEX divergence only from Pyth and executabl
     const result = calculateOracleDexDivergence(oracle, dex, 1000000000030);
     expect(result.status).toBe("AVAILABLE");
   });
+
+  it("returns UNAVAILABLE when oracle source is not pyth-hermes (e.g. jupiter-price)", () => {
+    const oracle = makeOraclePrice({
+      priceData: { price: "150.00", confidence: "0.05" },
+      observedSource: {
+        source: "jupiter-price",
+        observedAtUnixMs: 1000000000000,
+        fetchedAtUnixMs: 1000000000100,
+        slot: 100
+      }
+    });
+    const dex = makeExecutableQuote({
+      quoteData: { price: "150.05" },
+      observedSource: { source: "jupiter-quote", observedAtUnixMs: 1000000000000, slot: 100 }
+    });
+    const result = calculateOracleDexDivergence(oracle, dex, 1000000000000);
+    expect(result.status).toBe("UNAVAILABLE");
+    expect(result.value).toBeNull();
+    expect(result.reasons).toContain("invalid_oracle_source");
+  });
 });
 
 describe("makes divergence unavailable for missing route stale input or excessive skew", () => {
