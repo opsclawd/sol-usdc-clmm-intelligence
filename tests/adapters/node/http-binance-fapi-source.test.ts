@@ -155,9 +155,7 @@ describe("HttpBinanceFapiSource", () => {
     });
 
     expect(snapshot.coverage.liquidation_event.status).toBe("unavailable");
-    expect(snapshot.coverage.liquidation_event.diagnostic).toContain(
-      "User-data force-order endpoint excluded"
-    );
+    expect(snapshot.coverage.liquidation_event.diagnostic).toBe("not_supported");
     for (const call of fakeHttp.calls) {
       expect(call.url).not.toContain("allForceOrders");
       expect(call.url).not.toContain("forceOrders");

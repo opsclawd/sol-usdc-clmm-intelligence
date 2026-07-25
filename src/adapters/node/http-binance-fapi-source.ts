@@ -411,7 +411,7 @@ export class HttpBinanceFapiSource implements PerpLiquidationSourcePort {
       liquidation_event: {
         kind: "liquidation_event",
         status: "unavailable",
-        diagnostic: "User-data force-order endpoint excluded"
+        diagnostic: "not_supported"
       },
       leverage_proxy: leverageRes.coverage
     };

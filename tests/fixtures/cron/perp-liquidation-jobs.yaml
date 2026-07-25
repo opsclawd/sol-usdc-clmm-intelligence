@@ -1,0 +1,7 @@
+timezone: America/Edmonton
+session: isolated
+modelEnv: OPENCLAW_MODEL
+jobs:
+  - name: perp-liquidation
+    cron: "*/5 * * * *"
+    messageFile: cron/routines/perp-liquidation.md

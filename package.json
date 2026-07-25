@@ -13,6 +13,7 @@
     "collect:context-events": "tsx scripts/collectors/context-events.ts",
     "collect:news-evidence": "tsx scripts/collectors/news-evidence.ts",
     "collect:on-chain-flow": "tsx scripts/collectors/on-chain-flow.ts",
+    "collect:perp-liquidation": "tsx scripts/collectors/perp-liquidation.ts",
     "derive:mvp": "tsx scripts/collectors/derive-mvp-features.ts",
     "assemble:bundle": "tsx scripts/collectors/assemble-evidence-bundle.ts",
     "publish:evidence": "tsx scripts/collectors/publish-evidence-bundle.ts",
