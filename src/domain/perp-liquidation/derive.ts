@@ -151,10 +151,13 @@ export function calculateAnnualizedFundingBps(payload: FundingRatePayloadV1): Fe
   }
 
   // annualizedFundingBps = roundHalfAwayFromZero(fundingRate * (24 / fundingIntervalHours) * 365 * 10_000)
-  const intervalRat: Rational = {
-    numerator: BigInt(payload.fundingIntervalHours),
-    denominator: 1n
-  };
+  const intervalRat = parseDecimal(payload.fundingIntervalHours.toString());
+  if (
+    typeof intervalRat === "string" ||
+    compare(intervalRat, { numerator: 0n, denominator: 1n }) <= 0
+  ) {
+    return makeUnavailable(["invalid_funding_interval"]);
+  }
   const periodsPerDay = divide({ numerator: 24n, denominator: 1n }, intervalRat);
   if (typeof periodsPerDay === "string") {
     return makeUnavailable(["numeric_failure"]);
@@ -397,7 +400,11 @@ export async function derivePerpLiquidationFeatures(
 
     const value = finalStatus === "UNAVAILABLE" ? null : calcResult.value;
     const inputObservationIds = finalStatus === "UNAVAILABLE" ? [] : selectedRows.map((r) => r.id);
-    const rejectedIds = rejectedRows.map((r) => r.id);
+    const effectiveRejectedRows =
+      finalStatus === "UNAVAILABLE"
+        ? Array.from(new Map([...selectedRows, ...rejectedRows].map((r) => [r.id, r])).values())
+        : rejectedRows;
+    const rejectedIds = effectiveRejectedRows.map((r) => r.id);
 
     // Stale check
     let isStale = false;
@@ -472,7 +479,7 @@ export async function derivePerpLiquidationFeatures(
         calculationMetadata: calcResult.metadata
       },
       selectedRows: finalStatus === "UNAVAILABLE" ? [] : selectedRows,
-      rejectedRows,
+      rejectedRows: effectiveRejectedRows,
       evaluationAsOfUnixMs,
       runId,
       codeVersion

@@ -809,4 +809,42 @@ describe("perp-liquidation derive", () => {
     expect(oiFeature?.inputObservationIds).toEqual([90, 92]);
     expect(oiFeature?.rejectedObservationIds).toEqual([91]);
   });
+
+  it("handles fractional funding intervals without throwing RangeError", async () => {
+    const fundingFractional = makeNormalizedRow(
+      100,
+      200,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "drift-api",
+        instrument: "SOL-PERP",
+        sourceEventId: "fr-frac",
+        observedAtUnixMs: asOf,
+        kind: "funding_rate",
+        fundingRate: "0.0001",
+        fundingIntervalHours: 0.5
+      },
+      asOf
+    );
+
+    const results = await derivePerpLiquidationFeatures({
+      candidates: [fundingFractional],
+      coverage: allAvailableCoverage,
+      evaluationAsOfUnixMs: asOf,
+      runId,
+      codeVersion,
+      calculatorVersion,
+      selectionVersion
+    });
+
+    const frFeature = results.find((r) => r.featureKind === "funding_rate_annualized");
+    expect(frFeature?.status).toBe("AVAILABLE");
+    // fundingRate = 0.0001, fundingIntervalHours = 0.5
+    // periodsPerDay = 24 / 0.5 = 48
+    // periodsPerYear = 48 * 365 = 17520
+    // BPS = 0.0001 * 17520 * 10000 = 17520
+    expect(frFeature?.value).toBe(17520);
+  });
 });
