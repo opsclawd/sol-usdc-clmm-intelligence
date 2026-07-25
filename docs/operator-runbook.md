@@ -632,7 +632,85 @@ LIMIT 20;
 > [!STOP]
 > **Migration precondition:** The migration that introduces `publish_attempts` constraints assumes the table is empty. If any row exists, the migration aborts. Do not rewrite or delete existing rows without lead engineer approval.
 
-## Contextual Event Evidence Collection (`pnpm collect:context-events`)
+## Research Brief Generation & Operational Lifecycle (`pnpm generate:brief`)
+
+The `pnpm generate:brief <request-json-path>` command generates schema-constrained LLM research briefs over bounded evidence bundles.
+
+### Command & Configuration
+
+```bash
+pnpm generate:brief data/brief-request.json
+```
+
+Required environment variables:
+
+- `LLM_BASE_URL`: Base URL for OpenAI-compatible structured output API.
+- `LLM_API_KEY`: API authentication key (redacted from all logs/audit entries).
+- `LLM_MODEL`: Target model identifier.
+
+Optional:
+
+- `LLM_MODEL_VERSION`: Explicit model version.
+- `LLM_TIMEOUT_MS`: Request timeout (finite default 30,000 ms; generation has no retry loop).
+
+### Authority Boundary & Current-Regime Evidence
+
+The LLM summarizes bounded, structured evidence. It does NOT synthesize policy or make position rebalance decisions.
+
+If the request JSON includes `callerSuppliedCurrentRegime`, the generator uses it to assess regime alignment. If omitted, the assessment defaults to `not_applicable`. Current regime assessment is only performed when an explicit caller-owned input is supplied — the pipeline never infers or scrapes policy state.
+
+### Complete vs Degraded Brief Outcomes
+
+- **`COMPLETE`**: Created over an unexpired evidence bundle with valid structured output. **Only complete, unexpired, source-matching briefs are eligible to be composed into outbound publication.**
+- **`DEGRADED`**: Generated when evidence is stale, missing, or degraded. Degraded briefs are persisted in Postgres as audit evidence but **are NOT eligible for publication attachment**.
+
+### Persistence Diagnostics & Audit Queries
+
+Brief persistence fields in `intelligence.research_briefs` include:
+
+- `structured_output.generationStatus`: Status of generation (`COMPLETE` or `DEGRADED`).
+- `prompt_version`: Version of prompt template used.
+- `model`: Provider model tag.
+- `input_hash`: SHA-256 hash of the bounded input prompt context.
+
+#### Join Research Briefs to Source Bundle and Publish Attempts
+
+```sql
+SELECT rb.id AS brief_id,
+       rb.evidence_bundle_id,
+       rb.structured_output->>'generationStatus' AS generation_status,
+       rb.prompt_version,
+       rb.model,
+       rb.input_hash,
+       eb.payload_hash AS bundle_hash,
+       pa.id AS publish_attempt_id,
+       pa.status AS publish_status
+FROM intelligence.research_briefs rb
+JOIN intelligence.evidence_bundles eb ON eb.id = rb.evidence_bundle_id
+LEFT JOIN intelligence.publish_attempts pa ON pa.research_brief_id = rb.id
+ORDER BY rb.id DESC
+LIMIT 20;
+```
+
+#### Brief Publication Eligibility Diagnostics
+
+```sql
+SELECT rb.id,
+       rb.evidence_bundle_id,
+       rb.structured_output->>'generationStatus' AS status,
+       rb.expires_at_unix_ms,
+       (rb.expires_at_unix_ms > EXTRACT(EPOCH FROM NOW()) * 1000) AS is_unexpired
+FROM intelligence.research_briefs rb
+WHERE rb.structured_output->>'generationStatus' = 'COMPLETE'
+ORDER BY rb.id DESC;
+```
+
+### Recovery Guidance
+
+- If brief generation fails due to provider rate limits, network timeouts, or invalid configuration: **rerun generation** after provider/config recovery.
+- **Never manually edit immutable bundle or brief rows** in Postgres. If an updated brief is needed, execute a new generation run against the evidence bundle.
+
+[diff_block_end]
 
 The `collect:context-events` command collects contextual evidence from two sources: scheduled macro events (token unlocks, protocol upgrades, governance votes) and Solana protocol incidents. Contextual evidence supplements core telemetry but is explicitly **lower-confidence** and **never becomes execution authority**.
 
