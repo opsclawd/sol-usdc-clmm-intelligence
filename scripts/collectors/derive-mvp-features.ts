@@ -81,4 +81,6 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}
