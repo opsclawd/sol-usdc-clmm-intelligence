@@ -81,3 +81,8 @@ export type {
   HeliusTransactionFlowEvent,
   BirdeyeNetFlowEvent
 } from "./on-chain-flow-source.js";
+export type {
+  LlmProvider,
+  StructuredGenerationRequest,
+  StructuredGeneration
+} from "./llm-provider.js";

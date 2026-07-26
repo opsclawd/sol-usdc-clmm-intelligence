@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "evidence-bundle.v1",
+  "pair": "SOL/USDC",
+  "scope": {
+    "kind": "pair"
+  },
+  "source": {
+    "publisher": "sol-usdc-clmm-intelligence",
+    "sourceId": "test-publisher-1",
+    "sourceVersion": "1.0.0"
+  },
+  "runId": "run-sparse-001",
+  "correlationId": "corr-sparse-001",
+  "createdAt": "2026-05-10T14:00:00.000Z",
+  "asOf": "2026-05-10T14:00:00.000Z",
+  "freshUntil": "2026-05-10T14:15:00.000Z",
+  "expiresAt": "2026-05-10T15:00:00.000Z",
+  "deterministicFeatures": [
+    {
+      "featureId": "feat-unavailable-1",
+      "family": "market_state",
+      "featureKind": "number",
+      "status": "unavailable",
+      "value": null,
+      "unit": null,
+      "observedAt": null,
+      "freshUntil": null,
+      "confidenceBps": 0,
+      "calculator": { "name": "dummy", "version": "1.0.0" },
+      "inputLineage": ["none"],
+      "warnings": ["DATA_UNAVAILABLE"]
+    }
+  ],
+  "contextualEvidence": {
+    "supportResistance": [],
+    "flows": [],
+    "derivatives": [],
+    "events": [],
+    "newsRegulatory": []
+  },
+  "researchBrief": null,
+  "sourceReferences": [
+    {
+      "referenceId": "ref-sparse-1",
+      "sourceType": "internal_bundle",
+      "locator": "bundle-internal-1",
+      "publishedAt": "2026-05-10T14:00:00.000Z",
+      "observedAt": "2026-05-10T14:00:00.000Z",
+      "contentHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
+  ],
+  "assessment": {
+    "overallConfidenceBps": 0,
+    "quality": "degraded",
+    "coverage": {
+      "deterministic": "unavailable",
+      "supportResistance": "unavailable",
+      "flows": "unavailable",
+      "derivatives": "unavailable",
+      "events": "unavailable",
+      "newsRegulatory": "unavailable",
+      "researchBrief": "unavailable"
+    },
+    "warnings": [
+      {
+        "code": "SPARSE_DATA",
+        "message": "All evidence families are unavailable",
+        "affectedFamilies": ["market_state"]
+      }
+    ]
+  },
+  "provenance": {
+    "pipelineVersion": "1.0.0",
+    "gitCommit": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "environment": "test",
+    "upstreamRunIds": ["upstream-1"]
+  }
+}

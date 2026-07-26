@@ -16,6 +16,7 @@
     "collect:perp-liquidation": "tsx scripts/collectors/perp-liquidation.ts",
     "derive:mvp": "tsx scripts/collectors/derive-mvp-features.ts",
     "assemble:bundle": "tsx scripts/collectors/assemble-evidence-bundle.ts",
+    "generate:brief": "tsx scripts/generate/research-brief.ts",
     "publish:evidence": "tsx scripts/collectors/publish-evidence-bundle.ts",
     "cron:render": "tsx scripts/openclaw/render-cron-commands.ts",
     "cron:sync": "tsx scripts/openclaw/sync-cron.ts",
@@ -41,7 +42,8 @@
     "drizzle-orm": "^0.36.4",
     "postgres": "^3.4.9",
     "yaml": "^2.6.1",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
@@ -51,11 +53,11 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^8.57.0",
     "husky": "^9.1.7",
+    "json-schema-to-typescript": "^15.0.4",
     "lint-staged": "^16.4.0",
     "prettier": "^3.5.3",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "json-schema-to-typescript": "^15.0.4",
     "vitest": "^2.1.9"
   },
   "lint-staged": {

@@ -45,3 +45,8 @@ export {
   type PerpLiquidationJobStatus,
   type PerpLiquidationSourceOutcome
 } from "./perp-liquidation-job.js";
+export {
+  generateResearchBriefJob,
+  type GenerateResearchBriefJobDeps,
+  type GenerateResearchBriefJobResult
+} from "./generate-research-brief-job.js";

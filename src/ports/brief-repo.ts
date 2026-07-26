@@ -33,7 +33,7 @@ export interface ResearchBriefInsert {
   modelProvider: string;
   structuredOutput: unknown;
   signalClass: SignalClass;
-  evidenceFamily: EvidenceFamily;
+  evidenceFamily?: EvidenceFamily | null;
   taxonomySummary?: TaxonomySummary | null;
   confidence: Confidence;
   confidenceComposite?: number | null;
@@ -49,5 +49,6 @@ export interface ResearchBriefInsert {
 export interface ResearchBriefRepo {
   insert(row: ResearchBriefInsert): Promise<ResearchBriefRow>;
   findByBundleId(evidenceBundleId: number): Promise<ResearchBriefRow[]>;
+  findByBundleIds?(evidenceBundleIds: readonly number[]): Promise<ResearchBriefRow[]>;
   findByHash(evidenceBundleId: number, payloadHash: string): Promise<ResearchBriefRow | undefined>;
 }

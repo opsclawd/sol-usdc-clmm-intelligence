@@ -104,6 +104,7 @@ vi.mock("../../src/adapters/node/composition-root.js", () => {
             briefRepo: {
               insert: vi.fn(),
               findByBundleId: vi.fn(),
+              findByBundleIds: vi.fn(),
               findByHash: vi.fn()
             },
             publishAttemptRepo: {

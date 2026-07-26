@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "evidence-bundle.v1",
+  "pair": "SOL/USDC",
+  "scope": {
+    "kind": "pair"
+  },
+  "source": {
+    "publisher": "sol-usdc-clmm-intelligence",
+    "sourceId": "test-publisher-1",
+    "sourceVersion": "1.0.0"
+  },
+  "runId": "run-calm-001",
+  "correlationId": "corr-calm-001",
+  "createdAt": "2026-05-10T12:00:00.000Z",
+  "asOf": "2026-05-10T12:00:00.000Z",
+  "freshUntil": "2026-05-10T12:15:00.000Z",
+  "expiresAt": "2026-05-10T13:00:00.000Z",
+  "deterministicFeatures": [
+    {
+      "featureId": "feat-sol-price",
+      "family": "market_state",
+      "featureKind": "number",
+      "status": "available",
+      "value": 145.5,
+      "unit": "price_usdc_per_sol",
+      "observedAt": "2026-05-10T12:00:00.000Z",
+      "freshUntil": "2026-05-10T12:15:00.000Z",
+      "confidenceBps": 9500,
+      "calculator": { "name": "price-aggregator", "version": "1.0.0" },
+      "inputLineage": ["lineage-1"],
+      "warnings": []
+    },
+    {
+      "featureId": "feat-fee-apr",
+      "family": "clmm_economics",
+      "featureKind": "number",
+      "status": "available",
+      "value": 24.5,
+      "unit": "percent",
+      "observedAt": "2026-05-10T12:00:00.000Z",
+      "freshUntil": "2026-05-10T12:15:00.000Z",
+      "confidenceBps": 9000,
+      "calculator": { "name": "fee-calc", "version": "1.0.0" },
+      "inputLineage": ["lineage-2"],
+      "warnings": []
+    }
+  ],
+  "contextualEvidence": {
+    "supportResistance": [
+      {
+        "evidenceId": "sr-calm-1",
+        "kind": "support_zone",
+        "claim": "Strong support at 140.0 USDC",
+        "direction": "bullish",
+        "confidenceBps": 8500,
+        "observedAt": "2026-05-10T12:00:00.000Z",
+        "expiresAt": "2026-05-10T18:00:00.000Z",
+        "sourceReferenceIds": ["sr-ref-1"],
+        "provenanceMethod": "collected"
+      }
+    ],
+    "flows": [],
+    "derivatives": [],
+    "events": [],
+    "newsRegulatory": []
+  },
+  "researchBrief": null,
+  "sourceReferences": [
+    {
+      "referenceId": "sr-ref-1",
+      "sourceType": "api",
+      "locator": "https://api.example.com/sr",
+      "publishedAt": "2026-05-10T11:55:00.000Z",
+      "observedAt": "2026-05-10T12:00:00.000Z",
+      "contentHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    }
+  ],
+  "assessment": {
+    "overallConfidenceBps": 9200,
+    "quality": "complete",
+    "coverage": {
+      "deterministic": "available",
+      "supportResistance": "available",
+      "flows": "unavailable",
+      "derivatives": "unavailable",
+      "events": "unavailable",
+      "newsRegulatory": "unavailable",
+      "researchBrief": "unavailable"
+    },
+    "warnings": []
+  },
+  "provenance": {
+    "pipelineVersion": "1.0.0",
+    "gitCommit": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "environment": "test",
+    "upstreamRunIds": ["upstream-1"]
+  }
+}

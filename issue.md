@@ -1,40 +1,56 @@
-# feat: add perp and liquidation research collectors pack C
+# feat: generate schema-constrained research briefs from evidence bundles
 
 ## Summary
 
-Add perp/funding/liquidation collector support for SOL market crowding and stress context.
+Use an LLM over bounded, structured evidence bundles to produce compact research briefs for Regime Engine.
 
-## Required evidence families
+## Core rule
 
-- funding rate;
-- open interest trend;
-- perp/spot basis where available;
-- liquidation clusters / recent liquidation stress;
-- leverage-crowding proxies from lending/perp venues where defensible.
+The LLM summarizes and explains evidence. It does not invent deterministic metrics and does not make the final policy decision.
+
+## Required brief output
+
+Define a schema-constrained `ResearchBrief` that includes at least:
+
+- pair;
+- asOf / expiresAt;
+- source bundle refs;
+- headline;
+- key changes since prior brief;
+- supports-current-regime assessment where applicable;
+- major risks;
+- confidence;
+- source refs;
+- warnings / missing evidence;
+- prompt version;
+- model/provider metadata.
 
 ## Scope
 
 In scope:
 
-- source adapters;
-- raw retention and normalized observations;
-- deterministic calculations where source values permit;
-- confidence/freshness model;
-- tests.
+- prompt templates;
+- JSON/schema-constrained output;
+- bounded evidence selection;
+- prompt/model versioning;
+- persistence of inputs and outputs;
+- regression fixtures and tests;
+- fallback behavior on invalid model output.
 
 Out of scope:
 
-- policy decisions;
-- LLM final summarization;
-- unsupported venues with unverifiable data quality.
+- policy synthesis;
+- direct user-facing copy;
+- raw data collection.
 
 ## Acceptance criteria
 
-- [ ] Funding, OI, basis, and liquidation observations have normalized contracts.
-- [ ] Venue-specific adapters do not leak raw source shapes into the domain layer.
-- [ ] Missing or stale perp data degrades explicitly.
-- [ ] Evidence carries source, timestamp, freshness, confidence, and lineage.
-- [ ] Tests cover rising/falling OI, positive/negative funding, stale data, and unavailable-source cases.
+- [ ] The LLM receives bounded structured evidence, not an uncontrolled raw data dump.
+- [ ] The output is schema-validated before persistence/publication.
+- [ ] Prompt version and model/provider metadata are persisted.
+- [ ] Unsupported or missing inputs are called out explicitly in the brief.
+- [ ] Invalid LLM output fails closed or enters a clear degraded state.
+- [ ] Regression fixtures cover at least calm, trending, stressed, and sparse-data scenarios.
 
 ## Parent
 
@@ -42,6 +58,7 @@ Part of opsclawd/sol-usdc-clmm-intelligence#2.
 
 ## Blocked by
 
-- opsclawd/sol-usdc-clmm-intelligence#3
-- opsclawd/sol-usdc-clmm-intelligence#5
-- opsclawd/sol-usdc-clmm-intelligence#6
+- opsclawd/sol-usdc-clmm-intelligence#8
+- opsclawd/sol-usdc-clmm-intelligence#9
+- opsclawd/sol-usdc-clmm-intelligence#10
+- opsclawd/sol-usdc-clmm-intelligence#11

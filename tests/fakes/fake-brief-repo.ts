@@ -21,7 +21,7 @@ export class FakeBriefRepo implements ResearchBriefRepo {
       modelProvider: row.modelProvider,
       structuredOutput: row.structuredOutput,
       signalClass: row.signalClass,
-      evidenceFamily: row.evidenceFamily,
+      evidenceFamily: row.evidenceFamily ?? null,
       taxonomySummary: row.taxonomySummary ?? null,
       confidence: row.confidence ?? DEFAULT_CONFIDENCE,
       confidenceComposite: row.confidenceComposite ?? null,
@@ -39,6 +39,11 @@ export class FakeBriefRepo implements ResearchBriefRepo {
 
   async findByBundleId(evidenceBundleId: number): Promise<ResearchBriefRow[]> {
     return this.store.filter((r) => r.evidenceBundleId === evidenceBundleId);
+  }
+
+  async findByBundleIds(evidenceBundleIds: readonly number[]): Promise<ResearchBriefRow[]> {
+    const set = new Set(evidenceBundleIds);
+    return this.store.filter((r) => set.has(r.evidenceBundleId));
   }
 
   async findByHash(

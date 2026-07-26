@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { researchBriefs } from "../../db/schema/research-briefs.js";
 import type {
   ResearchBriefRepo,
@@ -42,7 +42,7 @@ export class DrizzleBriefRepo implements ResearchBriefRepo {
         modelProvider: row.modelProvider,
         structuredOutput: row.structuredOutput,
         signalClass: row.signalClass,
-        evidenceFamily: row.evidenceFamily,
+        evidenceFamily: row.evidenceFamily ?? null,
         taxonomySummary: row.taxonomySummary ?? null,
         confidence: row.confidence as unknown,
         confidenceComposite:
@@ -90,6 +90,15 @@ export class DrizzleBriefRepo implements ResearchBriefRepo {
       .select()
       .from(researchBriefs)
       .where(eq(researchBriefs.evidenceBundleId, evidenceBundleId));
+    return rows.map(toPortRow);
+  }
+
+  async findByBundleIds(evidenceBundleIds: readonly number[]): Promise<ResearchBriefRow[]> {
+    if (evidenceBundleIds.length === 0) return [];
+    const rows = await this.db
+      .select()
+      .from(researchBriefs)
+      .where(inArray(researchBriefs.evidenceBundleId, [...evidenceBundleIds]));
     return rows.map(toPortRow);
   }
 }

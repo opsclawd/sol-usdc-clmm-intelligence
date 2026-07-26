@@ -108,6 +108,7 @@ vi.mock("../../src/adapters/node/composition-root.js", () => {
             briefRepo: {
               insert: vi.fn(),
               findByBundleId: vi.fn(),
+              findByBundleIds: vi.fn(),
               findByHash: vi.fn()
             },
             publishAttemptRepo: {
@@ -410,7 +411,12 @@ describe("context-events collector script", () => {
               findByPair: vi.fn(),
               findLatestByPair: vi.fn()
             },
-            briefRepo: { insert: vi.fn(), findByBundleId: vi.fn(), findByHash: vi.fn() },
+            briefRepo: {
+              insert: vi.fn(),
+              findByBundleId: vi.fn(),
+              findByBundleIds: vi.fn(),
+              findByHash: vi.fn()
+            },
             publishAttemptRepo: {
               insert: vi.fn(),
               findByTargetAndKey: vi.fn(),

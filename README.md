@@ -427,7 +427,56 @@ Future publishing to regime-engine must send the stored `payloadCanonical` direc
 
 The migration that introduces evidence bundle constraints assumes `intelligence.evidence_bundles` is empty. If any row exists, the migration aborts. Do not rewrite or delete existing rows without lead engineer approval.
 
-## Integration contracts
+## Operational Research Brief Generation (`pnpm generate:brief`)
+
+The `pnpm generate:brief <request-json-path>` command generates a schema-constrained LLM research brief over a bounded, stored evidence bundle.
+
+### Command and Environment
+
+```bash
+pnpm generate:brief data/brief-request.json
+```
+
+Required environment variables:
+
+- `LLM_BASE_URL`: Base URL for OpenAI-compatible LLM endpoint (e.g. `https://api.openai.com/v1`).
+- `LLM_API_KEY`: API key for the LLM provider.
+- `LLM_MODEL`: Target model identifier (e.g. `gpt-4o-mini`).
+
+Optional environment variables:
+
+- `LLM_MODEL_VERSION`: Optional model version tag.
+- `LLM_TIMEOUT_MS`: Target timeout in milliseconds (defaults to finite 30,000 ms; no infinite wait and no generation retry loop).
+
+### Request Structure and Caller Inputs
+
+The request JSON file specifies target bundle lookup and context:
+
+```json
+{
+  "evidenceBundleId": 42,
+  "callerSuppliedCurrentRegime": {
+    "regimeLabel": "trending_up",
+    "asOfUnixMs": 1700000000000
+  }
+}
+```
+
+If `callerSuppliedCurrentRegime` is omitted or empty, the regime assessment is defaulted to `not_applicable`. The current regime is only assessed when a bounded, caller-owned input is explicitly provided — the intelligence layer does not scrape or infer policy state.
+
+### Authority Boundary and Bounded-Context Limits
+
+- **Summarizes evidence only**: The LLM summarizes bounded, structured evidence. It does not invent numeric metrics, alter derived features, or synthesize policy decisions.
+- **Strict JSON-Schema envelope**: Provider output is constrained by a strict JSON schema. Unvalidated or free-form responses fail closed.
+- **Bounded prior context**: Prior-brief lookups are strictly bounded to at most 7 days and 10 bundles to prevent unbounded context growth.
+- **No execution authority**: Briefs are advisory contextual research summaries.
+
+### Complete vs Degraded Outcomes
+
+- **`COMPLETE`**: Successfully generated over an active bundle, passes schema validation, and persisted. Eligible for outbound publication with evidence bundles.
+- **`DEGRADED`**: Generated when input data or context is incomplete, expired, or degraded. Retained in Postgres as useful audit evidence but **not eligible for outbound attachment/publication**.
+
+[diff_block_end]
 
 ### Reading from `clmm-v2`
 
@@ -494,6 +543,7 @@ pnpm collect:context-events  # collects contextual events (scheduled macro event
 pnpm collect:support-resistance  # collects support/resistance levels from technical-analysis-api provider
 pnpm collect:news-evidence  # collects ecosystem and regulatory news from two-source allowlist
 pnpm assemble:bundle      # assembles evidence bundle from derived features and observations
+pnpm generate:brief       # generates schema-constrained research brief over bounded evidence bundle
 pnpm db:generate          # generates Drizzle migrations from schema changes
 pnpm db:migrate           # runs Drizzle migrations against DATABASE_URL
 pnpm db:push              # pushes schema changes directly (dev only)
