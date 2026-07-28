@@ -1,10 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { makeHeliusTransactionFlowEvent } from "../../fixtures/on-chain-flow.js";
 import type { StablecoinFlowPayloadV1 } from "../../../src/contracts/on-chain-flow.js";
-import {
-  normalizeOnChainFlow,
-  OnChainFlowNormalizationError
-} from "../../../src/domain/on-chain-flow/normalize.js";
+import { normalizeOnChainFlow } from "../../../src/domain/on-chain-flow/normalize.js";
 
 describe("normalizeOnChainFlow", () => {
   describe("normalizes transaction direction from explicit asset deltas only", () => {
@@ -222,58 +219,6 @@ describe("normalizeOnChainFlow", () => {
   });
 
   describe("normalizes DEX net flow with a signed net equal to buy minus sell", () => {
-    it("accepts consistent DEX net flow where buy - sell = net", () => {
-      const event = {
-        eventKind: "birdeye_net_flow" as const,
-        timestampUnixMs: 1700000000000,
-        buyVolume: "50000000000",
-        sellVolume: "30000000000",
-        netFlow: "20000000000",
-        sourceReferences: ["https://birdeye.xyz/token/SOL"]
-      };
-      const result = normalizeOnChainFlow(event, Date.now());
-      expect(result.eventType).toBe("dex_net_flow");
-      expect((result as Record<string, unknown>).buyVolumeUsdc).toBe("50000000000");
-      expect((result as Record<string, unknown>).sellVolumeUsdc).toBe("30000000000");
-      expect((result as Record<string, unknown>).netFlowUsdc).toBe("20000000000");
-    });
-
-    it("rejects inconsistent provider net value where buy - sell != net", () => {
-      const event = {
-        eventKind: "birdeye_net_flow" as const,
-        timestampUnixMs: 1700000000000,
-        buyVolume: "50000000000",
-        sellVolume: "30000000000",
-        netFlow: "10000000000",
-        sourceReferences: ["https://birdeye.xyz/token/SOL"]
-      };
-      expect(() => normalizeOnChainFlow(event, Date.now())).toThrow(OnChainFlowNormalizationError);
-    });
-
-    it("rejects net flow where buy - sell gives negative of claimed positive net", () => {
-      const event = {
-        eventKind: "birdeye_net_flow" as const,
-        timestampUnixMs: 1700000000000,
-        buyVolume: "30000000000",
-        sellVolume: "50000000000",
-        netFlow: "20000000000",
-        sourceReferences: ["https://birdeye.xyz/token/SOL"]
-      };
-      expect(() => normalizeOnChainFlow(event, Date.now())).toThrow(OnChainFlowNormalizationError);
-    });
-
-    it("rejects inconsistent net values rather than silently correcting", () => {
-      const event = {
-        eventKind: "birdeye_net_flow" as const,
-        timestampUnixMs: 1700000000000,
-        buyVolume: "10000000000",
-        sellVolume: "5000000000",
-        netFlow: "6000000000",
-        sourceReferences: ["https://birdeye.xyz/token/SOL"]
-      };
-      expect(() => normalizeOnChainFlow(event, Date.now())).toThrow(OnChainFlowNormalizationError);
-    });
-
     it("dex_net_flow strips negative sign from amountUsdc and derives direction from net flow sign", () => {
       const event = {
         eventKind: "dex_net_flow" as const,

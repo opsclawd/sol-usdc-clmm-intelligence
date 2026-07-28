@@ -145,13 +145,6 @@ function getAmountDecimal(event: AcceptedOnChainFlowSourceEvent): ParsedDecimal 
         amountStr = String(event.nativeAmount);
       }
       break;
-    case "birdeye_net_flow":
-      if (typeof event.netFlow === "string") {
-        amountStr = event.netFlow;
-      } else {
-        amountStr = String(event.netFlow);
-      }
-      break;
     case "whale_transfer":
     case "whale_swap":
     case "stablecoin_flow":
@@ -178,7 +171,6 @@ function getThresholdForEventKind(
       return thresholds.whaleSwapMinUsdc;
     case "stablecoin_flow":
       return thresholds.stablecoinFlowMinUsdc;
-    case "birdeye_net_flow":
     case "dex_net_flow":
       return thresholds.dexNetFlowMinUsdc;
     case "cex_flow_proxy":
@@ -195,7 +187,7 @@ export function qualifiesOnChainFlow(
   let amountDecimal = getAmountDecimal(event);
   const threshold = getThresholdForEventKind(event, thresholds);
 
-  if (event.eventKind === "birdeye_net_flow" || event.eventKind === "dex_net_flow") {
+  if (event.eventKind === "dex_net_flow") {
     amountDecimal = { ...amountDecimal, sign: 1 };
   }
 
