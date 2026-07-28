@@ -63,6 +63,44 @@ describe("accepts only the configured Whirlpool and SOL USDC mint pair in either
       )
     ).toThrow(OrcaPoolValidationError);
   });
+
+  it("extracts the correct pool from multiple pools in the array matching the address", () => {
+    const pool1 = makeOrcaPoolResponse().data[0]!;
+    const pool2 = {
+      ...pool1,
+      address: "anotherAddress"
+    };
+    const response = {
+      data: [pool2, pool1] // target pool is the second one
+    };
+    const { accepted } = acceptOrcaPoolResponse(
+      response,
+      DEFAULT_WHIRLPOOL_ADDRESS,
+      DEFAULT_SOL_MINT,
+      DEFAULT_USDC_MINT
+    );
+    expect(accepted.address).toBe(DEFAULT_WHIRLPOOL_ADDRESS);
+  });
+
+  it("rejects when the matching pool address is not found in the array", () => {
+    const pool1 = makeOrcaPoolResponse().data[0]!;
+    const response = {
+      data: [
+        {
+          ...pool1,
+          address: "anotherAddress"
+        }
+      ]
+    };
+    expect(() =>
+      acceptOrcaPoolResponse(
+        response,
+        DEFAULT_WHIRLPOOL_ADDRESS,
+        DEFAULT_SOL_MINT,
+        DEFAULT_USDC_MINT
+      )
+    ).toThrow(OrcaPoolValidationError);
+  });
 });
 
 describe("rejects invalid present metrics instead of silently dropping them", () => {

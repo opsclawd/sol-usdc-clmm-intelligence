@@ -49,8 +49,8 @@ export async function collectOrcaPoolStatistics(
   const pipelineRunId = context.runId;
 
   const normalizedBase = base.replace(/\/$/, "");
-  const path = "/public/pool";
-  const url = `${normalizedBase}${path}?address=${poolAddress}&stats=24h`;
+  const path = "/pools";
+  const url = `${normalizedBase}${path}?addresses=${poolAddress}`;
 
   let response: unknown;
   try {

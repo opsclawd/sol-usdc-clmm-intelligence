@@ -40,7 +40,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
   it("persists accepted Orca raw content before normalized pool statistics and parsed status", async () => {
     const deps = createDeps();
     const response = makeOrcaPoolResponse();
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
+    const url = `${ORCA_API_BASE}/pools?addresses=${DEFAULT_WHIRLPOOL_ADDRESS}`;
     deps.http.setResponse(url, { body: response });
 
     const result = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
@@ -57,7 +57,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
       expect.objectContaining({
         method: "GET",
         host: "api.orca.so",
-        path: "/public/pool",
+        path: "/pools",
         poolAddress: DEFAULT_WHIRLPOOL_ADDRESS,
         statsWindow: "24h",
         apiVersion: "v2",
@@ -81,7 +81,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
 
   it("rejects malformed Orca responses before raw insertion", async () => {
     const deps = createDeps();
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
+    const url = `${ORCA_API_BASE}/pools?addresses=${DEFAULT_WHIRLPOOL_ADDRESS}`;
     deps.http.setResponse(url, { body: { data: { address: "wrong" } } }); // mismatch pool address
 
     const result = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
@@ -100,7 +100,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
       tvlUsdc: "1000.00",
       stats: null // volume & fees missing
     });
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
+    const url = `${ORCA_API_BASE}/pools?addresses=${DEFAULT_WHIRLPOOL_ADDRESS}`;
     deps.http.setResponse(url, { body: response });
 
     const result = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
@@ -127,7 +127,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
       tvlUsdc: null,
       stats: null
     });
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
+    const url = `${ORCA_API_BASE}/pools?addresses=${DEFAULT_WHIRLPOOL_ADDRESS}`;
     deps.http.setResponse(url, { body: response });
 
     const result = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
@@ -138,7 +138,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
   it("recovers parsed Orca replay metadata from its linked normalized row", async () => {
     const deps = createDeps();
     const response = makeOrcaPoolResponse();
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
+    const url = `${ORCA_API_BASE}/pools?addresses=${DEFAULT_WHIRLPOOL_ADDRESS}`;
     deps.http.setResponse(url, { body: response });
 
     // First collect
@@ -159,21 +159,22 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
   it("recovers pending and failed Orca replays from stored canonical content", async () => {
     const deps = createDeps();
     const response = makeOrcaPoolResponse();
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
+    const url = `${ORCA_API_BASE}/pools?addresses=${DEFAULT_WHIRLPOOL_ADDRESS}`;
     deps.http.setResponse(url, { body: response });
 
+    const firstPool = response.data[0]!;
     const { payloadCanonical, payloadHash } = await canonicalizePayload(response);
     const sourceObservationKey = await deriveOrcaSourceObservationKey({
       poolAddress: DEFAULT_WHIRLPOOL_ADDRESS,
-      updatedAt: response.data.updatedAt,
-      updatedSlot: response.data.updatedSlot
+      updatedAt: firstPool.updatedAt,
+      updatedSlot: firstPool.updatedSlot
     });
 
     // Seed raw repo with a pending row
     const rawInsertRes = await deps.rawObservationRepo.insertOrClassify({
       source: "orca-public-api",
       sourceObservationKey,
-      observedAtUnixMs: Date.parse(response.data.updatedAt),
+      observedAtUnixMs: Date.parse(firstPool.updatedAt),
       fetchedAtUnixMs: VALID_CONTEXT.startedAtUnixMs,
       payloadHash,
       payloadCanonical,
@@ -194,7 +195,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
 
   it("rejects conflicting Orca replay without overwrite or normalization", async () => {
     const deps = createDeps();
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
+    const url = `${ORCA_API_BASE}/pools?addresses=${DEFAULT_WHIRLPOOL_ADDRESS}`;
 
     const responseV1 = makeOrcaPoolResponse({ tvlUsdc: "1000.00" });
     deps.http.setResponse(url, { body: responseV1 });
@@ -211,7 +212,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
   it("marks accepted Orca raw content failed when normalization fails", async () => {
     const deps = createDeps();
     const response = makeOrcaPoolResponse();
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
+    const url = `${ORCA_API_BASE}/pools?addresses=${DEFAULT_WHIRLPOOL_ADDRESS}`;
     deps.http.setResponse(url, { body: response });
 
     // Mock normalization to fail
@@ -228,7 +229,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
   });
 
   it("classifies timeout network rate limit server error and invalid JSON safely", async () => {
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
+    const url = `${ORCA_API_BASE}/pools?addresses=${DEFAULT_WHIRLPOOL_ADDRESS}`;
 
     // 1. Timeout
     {
