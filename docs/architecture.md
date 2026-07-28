@@ -266,6 +266,50 @@ Helius API / Birdeye API provider
 9. **Five flow kinds required**: The collector requires both Helius (4 flow kinds) and Birdeye (1 flow kind) to be configured. Missing or failing sources reduce status to PARTIAL or UNAVAILABLE.
 10. **No pagination/backfill**: This plan covers one bounded time window per run. API pagination/backfill for extended historical collection is out of scope.
 
+## Perp & Liquidation Collector (`binance-fapi`, `drift-api`)
+
+The perp & liquidation collector (`pnpm collect:perp-liquidation`) collects SOL perp market and liquidation-stress evidence from two venues: Binance Futures (`binance-fapi`) and Drift Protocol (`drift-api`). It runs both venues concurrently within a single collection run context and, unlike the other collector packs, also derives its own deterministic feature tranche in the same pass rather than deferring to a separate `derive:*` step.
+
+**Contracts**: `src/contracts/perp-liquidation.ts`
+**Source port**: `PerpLiquidationSourcePort` in `src/ports/perp-liquidation-source.ts`
+**HTTP adapter (Binance)**: `src/adapters/node/http-binance-fapi-source.ts`
+**HTTP adapter (Drift)**: `src/adapters/node/http-drift-source.ts`
+**Domain (validate/normalize/identify/enrich/derive)**: `src/domain/perp-liquidation/`
+**Application use case**: `collectPerpLiquidation` in `src/application/collect-perp-liquidation.ts`
+**Job**: `perpLiquidationJob` / `runPerpLiquidationJob` in `src/jobs/perp-liquidation-job.ts`
+**CLI script**: `scripts/collectors/perp-liquidation.ts`
+
+**Data flow**:
+
+```text
+Binance fAPI (binance-fapi) / Drift API (drift-api)
+         |
+         v (raw observation, append-only)
+  raw_observations
+         |
+         v (normalized, validated)
+  normalized_observations (funding_rate | open_interest | perp_basis | liquidation_event | leverage_proxy)
+         |
+         v (derived per-venue, same collection run)
+  derived_features (oi_trend_4h | funding_rate_annualized | basis_spread_bps | liquidation_cluster_1h)
+```
+
+**Key invariants**:
+
+1. **Exactly two sources, no more, no fewer**: `runPerpLiquidationJob` throws unless exactly one `binance-fapi` and one `drift-api` source are configured. Duplicate or missing venues are a configuration error, not a degraded run.
+2. **Five observation kinds, four derived feature kinds**: Normalized observations carry one of `funding_rate`, `open_interest`, `perp_basis`, `liquidation_event`, `leverage_proxy`. Derivation produces at most `oi_trend_4h`, `funding_rate_annualized`, `basis_spread_bps`, and `liquidation_cluster_1h` per venue — `leverage_proxy` observations are captured as evidence but do not yet feed a derived feature.
+3. **Per-venue derivation**: `derivePerpLiquidationFeatures` groups candidates by venue and derives each of the four feature kinds independently per venue (falls back to `binance-fapi` if no candidates are present), so Binance and Drift never mix inputs within one feature calculation.
+4. **Exact-decimal arithmetic**: All feature math (OI trend, annualized funding, basis spread, liquidation cluster) uses `bigint`-backed rational arithmetic (`src/domain/derived-feature/decimal.ts`) with ties-away-from-zero rounding to a BPS integer — no floating-point drift.
+   - `oi_trend_4h`: `((latestOi - earliestOi) * 10_000) / earliestOi`, over the earliest/latest open-interest samples in a 4-hour window (requires ≥ 2 samples).
+   - `funding_rate_annualized`: `fundingRate * (24 / fundingIntervalHours) * 365 * 10_000`, from the latest funding-rate sample.
+   - `basis_spread_bps`: `((perpPrice - spotPrice) * 10_000) / spotPrice`, from the latest perp-basis sample.
+   - `liquidation_cluster_1h`: `(sum(liquidation notional, deduped, 1h window, same venue) * 10_000) / latestSameVenueOpenInterestUsdc`; `UNAVAILABLE` with reason `no_same_venue_oi_denominator` when no same-venue OI sample exists to denominate against.
+5. **Coverage gates feature availability**: If the source-reported coverage for an observation kind is not `available`, any feature depending on it is forced to `UNAVAILABLE` with reason `coverage_unavailable`, regardless of what the calculation would have produced.
+6. **Binance liquidation limitation**: Binance's public futures REST API does not expose market-wide liquidation history without account-scoped (`USER_DATA`) authentication, so Binance supplies perp market state (funding, OI, basis) only. Drift's public on-chain liquidation stream is the sole source for `liquidation_event` evidence.
+7. **Configuration-driven, no hardcoded instrument**: `BINANCE_SOL_PERP_SYMBOL` and `DRIFT_SOL_PERP_MARKET_INDEX` are required env vars with no default instrument; the collector fails closed (`status: "failed"`, exit 1) rather than guessing an instrument if either is unset.
+8. **Minimum lookback floor**: `PERP_LIQUIDATION_LOOKBACK_MS` must be a positive integer of at least 14,400,000 ms (4 hours) — enough to cover the `oi_trend_4h` window — or the collector rejects the configuration.
+9. **Authority boundary**: Perp/liquidation evidence describes market stress conditions, not policy. Liquidation clusters and funding spikes are not execution triggers; final synthesis belongs to regime-engine.
+
 ## Deterministic Feature Derivation
 
 All seven canonical features are derived by code from normalized source observations. The derivation is deterministic: identical inputs produce bit-for-bit identical outputs.

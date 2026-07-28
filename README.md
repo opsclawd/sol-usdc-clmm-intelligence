@@ -50,9 +50,9 @@ Today:
 - `regime-engine` is the deterministic analytics and ledger service. It stores candles, computes current regime, stores S/R/current insight blocks, and records CLMM execution-result events.
 - `sol-usdc-clmm-intelligence` is the advisory/evidence pipeline. It pulls CLMM bundles from `clmm-v2`, combines them with price/source/research context, runs OpenClaw routines, and maintains durable memory.
 
-## Open roadmap and future state
+## Evidence-pipeline roadmap (delivered)
 
-Open issues #2 and #7 through #13 define the corrected architecture: this repo should become a durable evidence pipeline, not the final policy author.
+Issues #2 and #7 through #13 (plus follow-on #21) defined the corrected architecture: this repo becomes a durable evidence pipeline, not the final policy author. All of that tracked work is now closed and merged — the sections below describe the delivered system, not open work. There are no open issues in this repo as of 2026-07-28.
 
 The corrected boundary is:
 
@@ -93,7 +93,7 @@ The system derives exactly seven canonical numeric features from normalized sour
 
 ### Evidence-pipeline epic
 
-Tracked by #2.
+Delivered by #2.
 
 The roadmap refactors this repo from a script-first OpenClaw artifact pipeline into a durable evidence pipeline that gathers, normalizes, stores, derives, summarizes, and publishes structured research evidence for Regime Engine.
 
@@ -115,7 +115,7 @@ Out of scope:
 
 ### Core deterministic source ingestion
 
-Tracked by #7.
+Delivered by #7.
 
 The ingestion layer should collect and normalize at least:
 
@@ -129,7 +129,7 @@ Raw responses should be persisted before normalization. Partial source failures 
 
 ### Deterministic feature derivation
 
-Tracked by #8.
+Delivered by #8.
 
 Numerical features should be computed by code, not by an LLM. Required feature families include:
 
@@ -141,7 +141,7 @@ Every feature should carry input lineage, as-of time, freshness, and confidence.
 
 ### Contextual research collectors
 
-Tracked by #9, #10, and #11.
+Delivered by #9, #10, and #11.
 
 Research collector packs add:
 
@@ -151,23 +151,15 @@ Research collector packs add:
 
 - **news evidence** (`crypto-news-api`, `regulatory-monitor-api`): Collects bounded factual extracts from two allowed news sources. Produces `ecosystem_news` and `regulatory_risk` observations with immutable article/version identities, correction semantics, corroboration state, and source quality metadata. Ecosystem news carries a 24-hour freshness cap; regulatory risk carries a 72-hour cap. Syndication is distinguished from independent corroboration. Missing coverage does not imply no risk. No full-text retention, LLM briefs, policy synthesis, or execution authority.
 
-Research collector packs should add:
+- **on-chain flow** (`pnpm collect:on-chain-flow`, Helius + Birdeye): Collects whale transfers, whale swaps, stablecoin mint/burn/transfer flows, DEX net flow, and probabilistic CEX flow proxies. Produces `whale_transfer`, `whale_swap`, `stablecoin_flow`, `dex_net_flow`, and `cex_flow_proxy` observations with exact-decimal thresholds. On-chain flow data describes what happened, not why — no output claims motive or policy. See `docs/architecture.md` and `docs/operator-runbook.md` for the full contract.
 
-- support/resistance theses;
-- macro calendar and high-impact scheduled events;
-- Solana protocol incidents and ecosystem news;
-- regulatory headlines relevant to SOL/USDC market risk;
-- whale transfers and whale swaps;
-- stablecoin mint/burn and transfer flows;
-- DEX net flow and SOL buy/sell pressure;
-- defensible CEX flow proxies;
-- funding rates, open interest, perp/spot basis, liquidation clusters, and leverage-crowding proxies.
+- **perp & liquidation** (`pnpm collect:perp-liquidation`, Binance fAPI + Drift): Collects funding rates, open interest, perp/spot basis, and liquidation-cluster evidence for leverage-crowding context. Derives deterministic perp stress features from the two-venue observations.
 
-Facts and interpretations must remain separate. A transfer is a fact; motive is an interpretation. Noisy signals should carry explicit source-quality and confidence metadata.
+Facts and interpretations must remain separate. A transfer is a fact; motive is an interpretation. Noisy signals carry explicit source-quality and confidence metadata.
 
 ### Schema-constrained research briefs
 
-Tracked by #12.
+Delivered by #12.
 
 The LLM should summarize bounded structured evidence, not invent deterministic metrics and not make final policy decisions.
 
@@ -190,7 +182,7 @@ Invalid model output should fail closed or enter a clear degraded state.
 
 ### Evidence publication to Regime Engine
 
-Tracked by #13 and #21.
+Delivered by #13 and #21.
 
 The outbound publisher targets Regime Engine's evidence-ingest endpoint (`POST /v1/evidence/sol-usdc`), not the legacy final-insight route. This repo publishes canonical evidence bundles to Regime Engine and never publishes final `PolicyInsight` or executes transactions.
 
@@ -476,8 +468,6 @@ If `callerSuppliedCurrentRegime` is omitted or empty, the regime assessment is d
 - **`COMPLETE`**: Successfully generated over an active bundle, passes schema validation, and persisted. Eligible for outbound publication with evidence bundles.
 - **`DEGRADED`**: Generated when input data or context is incomplete, expired, or degraded. Retained in Postgres as useful audit evidence but **not eligible for outbound attachment/publication**.
 
-[diff_block_end]
-
 ### Reading from `clmm-v2`
 
 Required env vars:
@@ -542,11 +532,18 @@ pnpm collect:clmm-bundle  # legacy command: fetches and writes SOL/USDC CLMM bun
 pnpm collect:context-events  # collects contextual events (scheduled macro events, protocol incidents)
 pnpm collect:support-resistance  # collects support/resistance levels from technical-analysis-api provider
 pnpm collect:news-evidence  # collects ecosystem and regulatory news from two-source allowlist
+pnpm collect:on-chain-flow    # collects on-chain flow evidence (whale transfers/swaps, stablecoin flow, DEX net flow, CEX proxies) from Helius and Birdeye
+pnpm collect:perp-liquidation # collects perp/liquidation stress evidence (funding, OI, basis, liquidation clusters) from Binance fAPI and Drift
+pnpm derive:mvp           # derives the seven canonical MVP evidence features from normalized observations
 pnpm assemble:bundle      # assembles evidence bundle from derived features and observations
 pnpm generate:brief       # generates schema-constrained research brief over bounded evidence bundle
+pnpm publish:evidence     # publishes a persisted evidence bundle to regime-engine's evidence-ingest endpoint
+pnpm contract:evidence-bundle:check     # verifies the pinned evidence-bundle contract asset hashes
+pnpm contract:evidence-bundle:generate  # regenerates the evidence-bundle contract provenance manifest
 pnpm db:generate          # generates Drizzle migrations from schema changes
 pnpm db:migrate           # runs Drizzle migrations against DATABASE_URL
 pnpm db:push              # pushes schema changes directly (dev only)
+pnpm db:provision-roles   # provisions least-privilege Postgres roles for the intelligence schema
 pnpm cron:render          # prints OpenClaw cron add commands
 pnpm cron:sync -- --apply # creates OpenClaw cron jobs
 pnpm verify               # typecheck, lint, format, tests, boundaries
@@ -582,6 +579,24 @@ For Support Resistance collection:
 ```bash
 SUPPORT_RESISTANCE_API_URL=<technical-analysis-api-provider-url>
 SUPPORT_RESISTANCE_API_KEY=<optional-api-key>
+```
+
+For On-Chain Flow collection (Helius transaction flows, Birdeye DEX net flows; see `docs/operator-runbook.md` for threshold overrides):
+
+```bash
+HELIUS_FLOW_API_URL=<helius-transactions-api-url>
+HELIUS_API_KEY=<helius-api-key>
+BIRDEYE_FLOW_API_URL=<birdeye-defi-portfolio-api-url>
+BIRDEYE_API_KEY=<birdeye-api-key>
+```
+
+For Perp & Liquidation collection (Binance fAPI, Drift):
+
+```bash
+BINANCE_FAPI_BASE_URL=https://fapi.binance.com
+BINANCE_SOL_PERP_SYMBOL=SOLUSDT
+DRIFT_DATA_API_BASE_URL=https://mainnet-beta.api.drift.trade
+DRIFT_SOL_PERP_MARKET_INDEX=0
 ```
 
 For Postgres:

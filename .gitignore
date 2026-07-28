@@ -9,6 +9,9 @@ coverage/
 .cache/
 .tmp/
 
+# agent worktrees created for automation runs
+.ai-worktrees/
+
 # local runtime snapshots; keep .gitkeep files
 /data/*.json
 /outputs/*.json
