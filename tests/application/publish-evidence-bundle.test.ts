@@ -399,7 +399,9 @@ describe("publishEvidenceBundle", () => {
       http.nextResponse = { status: 200, ok: true, body: { success: true }, headers: {} };
       await publish();
       expect(http.callLog).toHaveLength(1);
-      expect(http.callLog[0]!.options.headers?.["X-Evidence-Ingest-Token"]).toBe("test-token-abc123");
+      expect(http.callLog[0]!.options.headers?.["X-Evidence-Ingest-Token"]).toBe(
+        "test-token-abc123"
+      );
     });
 
     it("requestHash equals payloadHash from bundle", async () => {
