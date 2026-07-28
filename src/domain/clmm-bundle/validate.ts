@@ -103,10 +103,28 @@ const alertDataSchema = z.object({
   triggeredAt: finiteNumber()
 });
 
+const dataQualityWarningSchema = z.object({
+  code: z.enum([
+    "sr_levels_unavailable",
+    "actionable_triggers_unavailable",
+    "fee_reward_usd_unavailable",
+    "price_distance_unavailable",
+    "principal_token_amounts_unavailable",
+    "usd_price_quote_unavailable"
+  ]),
+  message: z.string(),
+  scope: z
+    .object({
+      poolId: z.string().optional(),
+      positionId: z.string().optional(),
+      tokenMint: z.string().optional()
+    })
+    .optional()
+});
+
 const dataQualitySchema = z.object({
-  warnings: z.array(z.string()),
-  isPartial: z.boolean(),
-  missingSources: z.array(z.string())
+  warnings: z.array(dataQualityWarningSchema),
+  partial: z.boolean()
 });
 
 const poolDataSchema = z.object({
@@ -197,13 +215,11 @@ export class ClmmBundleValidationError extends Error {
 
 export function acceptClmmBundleEnvelope(response: unknown) {
   const envelopeSchema = z.object({
-    bundle: clmmBundleSchema,
-    status: z.string()
+    bundle: clmmBundleSchema
   });
 
   const parsed = envelopeSchema.parse(response) as {
     bundle: ClmmBundle;
-    status: string;
   };
 
   validatePositionPoolConsistency(parsed.bundle.positions, parsed.bundle.pool);

@@ -136,8 +136,7 @@ export function makeAlertData(overrides?: Partial<AlertData>): AlertData {
 export function makeDataQuality(overrides?: Partial<DataQuality>): DataQuality {
   return {
     warnings: [],
-    isPartial: false,
-    missingSources: [],
+    partial: false,
     ...overrides
   };
 }

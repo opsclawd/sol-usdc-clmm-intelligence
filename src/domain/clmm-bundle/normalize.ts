@@ -141,7 +141,6 @@ function mapDataQuality(
     pair,
     observedAtUnixMs,
     warnings: [...dataQuality.warnings],
-    isPartial: dataQuality.isPartial,
-    missingSources: [...dataQuality.missingSources]
+    partial: dataQuality.partial
   };
 }

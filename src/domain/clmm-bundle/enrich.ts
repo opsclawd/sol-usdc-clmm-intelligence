@@ -83,7 +83,7 @@ export const ENRICHED_CLMM_OBSERVATION_KIND_COMPLETENESS_FIELDS: Record<
     "unclaimedRewardsUsd"
   ],
   trigger_event: ["triggerId", "positionId", "breachDirection", "triggeredAt"],
-  data_quality: ["warnings", "isPartial", "missingSources"]
+  data_quality: ["warnings", "partial"]
 };
 
 function computeDataCompleteness(kind: ObservationKind, payload: ClmmNormalizedCandidate): number {

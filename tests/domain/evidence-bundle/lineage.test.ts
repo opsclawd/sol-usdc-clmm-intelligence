@@ -181,8 +181,7 @@ function makeClmmBundlePayload(walletId: string, positionId: string, poolId: str
     alerts: [],
     dataQuality: {
       warnings: [],
-      isPartial: false,
-      missingSources: []
+      partial: false
     }
   };
 }

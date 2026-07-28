@@ -416,7 +416,10 @@ describe("normalizeClmmBundle", () => {
 
     it("data_quality candidate includes all required fields", () => {
       const bundle = makeClmmBundle({
-        dataQuality: { warnings: ["test warning"], isPartial: true, missingSources: ["source-1"] }
+        dataQuality: {
+          warnings: [{ code: "usd_price_quote_unavailable", message: "test warning" }],
+          partial: true
+        }
       });
 
       const candidates = normalizeClmmBundle(bundle);
@@ -429,8 +432,7 @@ describe("normalizeClmmBundle", () => {
         observedAtUnixMs: 1705315800000
       });
       expect(dataQualityCandidate).toHaveProperty("warnings");
-      expect(dataQualityCandidate).toHaveProperty("isPartial");
-      expect(dataQualityCandidate).toHaveProperty("missingSources");
+      expect(dataQualityCandidate).toHaveProperty("partial");
     });
   });
 

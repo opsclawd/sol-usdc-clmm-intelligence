@@ -56,6 +56,10 @@ export interface AcceptPythEnvelopeResult {
   priceUpdate: PythHermesPriceUpdate;
 }
 
+function normalizeFeedId(feedId: string): string {
+  return feedId.toLowerCase().replace(/^0x/, "");
+}
+
 export function acceptPythEnvelope(
   envelope: unknown,
   configuredFeedId: string
@@ -65,7 +69,10 @@ export function acceptPythEnvelope(
     throw new Error(`Invalid Pyth envelope: ${parsed.error.issues[0]?.message ?? "unknown error"}`);
   }
 
-  const priceUpdate = parsed.data.parsed.find((update) => update.id === configuredFeedId);
+  const normalizedConfiguredFeedId = normalizeFeedId(configuredFeedId);
+  const priceUpdate = parsed.data.parsed.find(
+    (update) => normalizeFeedId(update.id) === normalizedConfiguredFeedId
+  );
   if (!priceUpdate) {
     throw new Error(`Feed mismatch: expected ${configuredFeedId}, no matching feed in envelope`);
   }
