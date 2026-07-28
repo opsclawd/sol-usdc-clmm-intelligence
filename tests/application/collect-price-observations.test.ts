@@ -48,9 +48,9 @@ function makeRecentPythEnvelope(overrides?: { timestampSecs?: number }) {
     parsed: [
       makePythHermesPriceUpdate({
         price: makePythHermesParsedPrice({
-          timestamp: timestampSecs,
+          publish_time: timestampSecs,
           price: "175000000",
-          confidence: "1500000"
+          conf: "1500000"
         })
       })
     ]
