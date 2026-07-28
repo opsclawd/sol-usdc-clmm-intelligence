@@ -403,7 +403,7 @@ describe("derive-mvp-features script", () => {
 
     it("should throw when INTELLIGENCE_POSITION_IDS is empty", async () => {
       const env = createMockEnvReader({
-        WHIRLPOOL_ADDRESS: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
+        WHIRLPOOL_ADDRESS: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
         INTELLIGENCE_POSITION_IDS: "",
         DATABASE_URL: "postgresql://test:test@localhost:5432/test"
       });
@@ -446,7 +446,7 @@ describe("derive-mvp-features script", () => {
       (normalizedObservationRepo.listCandidates as Mock).mockResolvedValue([]);
 
       const env = createMockEnvReader({
-        WHIRLPOOL_ADDRESS: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
+        WHIRLPOOL_ADDRESS: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
         INTELLIGENCE_POSITION_IDS: "pos1,pos2",
         DATABASE_URL: "postgresql://test:test@localhost:5432/test"
       });
@@ -485,7 +485,7 @@ describe("derive-mvp-features script", () => {
       );
 
       const env = createMockEnvReader({
-        WHIRLPOOL_ADDRESS: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
+        WHIRLPOOL_ADDRESS: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
         INTELLIGENCE_POSITION_IDS: "pos1,pos2",
         DATABASE_URL: "postgresql://test:test@localhost:5432/test"
       });
@@ -522,7 +522,7 @@ describe("derive-mvp-features script", () => {
       (normalizedObservationRepo.listCandidates as Mock).mockResolvedValue([]);
 
       const env = createMockEnvReader({
-        WHIRLPOOL_ADDRESS: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
+        WHIRLPOOL_ADDRESS: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
         INTELLIGENCE_POSITION_IDS: "pos1",
         DATABASE_URL: "postgresql://test:test@localhost:5432/test"
       });
