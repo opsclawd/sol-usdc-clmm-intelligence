@@ -127,9 +127,7 @@ const whaleSwapFlowSchema = z
     transactionSignature: z.string().min(1),
     eventIndex: z.number().int().nonnegative(),
     slot: z.number().int().nonnegative().optional(),
-    stablecoinOperation: z.enum(["mint", "burn", "transfer"]),
-    solDelta: z.number().int().optional(),
-    usdcDelta: z.number().int().optional()
+    stablecoinOperation: z.enum(["mint", "burn", "transfer"])
   })
   .strict();
 

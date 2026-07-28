@@ -338,38 +338,6 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
       expect(key1).not.toBe(key2);
     });
 
-    it("different venue produces different identity", async () => {
-      const dexFlowSolana: DexNetFlowPayloadV1 = {
-        schemaVersion: 1,
-        eventFamily: "on_chain_flow",
-        eventType: "dex_net_flow",
-        sourceEventId: "dex_flow_001",
-        observedAtUnixMs: 1700000000000,
-        amountUsdc: "20000000000",
-        direction: "inbound",
-        venue: "solana",
-        addressContext: { addressType: "wallet", address: "dex-wallet" },
-        sourceReferences: ["https://birdeye.xyz/token/SOL"],
-        sourceQuality: { provider: "birdeye-api", freshness: "windowed", completeness: "full" },
-        freshnessContext: { slot: 123, blockTimestampUnixMs: 1700000000000 },
-        windowStartUnixMs: 1699913600000,
-        windowEndUnixMs: 1700000000000,
-        buyVolumeUsdc: "50000000000",
-        sellVolumeUsdc: "30000000000",
-        netFlowUsdc: "20000000000"
-      };
-
-      const dexFlowJupiter: DexNetFlowPayloadV1 = {
-        ...dexFlowSolana,
-        venue: "jupiter"
-      };
-
-      const key1 = await deriveOnChainFlowSourceObservationKey(dexFlowSolana, "birdeye-api", null);
-      const key2 = await deriveOnChainFlowSourceObservationKey(dexFlowJupiter, "birdeye-api", null);
-
-      expect(key1).not.toBe(key2);
-    });
-
     it("separate pressure windows cannot collide - same values different windows", async () => {
       const dexFlow1: DexNetFlowPayloadV1 = {
         schemaVersion: 1,

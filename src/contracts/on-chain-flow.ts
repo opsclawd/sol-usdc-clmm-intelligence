@@ -94,7 +94,7 @@ export type DexNetFlowPayloadV1 = {
   readonly observedAtUnixMs: number;
   readonly amountUsdc: string;
   readonly direction: OnChainFlowDirection;
-  readonly venue: string;
+  readonly venue: "solana";
   readonly addressContext: OnChainAddressContext;
   readonly sourceReferences: readonly string[];
   readonly sourceQuality: OnChainFlowSourceQuality;
