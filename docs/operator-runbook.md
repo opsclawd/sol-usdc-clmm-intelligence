@@ -434,7 +434,11 @@ pnpm assemble:bundle data/assembly-request.json
     "oracle_dex_divergence": "oracle-dex-divergence/v1",
     "oracle_confidence_width": "oracle-confidence-width/v1",
     "realized_volatility_1h": "realized-volatility-1h/v1",
-    "volume_liquidity_ratio_24h": "volume-liquidity-ratio-24h/v1"
+    "volume_liquidity_ratio_24h": "volume-liquidity-ratio-24h/v1",
+    "oi_trend_4h": "oi-trend-4h/v1",
+    "funding_rate_annualized": "funding-rate-annualized/v1",
+    "liquidation_cluster_1h": "liquidation-cluster-1h/v1",
+    "basis_spread_bps": "basis-spread-bps/v1"
   },
   "schemaVersion": "evidence-bundle.v1",
   "assemblySelectionVersion": "selection/v1",
@@ -443,6 +447,8 @@ pnpm assemble:bundle data/assembly-request.json
   "environment": "test"
 }
 ```
+
+`acceptedCalculatorVersions` must include all eleven `MVP_FEATURE_KINDS` entries (the seven canonical kinds plus the four Pack C perp/liquidation kinds), or assembly fails closed with `REQUEST_VALIDATION_ERROR` naming the first missing kind.
 
 ### Successful Response Example
 

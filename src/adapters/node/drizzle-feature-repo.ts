@@ -1,4 +1,4 @@
-import { eq, and, gte, lte, or, inArray, desc } from "drizzle-orm";
+import { eq, and, gte, lte, or, inArray, desc, isNull } from "drizzle-orm";
 import { derivedFeatures } from "../../db/schema/derived-features.js";
 import type {
   DerivedFeatureRepo,
@@ -236,11 +236,25 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
       lte(derivedFeatures.receivedAtUnixMs, query.receivedAtOrBeforeUnixMs)
     ];
 
+    // Pool/position-independent feature kinds (e.g. oracle_dex_divergence,
+    // realized_volatility_1h) are persisted with a null poolId/positionId and are
+    // valid candidates for any pool/position's bundle. Scope filtering per feature
+    // kind (position-scoped vs pool-only vs pool-independent) happens in
+    // selectEvidenceFeatureSlots (src/domain/evidence-bundle/select.ts), which needs
+    // to see all three variants — so this must not narrow to an exact poolId/positionId
+    // match only, or every null-scoped candidate is silently excluded before the
+    // domain layer ever sees it.
     if (query.poolId !== undefined) {
-      conditions.push(eq(derivedFeatures.poolId, query.poolId));
+      // or() with two given conditions always returns a defined SQL expression;
+      // the `| undefined` in its return type only applies to the zero-args case.
+      conditions.push(
+        or(eq(derivedFeatures.poolId, query.poolId), isNull(derivedFeatures.poolId))!
+      );
     }
     if (query.positionId !== undefined) {
-      conditions.push(eq(derivedFeatures.positionId, query.positionId));
+      conditions.push(
+        or(eq(derivedFeatures.positionId, query.positionId), isNull(derivedFeatures.positionId))!
+      );
     }
 
     const rows = await this.db
