@@ -480,6 +480,78 @@ describe("deriveMvpFeatures", () => {
       expect(unavailableKinds.has("oracle_confidence_width")).toBe(true);
       expect(unavailableKinds.has("volume_liquidity_ratio_24h")).toBe(true);
     });
+
+    it("rejected candidates' real raw-observation lineage is preserved, not a synthetic raw-hash-<id> placeholder", async () => {
+      seedObservation(
+        normalizedObservationRepo,
+        "clmm-v2-bundle",
+        "position_state",
+        makePositionPayload(POSITION_IDS[0]!, POOL_ID),
+        EVAL_MS - 60_000
+      );
+
+      const REJECTED_ROW_ID = 9999;
+      const realRawRef = {
+        refType: "raw_observation" as const,
+        id: REJECTED_ROW_ID,
+        source: "pyth-hermes" as const,
+        payloadHash: "real-raw-payload-hash-9999"
+      };
+      // An older oracle observation that will be selected as latest (not rejected) —
+      // present so oracle_dex_divergence has a usable oracleRow.
+      seedObservation(
+        normalizedObservationRepo,
+        "pyth-hermes",
+        "oracle_price",
+        makeOraclePayload(),
+        EVAL_MS - 5000
+      );
+      // A second, older oracle observation carrying real (non-placeholder) provenance
+      // pointing at its own raw parent. Because there are now two valid oracle_price
+      // candidates within the volatility window, selectVolatilityTimestamps rejects the
+      // older one for `oracle_confidence_width`/divergence's "rejected" list — this is
+      // what exercises resolveRejectedRow.
+      const olderOracle = seedObservation(
+        normalizedObservationRepo,
+        "pyth-hermes",
+        "oracle_price",
+        makeOraclePayload(101),
+        // 61.67 min before eval: inside the repo-level fetch window (eval - 65min) but
+        // outside selectVolatilityTimestamps' own 1-hour window -> rejected as outside_window.
+        EVAL_MS - 3_700_000,
+        REJECTED_ROW_ID
+      );
+      olderOracle.provenance = {
+        sourceRefs: [],
+        rawObservationRefs: [realRawRef],
+        derivedFromRefs: [],
+        processRef: {
+          collector: "pyth-oracle-job",
+          jobName: "pyth-oracle-job",
+          pipelineRunId: null,
+          codeVersion: null,
+          modelVersion: null
+        },
+        codeVersion: "test",
+        runId: null
+      };
+
+      const result = await deriveMvpFeatures(deps, makeRequest());
+
+      const volatilityFeature = result.rows.find((r) => r.featureKind === "realized_volatility_1h");
+      expect(volatilityFeature).toBeDefined();
+      const rawRefs = (
+        volatilityFeature!.provenance as {
+          rawObservationRefs: { id: number; payloadHash: string }[];
+        }
+      ).rawObservationRefs;
+      const refForRejected = rawRefs.find((ref) => ref.id === REJECTED_ROW_ID);
+      expect(refForRejected).toBeDefined();
+      expect(refForRejected!.payloadHash).toBe("real-raw-payload-hash-9999");
+      expect(refForRejected!.payloadHash.startsWith("raw-hash-")).toBe(false);
+      // No stray synthetic placeholder for the same id should also be present.
+      expect(rawRefs.filter((ref) => ref.id === REJECTED_ROW_ID)).toHaveLength(1);
+    });
   });
 
   describe("single evaluation time", () => {

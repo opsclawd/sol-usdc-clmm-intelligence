@@ -20,7 +20,6 @@ import type {
   ExecutableQuotePayloadV1
 } from "../contracts/normalized-price-observation.js";
 import type { PoolStatisticsPayloadV1 } from "../contracts/normalized-pool-statistics.js";
-import { getObservationKindEntry } from "../domain/taxonomy/registry.js";
 import {
   assembleDerivedFeature,
   type AssembleFeatureInput,
@@ -1083,6 +1082,18 @@ export async function deriveMvpFeatures(
     receivedAtOrAfterUnixMs: windowStart
   });
 
+  // Full candidate rows keyed by their own normalized observation id. CandidateRejection
+  // (returned by selectLatestBySourceAndKind/selectVolatilityTimestamps) only carries
+  // {observationId, source, payloadHash} — it does not carry the rejected row's real
+  // rawObservationId or provenance. Rejected-candidate placeholder rows built below must
+  // look the real row up here rather than fabricating rawObservationId/provenance, or
+  // buildLineage (src/domain/derived-feature/assemble.ts) silently persists a synthetic
+  // "raw-hash-<id>" placeholder as if it were a real raw observation hash.
+  const candidatesById = new Map<number, NormalizedObservationRow>();
+  for (const row of candidates) {
+    candidatesById.set(row.id, row);
+  }
+
   const positionRowsById = new Map<string, NormalizedObservationRow>();
   for (const row of candidates) {
     if (row.observationKind === "position_state" && row.source === "clmm-v2-bundle") {
@@ -1110,15 +1121,6 @@ export async function deriveMvpFeatures(
   const oracleRow = oracleSel.selected[0] ?? null;
   const dexRow = dexSel.selected[0] ?? null;
   const poolStatsRow = poolStatsSel.selected[0] ?? null;
-
-  // Taxonomy-derived kind/signalClass/evidenceFamily for rejected-candidate placeholder
-  // rows below. Rejected candidates carry no observationKind of their own, and the
-  // selected row (oracleRow/dexRow/poolStatsRow) may legitimately be null even when
-  // rejected candidates exist (e.g. every candidate in the window is expired), so this
-  // must not depend on the selected row being present.
-  const oraclePriceEntry = getObservationKindEntry("oracle_price");
-  const executableQuoteEntry = getObservationKindEntry("executable_quote");
-  const poolStatisticsEntry = getObservationKindEntry("pool_statistics");
 
   const volatilityCandidates = candidates.filter(
     (r) => r.observationKind === "oracle_price" && r.source === "pyth-hermes"
@@ -1155,79 +1157,22 @@ export async function deriveMvpFeatures(
     }
   }
 
+  // Rejected candidates only carry {observationId, source, payloadHash} — resolve back to
+  // the full original row (real rawObservationId + real provenance) rather than fabricating
+  // one, so buildLineage's raw-observation refs are never a synthetic "raw-hash-<id>"
+  // placeholder standing in for real lineage data.
+  function resolveRejectedRow(r: { observationId: number }): NormalizedObservationRow {
+    const original = candidatesById.get(r.observationId);
+    if (!original) {
+      throw new Error(`Rejected candidate ${r.observationId} not found in original candidate set`);
+    }
+    return original;
+  }
+
   const divergenceInsert = await deriveOracleDivergence(
     oracleRow,
     dexRow,
-    [
-      ...oracleSel.rejected.map(
-        (r) =>
-          ({
-            id: r.observationId,
-            rawObservationId: r.observationId,
-            source: r.source,
-            observationKind: "oracle_price",
-            signalClass: oraclePriceEntry.signalClass,
-            evidenceFamily: oraclePriceEntry.evidenceFamily,
-            payload: {},
-            payloadHash: r.payloadHash,
-            confidence: buildDefaultConfidence(),
-            confidenceComposite: null,
-            confidenceLevel: null,
-            validUntilUnixMs: null,
-            isStale: false,
-            staleBehavior: null,
-            provenance: {
-              sourceRefs: [],
-              rawObservationRefs: [],
-              derivedFromRefs: [],
-              processRef: {
-                collector: "",
-                jobName: "",
-                pipelineRunId: null,
-                codeVersion: null,
-                modelVersion: null
-              },
-              codeVersion: "",
-              runId: null
-            },
-            receivedAtUnixMs: evaluationAsOfUnixMs
-          }) as NormalizedObservationRow
-      ),
-      ...dexSel.rejected.map(
-        (r) =>
-          ({
-            id: r.observationId,
-            rawObservationId: r.observationId,
-            source: r.source,
-            observationKind: "executable_quote",
-            signalClass: executableQuoteEntry.signalClass,
-            evidenceFamily: executableQuoteEntry.evidenceFamily,
-            payload: {},
-            payloadHash: r.payloadHash,
-            confidence: buildDefaultConfidence(),
-            confidenceComposite: null,
-            confidenceLevel: null,
-            validUntilUnixMs: null,
-            isStale: false,
-            staleBehavior: null,
-            provenance: {
-              sourceRefs: [],
-              rawObservationRefs: [],
-              derivedFromRefs: [],
-              processRef: {
-                collector: "",
-                jobName: "",
-                pipelineRunId: null,
-                codeVersion: null,
-                modelVersion: null
-              },
-              codeVersion: "",
-              runId: null
-            },
-            receivedAtUnixMs: evaluationAsOfUnixMs
-          }) as NormalizedObservationRow
-      )
-    ],
+    [...oracleSel.rejected.map(resolveRejectedRow), ...dexSel.rejected.map(resolveRejectedRow)],
     evaluationAsOfUnixMs,
     pipelineRunId,
     codeVersion
@@ -1236,40 +1181,7 @@ export async function deriveMvpFeatures(
 
   const confidenceWidthInsert = await deriveOracleConfidenceWidth(
     oracleRow,
-    oracleSel.rejected.map(
-      (r) =>
-        ({
-          id: r.observationId,
-          rawObservationId: r.observationId,
-          source: r.source,
-          observationKind: "oracle_price",
-          signalClass: oraclePriceEntry.signalClass,
-          evidenceFamily: oraclePriceEntry.evidenceFamily,
-          payload: {},
-          payloadHash: r.payloadHash,
-          confidence: buildDefaultConfidence(),
-          confidenceComposite: null,
-          confidenceLevel: null,
-          validUntilUnixMs: null,
-          isStale: false,
-          staleBehavior: null,
-          provenance: {
-            sourceRefs: [],
-            rawObservationRefs: [],
-            derivedFromRefs: [],
-            processRef: {
-              collector: "",
-              jobName: "",
-              pipelineRunId: null,
-              codeVersion: null,
-              modelVersion: null
-            },
-            codeVersion: "",
-            runId: null
-          },
-          receivedAtUnixMs: evaluationAsOfUnixMs
-        }) as NormalizedObservationRow
-    ),
+    oracleSel.rejected.map(resolveRejectedRow),
     evaluationAsOfUnixMs,
     pipelineRunId,
     codeVersion
@@ -1278,40 +1190,7 @@ export async function deriveMvpFeatures(
 
   const volatilityInsert = await deriveRealizedVolatility(
     volatilitySel.selected,
-    volatilitySel.rejected.map(
-      (r) =>
-        ({
-          id: r.observationId,
-          rawObservationId: r.observationId,
-          source: r.source,
-          observationKind: "oracle_price" as const,
-          signalClass: "deterministic" as const,
-          evidenceFamily: "clmm_state" as const,
-          payload: {},
-          payloadHash: r.payloadHash,
-          confidence: buildDefaultConfidence(),
-          confidenceComposite: null,
-          confidenceLevel: null,
-          validUntilUnixMs: null,
-          isStale: false,
-          staleBehavior: null,
-          provenance: {
-            sourceRefs: [],
-            rawObservationRefs: [],
-            derivedFromRefs: [],
-            processRef: {
-              collector: "",
-              jobName: "",
-              pipelineRunId: null,
-              codeVersion: null,
-              modelVersion: null
-            },
-            codeVersion: "",
-            runId: null
-          },
-          receivedAtUnixMs: evaluationAsOfUnixMs
-        }) as NormalizedObservationRow
-    ),
+    volatilitySel.rejected.map(resolveRejectedRow),
     evaluationAsOfUnixMs,
     pipelineRunId,
     codeVersion
@@ -1321,40 +1200,7 @@ export async function deriveMvpFeatures(
   const volumeRatioInsert = await deriveVolumeRatio(
     poolStatsRow,
     poolId,
-    poolStatsSel.rejected.map(
-      (r) =>
-        ({
-          id: r.observationId,
-          rawObservationId: r.observationId,
-          source: r.source,
-          observationKind: "pool_statistics",
-          signalClass: poolStatisticsEntry.signalClass,
-          evidenceFamily: poolStatisticsEntry.evidenceFamily,
-          payload: {},
-          payloadHash: r.payloadHash,
-          confidence: buildDefaultConfidence(),
-          confidenceComposite: null,
-          confidenceLevel: null,
-          validUntilUnixMs: null,
-          isStale: false,
-          staleBehavior: null,
-          provenance: {
-            sourceRefs: [],
-            rawObservationRefs: [],
-            derivedFromRefs: [],
-            processRef: {
-              collector: "",
-              jobName: "",
-              pipelineRunId: null,
-              codeVersion: null,
-              modelVersion: null
-            },
-            codeVersion: "",
-            runId: null
-          },
-          receivedAtUnixMs: evaluationAsOfUnixMs
-        }) as NormalizedObservationRow
-    ),
+    poolStatsSel.rejected.map(resolveRejectedRow),
     evaluationAsOfUnixMs,
     pipelineRunId,
     codeVersion
