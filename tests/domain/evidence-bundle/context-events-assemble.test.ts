@@ -459,7 +459,7 @@ describe("context-events assembly", () => {
         })
       );
 
-      expect(result.contextualEvidence.events[0]!.observedAt).toBe(String(asOfMs));
+      expect(result.contextualEvidence.events[0]!.observedAt).toBe(new Date(asOfMs).toISOString());
     });
 
     it("expiresAt uses canonical timestamp from payload expiresAtUnixMs", () => {
@@ -495,7 +495,9 @@ describe("context-events assembly", () => {
         })
       );
 
-      expect(result.contextualEvidence.events[0]!.expiresAt).toBe(String(expiresMs));
+      expect(result.contextualEvidence.events[0]!.expiresAt).toBe(
+        new Date(expiresMs).toISOString()
+      );
     });
 
     it("sourceReferenceIds contains raw observation ID", () => {

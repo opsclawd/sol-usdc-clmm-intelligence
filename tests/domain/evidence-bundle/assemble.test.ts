@@ -358,7 +358,7 @@ describe("assembleEvidenceBundleCandidate", () => {
         makeAssembleInput(slots, makeQuality(), makeLineage(), { createdAt })
       );
 
-      expect(result.createdAt).toBe(String(createdAt));
+      expect(result.createdAt).toBe(new Date(createdAt).toISOString());
     });
 
     it("asOf equals the pinned asOf timestamp", () => {
@@ -368,7 +368,7 @@ describe("assembleEvidenceBundleCandidate", () => {
         makeAssembleInput(slots, makeQuality(), makeLineage(), { asOf })
       );
 
-      expect(result.asOf).toBe(String(asOf));
+      expect(result.asOf).toBe(new Date(asOf).toISOString());
     });
 
     it("freshUntil and expiresAt follow pinned rules", () => {
@@ -379,8 +379,8 @@ describe("assembleEvidenceBundleCandidate", () => {
         makeAssembleInput(slots, makeQuality(), makeLineage(), { freshUntil, expiresAt })
       );
 
-      expect(result.freshUntil).toBe(String(freshUntil));
-      expect(result.expiresAt).toBe(String(expiresAt));
+      expect(result.freshUntil).toBe(new Date(freshUntil).toISOString());
+      expect(result.expiresAt).toBe(new Date(expiresAt).toISOString());
     });
   });
 

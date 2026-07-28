@@ -17,6 +17,7 @@ import type {
   ProtocolIncidentPayloadV1
 } from "../../contracts/context-events.js";
 import type { OnChainFlowPayloadV1 } from "../../contracts/on-chain-flow.js";
+import { toCanonicalTimestamp } from "./timestamp.js";
 
 export const EVIDENCE_BUNDLE_ASSEMBLE_VERSION = "mvp-evidence-bundle-assemble/v1";
 
@@ -188,8 +189,8 @@ function buildDeterministicFeature(
       status: "available" as const,
       value: slot.value,
       unit: unit,
-      observedAt: asOfUnixMs !== null ? String(asOfUnixMs) : null,
-      freshUntil: validUntilUnixMs !== null ? String(validUntilUnixMs) : null,
+      observedAt: asOfUnixMs !== null ? toCanonicalTimestamp(asOfUnixMs) : null,
+      freshUntil: validUntilUnixMs !== null ? toCanonicalTimestamp(validUntilUnixMs) : null,
       confidenceBps: slot.confidence.compositeScore,
       warnings: normalizedWarnings.slice(0, 16) as [string, ...string[]]
     };
@@ -265,10 +266,10 @@ function buildContextualEvidence(
         claim,
         direction,
         confidenceBps: Math.round(row.confidence.compositeScore * 10000),
-        observedAt: String(
+        observedAt: toCanonicalTimestamp(
           flowPayload.observedAtUnixMs
         ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
-        expiresAt: String(
+        expiresAt: toCanonicalTimestamp(
           flowPayload.observedAtUnixMs + 900000
         ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
         sourceReferenceIds: [`raw-${row.rawObservationId}`] as [
@@ -298,10 +299,10 @@ function buildContextualEvidence(
         claim,
         direction: "unknown" as const,
         confidenceBps: Math.round(row.confidence.compositeScore * 10000),
-        observedAt: String(
+        observedAt: toCanonicalTimestamp(
           typedPayload.asOfUnixMs
         ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
-        expiresAt: String(
+        expiresAt: toCanonicalTimestamp(
           typedPayload.expiresAtUnixMs
         ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
         sourceReferenceIds: [`raw-${row.rawObservationId}`] as [
@@ -341,8 +342,9 @@ function buildSourceReferences(lineage: VerifiedEvidenceLineage["lineage"]): Sou
         "no_sources_available" as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
       sourceType: "internal_bundle",
       locator: "no_sources_available",
-      observedAt:
-        "0" as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp
+      observedAt: toCanonicalTimestamp(
+        0
+      ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp
     });
   }
 
@@ -435,10 +437,10 @@ export function assembleEvidenceBundleCandidate(
     runId: runId as import("../../contracts/generated/evidence-bundle-v1.js").Identifier256,
     correlationId:
       correlationId as import("../../contracts/generated/evidence-bundle-v1.js").Identifier256,
-    createdAt: String(createdAt),
-    asOf: String(asOf),
-    freshUntil: String(freshUntil),
-    expiresAt: String(expiresAt),
+    createdAt: toCanonicalTimestamp(createdAt),
+    asOf: toCanonicalTimestamp(asOf),
+    freshUntil: toCanonicalTimestamp(freshUntil),
+    expiresAt: toCanonicalTimestamp(expiresAt),
     deterministicFeatures: deterministicFeatures as [
       DeterministicFeature,
       ...DeterministicFeature[]
