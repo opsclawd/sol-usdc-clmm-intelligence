@@ -1072,6 +1072,96 @@ Check:
 
 A source outage is ambiguous: it may indicate genuine no-events or a service problem. The pipeline never fabricates a "clean" result to hide ambiguity.
 
+## Perp & Liquidation Collection (`pnpm collect:perp-liquidation`)
+
+The `collect:perp-liquidation` command collects SOL perp market and liquidation-stress evidence from two providers: Binance Futures (`binance-fapi`) and Drift Protocol (`drift-api`). It runs both venues concurrently, persists raw and normalized observations, and derives four deterministic feature kinds per venue in the same run. Liquidation clusters and funding-rate spikes are market-stress evidence, not execution triggers; final synthesis belongs to regime-engine.
+
+### Authority Boundary
+
+- **Factual market evidence only**: Funding rate, open interest, perp/spot basis, and liquidation-event evidence describe observed market state. The collector does not infer motive, sentiment, or policy.
+- **No execution authority**: This collector captures evidence only. It does not construct instructions, sign transactions, or execute swaps.
+- **Not a direct trigger**: A liquidation-cluster spike or extreme funding rate does not itself imply an action; it is contextual evidence for regime-engine's synthesis.
+
+### Environment Variables
+
+Required environment variables:
+
+```bash
+# Binance Futures public API (funding rate, open interest, perp/spot basis)
+BINANCE_FAPI_BASE_URL=https://fapi.binance.com
+BINANCE_SOL_PERP_SYMBOL=SOLUSDT
+
+# Drift Protocol public API (funding rate, open interest, perp/spot basis, public liquidation stream)
+DRIFT_DATA_API_BASE_URL=https://mainnet-beta.api.drift.trade
+DRIFT_SOL_PERP_MARKET_INDEX=0
+
+# Drift numeric precision exponents (defaults shown; rarely need overriding)
+DRIFT_PRICE_PRECISION=1000000
+DRIFT_BASE_PRECISION=1000000000
+DRIFT_QUOTE_PRECISION=1000000
+
+# Lookback window in ms; must be >= 14,400,000 (4 hours) to cover the oi_trend_4h window
+PERP_LIQUIDATION_LOOKBACK_MS=14400000
+```
+
+`BINANCE_SOL_PERP_SYMBOL` and `DRIFT_SOL_PERP_MARKET_INDEX` have no default instrument — the collector fails closed with exit code 1 if either is unset or malformed, rather than guessing an instrument.
+
+### Command and Statuses
+
+```bash
+pnpm collect:perp-liquidation
+```
+
+Exactly two sources (one `binance-fapi`, one `drift-api`) are required; the job throws before any network call if the source configuration is missing, duplicated, or miscounted.
+
+Exit codes:
+
+| Status        | Exit Code | Meaning                                                                 |
+| ------------- | --------- | ----------------------------------------------------------------------- |
+| `COMPLETE`    | 0         | Both venues succeeded (or replayed identically)                         |
+| `PARTIAL`     | 0         | One venue succeeded; the other failed, degraded, or was unavailable     |
+| `UNAVAILABLE` | 1         | Both venues unavailable (HTTP 429, network/timeout errors)              |
+| `FAILED`      | 1         | Validation conflict, malformed payload, or zero usable evidence overall |
+
+### Observation and Feature Kinds
+
+Normalized observation kinds: `funding_rate`, `open_interest`, `perp_basis`, `liquidation_event`, `leverage_proxy`.
+
+Derived feature kinds (computed per venue, one row each when inputs are available):
+
+- `oi_trend_4h` (BPS): open-interest change over the earliest vs. latest sample in a 4-hour window. Requires at least 2 open-interest samples for the venue; otherwise `UNAVAILABLE` (`fewer_than_two_oi_samples`).
+- `funding_rate_annualized` (BPS): the venue's latest funding-rate sample, annualized from its native funding interval.
+- `basis_spread_bps` (BPS): the venue's latest perp price vs. spot price spread.
+- `liquidation_cluster_1h` (BPS): deduplicated liquidation notional summed over the trailing 1-hour window, divided by the venue's latest open-interest notional. `UNAVAILABLE` (`no_same_venue_oi_denominator`) when no same-venue open-interest sample exists to denominate against.
+
+All four calculations use `bigint`-backed exact rational arithmetic with ties-away-from-zero rounding — no floating-point rounding drift.
+
+### Binance Liquidation Limitation
+
+Binance's public futures REST API does not expose market-wide liquidation history without account-scoped (`USER_DATA`) authentication. Consequently:
+
+- `binance-fapi` supplies perp market state only: funding rate, open interest, perp/spot basis.
+- `drift-api` is the sole source of `liquidation_event` evidence, from Drift's public on-chain liquidation stream.
+- `liquidation_cluster_1h` is therefore always derived from Drift-venue observations; Binance never contributes to this feature.
+
+### Coverage Gating
+
+If a provider reports coverage for an observation kind as anything other than `available` (e.g. `unavailable` or `malformed`), any feature depending on that kind is forced to `UNAVAILABLE` with reason `coverage_unavailable`, even if a prior sample would otherwise have produced a value. Coverage status is authoritative over stale cached values.
+
+### Troubleshooting
+
+#### One venue always shows `UNAVAILABLE`
+
+Check the venue-specific base URL and instrument config (`BINANCE_SOL_PERP_SYMBOL` / `DRIFT_SOL_PERP_MARKET_INDEX`), then check rate limits and network connectivity for that venue's endpoint. A single-venue outage produces `PARTIAL` at the job level, not a hard failure.
+
+#### `liquidation_cluster_1h` is always `UNAVAILABLE`
+
+This is expected if Drift is unavailable or has no recent open-interest sample — Binance does not supply liquidation data, so the feature has no denominator without a Drift OI sample in the current run.
+
+#### Collector fails closed at startup
+
+`BINANCE_SOL_PERP_SYMBOL`, `DRIFT_DATA_API_BASE_URL`, or `DRIFT_SOL_PERP_MARKET_INDEX` is unset, or `PERP_LIQUIDATION_LOOKBACK_MS` is below the 4-hour floor. Fix the env var; the collector will not fall back to a default instrument.
+
 ## Publish-attempt persistence
 
 All SQL queries below are read-only. Do not manually mutate immutable publish-attempt audit rows.
