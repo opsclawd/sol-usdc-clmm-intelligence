@@ -61,7 +61,7 @@ describe("accepts only the configured Whirlpool and SOL USDC mint pair in either
         DEFAULT_SOL_MINT,
         DEFAULT_USDC_MINT
       )
-    ).toThrow(expect.objectContaining({ field: "data" }));
+    ).toThrow(expect.objectContaining({ field: "tokens" }));
   });
 
   it("accepts when address and token order match default configured", () => {

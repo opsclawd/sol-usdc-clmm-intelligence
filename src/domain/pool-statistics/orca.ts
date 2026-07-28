@@ -58,11 +58,16 @@ export function acceptOrcaPoolResponse(
   }
 
   const wrapper = response as OrcaPoolResponse;
-  if (!Array.isArray(wrapper.data)) {
-    throw new OrcaPoolValidationError("data", "Response.data must be an array");
+  let dataCandidates: unknown[];
+  if (Array.isArray(wrapper.data)) {
+    dataCandidates = wrapper.data;
+  } else if (wrapper.data && typeof wrapper.data === "object") {
+    dataCandidates = [wrapper.data];
+  } else {
+    throw new OrcaPoolValidationError("data", "Response.data must be an array or object");
   }
 
-  const data = (wrapper.data as unknown[]).find(
+  const data = dataCandidates.find(
     (candidate): candidate is OrcaPoolData =>
       candidate !== null &&
       typeof candidate === "object" &&
