@@ -82,7 +82,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
   it("rejects malformed Orca responses before raw insertion", async () => {
     const deps = createDeps();
     const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
-    deps.http.setResponse(url, { body: { data: { address: "wrong" } } }); // mismatch pool address
+    deps.http.setResponse(url, { body: { data: [{ address: "wrong" }] } }); // mismatch pool address
 
     const result = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
     expect(result.status).toBe("malformed");
@@ -162,18 +162,19 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
     const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
     deps.http.setResponse(url, { body: response });
 
+    const pool = response.data[0]!;
     const { payloadCanonical, payloadHash } = await canonicalizePayload(response);
     const sourceObservationKey = await deriveOrcaSourceObservationKey({
       poolAddress: DEFAULT_WHIRLPOOL_ADDRESS,
-      updatedAt: response.data.updatedAt,
-      updatedSlot: response.data.updatedSlot
+      updatedAt: pool.updatedAt,
+      updatedSlot: pool.updatedSlot
     });
 
     // Seed raw repo with a pending row
     const rawInsertRes = await deps.rawObservationRepo.insertOrClassify({
       source: "orca-public-api",
       sourceObservationKey,
-      observedAtUnixMs: Date.parse(response.data.updatedAt),
+      observedAtUnixMs: Date.parse(pool.updatedAt),
       fetchedAtUnixMs: VALID_CONTEXT.startedAtUnixMs,
       payloadHash,
       payloadCanonical,

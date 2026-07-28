@@ -19,7 +19,7 @@ export interface OrcaPoolData {
 }
 
 export interface OrcaPoolResponse {
-  data: OrcaPoolData;
+  data: OrcaPoolData[];
 }
 
 export const DEFAULT_WHIRLPOOL_ADDRESS = "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw";
@@ -56,5 +56,5 @@ export function makeOrcaPoolResponse(overrides: Partial<OrcaPoolData> = {}): Orc
     data.stats = statsOverride;
   }
 
-  return { data };
+  return { data: [data] };
 }
