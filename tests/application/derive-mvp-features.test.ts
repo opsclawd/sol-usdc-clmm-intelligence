@@ -437,6 +437,49 @@ describe("deriveMvpFeatures", () => {
       const storedRows = await featureRepo.findByKind("range_location", 0);
       expect(storedRows.length).toBeGreaterThan(0);
     });
+
+    it("does not crash when every candidate for a source/kind is expired (selected empty, rejected non-empty)", async () => {
+      seedObservation(
+        normalizedObservationRepo,
+        "clmm-v2-bundle",
+        "position_state",
+        makePositionPayload(POSITION_IDS[0]!, POOL_ID),
+        EVAL_MS - 60_000
+      );
+      const expiredOracle = seedObservation(
+        normalizedObservationRepo,
+        "pyth-hermes",
+        "oracle_price",
+        makeOraclePayload(),
+        EVAL_MS - 5000
+      );
+      expiredOracle.validUntilUnixMs = EVAL_MS - 1;
+      const expiredDex = seedObservation(
+        normalizedObservationRepo,
+        "jupiter-quote",
+        "executable_quote",
+        makeQuotePayload(),
+        EVAL_MS - 3000
+      );
+      expiredDex.validUntilUnixMs = EVAL_MS - 1;
+      const expiredPoolStats = seedObservation(
+        normalizedObservationRepo,
+        "orca-public-api",
+        "pool_statistics",
+        makePoolStatsPayload(POOL_ID),
+        EVAL_MS - 60_000
+      );
+      expiredPoolStats.validUntilUnixMs = EVAL_MS - 1;
+
+      const result = await deriveMvpFeatures(deps, makeRequest());
+
+      const unavailableKinds = new Set(
+        result.rows.filter((r) => r.status === "UNAVAILABLE").map((r) => r.featureKind)
+      );
+      expect(unavailableKinds.has("oracle_dex_divergence")).toBe(true);
+      expect(unavailableKinds.has("oracle_confidence_width")).toBe(true);
+      expect(unavailableKinds.has("volume_liquidity_ratio_24h")).toBe(true);
+    });
   });
 
   describe("single evaluation time", () => {

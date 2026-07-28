@@ -20,6 +20,7 @@ import type {
   ExecutableQuotePayloadV1
 } from "../contracts/normalized-price-observation.js";
 import type { PoolStatisticsPayloadV1 } from "../contracts/normalized-pool-statistics.js";
+import { getObservationKindEntry } from "../domain/taxonomy/registry.js";
 import {
   assembleDerivedFeature,
   type AssembleFeatureInput,
@@ -1110,6 +1111,15 @@ export async function deriveMvpFeatures(
   const dexRow = dexSel.selected[0] ?? null;
   const poolStatsRow = poolStatsSel.selected[0] ?? null;
 
+  // Taxonomy-derived kind/signalClass/evidenceFamily for rejected-candidate placeholder
+  // rows below. Rejected candidates carry no observationKind of their own, and the
+  // selected row (oracleRow/dexRow/poolStatsRow) may legitimately be null even when
+  // rejected candidates exist (e.g. every candidate in the window is expired), so this
+  // must not depend on the selected row being present.
+  const oraclePriceEntry = getObservationKindEntry("oracle_price");
+  const executableQuoteEntry = getObservationKindEntry("executable_quote");
+  const poolStatisticsEntry = getObservationKindEntry("pool_statistics");
+
   const volatilityCandidates = candidates.filter(
     (r) => r.observationKind === "oracle_price" && r.source === "pyth-hermes"
   );
@@ -1155,9 +1165,9 @@ export async function deriveMvpFeatures(
             id: r.observationId,
             rawObservationId: r.observationId,
             source: r.source,
-            observationKind: oracleRow!.observationKind,
-            signalClass: oracleRow!.signalClass,
-            evidenceFamily: oracleRow!.evidenceFamily,
+            observationKind: "oracle_price",
+            signalClass: oraclePriceEntry.signalClass,
+            evidenceFamily: oraclePriceEntry.evidenceFamily,
             payload: {},
             payloadHash: r.payloadHash,
             confidence: buildDefaultConfidence(),
@@ -1189,9 +1199,9 @@ export async function deriveMvpFeatures(
             id: r.observationId,
             rawObservationId: r.observationId,
             source: r.source,
-            observationKind: dexRow!.observationKind,
-            signalClass: dexRow!.signalClass,
-            evidenceFamily: dexRow!.evidenceFamily,
+            observationKind: "executable_quote",
+            signalClass: executableQuoteEntry.signalClass,
+            evidenceFamily: executableQuoteEntry.evidenceFamily,
             payload: {},
             payloadHash: r.payloadHash,
             confidence: buildDefaultConfidence(),
@@ -1232,9 +1242,9 @@ export async function deriveMvpFeatures(
           id: r.observationId,
           rawObservationId: r.observationId,
           source: r.source,
-          observationKind: oracleRow!.observationKind,
-          signalClass: oracleRow!.signalClass,
-          evidenceFamily: oracleRow!.evidenceFamily,
+          observationKind: "oracle_price",
+          signalClass: oraclePriceEntry.signalClass,
+          evidenceFamily: oraclePriceEntry.evidenceFamily,
           payload: {},
           payloadHash: r.payloadHash,
           confidence: buildDefaultConfidence(),
@@ -1317,9 +1327,9 @@ export async function deriveMvpFeatures(
           id: r.observationId,
           rawObservationId: r.observationId,
           source: r.source,
-          observationKind: poolStatsRow!.observationKind,
-          signalClass: poolStatsRow!.signalClass,
-          evidenceFamily: poolStatsRow!.evidenceFamily,
+          observationKind: "pool_statistics",
+          signalClass: poolStatisticsEntry.signalClass,
+          evidenceFamily: poolStatisticsEntry.evidenceFamily,
           payload: {},
           payloadHash: r.payloadHash,
           confidence: buildDefaultConfidence(),
