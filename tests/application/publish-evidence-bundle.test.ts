@@ -392,14 +392,14 @@ describe("publishEvidenceBundle", () => {
       expect(http.callLog[0]!.options.headers?.["Idempotency-Key"]).toBe("my-custom-key");
     });
 
-    it("Authorization header contains Bearer token", async () => {
+    it("X-Evidence-Ingest-Token header contains auth token", async () => {
       const bundle = makeBundleRow({});
       bundleRepo.store.push(bundle);
       contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
       http.nextResponse = { status: 200, ok: true, body: { success: true }, headers: {} };
       await publish();
       expect(http.callLog).toHaveLength(1);
-      expect(http.callLog[0]!.options.headers?.["Authorization"]).toBe("Bearer test-token-abc123");
+      expect(http.callLog[0]!.options.headers?.["X-Evidence-Ingest-Token"]).toBe("test-token-abc123");
     });
 
     it("requestHash equals payloadHash from bundle", async () => {
@@ -735,7 +735,7 @@ describe("publishEvidenceBundle", () => {
       expect((storedResponse?.data as Record<string, unknown>)?.secret).toBe("[REDACTED]");
     });
 
-    it("bearer token never appears in result or audit", async () => {
+    it("auth token never appears in result or audit", async () => {
       const bundle = makeBundleRow({});
       bundleRepo.store.push(bundle);
       contract.overrideResult = buildCanonicalFromPayload(bundle.payload);
