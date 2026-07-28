@@ -345,7 +345,11 @@ The pinned contract (`createEvidenceBundleContract()`) verifies all asset hashes
     "oracle_dex_divergence": "oracle-dex-divergence/v1",
     "oracle_confidence_width": "oracle-confidence-width/v1",
     "realized_volatility_1h": "realized-volatility-1h/v1",
-    "volume_liquidity_ratio_24h": "volume-liquidity-ratio-24h/v1"
+    "volume_liquidity_ratio_24h": "volume-liquidity-ratio-24h/v1",
+    "oi_trend_4h": "oi-trend-4h/v1",
+    "funding_rate_annualized": "funding-rate-annualized/v1",
+    "liquidation_cluster_1h": "liquidation-cluster-1h/v1",
+    "basis_spread_bps": "basis-spread-bps/v1"
   },
   "schemaVersion": "evidence-bundle.v1",
   "assemblySelectionVersion": "selection/v1",
@@ -354,6 +358,8 @@ The pinned contract (`createEvidenceBundleContract()`) verifies all asset hashes
   "environment": "test"
 }
 ```
+
+`acceptedCalculatorVersions` must include an entry for every kind in `MVP_FEATURE_KINDS` (`src/contracts/derived-feature.ts`) — the seven canonical MVP kinds above plus the four Pack C perp/liquidation kinds (`oi_trend_4h`, `funding_rate_annualized`, `liquidation_cluster_1h`, `basis_spread_bps`). Assembly fails with `REQUEST_VALIDATION_ERROR` if any are missing, even if a given deployment doesn't populate perp features.
 
 ### Redacted Output
 
