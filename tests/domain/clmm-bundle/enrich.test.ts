@@ -81,8 +81,7 @@ describe("enrichment derives family class and freshness exclusively from the reg
           pair: "SOL/USDC",
           observedAtUnixMs: nowMs - 5000,
           warnings: [],
-          isPartial: false,
-          missingSources: []
+          partial: false
         }
       }
     ];
@@ -150,8 +149,7 @@ describe("completeness counts zero false and empty arrays as present and null as
           pair: "SOL/USDC",
           observedAtUnixMs: nowMs - 5000,
           warnings: [],
-          isPartial: false,
-          missingSources: []
+          partial: false
         }
       }
     ];
@@ -254,8 +252,7 @@ describe("direct facts use reliability 1 derivation 1 llm null and validated dir
           pair: "SOL/USDC",
           observedAtUnixMs: nowMs - 5000,
           warnings: [],
-          isPartial: false,
-          missingSources: []
+          partial: false
         }
       }
     ];
@@ -323,8 +320,7 @@ describe("direct facts use reliability 1 derivation 1 llm null and validated dir
           pair: "SOL/USDC",
           observedAtUnixMs: nowMs - 5000,
           warnings: [],
-          isPartial: false,
-          missingSources: []
+          partial: false
         }
       }
     ];
@@ -502,8 +498,7 @@ describe("enrichClmmCandidates output shape", () => {
           pair: "SOL/USDC",
           observedAtUnixMs: nowMs - 5000,
           warnings: [],
-          isPartial: false,
-          missingSources: []
+          partial: false
         }
       }
     ];

@@ -23,6 +23,26 @@ describe("Pyth Oracle Price Processing", () => {
       expect(() => acceptPythEnvelope(envelope, wrongFeedId)).toThrow();
     });
 
+    it("matches the configured feed even though live Hermes omits the 0x prefix on parsed[].id", async () => {
+      const { acceptPythEnvelope } = await import("../../../src/domain/price-observation/pyth.js");
+      const unprefixedId = SOL_USD_FEED_ID.replace(/^0x/, "");
+      const envelope = makePythHermesEnvelope({
+        parsed: [makePythHermesPriceUpdate({ id: unprefixedId })]
+      });
+      const result = acceptPythEnvelope(envelope, SOL_USD_FEED_ID);
+      expect(result.priceUpdate.id).toBe(unprefixedId);
+    });
+
+    it("matches regardless of feed id casing", async () => {
+      const { acceptPythEnvelope } = await import("../../../src/domain/price-observation/pyth.js");
+      const upperCaseId = SOL_USD_FEED_ID.toUpperCase();
+      const envelope = makePythHermesEnvelope({
+        parsed: [makePythHermesPriceUpdate({ id: upperCaseId })]
+      });
+      const result = acceptPythEnvelope(envelope, SOL_USD_FEED_ID);
+      expect(result.priceUpdate.id).toBe(upperCaseId);
+    });
+
     it("rejects missing parsed price", async () => {
       const { acceptPythEnvelope } = await import("../../../src/domain/price-observation/pyth.js");
       const envelope = { binary: { encoding: "hex", data: ["504e41550100"] }, parsed: [] };

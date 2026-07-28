@@ -32,7 +32,7 @@ const VALID_BUNDLE = {
     srLevels: null,
     positions: [],
     alerts: [],
-    dataQuality: { warnings: [], isPartial: false, missingSources: [] }
+    dataQuality: { warnings: [], partial: false }
   },
   status: "ok"
 };

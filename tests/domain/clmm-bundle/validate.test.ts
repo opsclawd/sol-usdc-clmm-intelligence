@@ -13,6 +13,46 @@ import {
 } from "../../../src/domain/clmm-bundle/validate.js";
 
 describe("acceptClmmBundleEnvelope", () => {
+  describe("live clmm-v2 response contract", () => {
+    it("accepts an envelope with no top-level status field, matching the live clmm-v2 response", () => {
+      const bundle = makeClmmBundle({ positions: [], alerts: [] });
+      const result = acceptClmmBundleEnvelope({ bundle });
+      expect(result.bundle.pair).toBe("SOL/USDC");
+    });
+
+    it("accepts dataQuality.partial (not isPartial) with structured warning objects", () => {
+      const bundle = makeClmmBundle({
+        positions: [],
+        alerts: [],
+        dataQuality: {
+          partial: true,
+          warnings: [
+            {
+              code: "usd_price_quote_unavailable",
+              message: "USD price quote unavailable for mint 11111111111111111111111111111111.",
+              scope: { positionId: "position-001", tokenMint: "11111111111111111111111111111111" }
+            }
+          ]
+        }
+      });
+      const result = acceptClmmBundleEnvelope({ bundle });
+      expect(result.bundle.dataQuality.partial).toBe(true);
+      expect(result.bundle.dataQuality.warnings).toHaveLength(1);
+      expect(result.bundle.dataQuality.warnings[0]!.code).toBe("usd_price_quote_unavailable");
+    });
+
+    it("rejects dataQuality.warnings as plain strings (the stale pre-fix shape)", () => {
+      const bundle = makeClmmBundle({ positions: [], alerts: [] });
+      const envelope = {
+        bundle: {
+          ...bundle,
+          dataQuality: { partial: false, warnings: ["some warning"] }
+        }
+      };
+      expect(() => acceptClmmBundleEnvelope(envelope)).toThrow();
+    });
+  });
+
   describe("complete bundle cardinality", () => {
     it("accepts a complete bundle with zero positions and alerts", () => {
       const bundle = makeClmmBundle({ positions: [], alerts: [] });

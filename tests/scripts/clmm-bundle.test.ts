@@ -144,12 +144,8 @@ function makeValidBundleEnvelope() {
       positions: [],
       alerts: [],
       dataQuality: {
-        score: 95,
-        isComplete: true,
-        isPartial: false,
-        missingFields: [],
         warnings: [],
-        missingSources: []
+        partial: false
       }
     },
     status: "ok"

@@ -1,3 +1,5 @@
+import type { DataQualityWarning } from "./clmm-bundle.js";
+
 export interface PoolStatePayloadV1 {
   readonly kind: "pool_state";
   readonly schemaVersion: 1;
@@ -90,9 +92,8 @@ export interface DataQualityPayloadV1 {
   readonly schemaVersion: 1;
   readonly pair: "SOL/USDC";
   readonly observedAtUnixMs: number;
-  readonly warnings: readonly string[];
-  readonly isPartial: boolean;
-  readonly missingSources: readonly string[];
+  readonly warnings: readonly DataQualityWarning[];
+  readonly partial: boolean;
 }
 
 export type ClmmNormalizedCandidate =

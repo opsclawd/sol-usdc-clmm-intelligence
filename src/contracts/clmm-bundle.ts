@@ -100,8 +100,23 @@ export interface AlertData {
   triggeredAt: number;
 }
 
+export interface DataQualityWarning {
+  code:
+    | "sr_levels_unavailable"
+    | "actionable_triggers_unavailable"
+    | "fee_reward_usd_unavailable"
+    | "price_distance_unavailable"
+    | "principal_token_amounts_unavailable"
+    | "usd_price_quote_unavailable";
+  message: string;
+  scope?: {
+    poolId?: string;
+    positionId?: string;
+    tokenMint?: string;
+  };
+}
+
 export interface DataQuality {
-  warnings: string[];
-  isPartial: boolean;
-  missingSources: string[];
+  warnings: DataQualityWarning[];
+  partial: boolean;
 }
