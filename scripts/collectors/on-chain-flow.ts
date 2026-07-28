@@ -162,6 +162,11 @@ export async function runOnChainFlowCollect(): Promise<void> {
     http: runtime.http,
     url: birdeyeUrl,
     apiKey: birdeyeApiKey,
+    poolAddress: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
+    whaleSwapMinUsdc: parseThreshold(
+      runtime.env.getOptional("ON_CHAIN_WHALE_SWAP_MIN_USDC"),
+      "whaleSwapMinUsdc"
+    ),
     retryControl: runtime.retryControl
   });
 

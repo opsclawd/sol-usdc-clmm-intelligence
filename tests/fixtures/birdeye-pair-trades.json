@@ -1,0 +1,32 @@
+{
+  "data": {
+    "items": [
+      {
+        "txHash": "3dtFPZCpAnafa4dz5gqDBK8FAmQuNV6pVwRyZCPXiDEaXLbwQRH7rByuyFWqAwVcTNm52QAs9FGVZcpAqgowu1qj",
+        "source": "whirlpool",
+        "blockUnixTime": 1785277855,
+        "txType": "swap",
+        "address": "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
+        "owner": "GoGoGo6N99mpyB7rfzhw2R4fXmaFctURXHaHMoGCyoLD",
+        "from": {
+          "symbol": "SOL",
+          "decimals": 9,
+          "address": "So11111111111111111111111111111111111111112",
+          "amount": 7990631926,
+          "uiAmount": 7.990631926,
+          "price": 73.809
+        },
+        "to": {
+          "symbol": "USDC",
+          "decimals": 6,
+          "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "amount": 589920174,
+          "uiAmount": 589.920174,
+          "price": 0.99977
+        }
+      }
+    ],
+    "hasNext": true
+  },
+  "success": true
+}

@@ -3,7 +3,8 @@ import type {
   OnChainFlowSourceRequest,
   OnChainFlowSourceSnapshot,
   OnChainFlowSourceError,
-  BirdeyeNetFlowEvent
+  BirdeyeWhaleSwapEvent,
+  BirdeyeDexNetFlowEvent
 } from "../../ports/on-chain-flow-source.js";
 import { HttpRequestError } from "../../ports/http.js";
 import type { HttpClient } from "../../ports/http.js";
@@ -22,20 +23,59 @@ export interface HttpBirdeyeFlowSourceOptions {
   readonly http: HttpClient;
   readonly url: string;
   readonly apiKey?: string;
+  readonly poolAddress: string;
+  readonly whaleSwapMinUsdc: string;
   readonly timeoutMs?: number;
   readonly maxAttempts?: number;
   readonly retryControl?: RetryControl;
+}
+
+interface BirdeyePairTradeItem {
+  txHash: string;
+  source: string;
+  blockUnixTime: number;
+  txType: string;
+  address: string;
+  owner: string;
+  from: {
+    symbol: string;
+    decimals: number;
+    address: string;
+    amount: number;
+    uiAmount: number;
+    price: number;
+  };
+  to: {
+    symbol: string;
+    decimals: number;
+    address: string;
+    amount: number;
+    uiAmount: number;
+    price: number;
+  };
+}
+
+interface BirdeyePairTradesResponse {
+  data: {
+    items: BirdeyePairTradeItem[];
+    hasNext: boolean;
+  };
+  success: boolean;
 }
 
 export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
   private readonly timeoutMs: number;
   private readonly maxAttempts: number;
   private readonly retryControl: RetryControl;
+  private readonly poolAddress: string;
+  private readonly whaleSwapMinUsdc: string;
 
   constructor(private readonly options: HttpBirdeyeFlowSourceOptions) {
     this.timeoutMs = options.timeoutMs ?? 5000;
     this.maxAttempts = options.maxAttempts ?? 2;
     this.retryControl = options.retryControl ?? new SystemRetryControl();
+    this.poolAddress = options.poolAddress;
+    this.whaleSwapMinUsdc = options.whaleSwapMinUsdc;
   }
 
   async collect(request: OnChainFlowSourceRequest): Promise<OnChainFlowSourceSnapshot> {
@@ -51,24 +91,37 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
       );
     }
 
-    const headers: Record<string, string> = {};
+    const baseUrl = new URL("/defi/txs/pair", this.options.url);
+
+    const headers: Record<string, string> = {
+      "x-chain": "solana"
+    };
     if (this.options.apiKey) {
       headers["X-API-Key"] = this.options.apiKey;
     }
-
-    const url = `${this.options.url}?fromUnixMs=${request.fromUnixMs}&toUnixMs=${request.toUnixMs}`;
 
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
       try {
-        const response = await this.options.http.getJson<unknown>(url, {
-          headers,
-          timeoutMs: this.timeoutMs,
-          maxAttempts: 1
-        });
+        const url = new URL(baseUrl);
+        url.searchParams.set("address", this.poolAddress);
+        url.searchParams.set("tx_type", "swap");
+        url.searchParams.set("offset", "0");
+        url.searchParams.set("limit", "100");
+        url.searchParams.set("after_time", String(Math.floor(request.fromUnixMs / 1000)));
+        url.searchParams.set("before_time", String(Math.floor(request.toUnixMs / 1000)));
 
-        return acceptBirdeyeSnapshot(response);
+        const response = await this.options.http.getJson<BirdeyePairTradesResponse>(
+          url.toString(),
+          {
+            headers,
+            timeoutMs: this.timeoutMs,
+            maxAttempts: 1
+          }
+        );
+
+        return this.acceptBirdeyeSnapshot(response, request);
       } catch (e) {
         lastError = e instanceof Error ? e : new Error(String(e));
 
@@ -95,6 +148,164 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
       this.options.apiKey
     );
   }
+
+  private acceptBirdeyeSnapshot(
+    response: BirdeyePairTradesResponse,
+    request: OnChainFlowSourceRequest
+  ): OnChainFlowSourceSnapshot {
+    if (typeof response !== "object" || response === null) {
+      throw new HttpRequestError("invalid_json", "Response is not an object", null, false);
+    }
+
+    if (typeof response.success !== "boolean" || response.success !== true) {
+      throw new HttpRequestError("invalid_json", "Response success is not true", null, false);
+    }
+
+    if (typeof response.data !== "object" || response.data === null) {
+      throw new HttpRequestError(
+        "invalid_json",
+        "Response data is missing or not an object",
+        null,
+        false
+      );
+    }
+
+    if (!Array.isArray(response.data.items)) {
+      throw new HttpRequestError(
+        "invalid_json",
+        "Response data.items is not an array",
+        null,
+        false
+      );
+    }
+
+    const seenTxHashes = new Set<string>();
+    let buyVolumeUsdc = BigInt(0);
+    let sellVolumeUsdc = BigInt(0);
+    const whaleEvents: BirdeyeWhaleSwapEvent[] = [];
+
+    const USDC_SCALE = 6;
+    const whaleMinDecimal = parseDecimalStringForBigInt(this.whaleSwapMinUsdc);
+    const whaleMinRaw = scaleDecimalToRaw(whaleMinDecimal, USDC_SCALE);
+
+    for (const item of response.data.items) {
+      if (!this.isValidItem(item)) {
+        throw new HttpRequestError("invalid_json", "Invalid item in response", null, false);
+      }
+
+      if (seenTxHashes.has(item.txHash)) {
+        continue;
+      }
+      seenTxHashes.add(item.txHash);
+
+      const fromSymbol = item.from.symbol;
+      const toSymbol = item.to.symbol;
+      const usdcItem = item.to.symbol === "USDC" ? item.to : item.from;
+      const usdcAmountRaw = BigInt(usdcItem.amount);
+      const usdcUiAmount = usdcItem.uiAmount;
+
+      if (fromSymbol === "SOL" && toSymbol === "USDC") {
+        sellVolumeUsdc += usdcAmountRaw;
+
+        if (usdcAmountRaw >= whaleMinRaw) {
+          whaleEvents.push(
+            this.createWhaleSwapEvent(item, "outbound", formatDecimalString(usdcUiAmount))
+          );
+        }
+      } else if (fromSymbol === "USDC" && toSymbol === "SOL") {
+        buyVolumeUsdc += usdcAmountRaw;
+
+        if (usdcAmountRaw >= whaleMinRaw) {
+          whaleEvents.push(
+            this.createWhaleSwapEvent(item, "inbound", formatDecimalString(usdcUiAmount))
+          );
+        }
+      }
+    }
+
+    const netFlowInt = buyVolumeUsdc - sellVolumeUsdc;
+    const netFlowIsNegative = netFlowInt < BigInt(0);
+    const absoluteNetFlowUsdc = formatDecimalStringFromBigInt(
+      netFlowInt < BigInt(0) ? -netFlowInt : netFlowInt,
+      USDC_SCALE
+    );
+
+    const buyVolumeUsdcStr = formatDecimalStringFromBigInt(buyVolumeUsdc, USDC_SCALE);
+    const sellVolumeUsdcStr = formatDecimalStringFromBigInt(sellVolumeUsdc, USDC_SCALE);
+    const netFlowUsdcStr = netFlowIsNegative ? "-" + absoluteNetFlowUsdc : absoluteNetFlowUsdc;
+
+    const dexNetFlowEvent: BirdeyeDexNetFlowEvent = {
+      eventKind: "dex_net_flow",
+      sourceEventId: `birdeye-pair:${this.poolAddress}:${request.fromUnixMs}:${request.toUnixMs}`,
+      observedAtUnixMs: request.toUnixMs,
+      amountUsdc: absoluteNetFlowUsdc,
+      direction: netFlowIsNegative ? "outbound" : "inbound",
+      venue: "solana",
+      addressContext: { addressType: "contract", address: this.poolAddress },
+      sourceReferences: [`${new URL("/defi/txs/pair", this.options.url).toString()}`],
+      sourceQuality: { provider: "birdeye-api", freshness: "windowed", completeness: "full" },
+      freshnessContext: { blockTimestampUnixMs: request.toUnixMs },
+      windowStartUnixMs: request.fromUnixMs,
+      windowEndUnixMs: request.toUnixMs,
+      buyVolumeUsdc: buyVolumeUsdcStr,
+      sellVolumeUsdc: sellVolumeUsdcStr,
+      netFlowUsdc: netFlowUsdcStr
+    };
+
+    const allEvents: (BirdeyeWhaleSwapEvent | BirdeyeDexNetFlowEvent)[] = [
+      dexNetFlowEvent,
+      ...whaleEvents
+    ];
+
+    return Object.freeze({
+      source: "birdeye-api" as const,
+      providerId: "birdeye-pair-trades",
+      providerRunId: `birdeye-pair:${this.poolAddress}:${request.fromUnixMs}:${request.toUnixMs}`,
+      asOfUnixMs: request.toUnixMs,
+      license: "Birdeye API",
+      retention: "bounded",
+      events: Object.freeze(allEvents)
+    });
+  }
+
+  private isValidItem(item: BirdeyePairTradeItem): boolean {
+    if (typeof item !== "object" || item === null) return false;
+    if (typeof item.txHash !== "string" || item.txHash.length === 0) return false;
+    if (typeof item.owner !== "string" || item.owner.length === 0) return false;
+    if (typeof item.blockUnixTime !== "number" || !Number.isFinite(item.blockUnixTime))
+      return false;
+    if (typeof item.from !== "object" || item.from === null) return false;
+    if (typeof item.to !== "object" || item.to === null) return false;
+    if (typeof item.from.symbol !== "string") return false;
+    if (typeof item.to.symbol !== "string") return false;
+    if (typeof item.from.uiAmount !== "number" || !Number.isFinite(item.from.uiAmount))
+      return false;
+    if (typeof item.to.uiAmount !== "number" || !Number.isFinite(item.to.uiAmount)) return false;
+    if (item.from.uiAmount < 0 || item.to.uiAmount < 0) return false;
+    return true;
+  }
+
+  private createWhaleSwapEvent(
+    item: BirdeyePairTradeItem,
+    direction: "inbound" | "outbound",
+    amountUsdc: string
+  ): BirdeyeWhaleSwapEvent {
+    return {
+      eventKind: "whale_swap",
+      sourceEventId: item.txHash,
+      observedAtUnixMs: item.blockUnixTime * 1000,
+      amountUsdc: amountUsdc,
+      direction: direction,
+      venue: "solana",
+      addressContext: { addressType: "wallet", address: item.owner },
+      sourceReferences: [`https://solscan.io/tx/${item.txHash}`],
+      sourceQuality: { provider: "birdeye-api", freshness: "windowed", completeness: "full" },
+      freshnessContext: { blockTimestampUnixMs: item.blockUnixTime * 1000 },
+      transactionSignature: item.txHash,
+      eventIndex: 0,
+      stablecoinOperation: "transfer"
+    };
+  }
 }
 
 function mapToOnChainFlowSourceError(e: HttpRequestError, apiKey?: string): OnChainFlowSourceError {
@@ -117,93 +328,49 @@ function mapToOnChainFlowSourceError(e: HttpRequestError, apiKey?: string): OnCh
   }
 }
 
-function isFiniteNumber(value: number): boolean {
-  return Number.isFinite(value);
+function parseDecimalStringForBigInt(value: string): bigint {
+  const isNegative = value.startsWith("-");
+  const absValue = isNegative ? value.slice(1) : value;
+  const dotIndex = absValue.indexOf(".");
+  let digits: string;
+  let scale: number;
+
+  if (dotIndex === -1) {
+    digits = absValue;
+    scale = 0;
+  } else {
+    const intPart = absValue.slice(0, dotIndex);
+    const fracPart = absValue.slice(dotIndex + 1);
+    digits = intPart + fracPart;
+    scale = fracPart.length;
+  }
+
+  const scaledDigits = digits + "0".repeat(scale);
+  const result = BigInt(scaledDigits);
+  return isNegative ? -result : result;
 }
 
-function acceptBirdeyeSnapshot(response: unknown): OnChainFlowSourceSnapshot {
-  if (typeof response !== "object" || response === null) {
-    throw new HttpRequestError("invalid_json", "Response is not an object", null, false);
-  }
+function formatDecimalString(value: number): string {
+  if (value === 0) return "0";
+  const str = value.toString();
+  if (!str.includes(".")) return str;
+  return str.replace(/\.?0+$/, "");
+}
 
-  const obj = response as Record<string, unknown>;
+function formatDecimalStringFromBigInt(value: bigint, scale: number): string {
+  if (value === BigInt(0)) return "0";
+  const isNegative = value < BigInt(0);
+  const absValue = isNegative ? -value : value;
+  const absStr = absValue.toString();
+  const padded = absStr.padStart(scale + 1, "0");
+  const intPart = padded.slice(0, -scale) || "0";
+  const fracPart = padded.slice(-scale);
+  const result = intPart + (scale > 0 ? "." + fracPart : "");
+  const trimmed = result.replace(/\.?0+$/, "");
+  return isNegative ? "-" + trimmed : trimmed;
+}
 
-  if (typeof obj.providerId !== "string") {
-    throw new HttpRequestError("invalid_json", "Missing or invalid providerId", null, false);
-  }
-  if (typeof obj.providerRunId !== "string") {
-    throw new HttpRequestError("invalid_json", "Missing or invalid providerRunId", null, false);
-  }
-  if (typeof obj.asOfUnixMs !== "number") {
-    throw new HttpRequestError("invalid_json", "Missing or invalid asOfUnixMs", null, false);
-  }
-  if (typeof obj.license !== "string") {
-    throw new HttpRequestError("invalid_json", "Missing or invalid license", null, false);
-  }
-  if (!Array.isArray(obj.events)) {
-    throw new HttpRequestError("invalid_json", "Missing or invalid events", null, false);
-  }
-
-  const events = obj.events as unknown[];
-  const validatedEvents: BirdeyeNetFlowEvent[] = [];
-
-  for (const event of events) {
-    if (typeof event !== "object" || event === null) {
-      throw new HttpRequestError("invalid_json", "Invalid event: not an object", null, false);
-    }
-
-    const e = event as Record<string, unknown>;
-
-    if (e.eventKind !== "birdeye_net_flow") {
-      throw new HttpRequestError(
-        "invalid_json",
-        `Invalid event kind: ${String(e.eventKind)}. Birdeye adapter only accepts birdeye_net_flow events.`,
-        null,
-        false
-      );
-    }
-
-    if (typeof e.timestampUnixMs !== "number") {
-      throw new HttpRequestError("invalid_json", "Missing or invalid timestampUnixMs", null, false);
-    }
-    if (typeof e.buyVolume !== "number" || !isFiniteNumber(e.buyVolume)) {
-      throw new HttpRequestError("invalid_json", "Missing or invalid buyVolume", null, false);
-    }
-    if (typeof e.sellVolume !== "number" || !isFiniteNumber(e.sellVolume)) {
-      throw new HttpRequestError("invalid_json", "Missing or invalid sellVolume", null, false);
-    }
-    if (typeof e.netFlow !== "number" || !isFiniteNumber(e.netFlow)) {
-      throw new HttpRequestError("invalid_json", "Missing or invalid netFlow", null, false);
-    }
-    if (
-      !Array.isArray(e.sourceReferences) ||
-      !e.sourceReferences.every((s) => typeof s === "string")
-    ) {
-      throw new HttpRequestError(
-        "invalid_json",
-        "Missing or invalid sourceReferences",
-        null,
-        false
-      );
-    }
-
-    validatedEvents.push({
-      eventKind: "birdeye_net_flow",
-      timestampUnixMs: e.timestampUnixMs as number,
-      buyVolume: e.buyVolume as number,
-      sellVolume: e.sellVolume as number,
-      netFlow: e.netFlow as number,
-      sourceReferences: e.sourceReferences as readonly string[]
-    });
-  }
-
-  return Object.freeze({
-    source: "birdeye-api" as const,
-    providerId: obj.providerId as string,
-    providerRunId: obj.providerRunId as string,
-    asOfUnixMs: obj.asOfUnixMs as number,
-    license: obj.license as string,
-    retention: "bounded" as const,
-    events: Object.freeze(validatedEvents)
-  });
+function scaleDecimalToRaw(decimalValue: bigint, scale: number): bigint {
+  if (decimalValue === BigInt(0)) return BigInt(0);
+  return decimalValue * BigInt(10 ** scale);
 }
