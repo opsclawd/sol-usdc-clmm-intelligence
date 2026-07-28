@@ -68,21 +68,35 @@ function makeQualityInput(
 
 describe("classifyEvidenceBundleQuality", () => {
   describe("classifies all seven fresh available slots as complete deterministic coverage", () => {
-    it("seven fresh available slots = complete deterministic coverage while context and brief absent overall", () => {
-      const slots = makeSlotsAllAvailable();
-      const input = makeQualityInput(slots);
+    describe("classifies all seven fresh available slots as complete deterministic coverage", () => {
+      it("seven fresh available slots = complete deterministic coverage while context and brief absent overall", () => {
+        const slots = makeSlotsAllAvailable();
+        const input = makeQualityInput(slots);
 
-      const result = classifyEvidenceBundleQuality(input);
+        const result = classifyEvidenceBundleQuality(input);
 
-      expect(result.quality).toBe("complete");
-      expect(result.coverage.deterministic).toBe("available");
-      expect(result.coverage.supportResistance).toBe("not_applicable");
-      expect(result.coverage.flows).toBe("not_applicable");
-      expect(result.coverage.derivatives).toBe("not_applicable");
-      expect(result.coverage.events).toBe("not_applicable");
-      expect(result.coverage.newsRegulatory).toBe("not_applicable");
-      expect(result.coverage.researchBrief).toBe("not_applicable");
-      expect(result.warnings).toHaveLength(0);
+        expect(result.quality).toBe("complete");
+        expect(result.coverage.deterministic).toBe("available");
+        expect(result.coverage.supportResistance).toBe("not_applicable");
+        expect(result.coverage.flows).toBe("not_applicable");
+        expect(result.coverage.derivatives).toBe("not_applicable");
+        expect(result.coverage.events).toBe("not_applicable");
+        expect(result.coverage.newsRegulatory).toBe("not_applicable");
+        expect(result.coverage.researchBrief).toBe("not_applicable");
+      });
+
+      it("seven fresh available slots = complete even when context and brief are present", () => {
+        const slots = makeSlotsAllAvailable();
+        const input = makeQualityInput(slots, {
+          contextPresent: true,
+          briefPresent: true
+        });
+
+        const result = classifyEvidenceBundleQuality(input);
+
+        expect(result.quality).toBe("complete");
+        expect(result.coverage.deterministic).toBe("available");
+      });
     });
 
     it("seven fresh available slots = complete even when context and brief are present", () => {
@@ -397,6 +411,60 @@ describe("classifyEvidenceBundleQuality", () => {
 
       expect(result.coverage.supportResistance).toBe("partial");
       expect(result.coverage.researchBrief).toBe("not_applicable");
+    });
+
+    it("emits required contract warnings when context and brief are absent", () => {
+      const result = classifyEvidenceBundleQuality(
+        makeQualityInput(makeSlotsAllAvailable(), {
+          contextPresent: false,
+          briefPresent: false
+        })
+      );
+
+      expect(result.warnings.map((warning) => warning.code)).toEqual([
+        "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+        "RESEARCH_BRIEF_UNAVAILABLE"
+      ]);
+      expect(result.warnings).toContainEqual({
+        code: "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+        message: "All contextual evidence families are unavailable",
+        affectedFamilies: ["supportResistance", "flows", "derivatives", "events", "newsRegulatory"]
+      });
+      expect(result.warnings).toContainEqual({
+        code: "RESEARCH_BRIEF_UNAVAILABLE",
+        message: "Research brief is null",
+        affectedFamilies: ["researchBrief"]
+      });
+    });
+
+    it("omits required absence warnings when context and brief are present", () => {
+      const result = classifyEvidenceBundleQuality(
+        makeQualityInput(makeSlotsAllAvailable(), {
+          contextPresent: true,
+          briefPresent: true
+        })
+      );
+
+      expect(
+        result.warnings.filter(
+          (warning) =>
+            warning.code === "CONTEXTUAL_EVIDENCE_UNAVAILABLE" ||
+            warning.code === "RESEARCH_BRIEF_UNAVAILABLE"
+        )
+      ).toEqual([]);
+    });
+
+    it("emits only the research brief warning when context exists without a brief", () => {
+      const result = classifyEvidenceBundleQuality(
+        makeQualityInput(makeSlotsAllAvailable(), {
+          contextPresent: true,
+          briefPresent: false
+        })
+      );
+
+      expect(result.warnings.map((warning) => warning.code)).toEqual([
+        "RESEARCH_BRIEF_UNAVAILABLE"
+      ]);
     });
   });
 

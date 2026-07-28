@@ -191,6 +191,22 @@ function buildWarnings(
     });
   }
 
+  if (!contextPresent) {
+    warnings.push({
+      code: "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+      message: "All contextual evidence families are unavailable",
+      affectedFamilies: ["supportResistance", "flows", "derivatives", "events", "newsRegulatory"]
+    });
+  }
+
+  if (!briefPresent) {
+    warnings.push({
+      code: "RESEARCH_BRIEF_UNAVAILABLE",
+      message: "Research brief is null",
+      affectedFamilies: ["researchBrief"]
+    });
+  }
+
   return warnings;
 }
 

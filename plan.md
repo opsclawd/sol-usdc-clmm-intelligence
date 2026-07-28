@@ -1,624 +1,526 @@
-<!-- plan-review-required -->
-
-# Orca Collector Current Pools Endpoint Implementation Plan
+# Contract-Compliant Evidence Bundle Assembly Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Restore SOL/USDC Orca collection by querying the current address-filtered pools endpoint with 24-hour statistics, selecting the configured pool from the response array, and making the canonical active Whirlpool address the documented and tested default.
+**Goal:** Make assembled SOL/USDC evidence bundles pass the pinned `evidence-bundle.v1` contract when deterministic features have mixed availability and contextual evidence or a research brief is absent.
 
-**Architecture:** Keep HTTP request construction and persistence orchestration in the existing application use case, while extending the pure Orca domain parser to validate and select from the API's `{ data: OrcaPoolData[] }` wrapper. Preserve the current normalization, replay, persistence, degradation, and source-outcome behavior; only the request target, wrapper parsing, and default pool identity change.
+**Architecture:** Keep completeness assessment in `src/domain/evidence-bundle/quality.ts`, where the existing `contextPresent` and `briefPresent` facts are already classified. Keep lineage assembly in `src/domain/evidence-bundle/assemble.ts`: usable deterministic features reference the assembled bundle's source references, while unavailable features reference one canonical `internal_bundle` source. Validate each behavior at the domain boundary and validate their combined result with the real pinned contract adapter.
 
-**Tech Stack:** TypeScript, Node.js, Vitest, pnpm, ESLint, Prettier, YAML configuration.
+**Tech Stack:** TypeScript 5.7, Vitest 2, the generated `EvidenceBundleV1` contract types, and the AJV-backed pinned Regime Engine contract adapter.
 
 ---
 
-### Goal
+**Goal details**
 
-`collectOrcaPoolStatistics` must request `GET /pools?addresses=<configured-address>&stats=24h`, parse the array wrapper by exact address, persist and normalize the selected canonical SOL/USDC pool as it does today, and explicitly report malformed/degraded outcomes instead of inventing absent metrics.
+The completed change must remove the two known `CONTRACT_ERROR` causes:
 
-### Non-goals
+- Every deterministic feature `inputLineage` entry resolves to a `sourceReferences[].referenceId` in the same candidate.
+- Empty contextual evidence is accompanied by `CONTEXTUAL_EVIDENCE_UNAVAILABLE`.
+- A `null` research brief is accompanied by `RESEARCH_BRIEF_UNAVAILABLE`.
+- A mixed available/unavailable bundle produced from realistic lineage passes `createEvidenceBundleContract().validateCanonicalizeAndHash(...)`.
 
-- Do not change Raydium, Meteora, Jupiter, Pyth, Solana RPC, or clmm-v2 collectors.
-- Do not add pagination, discovery, search, or automatic pool migration logic.
-- Do not add metrics or change `PoolStatisticsPayloadV1`, normalization calculations, freshness policy, confidence policy, retry policy, repository ports, database schemas, or evidence-bundle contracts.
-- Do not convert missing 24-hour volume or fee values into zero or estimates.
-- Do not rewrite an operator's existing local `.env`; only update checked-in examples and documentation.
-- Do not implement a single-pool path lookup or retain the ignored singular `address` query parameter.
+**Non-goals**
 
-### Affected files
+- Do not change database schemas, repository ports, adapter interfaces, generated contract types, or pinned schema assets.
+- Do not add precise feature-to-raw-observation lineage mapping; usable features intentionally receive the bundle-wide source-reference set selected by the design.
+- Do not expose internal derived-feature row IDs as contract lineage references.
+- Do not change feature selection, lineage verification, quality-level calculation, coverage calculation, research-brief generation, publication, or policy interpretation.
+- Do not add scheduling for `assemble:bundle` or perform live database/deployment verification as part of implementation.
+- Do not regenerate `src/contracts/generated/evidence-bundle-v1.ts` or modify anything under `schemas/regime-engine/`.
 
-- `src/domain/pool-statistics/orca.ts` — define and validate the array response wrapper and select the configured pool.
-- `src/application/collect-orca-pool-statistics.ts` — construct the current endpoint URL and record the current path in request metadata.
-- `tests/fixtures/orca-pool.ts` — model realistic array responses and use the canonical pool address.
-- `tests/domain/pool-statistics/orca.test.ts` — cover address selection and malformed wrappers.
-- `tests/application/collect-orca-pool-statistics.test.ts` — cover the request URL, selected response shape, persistence boundary, and explicit degradation.
-- `resources/sources.yaml` — describe the actual Orca endpoint and query parameters.
-- `.env.example` — set both Orca pool variables to the canonical address.
-- `README.md` — update example pool identities and environment configuration.
-- `docs/operator-runbook.md` — update operator configuration and sample output.
-- `tests/scripts/derive-mvp-features.test.ts` — replace stale pool identity in script fixtures, split by test section because the file exceeds 500 lines and 10 test cases.
-- `tests/scripts/assemble-evidence-bundle.test.ts` — replace stale pool identity in bundle fixtures, split by describe block because the file exceeds 500 lines.
+**Assumptions**
 
-### Behavioral invariants
+- `VerifiedEvidenceLineage.lineage.sourceReferences` is already deduplicated and deterministically ordered by the upstream lineage verifier.
+- Evaluation windows normally contain no more than 64 source references, matching the `inputLineage` maximum in the pinned contract.
+- `internal_bundle` remains an allowed `SourceReference.sourceType`; this is confirmed by the checked-in generated contract.
+- The canonical unavailable reference uses `referenceId: "feature_unavailable"`, `locator: "unavailable"`, and the bundle `asOf` timestamp as its deterministic `observedAt`.
+- Existing coverage values (`not_applicable` when context or brief is absent) remain unchanged because the reported defect concerns required warnings, not coverage semantics.
 
-The implementer must write the named tests before changing production behavior:
+**Affected files**
 
-1. **Configured-address selection:** Given a valid array containing unrelated pools and the configured pool, the parser selects the configured pool regardless of array position. Test: `selects the configured pool from a multi-pool response before validating it`.
-2. **Missing-address rejection:** Given an empty array or an array without the configured address, the parser throws `OrcaPoolValidationError` with field `address`; it never falls back to the first entry. Test: `rejects an array that does not contain the configured pool address`.
-3. **Wrapper-shape rejection:** Given `data` that is null, an object, or another non-array value, the parser throws `OrcaPoolValidationError` with field `data`. Test: `rejects a response whose data member is not an array`.
-4. **Exact request construction:** Given the configured address, collection performs one GET to `/pools?addresses=<encoded-address>&stats=24h`, retaining the existing 5-second timeout and two-attempt policy. Test: `requests the address-filtered pools endpoint with 24h statistics`.
-5. **Pre-persistence validation:** Given a response array without the configured pool, collection returns `malformed`, `hasUsableEvidence: false`, `rawObservationId: null`, and `normalizedCount: 0`. Test: `rejects an Orca response without the configured pool before raw insertion`.
-6. **No fabricated statistics:** Given the selected pool with TVL but no 24-hour stats block, collection persists TVL, leaves volume and fees null, and reports usable `degraded` evidence. The stats block field names (`volume24hUsdc`/`fees24hUsdc` per the design contract, or the `stats["24h"].volume/.fees` shape in the current fixture) are verified against live endpoint evidence before the fixture is committed; if they differ, the plan is revised with captured evidence rather than proceeding with a mismatched shape. Test: `returns degraded usable evidence when 24h statistics are absent`.
-7. **Replay behavior remains stable:** Given the same selected pool address, `updatedAt`, and `updatedSlot`, identical raw content remains an identical replay; different content at that identity remains a conflict. Replay identity is derived from the **selected pool's address, updatedAt, updatedSlot, and content fields** (tvlUsdc, volume, fees when present) — not the whole wrapper. Unrelated array entries or array order changes do not affect replay classification when the selected pool's fields remain identical. Existing replay tests must continue to pass.
+| Path from repository root                       | Responsibility                                                                                     |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `src/domain/evidence-bundle/quality.ts`         | Emit contract-required warnings from the existing context/brief presence facts.                    |
+| `tests/domain/evidence-bundle/quality.test.ts`  | Lock the warning presence/absence truth table and exact warning payloads.                          |
+| `src/domain/evidence-bundle/assemble.ts`        | Build resolvable usable/unavailable feature lineage and register the canonical unavailable source. |
+| `tests/domain/evidence-bundle/assemble.test.ts` | Lock lineage mapping and validate a mixed candidate with the real pinned contract adapter.         |
 
-## Task 1: Parse and fixture Orca array responses
+**Behavioral invariants**
+
+- `contextPresent === false` always yields exactly one warning with code `CONTEXTUAL_EVIDENCE_UNAVAILABLE`; `contextPresent === true` yields none with that code.
+- `briefPresent === false` always yields exactly one warning with code `RESEARCH_BRIEF_UNAVAILABLE`; `briefPresent === true` yields none with that code.
+- Existing slot-quality warnings remain present and keep their existing order; required absence warnings are appended in contextual-then-brief order.
+- `selected_available` and `selected_partial` features receive the non-empty list of verified or fallback source-reference IDs, excluding the unavailable placeholder.
+- `missing`, `selected_unavailable`, `expired_only`, and `unsupported_version_only` features receive only `["feature_unavailable"]`.
+- `feature_unavailable` is registered exactly once when at least one unavailable feature is assembled and is omitted when all features are usable.
+- No emitted `inputLineage` value uses the legacy `row-N` or `missing` sentinel.
+
+**Tests to add or update**
+
+- In the existing context/brief describe-block of `tests/domain/evidence-bundle/quality.test.ts`, replace the obsolete zero-warning expectation and add focused cases for absent, present, and context-present/brief-absent inputs.
+- In the existing feature-mapping/missing-slot area of `tests/domain/evidence-bundle/assemble.test.ts`, add focused assertions for usable and unavailable lineage plus conditional placeholder registration.
+- In `tests/domain/evidence-bundle/assemble.test.ts`, add one contract regression that assembles mixed feature outcomes with two realistic `raw-N` source references, no context, and no brief, then calls the real `createEvidenceBundleContract()` adapter. This test must fail on the pre-fix code with unresolved lineage and missing-warning errors.
+
+## Task 1: Emit required context and research-brief warnings
 
 **Files:**
 
-- Modify: `src/domain/pool-statistics/orca.ts`
-- Modify: `tests/fixtures/orca-pool.ts`
-- Modify: `tests/domain/pool-statistics/orca.test.ts`
-- Modify: `tests/application/collect-orca-pool-statistics.test.ts`
-- Reference only: `src/domain/pool-statistics/index.ts`
-- Reference only: `tests/domain/pool-statistics/enrich.test.ts`
+- Modify: `tests/domain/evidence-bundle/quality.test.ts` — only the `classifies all seven fresh available slots...` and `maps deterministic-only context and brief absence exactly` describe-blocks.
+- Modify: `src/domain/evidence-bundle/quality.ts` — only `buildWarnings(...)`.
 
-- [ ] **Step 1: Write failing domain tests for array selection and rejection**
+**Reference files:**
 
-Add these exact cases to the first parser describe block in `tests/domain/pool-statistics/orca.test.ts` before changing the fixture or parser:
+- Read only: `schemas/regime-engine/evidence-bundle.v1/fixtures/valid/deterministic-only.json` for the canonical codes, messages, and affected-family names.
+- Read only: `src/adapters/node/evidence-bundle-v1-contract.ts` for the empty-context and null-brief cross-field checks.
+
+**Behavioral invariants and named tests:**
+
+1. **Both absence warnings:** Given `contextPresent: false` and `briefPresent: false`, append both required warnings with their exact canonical payloads.
+   Test first: `emits required contract warnings when context and brief are absent`.
+2. **No false absence warnings:** Given `contextPresent: true` and `briefPresent: true`, emit neither required warning.
+   Test first: `omits required absence warnings when context and brief are present`.
+3. **Independent brief warning:** Given `contextPresent: true` and `briefPresent: false`, emit `RESEARCH_BRIEF_UNAVAILABLE` but not `CONTEXTUAL_EVIDENCE_UNAVAILABLE`.
+   Test first: `emits only the research brief warning when context exists without a brief`.
+4. **Stable required-warning composition:** The two new warnings appear at most once and in contextual-then-brief order because `buildWarnings` executes each absence branch once.
+   Covered by the exact warning-code array assertion in the first test.
+
+- [ ] **Step 1: Write the failing warning truth-table tests**
+
+Update the obsolete assertion in the complete-deterministic-coverage case so it no longer expects an empty warning list when both optional evidence classes are absent. In the existing `maps deterministic-only context and brief absence exactly` describe-block, add focused tests using this shape:
 
 ```ts
-it("selects the configured pool from a multi-pool response before validating it", () => {
-  const configured = {
-    address: DEFAULT_WHIRLPOOL_ADDRESS,
-    tokenA: { address: DEFAULT_SOL_MINT },
-    tokenB: { address: DEFAULT_USDC_MINT },
-    updatedAt: "2026-07-19T06:00:00.000Z",
-    updatedSlot: 1234567,
-    tvlUsdc: "5000000.75",
-    stats: {
-      "24h": {
-        volume: "1250000.50",
-        fees: "3750.25"
-      }
-    }
-  };
-  const response = {
-    data: [{ ...configured, address: "unrelatedPool" }, configured]
-  };
-
-  const { accepted } = acceptOrcaPoolResponse(
-    response,
-    DEFAULT_WHIRLPOOL_ADDRESS,
-    DEFAULT_SOL_MINT,
-    DEFAULT_USDC_MINT
+it("emits required contract warnings when context and brief are absent", () => {
+  const result = classifyEvidenceBundleQuality(
+    makeQualityInput(makeSlotsAllAvailable(), {
+      contextPresent: false,
+      briefPresent: false
+    })
   );
 
-  expect(accepted.address).toBe(DEFAULT_WHIRLPOOL_ADDRESS);
+  expect(result.warnings.map((warning) => warning.code)).toEqual([
+    "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+    "RESEARCH_BRIEF_UNAVAILABLE"
+  ]);
+  expect(result.warnings).toContainEqual({
+    code: "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+    message: "All contextual evidence families are unavailable",
+    affectedFamilies: ["supportResistance", "flows", "derivatives", "events", "newsRegulatory"]
+  });
+  expect(result.warnings).toContainEqual({
+    code: "RESEARCH_BRIEF_UNAVAILABLE",
+    message: "Research brief is null",
+    affectedFamilies: ["researchBrief"]
+  });
 });
 
-it("rejects an array that does not contain the configured pool address", () => {
-  expect(() =>
-    acceptOrcaPoolResponse(
-      { data: [] },
-      DEFAULT_WHIRLPOOL_ADDRESS,
-      DEFAULT_SOL_MINT,
-      DEFAULT_USDC_MINT
+it("omits required absence warnings when context and brief are present", () => {
+  const result = classifyEvidenceBundleQuality(
+    makeQualityInput(makeSlotsAllAvailable(), {
+      contextPresent: true,
+      briefPresent: true
+    })
+  );
+
+  expect(
+    result.warnings.filter(
+      (warning) =>
+        warning.code === "CONTEXTUAL_EVIDENCE_UNAVAILABLE" ||
+        warning.code === "RESEARCH_BRIEF_UNAVAILABLE"
     )
-  ).toThrow(expect.objectContaining({ field: "address" }));
+  ).toEqual([]);
 });
 
-it("rejects a response whose data member is not an array", () => {
-  expect(() =>
-    acceptOrcaPoolResponse(
-      { data: { address: DEFAULT_WHIRLPOOL_ADDRESS } },
-      DEFAULT_WHIRLPOOL_ADDRESS,
-      DEFAULT_SOL_MINT,
-      DEFAULT_USDC_MINT
-    )
-  ).toThrow(expect.objectContaining({ field: "data" }));
+it("emits only the research brief warning when context exists without a brief", () => {
+  const result = classifyEvidenceBundleQuality(
+    makeQualityInput(makeSlotsAllAvailable(), {
+      contextPresent: true,
+      briefPresent: false
+    })
+  );
+
+  expect(result.warnings.map((warning) => warning.code)).toEqual(["RESEARCH_BRIEF_UNAVAILABLE"]);
 });
 ```
 
-- [ ] **Step 2: Run the new cases and confirm the old object parser fails them**
+- [ ] **Step 2: Run only the new warning cases and confirm the pre-fix failure**
 
 Run:
 
 ```bash
-pnpm exec vitest run tests/domain/pool-statistics/orca.test.ts -t "selects the configured pool|rejects an array|data member is not an array"
+pnpm exec vitest run tests/domain/evidence-bundle/quality.test.ts -t "emits required contract warnings|omits required absence warnings|emits only the research brief warning"
 ```
 
-Expected: FAIL because the fixture and parser still treat `data` as one object.
+Expected before implementation: the absence cases fail because `buildWarnings` does not use `contextPresent` or `briefPresent`; the present/present case may already pass.
 
-- [ ] **Step 3: Change the shared fixture to emit the live wrapper shape and canonical address**
+- [ ] **Step 3: Implement the minimal quality warning branches**
 
-In `tests/fixtures/orca-pool.ts`, change the response declaration and factory return while keeping `makeOrcaPoolResponse(overrides)` as the shared factory:
+Append the required warnings in `buildWarnings(...)` after the existing slot-status warning branches and before returning:
 
 ```ts
-export interface OrcaPoolResponse {
-  data: OrcaPoolData[];
+if (!contextPresent) {
+  warnings.push({
+    code: "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+    message: "All contextual evidence families are unavailable",
+    affectedFamilies: ["supportResistance", "flows", "derivatives", "events", "newsRegulatory"]
+  });
 }
 
-export const DEFAULT_WHIRLPOOL_ADDRESS = "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
+if (!briefPresent) {
+  warnings.push({
+    code: "RESEARCH_BRIEF_UNAVAILABLE",
+    message: "Research brief is null",
+    affectedFamilies: ["researchBrief"]
+  });
+}
+```
 
-export function makeOrcaPoolResponse(overrides: Partial<OrcaPoolData> = {}): OrcaPoolResponse {
-  const statsOverride =
-    overrides.stats === undefined
-      ? {
-          "24h": {
-            volume: "1250000.50",
-            fees: "3750.25"
-          }
-        }
-      : overrides.stats;
+Do not change `computeQualityLevel`, `computeOverallConfidence`, or the `coverage` object. The new warnings communicate absence without redefining those existing outputs.
 
-  const data: OrcaPoolData = {
-    address: DEFAULT_WHIRLPOOL_ADDRESS,
-    tokenA: {
-      address: DEFAULT_SOL_MINT
-    },
-    tokenB: {
-      address: DEFAULT_USDC_MINT
-    },
-    updatedAt: "2026-07-19T06:00:00.000Z",
-    updatedSlot: 1234567,
-    tvlUsdc: "5000000.75",
-    hasWarning: false,
-    ...overrides
+- [ ] **Step 4: Run task-scoped tests and static checks**
+
+Run:
+
+```bash
+pnpm exec vitest run tests/domain/evidence-bundle/quality.test.ts
+pnpm exec eslint src/domain/evidence-bundle/quality.ts tests/domain/evidence-bundle/quality.test.ts
+pnpm exec prettier --check src/domain/evidence-bundle/quality.ts tests/domain/evidence-bundle/quality.test.ts
+```
+
+Expected: the quality test file passes; ESLint and Prettier report no errors. The implementation loop's automatic `pnpm -r typecheck` gate must also pass.
+
+- [ ] **Step 5: Commit the warning behavior**
+
+```bash
+git add src/domain/evidence-bundle/quality.ts tests/domain/evidence-bundle/quality.test.ts
+git commit -m "fix: emit required evidence absence warnings"
+```
+
+Acceptance criteria:
+
+- Both false flags produce both exact canonical warning payloads.
+- Each true flag suppresses only its corresponding absence warning.
+- Existing slot warning tests remain green.
+- No exported API signature changes.
+
+## Task 2: Resolve deterministic feature lineage against bundle sources
+
+**Files:**
+
+- Modify: `tests/domain/evidence-bundle/assemble.test.ts` — only helper setup needed for realistic lineage, the deterministic feature mapping/missing-slot describe-blocks, and one focused strict-contract regression describe-block.
+- Modify: `src/domain/evidence-bundle/assemble.ts` — `buildDeterministicFeature(...)`, source-reference construction helpers, and local ordering inside `assembleEvidenceBundleCandidate(...)`.
+
+**Reference files:**
+
+- Read only: `src/domain/evidence-bundle/lineage.ts` for `VerifiedLineageSourceRef` semantics and upstream `raw-N` reference construction.
+- Read only: `src/domain/evidence-bundle/quality.ts` for production classification used by the strict-contract regression.
+- Read only: `src/contracts/generated/evidence-bundle-v1.ts` for `Identifier128`, `SourceReference`, non-empty `inputLineage`, and maximum sizes.
+- Read only: `src/adapters/node/evidence-bundle-v1-contract.ts` for strict unresolved-lineage and required-warning checks.
+- Read only: `schemas/regime-engine/evidence-bundle.v1/fixtures/valid/deterministic-only.json` for a contract-valid deterministic-only example.
+
+**Behavioral invariants and named tests:**
+
+1. **Usable lineage:** For `selected_available` or `selected_partial`, `inputLineage` equals every verified or fallback source-reference ID assembled before the unavailable placeholder, in the same deterministic order.
+   Test first: `maps available and partial features to every verified source reference`.
+2. **Unavailable lineage:** For `missing`, `selected_unavailable`, `expired_only`, or `unsupported_version_only`, `inputLineage` is exactly `["feature_unavailable"]`.
+   Test first: `maps every unavailable feature outcome to the canonical unavailable reference`.
+3. **Conditional placeholder registration:** If any feature is unavailable, register one `feature_unavailable` `internal_bundle` source observed at bundle `asOf`; if every feature is usable, do not register it.
+   Test first: `registers the unavailable source exactly once only when it is needed`.
+4. **Contract-level closure:** A mixed candidate with valid `raw-N` sources, empty context, and a null brief passes strict validation and canonicalization with no unresolved lineage or missing-warning errors.
+   Test first: `passes strict contract validation for mixed availability without context or a brief`.
+5. **Non-empty fallback:** If verified lineage has no external source references, usable features continue to reference the existing `no_sources_available` source rather than receiving an empty lineage array.
+   Test first: `uses the existing no-sources reference for usable features when lineage is empty`.
+
+- [ ] **Step 1: Add the contract adapter import and realistic lineage test helper**
+
+Add the real adapter import to `tests/domain/evidence-bundle/assemble.test.ts`:
+
+```ts
+import { createEvidenceBundleContract } from "../../../src/adapters/node/evidence-bundle-v1-contract.js";
+import { classifyEvidenceBundleQuality } from "../../../src/domain/evidence-bundle/quality.js";
+```
+
+Extend the local lineage helper without changing production types:
+
+```ts
+function makeLineage(
+  sourceReferences: VerifiedEvidenceLineage["lineage"]["sourceReferences"] = []
+): VerifiedEvidenceLineage["lineage"] {
+  return {
+    rawObservationIds: sourceReferences.map((reference, index) => {
+      const rawId = Number(reference.referenceId.replace(/^raw-/, ""));
+      return Number.isFinite(rawId) ? rawId : index + 1;
+    }),
+    normalizedObservationIds: [],
+    sourceReferences
   };
+}
 
-  if (statsOverride !== undefined) {
-    data.stats = statsOverride;
+const RAW_SOURCE_REFERENCES: VerifiedEvidenceLineage["lineage"]["sourceReferences"] = [
+  {
+    referenceId: "raw-10",
+    sourceType: "api",
+    locator: "jupiter:SOL-USDC",
+    observedAt: "2026-07-28T18:00:00.000Z"
+  },
+  {
+    referenceId: "raw-20",
+    sourceType: "chain",
+    locator: "orca:pool-abc",
+    observedAt: "2026-07-28T18:00:01.000Z"
   }
+];
+```
 
-  return { data: [data] };
+Keep the helper deterministic and local to the test file. Do not alter `VerifiedEvidenceLineage` or its port-facing consumers.
+
+- [ ] **Step 2: Write the failing usable and unavailable lineage tests**
+
+Create a local mixed-slot factory in the test file. All usable slots must have contract-valid `asOfUnixMs` and `validUntilUnixMs`; explicitly cover available, partial, missing, selected-unavailable, expired-only, and unsupported-version-only outcomes:
+
+```ts
+function makeMixedSlots(asOfUnixMs: number, freshUntilUnixMs: number): SelectedFeatureSlot[] {
+  return MVP_FEATURE_KINDS.map((featureKind, index) => {
+    if (index === 2) return { featureKind, outcome: "missing" as const };
+    if (index === 3) {
+      return {
+        featureKind,
+        outcome: "selected_unavailable" as const,
+        rowId: index + 1,
+        confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0 },
+        provenance: DEFAULT_PROVENANCE,
+        warnings: ["no_valid_input"],
+        reasons: ["input_exhausted"],
+        asOfUnixMs,
+        validUntilUnixMs: freshUntilUnixMs
+      };
+    }
+    if (index === 4) {
+      return { featureKind, outcome: "expired_only" as const, rowId: index + 1 };
+    }
+    if (index === 5) {
+      return {
+        featureKind,
+        outcome: "unsupported_version_only" as const,
+        rowId: index + 1
+      };
+    }
+    return {
+      featureKind,
+      outcome: index === 1 ? ("selected_partial" as const) : ("selected_available" as const),
+      rowId: index + 1,
+      value: 1000 + index,
+      confidence: DEFAULT_CONFIDENCE,
+      provenance: DEFAULT_PROVENANCE,
+      warnings: [] as readonly string[],
+      reasons: [] as readonly string[],
+      asOfUnixMs,
+      validUntilUnixMs: freshUntilUnixMs
+    };
+  });
 }
 ```
 
-Update every direct access in `tests/application/collect-orca-pool-statistics.test.ts` from `response.data.updatedAt` or `response.data.updatedSlot` to the non-null selected fixture entry:
+Add the named unit tests. Their core assertions must be:
 
 ```ts
-const pool = response.data[0]!;
-```
-
-Use `pool.updatedAt` and `pool.updatedSlot` when deriving replay identity or timestamps. Change the malformed response fixture from a bare object to an array containing the wrong-address object so the test exercises address lookup rather than obsolete wrapper validation:
-
-```ts
-deps.http.setResponse(url, { body: { data: [{ address: "wrong" }] } });
-```
-
-- [ ] **Step 4: Select the configured address from a validated array before existing field validation**
-
-In `src/domain/pool-statistics/orca.ts`, make the exported wrapper shape:
-
-```ts
-export interface OrcaPoolResponse {
-  data: OrcaPoolData[];
-}
-```
-
-Replace the current object-only preamble in `acceptOrcaPoolResponse` with runtime-safe array validation and exact selection:
-
-```ts
-if (!response || typeof response !== "object" || !("data" in response)) {
-  throw new OrcaPoolValidationError(
-    "response",
-    "Response must be an object containing a data array"
-  );
-}
-
-const wrapper = response as OrcaPoolResponse;
-if (!Array.isArray(wrapper.data)) {
-  throw new OrcaPoolValidationError("data", "Response.data must be an array");
-}
-
-const data = (wrapper.data as unknown[]).find(
-  (candidate): candidate is OrcaPoolData =>
-    candidate !== null &&
-    typeof candidate === "object" &&
-    "address" in candidate &&
-    candidate.address === configuredPoolAddress
+const usableFeatures = result.deterministicFeatures.filter(
+  (feature) => feature.status === "available"
+);
+expect(usableFeatures.map((feature) => feature.inputLineage)).toEqual(
+  usableFeatures.map(() => ["raw-10", "raw-20"])
 );
 
-if (!data) {
-  throw new OrcaPoolValidationError(
-    "address",
-    `Configured pool address not found: ${configuredPoolAddress}`
+const unavailableFeatures = result.deterministicFeatures.filter(
+  (feature) => feature.status === "unavailable"
+);
+expect(unavailableFeatures.map((feature) => feature.inputLineage)).toEqual(
+  unavailableFeatures.map(() => ["feature_unavailable"])
+);
+
+expect(
+  result.sourceReferences.filter((reference) => reference.referenceId === "feature_unavailable")
+).toEqual([
+  {
+    referenceId: "feature_unavailable",
+    sourceType: "internal_bundle",
+    locator: "unavailable",
+    observedAt: new Date(asOfUnixMs).toISOString()
+  }
+]);
+```
+
+Also assemble an all-usable candidate and assert that `feature_unavailable` is absent. Assemble an all-usable candidate with `makeLineage()` and assert every feature uses `["no_sources_available"]`.
+
+- [ ] **Step 3: Write the failing strict-contract regression**
+
+Use the same mixed slots and realistic lineage, but derive the quality object with the production classifier so Task 1's warning behavior is included:
+
+```ts
+it("passes strict contract validation for mixed availability without context or a brief", async () => {
+  const asOfUnixMs = Date.parse("2026-07-28T18:00:02.000Z");
+  const freshUntilUnixMs = Date.parse("2026-07-28T19:00:02.000Z");
+  const expiresAtUnixMs = Date.parse("2026-07-28T20:00:02.000Z");
+  const slots = makeMixedSlots(asOfUnixMs, freshUntilUnixMs);
+  const quality = classifyEvidenceBundleQuality({
+    slots,
+    runId: "run-contract-regression",
+    correlationId: "corr-contract-regression",
+    createdAt: asOfUnixMs,
+    asOf: asOfUnixMs,
+    freshUntil: freshUntilUnixMs,
+    expiresAt: expiresAtUnixMs,
+    contextPresent: false,
+    briefPresent: false
+  });
+  const candidate = assembleEvidenceBundleCandidate(
+    makeAssembleInput(slots, quality, makeLineage(RAW_SOURCE_REFERENCES), {
+      runId: "run-contract-regression",
+      correlationId: "corr-contract-regression",
+      createdAt: asOfUnixMs,
+      asOf: asOfUnixMs,
+      freshUntil: freshUntilUnixMs,
+      expiresAt: expiresAtUnixMs,
+      contextPresent: false,
+      briefPresent: false,
+      gitCommit: "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234"
+    })
   );
+
+  await expect(
+    createEvidenceBundleContract().validateCanonicalizeAndHash(candidate)
+  ).resolves.toMatchObject({
+    schemaVersion: "evidence-bundle.v1"
+  });
+});
+```
+
+This is the acceptance-level regression. It must use the real adapter, not a fake contract, so both cross-reference checks execute.
+
+- [ ] **Step 4: Run only the new lineage/contract cases and confirm the pre-fix failures**
+
+Run:
+
+```bash
+pnpm exec vitest run tests/domain/evidence-bundle/assemble.test.ts -t "maps available and partial features|maps every unavailable feature outcome|registers the unavailable source|uses the existing no-sources reference|passes strict contract validation"
+```
+
+Expected before implementation:
+
+- Usable features expose `row-N` instead of `raw-10`/`raw-20`.
+- Unavailable features expose `missing` or `row-N` instead of `feature_unavailable`.
+- No matching `feature_unavailable` source exists.
+- The strict contract case rejects with unresolved-lineage validation errors.
+
+- [ ] **Step 5: Thread the assembled source IDs into deterministic feature construction**
+
+Add a module-local identifier constant:
+
+```ts
+const FEATURE_UNAVAILABLE_REFERENCE_ID =
+  "feature_unavailable" as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128;
+```
+
+Change only the private `buildDeterministicFeature` signature:
+
+```ts
+function buildDeterministicFeature(
+  slot: SelectedFeatureSlot,
+  featureKind: FeatureKind,
+  availableInputLineage: [
+    import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
+    ...import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
+  ]
+): DeterministicFeature;
+```
+
+Use the supplied `availableInputLineage` only for `selected_available` and `selected_partial`. Use this tuple for every branch that maps to contract status `unavailable`:
+
+```ts
+const unavailableInputLineage = [FEATURE_UNAVAILABLE_REFERENCE_ID] as [
+  import("../../contracts/generated/evidence-bundle-v1.js").Identifier128
+];
+```
+
+Remove the legacy `["missing"]` and ``[`row-${rowId}`]`` assignments. Keep `rowId` only in `featureId`; it remains useful identity data but is no longer contract lineage.
+
+- [ ] **Step 6: Register the canonical unavailable source and build features in dependency order**
+
+Inside `assembleEvidenceBundleCandidate(...)`, build source references before mapping features:
+
+```ts
+const sourceReferences = buildSourceReferences(lineage);
+const availableInputLineage = sourceReferences.map((reference) => reference.referenceId) as [
+  import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
+  ...import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
+];
+```
+
+Pass `availableInputLineage` to every `buildDeterministicFeature(...)` call, including synthesized missing slots. After feature mapping, conditionally append one placeholder:
+
+```ts
+const needsUnavailableReference = deterministicFeatures.some((feature) =>
+  feature.inputLineage.includes(FEATURE_UNAVAILABLE_REFERENCE_ID)
+);
+
+if (needsUnavailableReference) {
+  sourceReferences.push({
+    referenceId: FEATURE_UNAVAILABLE_REFERENCE_ID,
+    sourceType: "internal_bundle",
+    locator: "unavailable",
+    observedAt: toCanonicalTimestamp(asOf)
+  });
 }
 ```
 
-Remove the old top-level address mismatch branch. Leave token, timestamp, slot, TVL, volume, and fee validation unchanged and return `{ wrapper, accepted: data }`.
+Return the already-built `sourceReferences` variable rather than invoking `buildSourceReferences(lineage)` a second time. This preserves the existing `no_sources_available` fallback and ensures all feature lineage IDs resolve against the exact returned array.
 
-- [ ] **Step 5: Run the scoped parser and consumer checks**
-
-Run:
-
-```bash
-pnpm exec vitest run tests/domain/pool-statistics/orca.test.ts tests/domain/pool-statistics/enrich.test.ts tests/application/collect-orca-pool-statistics.test.ts
-pnpm exec eslint src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
-pnpm exec prettier --check src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
-pnpm exec tsc --noEmit
-```
-
-Expected: all selected suites pass; lint and formatting report no errors; TypeScript compiles without errors. This also proves the read-only enrichment consumer accepts the widened wrapper without modification.
-
-- [ ] **Step 6: Commit the independently compiling parser change**
-
-```bash
-git add src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
-git commit -m "fix: parse Orca pool list responses"
-```
-
-## Task 2: Request the current Orca pools endpoint
-
-**Files:**
-
-- Modify: `src/application/collect-orca-pool-statistics.ts`
-- Modify: `tests/application/collect-orca-pool-statistics.test.ts`
-- Modify: `resources/sources.yaml`
-- Reference only: `src/ports/http.ts`
-- Reference only: `tests/fakes/fake-http.ts`
-
-- [ ] **Step 1: Update the collector tests to require the exact current URL**
-
-Define one URL constant near `ORCA_API_BASE` in `tests/application/collect-orca-pool-statistics.test.ts` and use it for every fake response:
-
-```ts
-const ORCA_POOL_URL =
-  `${ORCA_API_BASE}/pools?addresses=${encodeURIComponent(DEFAULT_WHIRLPOOL_ADDRESS)}` +
-  "&stats=24h";
-```
-
-Rename the first accepted test to `requests the address-filtered pools endpoint with 24h statistics` and add both the HTTP call assertion and the updated path metadata assertion:
-
-```ts
-expect(deps.http.calls).toEqual([
-  {
-    url: ORCA_POOL_URL,
-    options: {
-      timeoutMs: 5000,
-      maxAttempts: 2
-    }
-  }
-]);
-
-expect(rawRow!.sourceRequestMeta).toMatchObject({ path: "/pools" });
-```
-
-Rename the malformed test to `rejects an Orca response without the configured pool before raw insertion`, and rename the partial-statistics test to `returns degraded usable evidence when 24h statistics are absent`. Keep their existing persistence and null-metric assertions.
-
-- [ ] **Step 2: Run the request test and confirm it fails against `/public/pool`**
+- [ ] **Step 7: Run task-scoped tests and static checks**
 
 Run:
 
 ```bash
-pnpm exec vitest run tests/application/collect-orca-pool-statistics.test.ts -t "requests the address-filtered pools endpoint with 24h statistics"
+pnpm exec vitest run tests/domain/evidence-bundle/assemble.test.ts
+pnpm exec eslint src/domain/evidence-bundle/assemble.ts tests/domain/evidence-bundle/assemble.test.ts
+pnpm exec prettier --check src/domain/evidence-bundle/assemble.ts tests/domain/evidence-bundle/assemble.test.ts
 ```
 
-Expected: FAIL because the use case still requests `/public/pool?address=...`.
+Expected: both domain test files pass, including strict canonicalization; ESLint and Prettier report no errors. The implementation loop's automatic `pnpm -r typecheck` gate must also pass.
 
-- [ ] **Step 3: Build the address-filtered URL and update redacted metadata**
-
-In `src/application/collect-orca-pool-statistics.ts`, replace the path and URL construction with:
-
-```ts
-const path = "/pools";
-const url = `${normalizedBase}${path}?addresses=${encodeURIComponent(poolAddress)}` + "&stats=24h";
-```
-
-Keep timeout, attempt count, error classification, validation-before-ingest, hashing, normalization, replay, conflict, and persistence code unchanged. The existing `redactedMeta` object must continue to include `statsWindow: "24h"` and must now persist `path: "/pools"`.
-
-- [ ] **Step 4: Align the checked-in source catalog**
-
-In the `orca-public-api` section of `resources/sources.yaml`, set:
-
-```yaml
-endpoint: /pools?addresses=:poolAddress&stats=24h
-```
-
-Keep the existing 24-hour-window limitation because the request explicitly opts into those statistics.
-
-- [ ] **Step 5: Run request, degradation, replay, and formatting checks**
-
-Run:
+- [ ] **Step 8: Commit the lineage and contract regression**
 
 ```bash
-pnpm exec vitest run tests/application/collect-orca-pool-statistics.test.ts
-pnpm exec eslint src/application/collect-orca-pool-statistics.ts tests/application/collect-orca-pool-statistics.test.ts
-pnpm exec prettier --check src/application/collect-orca-pool-statistics.ts tests/application/collect-orca-pool-statistics.test.ts resources/sources.yaml
-sed -n '58,70p' resources/sources.yaml | grep -F 'endpoint: /pools?addresses=:poolAddress&stats=24h'
+git add src/domain/evidence-bundle/assemble.ts tests/domain/evidence-bundle/assemble.test.ts
+git commit -m "fix: resolve assembled feature lineage"
 ```
 
-Expected: all collector cases pass, the request assertion proves the exact URL and retry options, and the scoped source-catalog section contains the new endpoint.
-
-- [ ] **Step 6: Commit the endpoint change**
-
-```bash
-git add src/application/collect-orca-pool-statistics.ts tests/application/collect-orca-pool-statistics.test.ts resources/sources.yaml
-git commit -m "fix: query current Orca pools endpoint"
-```
-
-## Task 3: Document the canonical Orca pool default
-
-**Files:**
-
-- Modify: `.env.example`
-- Modify: `README.md`
-- Modify: `docs/operator-runbook.md`
-- Reference only: `tests/fixtures/orca-pool.ts`
-
-- [ ] **Step 1: Replace operator-facing stale pool identities**
-
-Replace every operator-facing occurrence of:
-
-```text
-HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw
-```
-
-with:
-
-```text
-Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE
-```
-
-in `.env.example`, `README.md`, and `docs/operator-runbook.md`. This includes both `ORCA_SOL_USDC_WHIRLPOOL` and `WHIRLPOOL_ADDRESS`, as well as pool IDs in example payloads. Add this exact sentence next to the operator-runbook variable description:
-
-```text
-Existing deployments must update their local pool variables; changes to `.env.example` do not rewrite an existing `.env`.
-```
-
-- [ ] **Step 2: Verify only the changed configuration and documentation sections**
-
-Run:
-
-```bash
-sed -n '48,68p' .env.example | grep -F 'ORCA_SOL_USDC_WHIRLPOOL=Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
-sed -n '48,68p' .env.example | grep -F 'WHIRLPOOL_ADDRESS=Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
-sed -n '325,340p' README.md | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
-sed -n '555,570p' README.md | grep -F 'ORCA_SOL_USDC_WHIRLPOOL=Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
-sed -n '55,66p' docs/operator-runbook.md | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
-sed -n '318,330p' docs/operator-runbook.md | grep -F 'WHIRLPOOL_ADDRESS=Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
-sed -n '416,428p' docs/operator-runbook.md | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
-git diff --check -- .env.example README.md docs/operator-runbook.md
-```
-
-Expected: every scoped example reports the canonical address and `git diff --check` reports no whitespace errors.
-
-- [ ] **Step 3: Commit the operator-default update**
-
-```bash
-git add .env.example README.md docs/operator-runbook.md
-git commit -m "docs: set canonical Orca SOL USDC pool"
-```
-
-## Task 4: Update derive-script primary cases to the canonical pool
-
-**Files:**
-
-- Modify: `tests/scripts/derive-mvp-features.test.ts` (only the `derive-mvp-features script` cases before the nested `script validation` block, approximately lines 252-373)
-
-- [ ] **Step 1: Replace stale `WHIRLPOOL_ADDRESS` values in the scoped cases**
-
-Within the two top-level cases named `script prints deterministic status counts and sorted warnings after persistence` and `script fails for missing scope malformed position list or infrastructure failure`, replace each configured pool value with:
-
-```ts
-WHIRLPOOL_ADDRESS: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
-```
-
-Do not change the missing-variable fixture or any assertions; this task updates fixture identity only.
-
-- [ ] **Step 2: Run only the changed test cases and section checks**
-
-Run:
-
-```bash
-pnpm exec vitest run tests/scripts/derive-mvp-features.test.ts -t "script prints deterministic status counts|script fails for missing scope"
-sed -n '252,373p' tests/scripts/derive-mvp-features.test.ts | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
-! sed -n '252,373p' tests/scripts/derive-mvp-features.test.ts | grep -F 'HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw'
-pnpm exec eslint tests/scripts/derive-mvp-features.test.ts
-pnpm exec prettier --check tests/scripts/derive-mvp-features.test.ts
-```
-
-Expected: the two selected cases pass, the scoped section contains the canonical address and no stale address, and file lint/format checks pass.
-
-- [ ] **Step 3: Commit the first independently tested derive-script section**
-
-```bash
-git add tests/scripts/derive-mvp-features.test.ts
-git commit -m "test: update derive script pool fixtures"
-```
-
-## Task 5: Update derive-script validation cases to the canonical pool
-
-**Files:**
-
-- Modify: `tests/scripts/derive-mvp-features.test.ts` (only the nested `script validation` block, approximately lines 374-551)
-
-- [ ] **Step 1: Replace stale pool values in the validation block**
-
-Within `describe("script validation")`, replace every present `WHIRLPOOL_ADDRESS` value with:
-
-```ts
-WHIRLPOOL_ADDRESS: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
-```
-
-Keep the `should throw for missing WHIRLPOOL_ADDRESS` case without that variable so it continues to prove required configuration.
-
-- [ ] **Step 2: Run the validation block and scoped identity checks**
-
-Run:
-
-```bash
-pnpm exec vitest run tests/scripts/derive-mvp-features.test.ts -t "script validation"
-sed -n '374,551p' tests/scripts/derive-mvp-features.test.ts | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
-! sed -n '374,551p' tests/scripts/derive-mvp-features.test.ts | grep -F 'HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw'
-pnpm exec eslint tests/scripts/derive-mvp-features.test.ts
-pnpm exec prettier --check tests/scripts/derive-mvp-features.test.ts
-```
-
-Expected: every nested validation case passes and the scoped block contains no stale identity.
-
-- [ ] **Step 3: Commit the second independently tested derive-script section**
-
-```bash
-git add tests/scripts/derive-mvp-features.test.ts
-git commit -m "test: align derive validation pool identity"
-```
-
-## Task 6: Update bundle runtime and job fixtures to the canonical pool
-
-**Files:**
-
-- Modify: `tests/scripts/assemble-evidence-bundle.test.ts` (shared `VALID_REQUEST`, plus the runtime and job describe blocks through approximately line 595)
-
-- [ ] **Step 1: Update the shared request and job lineage fixtures**
-
-In the shared `VALID_REQUEST` and both cases under `job forwards an explicit immutable assembly request unchanged`, replace the stale pool ID in feature rows, raw payloads, `makePoolData`, and `makePositionData` with:
-
-```text
-Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE
-```
-
-Every pool identity participating in a single case must match so the test continues to exercise forwarding and lineage rather than wrong-pool rejection.
-
-- [ ] **Step 2: Run only the runtime/job subset and inspect its range**
-
-Run:
-
-```bash
-pnpm exec vitest run tests/scripts/assemble-evidence-bundle.test.ts -t "runtime composes the bundle repository|job forwards an explicit immutable assembly request unchanged"
-sed -n '80,595p' tests/scripts/assemble-evidence-bundle.test.ts | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
-! sed -n '80,595p' tests/scripts/assemble-evidence-bundle.test.ts | grep -F 'HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw'
-pnpm exec eslint tests/scripts/assemble-evidence-bundle.test.ts
-pnpm exec prettier --check tests/scripts/assemble-evidence-bundle.test.ts
-```
-
-Expected: runtime and job tests pass and their shared-fixture section has one consistent canonical pool.
-
-- [ ] **Step 3: Commit the first independently tested bundle section**
-
-```bash
-git add tests/scripts/assemble-evidence-bundle.test.ts
-git commit -m "test: update bundle job pool fixtures"
-```
-
-## Task 7: Update bundle output-summary fixtures to the canonical pool
-
-**Files:**
-
-- Modify: `tests/scripts/assemble-evidence-bundle.test.ts` (only `script parses required inputs and prints a redacted outcome summary`, approximately lines 596-908)
-
-- [ ] **Step 1: Update input, feature, and raw lineage pool IDs**
-
-Within `describe("script parses required inputs and prints a redacted outcome summary")`, replace the stale pool ID everywhere it appears in request input, candidate features, raw payloads, `makePoolData`, and `makePositionData` with:
-
-```text
-Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE
-```
-
-Keep wallet redaction and output assertions unchanged.
-
-- [ ] **Step 2: Run only the output-summary describe block and inspect its range**
-
-Run:
-
-```bash
-pnpm exec vitest run tests/scripts/assemble-evidence-bundle.test.ts -t "script parses required inputs and prints a redacted outcome summary"
-sed -n '596,908p' tests/scripts/assemble-evidence-bundle.test.ts | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
-! sed -n '596,908p' tests/scripts/assemble-evidence-bundle.test.ts | grep -F 'HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw'
-pnpm exec eslint tests/scripts/assemble-evidence-bundle.test.ts
-pnpm exec prettier --check tests/scripts/assemble-evidence-bundle.test.ts
-```
-
-Expected: both output-summary cases pass and the scoped describe block contains no stale pool.
-
-- [ ] **Step 3: Commit the second independently tested bundle section**
-
-```bash
-git add tests/scripts/assemble-evidence-bundle.test.ts
-git commit -m "test: update bundle output pool fixtures"
-```
-
-## Task 8: Update bundle replay fixtures to the canonical pool
-
-**Files:**
-
-- Modify: `tests/scripts/assemble-evidence-bundle.test.ts` (only `replaying the same input file preserves run and creation identity`, approximately lines 909-1122)
-
-- [ ] **Step 1: Update replay input and lineage pool IDs**
-
-Within `describe("replaying the same input file preserves run and creation identity")`, replace the stale pool ID in input data, feature candidates, raw payloads, `makePoolData`, and `makePositionData` with:
-
-```text
-Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE
-```
-
-Keep run identity, creation time, replay outcome, and persistence assertions unchanged.
-
-- [ ] **Step 2: Run only the replay describe block and inspect its range**
-
-Run:
-
-```bash
-pnpm exec vitest run tests/scripts/assemble-evidence-bundle.test.ts -t "replaying the same input file preserves run and creation identity"
-sed -n '909,1122p' tests/scripts/assemble-evidence-bundle.test.ts | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
-! sed -n '909,1122p' tests/scripts/assemble-evidence-bundle.test.ts | grep -F 'HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw'
-pnpm exec eslint tests/scripts/assemble-evidence-bundle.test.ts
-pnpm exec prettier --check tests/scripts/assemble-evidence-bundle.test.ts
-```
-
-Expected: the replay test passes and the scoped describe block contains no stale pool identity.
-
-- [ ] **Step 3: Commit the final independently tested bundle section**
-
-```bash
-git add tests/scripts/assemble-evidence-bundle.test.ts
-git commit -m "test: align bundle replay pool identity"
-```
-
-### Tests to add or update
-
-- Add three parser cases in `tests/domain/pool-statistics/orca.test.ts` for non-first selection, absent configured address, and non-array `data`.
-- Update `tests/application/collect-orca-pool-statistics.test.ts` to assert the exact endpoint, encoded plural `addresses` parameter, `stats=24h`, timeout, attempt count, pre-persistence rejection, null optional metrics, and unchanged replay/conflict behavior.
-- Update `tests/fixtures/orca-pool.ts` to emit `{ data: [pool] }` and the canonical address.
-- Keep `tests/domain/pool-statistics/enrich.test.ts` unchanged but execute it as a compatibility check for fixture/parser consumers.
-- Update only pool identity values in the scoped sections of `tests/scripts/derive-mvp-features.test.ts` and `tests/scripts/assemble-evidence-bundle.test.ts`; do not weaken their existing assertions.
-
-### Dedicated validation phase commands
-
-After all implementation tasks and their automatic workspace typecheck gates complete, run:
-
-```bash
-pnpm verify
-git grep -n 'HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw' -- .env.example README.md docs/operator-runbook.md resources/sources.yaml src tests || true
-git grep -n '/public/pool' -- src tests resources || true
-```
-
-Expected: `pnpm verify` passes; the stale-address search returns no matches in implementation, tests, configuration, or operator docs; the dead endpoint search returns no matches in active source, tests, or resource declarations.
-
-For the issue's live acceptance criterion, an operator with an intentionally configured writable intelligence database and safe non-production environment must update local `WHIRLPOOL_ADDRESS` to the canonical value, then run:
-
-```bash
-pnpm collect:core
-```
-
-Expected: the printed `orca` outcome is successful (`accepted` or `identical_replay`) rather than 404/unavailable, and volume/fee values are sourced from the explicit 24-hour stats response. This command performs database writes and must not be run against an unintended environment.
-
-### Risk areas
-
-- The live endpoint may change field names beyond the wrapper described by the approved design. In particular, token, timestamp, slot, TVL, or stats fields must not be guessed or translated without verified evidence.
-- Returning the first array member would silently associate evidence with the wrong pool; exact address matching is mandatory even when the API appears filtered.
-- Omitting `stats=24h` would make every volume/fee value absent. The URL test and source catalog must pin this query parameter.
-- `encodeURIComponent(poolAddress)` prevents malformed query values while preserving normal base58 addresses.
-- `OrcaPoolResponse.data` is an exported breaking structural type change. All current consumers must compile in the same task; `src/domain/pool-statistics/index.ts` is a pass-through export and should remain unchanged.
-- The collector persists raw and normalized observations. Live validation is irreversible at the database level and must use an explicitly selected safe environment.
-- Existing deployments retain their local stale address until an operator changes it. Documentation must state this migration requirement.
-- The two script test files are large. Restrict each mechanical change to its named describe block and do not combine unrelated cleanup.
-
-### Stop conditions
-
-- Abort implementation if the verified live `/pools?addresses=<canonical-address>&stats=24h` payload does not expose the fields required by `OrcaPoolData`; revise the design with captured evidence instead of fabricating or silently coercing values.
-- Abort live validation if the database target, schema permissions, canonical pool address, or non-production safety of the environment cannot be confirmed.
-- Abort and re-plan if endpoint support requires a second API request, pagination, authentication changes, a repository-port change, a database migration, or a normalized contract change; each is outside this plan.
-- Stop before committing if a changed file contains unrelated user work that cannot be cleanly preserved.
-- Stop if the canonical address does not validate as the SOL/USDC pair under the configured SOL and USDC mints.
+Acceptance criteria:
+
+- Every usable feature references the exact assembled verified-source ID list.
+- Every unavailable feature references only the registered canonical placeholder.
+- The placeholder appears exactly once only when needed.
+- Empty verified lineage remains schema-valid via `no_sources_available`.
+- The real contract accepts the mixed-availability, no-context, no-brief candidate.
+- No exported API signature changes.
+
+**Validation commands summary**
+
+Each task contains its own path-scoped Vitest, ESLint, and Prettier commands. The implementation orchestrator additionally runs its automatic workspace typecheck gate after each task and its dedicated validation phase after all implementation tasks; do not create another task for those suite runs.
+
+**Risk areas**
+
+- Bundle-wide lineage is intentionally less precise than feature-specific lineage. If downstream consumers require exact raw-source attribution per feature, stop and redesign `VerifiedEvidenceLineage` rather than implying precision.
+- `inputLineage` allows at most 64 entries while `sourceReferences` allows 256. The selected design assumes bounded evaluation windows. Do not silently truncate or reorder lineage because that would weaken auditability.
+- The placeholder must not leak into usable-feature lineage. Build usable lineage before conditionally appending `feature_unavailable`.
+- All unavailable domain outcomes map to contract status `unavailable`; missing any branch would leave an unresolved `row-N` or `missing` sentinel.
+- Warning codes are case-sensitive contract identifiers. Use the exact uppercase codes and the canonical affected-family spellings.
+- `buildBundleAssessment` copies warnings from the quality result. Do not duplicate warning injection in assembly, which could produce inconsistent behavior between quality consumers.
+- `tests/domain/evidence-bundle/assemble.test.ts` exceeds 500 lines. Keep Task 2 edits confined to the listed helpers and focused describe-blocks; do not refactor unrelated cases.
+
+**Stop conditions**
+
+- Stop if realistic lineage can exceed 64 source references in a normal evaluation window; the global-source design would violate the contract and needs a different design decision.
+- Stop if the pinned schema or real adapter rejects `internal_bundle` for `feature_unavailable`; do not substitute an external source type.
+- Stop if regime-engine requires exact feature-to-raw-source attribution; that expands scope into `VerifiedEvidenceLineage` and must be designed separately.
+- Stop if passing the strict regression requires changing pinned schema assets, generated contract types, database schemas, or exported ports/interfaces.
+- Stop and report any unrelated pre-existing test, lint, formatting, or typecheck failure; do not broaden either task into general cleanup.
+- Stop if a contract-valid mixed candidate requires changing quality or coverage semantics beyond adding the two specified warnings.
