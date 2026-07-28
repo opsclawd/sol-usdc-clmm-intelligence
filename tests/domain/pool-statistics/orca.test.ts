@@ -13,6 +13,57 @@ import {
 } from "../../../src/domain/pool-statistics/index.js";
 
 describe("accepts only the configured Whirlpool and SOL USDC mint pair in either token order", () => {
+  it("selects the configured pool from a multi-pool response before validating it", () => {
+    const configured = {
+      address: DEFAULT_WHIRLPOOL_ADDRESS,
+      tokenA: { address: DEFAULT_SOL_MINT },
+      tokenB: { address: DEFAULT_USDC_MINT },
+      updatedAt: "2026-07-19T06:00:00.000Z",
+      updatedSlot: 1234567,
+      tvlUsdc: "5000000.75",
+      stats: {
+        "24h": {
+          volume: "1250000.50",
+          fees: "3750.25"
+        }
+      }
+    };
+    const response = {
+      data: [{ ...configured, address: "unrelatedPool" }, configured]
+    };
+
+    const { accepted } = acceptOrcaPoolResponse(
+      response,
+      DEFAULT_WHIRLPOOL_ADDRESS,
+      DEFAULT_SOL_MINT,
+      DEFAULT_USDC_MINT
+    );
+
+    expect(accepted.address).toBe(DEFAULT_WHIRLPOOL_ADDRESS);
+  });
+
+  it("rejects an array that does not contain the configured pool address", () => {
+    expect(() =>
+      acceptOrcaPoolResponse(
+        { data: [] },
+        DEFAULT_WHIRLPOOL_ADDRESS,
+        DEFAULT_SOL_MINT,
+        DEFAULT_USDC_MINT
+      )
+    ).toThrow(expect.objectContaining({ field: "address" }));
+  });
+
+  it("rejects a response whose data member is not an array", () => {
+    expect(() =>
+      acceptOrcaPoolResponse(
+        { data: { address: DEFAULT_WHIRLPOOL_ADDRESS } },
+        DEFAULT_WHIRLPOOL_ADDRESS,
+        DEFAULT_SOL_MINT,
+        DEFAULT_USDC_MINT
+      )
+    ).toThrow(expect.objectContaining({ field: "tokens" }));
+  });
+
   it("accepts when address and token order match default configured", () => {
     const response = makeOrcaPoolResponse();
     const { accepted } = acceptOrcaPoolResponse(

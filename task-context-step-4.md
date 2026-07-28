@@ -1,6 +1,6 @@
 # Task Context: Task 4
 
-Title: Normalize, identify, and enrich perp observations
+Title: Update derive-script primary cases to the canonical pool
 
 ## Workspace & Scope Constraints
 
@@ -10,101 +10,60 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-11
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-47
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-11
-Start Commit: d62ccad6f3f1f0812dc1d59b322256f63fbcf7ba
+Branch: ai/issue-47
+Start Commit: 519075961cf25d1b70b677a37ec123ad7f5ba213
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/domain/perp-liquidation/validate.ts`
-- Create: `src/domain/perp-liquidation/normalize.ts`
-- Create: `src/domain/perp-liquidation/identity.ts`
-- Create: `src/domain/perp-liquidation/enrich.ts`
-- Create: `src/domain/perp-liquidation/index.ts`
-- Create: `tests/domain/perp-liquidation/validate.test.ts`
-- Create: `tests/domain/perp-liquidation/normalize.test.ts`
-- Create: `tests/domain/perp-liquidation/identity.test.ts`
-- Create: `tests/domain/perp-liquidation/enrich.test.ts`
+- Modify: `tests/scripts/derive-mvp-features.test.ts` (only the `derive-mvp-features script` cases before the nested `script validation` block, approximately lines 252-373)
 
-- [ ] **Step 1: Write failing pure-domain tests**
+- [ ] **Step 1: Replace stale `WHIRLPOOL_ADDRESS` values in the scoped cases**
 
-  Cover signed funding, positive OI/prices/notional, basis with both positive and negative spread, liquidation side, sorted source identity, stale confidence degradation, provenance validation, and rejection of venue-only fields. Include exact cases:
-  - `preserves positive and negative funding rates through normalization`;
-  - `transitions a persisted fresh fact to degraded evidence when freshness policy marks the input stale`;
-  - `derives the same identity for reordered object keys`;
-  - `uses venue kind instrument observed time and provider event id as identity`.
+Within the two top-level cases named `script prints deterministic status counts and sorted warnings after persistence` and `script fails for missing scope malformed position list or infrastructure failure`, replace each configured pool value with:
 
-- [ ] **Step 2: Verify tests fail**
+```ts
+WHIRLPOOL_ADDRESS: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
+```
 
-  Run: `pnpm vitest run tests/domain/perp-liquidation/validate.test.ts tests/domain/perp-liquidation/normalize.test.ts tests/domain/perp-liquidation/identity.test.ts tests/domain/perp-liquidation/enrich.test.ts`
+Do not change the missing-variable fixture or any assertions; this task updates fixture identity only.
 
-  Expected: FAIL because domain modules do not exist.
+- [ ] **Step 2: Run only the changed test cases and section checks**
 
-- [ ] **Step 3: Implement validation and normalization**
+Run:
 
-  Validation accepts only the port union, finite integer timestamps, canonical decimal strings, expected pair, and metric-specific required fields. Normalization maps each source fact to `PerpObservationPayloadV1`, recomputes basis from canonical mark/spot decimals rather than trusting a provider spread, and sorts/deduplicates references.
+```bash
+pnpm exec vitest run tests/scripts/derive-mvp-features.test.ts -t "script prints deterministic status counts|script fails for missing scope"
+sed -n '252,373p' tests/scripts/derive-mvp-features.test.ts | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
+! sed -n '252,373p' tests/scripts/derive-mvp-features.test.ts | grep -F 'HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw'
+pnpm exec eslint tests/scripts/derive-mvp-features.test.ts
+pnpm exec prettier --check tests/scripts/derive-mvp-features.test.ts
+```
 
-- [ ] **Step 4: Implement deterministic identities**
+Expected: the two selected cases pass, the scoped section contains the canonical address and no stale address, and file lint/format checks pass.
 
-  Hash canonical tuples:
+- [ ] **Step 3: Commit the first independently tested derive-script section**
 
-  ```ts
-  {
-    (source, kind, instrument, observedAtUnixMs, sourceEventId);
-  }
-  ```
-
-  For windowed aggregate facts, `sourceEventId` must itself be based on provider window bounds. Never include a run ID in observation identity.
-
-- [ ] **Step 5: Implement enrichment**
-
-  Use taxonomy registry policies and existing `computeFreshness`, `computeConfidence`, `canonicalizePayload`, and `validateProvenance`. Direct observations carry one raw/source ref. When stale behavior is `degrade_confidence`, append `stale_input_degraded` exactly once and cap the level below `high`; do not rewrite the observed timestamp.
-
-- [ ] **Step 6: Run focused tests and lint**
-
-  Run: `pnpm vitest run tests/domain/perp-liquidation/validate.test.ts tests/domain/perp-liquidation/normalize.test.ts tests/domain/perp-liquidation/identity.test.ts tests/domain/perp-liquidation/enrich.test.ts`
-
-  Expected: PASS.
-
-  Run: `pnpm exec eslint src/domain/perp-liquidation/validate.ts src/domain/perp-liquidation/normalize.ts src/domain/perp-liquidation/identity.ts src/domain/perp-liquidation/enrich.ts src/domain/perp-liquidation/index.ts tests/domain/perp-liquidation/validate.test.ts tests/domain/perp-liquidation/normalize.test.ts tests/domain/perp-liquidation/identity.test.ts tests/domain/perp-liquidation/enrich.test.ts`
-
-  Expected: exit 0.
-
-- [ ] **Step 7: Commit**
-
-  ```bash
-  git add src/domain/perp-liquidation tests/domain/perp-liquidation/validate.test.ts tests/domain/perp-liquidation/normalize.test.ts tests/domain/perp-liquidation/identity.test.ts tests/domain/perp-liquidation/enrich.test.ts
-  git commit -m "feat: normalize and enrich perp observations"
-  ```
+```bash
+git add tests/scripts/derive-mvp-features.test.ts
+git commit -m "test: update derive script pool fixtures"
+```
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/domain/perp-liquidation/validate.ts
-- src/domain/perp-liquidation/normalize.ts
-- src/domain/perp-liquidation/identity.ts
-- src/domain/perp-liquidation/enrich.ts
-- src/domain/perp-liquidation/index.ts
-- tests/domain/perp-liquidation/validate.test.ts
-- tests/domain/perp-liquidation/normalize.test.ts
-- tests/domain/perp-liquidation/identity.test.ts
-- tests/domain/perp-liquidation/enrich.test.ts
+- tests/scripts/derive-mvp-features.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm vitest run tests/domain/perp-liquidation/validate.test.ts tests/domain/perp-liquidation/normalize.test.ts tests/domain/perp-liquidation/identity.test.ts tests/domain/perp-liquidation/enrich.test.ts
-pnpm exec eslint src/domain/perp-liquidation/validate.ts src/domain/perp-liquidation/normalize.ts src/domain/perp-liquidation/identity.ts src/domain/perp-liquidation/enrich.ts src/domain/perp-liquidation/index.ts tests/domain/perp-liquidation/validate.test.ts tests/domain/perp-liquidation/normalize.test.ts tests/domain/perp-liquidation/identity.test.ts tests/domain/perp-liquidation/enrich.test.ts
+pnpm exec vitest run tests/scripts/derive-mvp-features.test.ts -t "script prints deterministic status counts|script fails for missing scope"
+sed -n '252,373p' tests/scripts/derive-mvp-features.test.ts | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
+! sed -n '252,373p' tests/scripts/derive-mvp-features.test.ts | grep -F 'HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw'
+["pnpm","exec","eslint","tests/scripts/derive-mvp-features.test.ts"]
+["pnpm","exec","prettier","--check","tests/scripts/derive-mvp-features.test.ts"]
 ```
-
-## Behavioral Invariants
-
-You MUST implement the following behavioral invariants as named tests first (TDD):
-
-- **signed funding normalization**: Positive and negative decimal funding signs survive validation and normalization unchanged. (Test: `preserves positive and negative funding rates through normalization`)
-- **stale confidence transition**: A stale normalized fact is retained but gains stale_input_degraded and cannot remain high confidence. (Test: `transitions a persisted fresh fact to degraded evidence when freshness policy marks the input stale`)
-- **stable fact identity**: Identity depends on source, kind, instrument, observed time, and provider event ID, not object key order or run ID. (Test: `uses venue kind instrument observed time and provider event id as identity`)

@@ -1,6 +1,6 @@
 # Task Context: Task 1
 
-Title: Define the research brief contracts, schemas, and prompt
+Title: Parse and fixture Orca array responses
 
 ## Workspace & Scope Constraints
 
@@ -10,71 +10,236 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-12
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-47
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-12
-Start Commit: 9e740ad51c6cc14733d2261f4f854d90a3505ead
+Branch: ai/issue-47
+Start Commit: 519075961cf25d1b70b677a37ec123ad7f5ba213
 
 ## Task Requirements
 
 **Files:**
 
-- Create: `src/contracts/research-brief.ts`
-- Modify: `src/contracts/index.ts`
-- Create: `src/domain/brief/brief-schema.ts`
-- Create: `src/domain/brief/prompts.ts`
-- Create: `src/domain/brief/index.ts`
-- Create: `tests/domain/brief/brief-schema.test.ts`
+- Modify: `src/domain/pool-statistics/orca.ts`
+- Modify: `tests/fixtures/orca-pool.ts`
+- Modify: `tests/domain/pool-statistics/orca.test.ts`
+- Modify: `tests/application/collect-orca-pool-statistics.test.ts`
+- Reference only: `src/domain/pool-statistics/index.ts`
+- Reference only: `tests/domain/pool-statistics/enrich.test.ts`
 
-- [ ] **Step 1: Write failing schema and prompt tests**
+- [ ] **Step 1: Write failing domain tests for array selection and rejection**
 
-Cover exact parsing of a complete artifact and a degraded artifact; rejection of unknown keys, invalid timestamps, empty source/evidence references, overlong arrays/strings, invalid confidence, and policy language such as direct rebalance instructions. Assert that `RESEARCH_BRIEF_PROMPT_V1` says to use only supplied evidence, preserve numeric units, report missing evidence, and never make policy or transaction decisions.
+Add these exact cases to the first parser describe block in `tests/domain/pool-statistics/orca.test.ts` before changing the fixture or parser:
 
-- [ ] **Step 2: Run the focused test and confirm missing-module failures**
+```ts
+it("selects the configured pool from a multi-pool response before validating it", () => {
+  const configured = {
+    address: DEFAULT_WHIRLPOOL_ADDRESS,
+    tokenA: { address: DEFAULT_SOL_MINT },
+    tokenB: { address: DEFAULT_USDC_MINT },
+    updatedAt: "2026-07-19T06:00:00.000Z",
+    updatedSlot: 1234567,
+    tvlUsdc: "5000000.75",
+    stats: {
+      "24h": {
+        volume: "1250000.50",
+        fees: "3750.25"
+      }
+    }
+  };
+  const response = {
+    data: [{ ...configured, address: "unrelatedPool" }, configured]
+  };
 
-Run: `pnpm test tests/domain/brief/brief-schema.test.ts`
+  const { accepted } = acceptOrcaPoolResponse(
+    response,
+    DEFAULT_WHIRLPOOL_ADDRESS,
+    DEFAULT_SOL_MINT,
+    DEFAULT_USDC_MINT
+  );
 
-Expected: FAIL because the research-brief contract and domain modules do not exist.
+  expect(accepted.address).toBe(DEFAULT_WHIRLPOOL_ADDRESS);
+});
 
-- [ ] **Step 3: Add the contract and strict schemas**
+it("rejects an array that does not contain the configured pool address", () => {
+  expect(() =>
+    acceptOrcaPoolResponse(
+      { data: [] },
+      DEFAULT_WHIRLPOOL_ADDRESS,
+      DEFAULT_SOL_MINT,
+      DEFAULT_USDC_MINT
+    )
+  ).toThrow(expect.objectContaining({ field: "address" }));
+});
 
-Define `ResearchBriefGenerationStatus = "complete" | "degraded"`, `SupportsCurrentRegime = "supports" | "contradicts" | "unclear" | "not_applicable"`, provider metadata, source-bundle references, the grounded narrative fields from the issue, `sourceEvidenceIds`, `sourceRefs`, `inputContextHash`, nullable `priorBriefRef`, `generatedAt`, `promptVersion`, and an optional closed degradation-reason enum. Export `LlmResearchBriefOutputSchema` for model-controlled narrative/reference fields and `PersistedResearchBriefSchema` for the full deterministic envelope. Keep `pair`, lifecycle timestamps, prompt/model metadata, input hashes, and generation status application-controlled rather than trusting the model to echo them.
+it("rejects a response whose data member is not an array", () => {
+  expect(() =>
+    acceptOrcaPoolResponse(
+      { data: { address: DEFAULT_WHIRLPOOL_ADDRESS } },
+      DEFAULT_WHIRLPOOL_ADDRESS,
+      DEFAULT_SOL_MINT,
+      DEFAULT_USDC_MINT
+    )
+  ).toThrow(expect.objectContaining({ field: "data" }));
+});
+```
 
-- [ ] **Step 4: Add the versioned prompt**
+- [ ] **Step 2: Run the new cases and confirm the old object parser fails them**
 
-Export `RESEARCH_BRIEF_PROMPT_VERSION = "research-brief/v1"` and a fixed system prompt that requires JSON-only evidence summarization, explicit unsupported/missing-input warnings, citation by provided IDs, no invented metrics, no policy synthesis, and no transaction/rebalance instructions.
-
-- [ ] **Step 5: Export the new declarations and pass focused checks**
-
-Run: `pnpm test tests/domain/brief/brief-schema.test.ts`
-
-Expected: PASS.
-
-Run: `pnpm exec eslint src/contracts/research-brief.ts src/contracts/index.ts src/domain/brief/brief-schema.ts src/domain/brief/prompts.ts src/domain/brief/index.ts tests/domain/brief/brief-schema.test.ts --max-warnings 0`
-
-Expected: exit 0.
-
-- [ ] **Step 6: Commit**
+Run:
 
 ```bash
-git add src/contracts/research-brief.ts src/contracts/index.ts src/domain/brief/brief-schema.ts src/domain/brief/prompts.ts src/domain/brief/index.ts tests/domain/brief/brief-schema.test.ts
-git commit -m "feat(briefs): define constrained research brief contract"
+pnpm exec vitest run tests/domain/pool-statistics/orca.test.ts -t "selects the configured pool|rejects an array|data member is not an array"
+```
+
+Expected: FAIL because the fixture and parser still treat `data` as one object.
+
+- [ ] **Step 3: Change the shared fixture to emit the live wrapper shape and canonical address**
+
+In `tests/fixtures/orca-pool.ts`, change the response declaration and factory return while keeping `makeOrcaPoolResponse(overrides)` as the shared factory:
+
+```ts
+export interface OrcaPoolResponse {
+  data: OrcaPoolData[];
+}
+
+export const DEFAULT_WHIRLPOOL_ADDRESS = "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
+
+export function makeOrcaPoolResponse(overrides: Partial<OrcaPoolData> = {}): OrcaPoolResponse {
+  const statsOverride =
+    overrides.stats === undefined
+      ? {
+          "24h": {
+            volume: "1250000.50",
+            fees: "3750.25"
+          }
+        }
+      : overrides.stats;
+
+  const data: OrcaPoolData = {
+    address: DEFAULT_WHIRLPOOL_ADDRESS,
+    tokenA: {
+      address: DEFAULT_SOL_MINT
+    },
+    tokenB: {
+      address: DEFAULT_USDC_MINT
+    },
+    updatedAt: "2026-07-19T06:00:00.000Z",
+    updatedSlot: 1234567,
+    tvlUsdc: "5000000.75",
+    hasWarning: false,
+    ...overrides
+  };
+
+  if (statsOverride !== undefined) {
+    data.stats = statsOverride;
+  }
+
+  return { data: [data] };
+}
+```
+
+Update every direct access in `tests/application/collect-orca-pool-statistics.test.ts` from `response.data.updatedAt` or `response.data.updatedSlot` to the non-null selected fixture entry:
+
+```ts
+const pool = response.data[0]!;
+```
+
+Use `pool.updatedAt` and `pool.updatedSlot` when deriving replay identity or timestamps. Change the malformed response fixture from a bare object to an array containing the wrong-address object so the test exercises address lookup rather than obsolete wrapper validation:
+
+```ts
+deps.http.setResponse(url, { body: { data: [{ address: "wrong" }] } });
+```
+
+- [ ] **Step 4: Select the configured address from a validated array before existing field validation**
+
+In `src/domain/pool-statistics/orca.ts`, make the exported wrapper shape:
+
+```ts
+export interface OrcaPoolResponse {
+  data: OrcaPoolData[];
+}
+```
+
+Replace the current object-only preamble in `acceptOrcaPoolResponse` with runtime-safe array validation and exact selection:
+
+```ts
+if (!response || typeof response !== "object" || !("data" in response)) {
+  throw new OrcaPoolValidationError(
+    "response",
+    "Response must be an object containing a data array"
+  );
+}
+
+const wrapper = response as OrcaPoolResponse;
+if (!Array.isArray(wrapper.data)) {
+  throw new OrcaPoolValidationError("data", "Response.data must be an array");
+}
+
+const data = (wrapper.data as unknown[]).find(
+  (candidate): candidate is OrcaPoolData =>
+    candidate !== null &&
+    typeof candidate === "object" &&
+    "address" in candidate &&
+    candidate.address === configuredPoolAddress
+);
+
+if (!data) {
+  throw new OrcaPoolValidationError(
+    "address",
+    `Configured pool address not found: ${configuredPoolAddress}`
+  );
+}
+```
+
+Remove the old top-level address mismatch branch. Leave token, timestamp, slot, TVL, volume, and fee validation unchanged and return `{ wrapper, accepted: data }`.
+
+- [ ] **Step 5: Run the scoped parser and consumer checks**
+
+Run:
+
+```bash
+pnpm exec vitest run tests/domain/pool-statistics/orca.test.ts tests/domain/pool-statistics/enrich.test.ts tests/application/collect-orca-pool-statistics.test.ts
+pnpm exec eslint src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
+pnpm exec prettier --check src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
+pnpm exec tsc --noEmit
+```
+
+Expected: all selected suites pass; lint and formatting report no errors; TypeScript compiles without errors. This also proves the read-only enrichment consumer accepts the widened wrapper without modification.
+
+- [ ] **Step 6: Commit the independently compiling parser change**
+
+```bash
+git add src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
+git commit -m "fix: parse Orca pool list responses"
 ```
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/contracts/research-brief.ts
-- src/contracts/index.ts
-- src/domain/brief/brief-schema.ts
-- src/domain/brief/prompts.ts
-- src/domain/brief/index.ts
-- tests/domain/brief/brief-schema.test.ts
+- src/domain/pool-statistics/orca.ts
+- tests/fixtures/orca-pool.ts
+- tests/domain/pool-statistics/orca.test.ts
+- tests/application/collect-orca-pool-statistics.test.ts
+
+### Reference Files
+
+- src/domain/pool-statistics/index.ts
+- tests/domain/pool-statistics/enrich.test.ts
 
 ## Validation Commands
 
 ```bash
-pnpm test tests/domain/brief/brief-schema.test.ts
-pnpm exec eslint src/contracts/research-brief.ts src/contracts/index.ts src/domain/brief/brief-schema.ts src/domain/brief/prompts.ts src/domain/brief/index.ts tests/domain/brief/brief-schema.test.ts --max-warnings 0
+pnpm exec vitest run tests/domain/pool-statistics/orca.test.ts tests/domain/pool-statistics/enrich.test.ts tests/application/collect-orca-pool-statistics.test.ts
+["pnpm","exec","eslint","src/domain/pool-statistics/orca.ts","tests/fixtures/orca-pool.ts","tests/domain/pool-statistics/orca.test.ts","tests/application/collect-orca-pool-statistics.test.ts"]
+["pnpm","exec","prettier","--check","src/domain/pool-statistics/orca.ts","tests/fixtures/orca-pool.ts","tests/domain/pool-statistics/orca.test.ts","tests/application/collect-orca-pool-statistics.test.ts"]
+pnpm exec tsc --noEmit
 ```
+
+## Behavioral Invariants
+
+You MUST implement the following behavioral invariants as named tests first (TDD):
+
+- **configured-address selection**: When the response array contains unrelated entries and the configured pool, select the exact configured address regardless of array position. (Test: `selects the configured pool from a multi-pool response before validating it`)
+- **missing-address rejection**: When the response array does not contain the configured address, throw OrcaPoolValidationError for address and never use the first entry as a fallback. (Test: `rejects an array that does not contain the configured pool address`)
+- **wrapper-shape rejection**: When response.data is not an array, throw OrcaPoolValidationError for data before pool field validation. (Test: `rejects a response whose data member is not an array`)

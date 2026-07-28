@@ -95,7 +95,7 @@ function createMockRunIdFactory(): RunIdFactory {
 
 const VALID_REQUEST: AssembleEvidenceBundleJobRequest = {
   pair: "SOL/USDC",
-  poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
+  poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
   positionId: "Pos11111111111111111111111111111111111111111",
   walletId: "Wallet1234567890abcdef",
   pipelineRunId: "run-456",
@@ -231,7 +231,7 @@ describe("job forwards an explicit immutable assembly request unchanged", () => 
       featureKind: "range_location",
       status: "AVAILABLE",
       pair: "SOL/USDC",
-      poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
+      poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
       positionId: "Pos11111111111111111111111111111111111111111",
       asOfUnixMs: 1700000000000,
       receivedAtUnixMs: 1700000000000,
@@ -320,17 +320,17 @@ describe("job forwards an explicit immutable assembly request unchanged", () => 
         payload: {
           walletId: "Wallet1234567890abcdef",
           positionId: "Pos11111111111111111111111111111111111111111",
-          poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw"
+          poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
         },
         payloadHash: "raw-hash-200",
         payloadCanonical: JSON.stringify(
           makeClmmBundle({
-            pool: makePoolData({ poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw" }),
+            pool: makePoolData({ poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE" }),
             positions: [
               makePositionData({
                 walletId: "Wallet1234567890abcdef",
                 positionId: "Pos11111111111111111111111111111111111111111",
-                poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw"
+                poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
               })
             ],
             alerts: []
@@ -422,7 +422,7 @@ describe("job forwards an explicit immutable assembly request unchanged", () => 
       featureKind: "range_location",
       status: "AVAILABLE",
       pair: "SOL/USDC",
-      poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
+      poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
       positionId: "Pos11111111111111111111111111111111111111111",
       asOfUnixMs: 1700000000000,
       receivedAtUnixMs: 1700000000000,
@@ -511,16 +511,16 @@ describe("job forwards an explicit immutable assembly request unchanged", () => 
         payload: {
           walletId: "Wallet1234567890abcdef",
           positionId: "Pos11111111111111111111111111111111111111111",
-          poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw"
+          poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
         },
         payloadCanonical: JSON.stringify(
           makeClmmBundle({
-            pool: makePoolData({ poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw" }),
+            pool: makePoolData({ poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE" }),
             positions: [
               makePositionData({
                 walletId: "Wallet1234567890abcdef",
                 positionId: "Pos11111111111111111111111111111111111111111",
-                poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw"
+                poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
               })
             ],
             alerts: []
@@ -611,7 +611,7 @@ describe("script parses required inputs and prints a redacted outcome summary", 
       featureKind: "range_location",
       status: "AVAILABLE",
       pair: "SOL/USDC",
-      poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
+      poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
       positionId: "Pos11111111111111111111111111111111111111111",
       asOfUnixMs: 1700000000000,
       receivedAtUnixMs: 1700000000000,
@@ -700,17 +700,17 @@ describe("script parses required inputs and prints a redacted outcome summary", 
         payload: {
           walletId: "Wallet1234567890abcdef",
           positionId: "Pos11111111111111111111111111111111111111111",
-          poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw"
+          poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
         },
         payloadHash: "raw-hash-200",
         payloadCanonical: JSON.stringify(
           makeClmmBundle({
-            pool: makePoolData({ poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw" }),
+            pool: makePoolData({ poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE" }),
             positions: [
               makePositionData({
                 walletId: "Wallet1234567890abcdef",
                 positionId: "Pos11111111111111111111111111111111111111111",
-                poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw"
+                poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
               })
             ],
             alerts: []
@@ -924,7 +924,7 @@ describe("replaying the same input file preserves run and creation identity", ()
       featureKind: "range_location",
       status: "AVAILABLE",
       pair: "SOL/USDC",
-      poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
+      poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
       positionId: "Pos11111111111111111111111111111111111111111",
       asOfUnixMs: 1700000000000,
       receivedAtUnixMs: 1700000000000,
@@ -1013,17 +1013,17 @@ describe("replaying the same input file preserves run and creation identity", ()
         payload: {
           walletId: "Wallet1234567890abcdef",
           positionId: "Pos11111111111111111111111111111111111111111",
-          poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw"
+          poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
         },
         payloadHash: "raw-hash-200",
         payloadCanonical: JSON.stringify(
           makeClmmBundle({
-            pool: makePoolData({ poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw" }),
+            pool: makePoolData({ poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE" }),
             positions: [
               makePositionData({
                 walletId: "Wallet1234567890abcdef",
                 positionId: "Pos11111111111111111111111111111111111111111",
-                poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw"
+                poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
               })
             ],
             alerts: []

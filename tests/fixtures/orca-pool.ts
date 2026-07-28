@@ -19,10 +19,10 @@ export interface OrcaPoolData {
 }
 
 export interface OrcaPoolResponse {
-  data: OrcaPoolData;
+  data: OrcaPoolData[];
 }
 
-export const DEFAULT_WHIRLPOOL_ADDRESS = "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw";
+export const DEFAULT_WHIRLPOOL_ADDRESS = "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
 export const DEFAULT_SOL_MINT = "So11111111111111111111111111111111111111112";
 export const DEFAULT_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
@@ -56,5 +56,5 @@ export function makeOrcaPoolResponse(overrides: Partial<OrcaPoolData> = {}): Orc
     data.stats = statsOverride;
   }
 
-  return { data };
+  return { data: [data] };
 }

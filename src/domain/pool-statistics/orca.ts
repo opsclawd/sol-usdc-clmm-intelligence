@@ -36,7 +36,7 @@ export interface OrcaPoolData {
 }
 
 export interface OrcaPoolResponse {
-  data: OrcaPoolData;
+  data: OrcaPoolData[];
 }
 
 export interface AcceptOrcaPoolResponseResult {
@@ -58,16 +58,27 @@ export function acceptOrcaPoolResponse(
   }
 
   const wrapper = response as OrcaPoolResponse;
-  const data = wrapper.data;
-
-  if (!data || typeof data !== "object") {
-    throw new OrcaPoolValidationError("data", "Response.data must be an object");
+  let dataCandidates: unknown[];
+  if (Array.isArray(wrapper.data)) {
+    dataCandidates = wrapper.data;
+  } else if (wrapper.data && typeof wrapper.data === "object") {
+    dataCandidates = [wrapper.data];
+  } else {
+    throw new OrcaPoolValidationError("data", "Response.data must be an array or object");
   }
 
-  if (data.address !== configuredPoolAddress) {
+  const data = dataCandidates.find(
+    (candidate): candidate is OrcaPoolData =>
+      candidate !== null &&
+      typeof candidate === "object" &&
+      "address" in candidate &&
+      candidate.address === configuredPoolAddress
+  );
+
+  if (!data) {
     throw new OrcaPoolValidationError(
       "address",
-      `Pool address mismatch: expected ${configuredPoolAddress}, got ${data.address}`
+      `Configured pool address not found: ${configuredPoolAddress}`
     );
   }
 

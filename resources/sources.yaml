@@ -62,7 +62,7 @@ sources:
     type: public-api
     env: ORCA_API_BASE
     poolEnv: ORCA_SOL_USDC_WHIRLPOOL
-    endpoint: /public/pool?address=:poolAddress&stats=24h
+    endpoint: /pools?addresses=:poolAddress&stats=24h
     purpose:
       - pool_statistics
     policy:

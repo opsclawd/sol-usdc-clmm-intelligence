@@ -1,446 +1,624 @@
 <!-- plan-review-required -->
 
-# Schema-Constrained Research Briefs Implementation Plan
+# Orca Collector Current Pools Endpoint Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Generate schema-constrained, source-grounded SOL/USDC research briefs from bounded evidence-bundle projections, persist complete or explicitly degraded artifacts with model/prompt lineage, and attach only valid complete briefs to the canonical payload sent to Regime Engine.
+**Goal:** Restore SOL/USDC Orca collection by querying the current address-filtered pools endpoint with 24-hour statistics, selecting the configured pool from the response array, and making the canonical active Whirlpool address the documented and tested default.
 
-**Architecture:** Add pure brief-domain modules for schemas, prompts, projection, cross-reference validation, fallback construction, and canonical-contract mapping. A provider-agnostic port is implemented by one OpenAI-compatible Node adapter; the application use case loads the latest immutable base bundle and bounded prior context, invokes the provider, validates or degrades the result, and appends a `research_briefs` row. Publication remains the only irreversible external side effect: it composes an eligible persisted brief into a copy of the base payload, revalidates and rehashes that copy, and audits the exact brief and composed hash without changing the stored bundle.
+**Architecture:** Keep HTTP request construction and persistence orchestration in the existing application use case, while extending the pure Orca domain parser to validate and select from the API's `{ data: OrcaPoolData[] }` wrapper. Preserve the current normalization, replay, persistence, degradation, and source-outcome behavior; only the request target, wrapper parsing, and default pool identity change.
 
-**Tech Stack:** TypeScript, Zod, `zod-to-json-schema`, Vitest, Drizzle-backed repository ports, the existing `HttpClient`, and the pinned `evidence-bundle.v1` contract.
+**Tech Stack:** TypeScript, Node.js, Vitest, pnpm, ESLint, Prettier, YAML configuration.
 
 ---
 
-## Goal
+### Goal
 
-- Bound every model input by deterministic item, string, and serialized-byte limits.
-- Treat provider output as untrusted until Zod and source-reference validation pass.
-- Persist prompt version, input fingerprint/references, generation status, confidence, and provider/model metadata.
-- Fail closed to a low-confidence degraded artifact for provider, timeout, malformed-output, unsupported-reference, or oversized-context failures.
-- Publish only complete, current, source-matching briefs; retain the deterministic-only bundle when no eligible brief exists.
+`collectOrcaPoolStatistics` must request `GET /pools?addresses=<configured-address>&stats=24h`, parse the array wrapper by exact address, persist and normalize the selected canonical SOL/USDC pool as it does today, and explicitly report malformed/degraded outcomes instead of inventing absent metrics.
 
-## Non-goals
+### Non-goals
 
-- Do not change the pinned Regime Engine JSON Schema or generated `EvidenceBundleV1` declarations.
-- Do not synthesize regimes, rebalance recommendations, position instructions, or final `PolicyInsight` values.
-- Do not add raw-data collectors, automatic current-regime fetching, provider retries, streaming, or multi-provider failover.
-- Do not persist secrets, full HTTP request/response envelopes, chain-of-thought, or an uncontrolled copy of the evidence bundle.
-- Do not mutate an existing `evidence_bundles` row after a brief is generated.
+- Do not change Raydium, Meteora, Jupiter, Pyth, Solana RPC, or clmm-v2 collectors.
+- Do not add pagination, discovery, search, or automatic pool migration logic.
+- Do not add metrics or change `PoolStatisticsPayloadV1`, normalization calculations, freshness policy, confidence policy, retry policy, repository ports, database schemas, or evidence-bundle contracts.
+- Do not convert missing 24-hour volume or fee values into zero or estimates.
+- Do not rewrite an operator's existing local `.env`; only update checked-in examples and documentation.
+- Do not implement a single-pool path lookup or retain the ignored singular `address` query parameter.
 
-## Affected files
+### Affected files
 
-- `package.json`
-- `pnpm-lock.yaml`
-- `.env.example`
-- `README.md`
-- `docs/operator-runbook.md`
-- `src/contracts/research-brief.ts`
-- `src/contracts/index.ts`
-- `src/domain/brief/brief-schema.ts`
-- `src/domain/brief/prompts.ts`
-- `src/domain/brief/project-context.ts`
-- `src/domain/brief/map-to-evidence-bundle.ts`
-- `src/domain/brief/index.ts`
-- `src/ports/llm-provider.ts`
-- `src/ports/index.ts`
-- `src/adapters/node/openai-llm-provider.ts`
-- `src/application/generate-research-brief.ts`
-- `src/jobs/generate-research-brief-job.ts`
-- `src/jobs/index.ts`
-- `scripts/generate/research-brief.ts`
-- `src/application/publish-evidence-bundle.ts`
-- `src/jobs/publish-evidence-bundle-job.ts`
-- `scripts/collectors/publish-evidence-bundle.ts`
-- `src/adapters/node/composition-root.ts`
-- `tests/fakes/fake-llm-provider.ts`
-- `tests/fakes/index.ts`
-- `tests/domain/brief/brief-schema.test.ts`
-- `tests/domain/brief/project-context.test.ts`
-- `tests/domain/brief/map-to-evidence-bundle.test.ts`
-- `tests/adapters/node/openai-llm-provider.test.ts`
-- `tests/application/generate-research-brief.test.ts`
-- `tests/jobs/generate-research-brief-job.test.ts`
-- `tests/scripts/research-brief.test.ts`
-- `tests/application/publish-evidence-bundle.test.ts`
-- `tests/scripts/publish-evidence-bundle.test.ts`
-- `tests/fixtures/research-brief/calm.json`
-- `tests/fixtures/research-brief/trending.json`
-- `tests/fixtures/research-brief/stressed.json`
-- `tests/fixtures/research-brief/sparse.json`
+- `src/domain/pool-statistics/orca.ts` — define and validate the array response wrapper and select the configured pool.
+- `src/application/collect-orca-pool-statistics.ts` — construct the current endpoint URL and record the current path in request metadata.
+- `tests/fixtures/orca-pool.ts` — model realistic array responses and use the canonical pool address.
+- `tests/domain/pool-statistics/orca.test.ts` — cover address selection and malformed wrappers.
+- `tests/application/collect-orca-pool-statistics.test.ts` — cover the request URL, selected response shape, persistence boundary, and explicit degradation.
+- `resources/sources.yaml` — describe the actual Orca endpoint and query parameters.
+- `.env.example` — set both Orca pool variables to the canonical address.
+- `README.md` — update example pool identities and environment configuration.
+- `docs/operator-runbook.md` — update operator configuration and sample output.
+- `tests/scripts/derive-mvp-features.test.ts` — replace stale pool identity in script fixtures, split by test section because the file exceeds 500 lines and 10 test cases.
+- `tests/scripts/assemble-evidence-bundle.test.ts` — replace stale pool identity in bundle fixtures, split by describe block because the file exceeds 500 lines.
 
-## Behavioral invariants
+### Behavioral invariants
 
-1. `bounded-context-is-deterministic`: the same bundle/prior/current-regime input always produces the same ordered projection and input hash.
-2. `bounded-context-rejects-byte-overflow`: a projection above 65,536 serialized UTF-8 bytes is never sent to the provider.
-3. `unsupported-model-references-degrade`: any model-returned evidence or source ID absent from the bounded context produces a degraded artifact.
-4. `canonical-mapping-resolves-lineage`: the mapped canonical brief references only feature/context IDs present in its source bundle.
-5. `provider-failure-persists-degraded`: provider rejection, timeout, malformed JSON, or schema failure persists one low-confidence degraded artifact with an explicit warning.
-6. `successful-generation-persists-complete`: valid grounded output persists one complete artifact with deterministic timestamps, prompt version, input hash, and adapter-supplied model metadata.
-7. `generation-replay-is-idempotent`: identical source bundle, projection, prompt, model metadata, and structured result reuse the existing bundle-plus-payload-hash row.
-8. `prior-context-is-bounded`: inspect at most 10 bundles from the previous seven days and use only the newest valid prior artifact.
-9. `expired-source-is-not-generated`: an expired or stale source bundle yields `no_brief` without provider or database writes.
-10. `job-closes-db-on-completion-or-degradation`: successful or degraded research brief generation closes the shared database connection before exiting with code 0.
-11. `job-closes-db-on-unhandled-error`: unhandled configuration, validation, or persistence errors close the shared database connection before propagating or exiting with a non-zero exit code.
-12. `publisher-attaches-only-eligible-complete-brief`: only the latest complete, schema-valid, source-bundle-matching, unexpired brief is attached.
-13. `publisher-fails-closed-on-invalid-stored-brief`: malformed, degraded, expired, or mismatched brief rows leave the base deterministic-only payload unchanged.
-14. `publisher-audits-composed-payload`: when a brief is attached, every retry uses the same composed payload/hash/idempotency key and records its `researchBriefId`.
-15. `publisher-retry-payload-is-stable`: all retry attempts reuse the one precomputed composed payload, hash, idempotency key, and brief ID.
+The implementer must write the named tests before changing production behavior:
 
-## Task 1: Define the research brief contracts, schemas, and prompt
+1. **Configured-address selection:** Given a valid array containing unrelated pools and the configured pool, the parser selects the configured pool regardless of array position. Test: `selects the configured pool from a multi-pool response before validating it`.
+2. **Missing-address rejection:** Given an empty array or an array without the configured address, the parser throws `OrcaPoolValidationError` with field `address`; it never falls back to the first entry. Test: `rejects an array that does not contain the configured pool address`.
+3. **Wrapper-shape rejection:** Given `data` that is null, an object, or another non-array value, the parser throws `OrcaPoolValidationError` with field `data`. Test: `rejects a response whose data member is not an array`.
+4. **Exact request construction:** Given the configured address, collection performs one GET to `/pools?addresses=<encoded-address>&stats=24h`, retaining the existing 5-second timeout and two-attempt policy. Test: `requests the address-filtered pools endpoint with 24h statistics`.
+5. **Pre-persistence validation:** Given a response array without the configured pool, collection returns `malformed`, `hasUsableEvidence: false`, `rawObservationId: null`, and `normalizedCount: 0`. Test: `rejects an Orca response without the configured pool before raw insertion`.
+6. **No fabricated statistics:** Given the selected pool with TVL but no 24-hour stats block, collection persists TVL, leaves volume and fees null, and reports usable `degraded` evidence. The stats block field names (`volume24hUsdc`/`fees24hUsdc` per the design contract, or the `stats["24h"].volume/.fees` shape in the current fixture) are verified against live endpoint evidence before the fixture is committed; if they differ, the plan is revised with captured evidence rather than proceeding with a mismatched shape. Test: `returns degraded usable evidence when 24h statistics are absent`.
+7. **Replay behavior remains stable:** Given the same selected pool address, `updatedAt`, and `updatedSlot`, identical raw content remains an identical replay; different content at that identity remains a conflict. Replay identity is derived from the **selected pool's address, updatedAt, updatedSlot, and content fields** (tvlUsdc, volume, fees when present) — not the whole wrapper. Unrelated array entries or array order changes do not affect replay classification when the selected pool's fields remain identical. Existing replay tests must continue to pass.
+
+## Task 1: Parse and fixture Orca array responses
 
 **Files:**
 
-- Create: `src/contracts/research-brief.ts`
-- Modify: `src/contracts/index.ts`
-- Create: `src/domain/brief/brief-schema.ts`
-- Create: `src/domain/brief/prompts.ts`
-- Create: `src/domain/brief/index.ts`
-- Create: `tests/domain/brief/brief-schema.test.ts`
+- Modify: `src/domain/pool-statistics/orca.ts`
+- Modify: `tests/fixtures/orca-pool.ts`
+- Modify: `tests/domain/pool-statistics/orca.test.ts`
+- Modify: `tests/application/collect-orca-pool-statistics.test.ts`
+- Reference only: `src/domain/pool-statistics/index.ts`
+- Reference only: `tests/domain/pool-statistics/enrich.test.ts`
 
-- [ ] **Step 1: Write failing schema and prompt tests**
+- [ ] **Step 1: Write failing domain tests for array selection and rejection**
 
-Cover exact parsing of a complete artifact and a degraded artifact; rejection of unknown keys, invalid timestamps, empty source/evidence references, overlong arrays/strings, invalid confidence, and policy language such as direct rebalance instructions. Assert that `RESEARCH_BRIEF_PROMPT_V1` says to use only supplied evidence, preserve numeric units, report missing evidence, and never make policy or transaction decisions.
-
-- [ ] **Step 2: Run the focused test and confirm missing-module failures**
-
-Run: `pnpm test tests/domain/brief/brief-schema.test.ts`
-
-Expected: FAIL because the research-brief contract and domain modules do not exist.
-
-- [ ] **Step 3: Add the contract and strict schemas**
-
-Define `ResearchBriefGenerationStatus = "complete" | "degraded"`, `SupportsCurrentRegime = "supports" | "contradicts" | "unclear" | "not_applicable"`, provider metadata, source-bundle references, the grounded narrative fields from the issue, `sourceEvidenceIds`, `sourceRefs`, `inputContextHash`, nullable `priorBriefRef`, `generatedAt`, `promptVersion`, and an optional closed degradation-reason enum. Export `LlmResearchBriefOutputSchema` for model-controlled narrative/reference fields and `PersistedResearchBriefSchema` for the full deterministic envelope. Keep `pair`, lifecycle timestamps, prompt/model metadata, input hashes, and generation status application-controlled rather than trusting the model to echo them.
-
-- [ ] **Step 4: Add the versioned prompt**
-
-Export `RESEARCH_BRIEF_PROMPT_VERSION = "research-brief/v1"` and a fixed system prompt that requires JSON-only evidence summarization, explicit unsupported/missing-input warnings, citation by provided IDs, no invented metrics, no policy synthesis, and no transaction/rebalance instructions.
-
-- [ ] **Step 5: Export the new declarations and pass focused checks**
-
-Run: `pnpm test tests/domain/brief/brief-schema.test.ts`
-
-Expected: PASS.
-
-Run: `pnpm exec eslint src/contracts/research-brief.ts src/contracts/index.ts src/domain/brief/brief-schema.ts src/domain/brief/prompts.ts src/domain/brief/index.ts tests/domain/brief/brief-schema.test.ts --max-warnings 0`
-
-Expected: exit 0.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add src/contracts/research-brief.ts src/contracts/index.ts src/domain/brief/brief-schema.ts src/domain/brief/prompts.ts src/domain/brief/index.ts tests/domain/brief/brief-schema.test.ts
-git commit -m "feat(briefs): define constrained research brief contract"
-```
-
-## Task 2: Build bounded context projection, regression fixtures, and canonical mapping
-
-**Files:**
-
-- Create: `src/domain/brief/project-context.ts`
-- Create: `src/domain/brief/map-to-evidence-bundle.ts`
-- Modify: `src/domain/brief/index.ts`
-- Create: `tests/domain/brief/project-context.test.ts`
-- Create: `tests/domain/brief/map-to-evidence-bundle.test.ts`
-- Create: `tests/fixtures/research-brief/calm.json`
-- Create: `tests/fixtures/research-brief/trending.json`
-- Create: `tests/fixtures/research-brief/stressed.json`
-- Create: `tests/fixtures/research-brief/sparse.json`
-
-**Invariants to test first:**
-
-- `bounded-context-is-deterministic`: sort feature IDs, contextual claims, source references, and warnings before hashing.
-- `bounded-context-rejects-byte-overflow`: enforce 64 features, 16 claims per contextual family, 64 source references, 512 characters per copied text field, and 65,536 total UTF-8 bytes.
-- `unsupported-model-references-degrade`: validate `sourceEvidenceIds` and `sourceRefs` as non-empty subsets of IDs present in the projection.
-- `canonical-mapping-resolves-lineage`: the mapped canonical brief references only feature/context IDs present in its source bundle.
-
-- [ ] **Step 1: Add four bounded fixtures and failing projection tests**
-
-Each fixture must be a compact `EvidenceBundleV1` scenario: calm/complete, trending with a prior brief, stressed with mixed contextual warnings, and sparse with unavailable families. Tests must assert exact selected IDs/order, truncation warnings, missing-family warnings, prior-brief minimization, optional current-regime projection, byte-cap rejection, and stable `inputContextHash`.
-
-- [ ] **Step 2: Add failing canonical-mapping tests**
-
-Assert that a complete persisted artifact maps to canonical `ResearchBrief` fields (`headline` to `summary`, changes/risks to bounded `keyFindings`/`uncertainties`, deterministic model metadata, and grounded evidence IDs), changes coverage to `available`, removes only `RESEARCH_BRIEF_UNAVAILABLE`, and leaves the source object untouched. Assert that degraded artifacts are ineligible for mapping.
-
-- [ ] **Step 3: Run focused tests and confirm missing exports**
-
-Run: `pnpm test tests/domain/brief/project-context.test.ts tests/domain/brief/map-to-evidence-bundle.test.ts`
-
-Expected: FAIL because projection and mapping functions are absent.
-
-- [ ] **Step 4: Implement deterministic projection and grounding validation**
-
-Export `projectResearchBriefContext`, `validateGroundedReferences`, `ResearchBriefContext`, `ResearchBriefContextError`, and the named limits. Include only normalized feature values/status/units/confidence/warnings, bounded contextual claim summaries, referenced source metadata, assessment coverage/warnings, a minimized prior artifact, and optional caller-supplied current-regime evidence. Compute the hash with `canonicalHash`; throw the closed `CONTEXT_TOO_LARGE` error before provider invocation when the byte cap is exceeded.
-
-- [ ] **Step 5: Implement non-mutating canonical mapping**
-
-Export `mapPersistedBriefToCanonicalBundle(base, artifact, briefId)`. Return a copied `EvidenceBundleV1`, cap contract arrays at 32 entries, update research-brief coverage/warnings consistently, and throw on degraded status or unresolved evidence IDs.
-
-- [ ] **Step 6: Pass focused checks and commit**
-
-Run: `pnpm test tests/domain/brief/project-context.test.ts tests/domain/brief/map-to-evidence-bundle.test.ts`
-
-Expected: PASS for calm, trending, stressed, sparse, overflow, grounding, and non-mutation cases.
-
-Run: `pnpm exec eslint src/domain/brief/project-context.ts src/domain/brief/map-to-evidence-bundle.ts src/domain/brief/index.ts tests/domain/brief/project-context.test.ts tests/domain/brief/map-to-evidence-bundle.test.ts --max-warnings 0`
-
-Expected: exit 0.
-
-```bash
-git add src/domain/brief tests/domain/brief tests/fixtures/research-brief
-git commit -m "feat(briefs): bound evidence context and canonical mapping"
-```
-
-## Task 3: Add the LLM provider port and all implementations
-
-**Files:**
-
-- Modify: `package.json`
-- Modify: `pnpm-lock.yaml`
-- Create: `src/ports/llm-provider.ts`
-- Modify: `src/ports/index.ts`
-- Create: `src/adapters/node/openai-llm-provider.ts`
-- Create: `tests/fakes/fake-llm-provider.ts`
-- Modify: `tests/fakes/index.ts`
-- Create: `tests/adapters/node/openai-llm-provider.test.ts`
-
-This task intentionally keeps the new `LlmProvider.generateStructured` method, its production adapter, and test fake in one typecheck-safe change. `NodeRuntime` remains unchanged so existing collector runtime fixtures continue to typecheck; the brief CLI constructs the adapter from the runtime's existing HTTP/environment ports in Task 5.
-
-- [ ] **Step 1: Add failing adapter tests**
-
-Test strict JSON-schema request construction, authorization redaction boundaries, configured endpoint/model/timeout, `zod-to-json-schema` conversion, successful metadata extraction, HTTP error rejection, absent output rejection, invalid JSON rejection, and Zod-invalid output rejection. The adapter must make one HTTP attempt; retry/failover is not introduced here.
-
-- [ ] **Step 2: Run the focused test and confirm missing port/adapter failures**
-
-Run: `pnpm test tests/adapters/node/openai-llm-provider.test.ts`
-
-Expected: FAIL because `LlmProvider` and `OpenAiLlmProvider` do not exist.
-
-- [ ] **Step 3: Add `zod-to-json-schema` and define the port**
-
-Add the runtime dependency with `pnpm add zod-to-json-schema`. Define one request-object method:
+Add these exact cases to the first parser describe block in `tests/domain/pool-statistics/orca.test.ts` before changing the fixture or parser:
 
 ```ts
-generateStructured<T>(request: StructuredGenerationRequest<T>): Promise<StructuredGeneration<T>>
+it("selects the configured pool from a multi-pool response before validating it", () => {
+  const configured = {
+    address: DEFAULT_WHIRLPOOL_ADDRESS,
+    tokenA: { address: DEFAULT_SOL_MINT },
+    tokenB: { address: DEFAULT_USDC_MINT },
+    updatedAt: "2026-07-19T06:00:00.000Z",
+    updatedSlot: 1234567,
+    tvlUsdc: "5000000.75",
+    stats: {
+      "24h": {
+        volume: "1250000.50",
+        fees: "3750.25"
+      }
+    }
+  };
+  const response = {
+    data: [{ ...configured, address: "unrelatedPool" }, configured]
+  };
+
+  const { accepted } = acceptOrcaPoolResponse(
+    response,
+    DEFAULT_WHIRLPOOL_ADDRESS,
+    DEFAULT_SOL_MINT,
+    DEFAULT_USDC_MINT
+  );
+
+  expect(accepted.address).toBe(DEFAULT_WHIRLPOOL_ADDRESS);
+});
+
+it("rejects an array that does not contain the configured pool address", () => {
+  expect(() =>
+    acceptOrcaPoolResponse(
+      { data: [] },
+      DEFAULT_WHIRLPOOL_ADDRESS,
+      DEFAULT_SOL_MINT,
+      DEFAULT_USDC_MINT
+    )
+  ).toThrow(expect.objectContaining({ field: "address" }));
+});
+
+it("rejects a response whose data member is not an array", () => {
+  expect(() =>
+    acceptOrcaPoolResponse(
+      { data: { address: DEFAULT_WHIRLPOOL_ADDRESS } },
+      DEFAULT_WHIRLPOOL_ADDRESS,
+      DEFAULT_SOL_MINT,
+      DEFAULT_USDC_MINT
+    )
+  ).toThrow(expect.objectContaining({ field: "data" }));
+});
 ```
 
-The request carries system prompt, bounded context, Zod schema, schema name, and timeout. The result carries validated output plus provider/model/model-version metadata. The port must not expose API keys or raw provider response bodies.
+- [ ] **Step 2: Run the new cases and confirm the old object parser fails them**
 
-- [ ] **Step 4: Implement every provider implementation and runtime binding**
-
-Implement `OpenAiLlmProvider` over the existing `HttpClient.postJsonRaw`, using an OpenAI-compatible strict `json_schema` response format and `maxAttempts: 1`. Add `FakeLlmProvider` with queued resolve/reject outcomes and captured requests. Constructor options carry base URL, API key, model, optional model version, and no secret is exposed through results or errors.
-
-- [ ] **Step 5: Pass focused checks and commit**
-
-Run: `pnpm test tests/adapters/node/openai-llm-provider.test.ts`
-
-Expected: PASS.
-
-Run: `pnpm exec eslint src/ports/llm-provider.ts src/ports/index.ts src/adapters/node/openai-llm-provider.ts tests/fakes/fake-llm-provider.ts tests/fakes/index.ts tests/adapters/node/openai-llm-provider.test.ts --max-warnings 0`
-
-Expected: exit 0.
+Run:
 
 ```bash
-git add package.json pnpm-lock.yaml src/ports/llm-provider.ts src/ports/index.ts src/adapters/node/openai-llm-provider.ts tests/fakes/fake-llm-provider.ts tests/fakes/index.ts tests/adapters/node/openai-llm-provider.test.ts
-git commit -m "feat(briefs): add structured LLM provider adapter"
+pnpm exec vitest run tests/domain/pool-statistics/orca.test.ts -t "selects the configured pool|rejects an array|data member is not an array"
 ```
 
-## Task 4: Implement fail-closed research brief generation and persistence
+Expected: FAIL because the fixture and parser still treat `data` as one object.
+
+- [ ] **Step 3: Change the shared fixture to emit the live wrapper shape and canonical address**
+
+In `tests/fixtures/orca-pool.ts`, change the response declaration and factory return while keeping `makeOrcaPoolResponse(overrides)` as the shared factory:
+
+```ts
+export interface OrcaPoolResponse {
+  data: OrcaPoolData[];
+}
+
+export const DEFAULT_WHIRLPOOL_ADDRESS = "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
+
+export function makeOrcaPoolResponse(overrides: Partial<OrcaPoolData> = {}): OrcaPoolResponse {
+  const statsOverride =
+    overrides.stats === undefined
+      ? {
+          "24h": {
+            volume: "1250000.50",
+            fees: "3750.25"
+          }
+        }
+      : overrides.stats;
+
+  const data: OrcaPoolData = {
+    address: DEFAULT_WHIRLPOOL_ADDRESS,
+    tokenA: {
+      address: DEFAULT_SOL_MINT
+    },
+    tokenB: {
+      address: DEFAULT_USDC_MINT
+    },
+    updatedAt: "2026-07-19T06:00:00.000Z",
+    updatedSlot: 1234567,
+    tvlUsdc: "5000000.75",
+    hasWarning: false,
+    ...overrides
+  };
+
+  if (statsOverride !== undefined) {
+    data.stats = statsOverride;
+  }
+
+  return { data: [data] };
+}
+```
+
+Update every direct access in `tests/application/collect-orca-pool-statistics.test.ts` from `response.data.updatedAt` or `response.data.updatedSlot` to the non-null selected fixture entry:
+
+```ts
+const pool = response.data[0]!;
+```
+
+Use `pool.updatedAt` and `pool.updatedSlot` when deriving replay identity or timestamps. Change the malformed response fixture from a bare object to an array containing the wrong-address object so the test exercises address lookup rather than obsolete wrapper validation:
+
+```ts
+deps.http.setResponse(url, { body: { data: [{ address: "wrong" }] } });
+```
+
+- [ ] **Step 4: Select the configured address from a validated array before existing field validation**
+
+In `src/domain/pool-statistics/orca.ts`, make the exported wrapper shape:
+
+```ts
+export interface OrcaPoolResponse {
+  data: OrcaPoolData[];
+}
+```
+
+Replace the current object-only preamble in `acceptOrcaPoolResponse` with runtime-safe array validation and exact selection:
+
+```ts
+if (!response || typeof response !== "object" || !("data" in response)) {
+  throw new OrcaPoolValidationError(
+    "response",
+    "Response must be an object containing a data array"
+  );
+}
+
+const wrapper = response as OrcaPoolResponse;
+if (!Array.isArray(wrapper.data)) {
+  throw new OrcaPoolValidationError("data", "Response.data must be an array");
+}
+
+const data = (wrapper.data as unknown[]).find(
+  (candidate): candidate is OrcaPoolData =>
+    candidate !== null &&
+    typeof candidate === "object" &&
+    "address" in candidate &&
+    candidate.address === configuredPoolAddress
+);
+
+if (!data) {
+  throw new OrcaPoolValidationError(
+    "address",
+    `Configured pool address not found: ${configuredPoolAddress}`
+  );
+}
+```
+
+Remove the old top-level address mismatch branch. Leave token, timestamp, slot, TVL, volume, and fee validation unchanged and return `{ wrapper, accepted: data }`.
+
+- [ ] **Step 5: Run the scoped parser and consumer checks**
+
+Run:
+
+```bash
+pnpm exec vitest run tests/domain/pool-statistics/orca.test.ts tests/domain/pool-statistics/enrich.test.ts tests/application/collect-orca-pool-statistics.test.ts
+pnpm exec eslint src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
+pnpm exec prettier --check src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
+pnpm exec tsc --noEmit
+```
+
+Expected: all selected suites pass; lint and formatting report no errors; TypeScript compiles without errors. This also proves the read-only enrichment consumer accepts the widened wrapper without modification.
+
+- [ ] **Step 6: Commit the independently compiling parser change**
+
+```bash
+git add src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
+git commit -m "fix: parse Orca pool list responses"
+```
+
+## Task 2: Request the current Orca pools endpoint
 
 **Files:**
 
-- Create: `src/application/generate-research-brief.ts`
-- Create: `tests/application/generate-research-brief.test.ts`
+- Modify: `src/application/collect-orca-pool-statistics.ts`
+- Modify: `tests/application/collect-orca-pool-statistics.test.ts`
+- Modify: `resources/sources.yaml`
+- Reference only: `src/ports/http.ts`
+- Reference only: `tests/fakes/fake-http.ts`
 
-**Invariants to test first:**
+- [ ] **Step 1: Update the collector tests to require the exact current URL**
 
-- `provider-failure-persists-degraded`: every caught provider/validation/grounding/context error maps to a closed degradation reason and explicit warning.
-- `successful-generation-persists-complete`: deterministic envelope fields override any provider-controlled metadata.
-- `generation-replay-is-idempotent`: canonical artifact hashing makes identical invocations reuse the repository row.
-- `prior-context-is-bounded`: inspect at most 10 bundles from the previous seven days and use only the newest valid prior artifact.
-- `expired-source-is-not-generated`: an expired or stale source bundle yields `no_brief` without provider or database writes.
+Define one URL constant near `ORCA_API_BASE` in `tests/application/collect-orca-pool-statistics.test.ts` and use it for every fake response:
 
-- [ ] **Step 1: Write failing use-case tests**
-
-Cover no bundle, expired/stale bundle, successful complete generation, optional current-regime assessment, no-regime `not_applicable`, prior-brief lookup, each provider/parse/reference/overflow fallback, deterministic timestamps, confidence/provenance construction, canonical hash idempotency, and persistence failure propagation. Assert the provider receives the projection, never the raw bundle row.
-
-- [ ] **Step 2: Run the focused test and confirm the module is missing**
-
-Run: `pnpm test tests/application/generate-research-brief.test.ts`
-
-Expected: FAIL because `generateResearchBrief` does not exist.
-
-- [ ] **Step 3: Implement the orchestration**
-
-Define a request with `pair: "SOL/USDC"`, optional caller-supplied current-regime evidence, `evaluationTimeUnixMs`, and code/run identity. Load the latest bundle, enforce lifecycle gates, find a bounded prior artifact through existing bundle/brief repository methods, project context, invoke `generateStructured`, validate grounded IDs, construct and validate the complete envelope, canonical-hash it, and insert taxonomy/confidence/provenance fields. On any generation-side failure, build, validate, hash, and insert one degraded artifact with `confidence: "low"` and an explicit warning. Do not catch repository write failures or turn missing/expired bundles into fake brief rows.
-
-- [ ] **Step 4: Pass focused checks and commit**
-
-Run: `pnpm test tests/application/generate-research-brief.test.ts`
-
-Expected: PASS for all complete, degraded, no-op, and idempotent transitions.
-
-Run: `pnpm exec eslint src/application/generate-research-brief.ts tests/application/generate-research-brief.test.ts --max-warnings 0`
-
-Expected: exit 0.
-
-```bash
-git add src/application/generate-research-brief.ts tests/application/generate-research-brief.test.ts
-git commit -m "feat(briefs): generate and persist fail-closed briefs"
+```ts
+const ORCA_POOL_URL =
+  `${ORCA_API_BASE}/pools?addresses=${encodeURIComponent(DEFAULT_WHIRLPOOL_ADDRESS)}` +
+  "&stats=24h";
 ```
 
-## Task 5: Add the research brief job and CLI entrypoint
+Rename the first accepted test to `requests the address-filtered pools endpoint with 24h statistics` and add both the HTTP call assertion and the updated path metadata assertion:
+
+```ts
+expect(deps.http.calls).toEqual([
+  {
+    url: ORCA_POOL_URL,
+    options: {
+      timeoutMs: 5000,
+      maxAttempts: 2
+    }
+  }
+]);
+
+expect(rawRow!.sourceRequestMeta).toMatchObject({ path: "/pools" });
+```
+
+Rename the malformed test to `rejects an Orca response without the configured pool before raw insertion`, and rename the partial-statistics test to `returns degraded usable evidence when 24h statistics are absent`. Keep their existing persistence and null-metric assertions.
+
+- [ ] **Step 2: Run the request test and confirm it fails against `/public/pool`**
+
+Run:
+
+```bash
+pnpm exec vitest run tests/application/collect-orca-pool-statistics.test.ts -t "requests the address-filtered pools endpoint with 24h statistics"
+```
+
+Expected: FAIL because the use case still requests `/public/pool?address=...`.
+
+- [ ] **Step 3: Build the address-filtered URL and update redacted metadata**
+
+In `src/application/collect-orca-pool-statistics.ts`, replace the path and URL construction with:
+
+```ts
+const path = "/pools";
+const url = `${normalizedBase}${path}?addresses=${encodeURIComponent(poolAddress)}` + "&stats=24h";
+```
+
+Keep timeout, attempt count, error classification, validation-before-ingest, hashing, normalization, replay, conflict, and persistence code unchanged. The existing `redactedMeta` object must continue to include `statsWindow: "24h"` and must now persist `path: "/pools"`.
+
+- [ ] **Step 4: Align the checked-in source catalog**
+
+In the `orca-public-api` section of `resources/sources.yaml`, set:
+
+```yaml
+endpoint: /pools?addresses=:poolAddress&stats=24h
+```
+
+Keep the existing 24-hour-window limitation because the request explicitly opts into those statistics.
+
+- [ ] **Step 5: Run request, degradation, replay, and formatting checks**
+
+Run:
+
+```bash
+pnpm exec vitest run tests/application/collect-orca-pool-statistics.test.ts
+pnpm exec eslint src/application/collect-orca-pool-statistics.ts tests/application/collect-orca-pool-statistics.test.ts
+pnpm exec prettier --check src/application/collect-orca-pool-statistics.ts tests/application/collect-orca-pool-statistics.test.ts resources/sources.yaml
+sed -n '58,70p' resources/sources.yaml | grep -F 'endpoint: /pools?addresses=:poolAddress&stats=24h'
+```
+
+Expected: all collector cases pass, the request assertion proves the exact URL and retry options, and the scoped source-catalog section contains the new endpoint.
+
+- [ ] **Step 6: Commit the endpoint change**
+
+```bash
+git add src/application/collect-orca-pool-statistics.ts tests/application/collect-orca-pool-statistics.test.ts resources/sources.yaml
+git commit -m "fix: query current Orca pools endpoint"
+```
+
+## Task 3: Document the canonical Orca pool default
 
 **Files:**
 
-- Modify: `package.json`
 - Modify: `.env.example`
-- Create: `src/jobs/generate-research-brief-job.ts`
-- Modify: `src/jobs/index.ts`
-- Create: `scripts/generate/research-brief.ts`
-- Create: `tests/jobs/generate-research-brief-job.test.ts`
-- Create: `tests/scripts/research-brief.test.ts`
-
-**Invariants to test first:**
-
-- `job-closes-db-on-completion-or-degradation`: successful or degraded research brief generation closes the shared database connection before exiting with code 0.
-- `job-closes-db-on-unhandled-error`: unhandled configuration, validation, or persistence errors close the shared database connection before propagating or exiting with a non-zero exit code.
-
-- [ ] **Step 1: Write failing job and script tests**
-
-Test request-file validation before persistence/provider creation, runtime dependency wiring, optional current-regime input, redacted one-line result output, database close on complete/degraded/error outcomes, nonzero exit for `no_brief` and unhandled persistence/config errors, and zero exit for persisted complete or degraded artifacts.
-
-- [ ] **Step 2: Run focused tests and confirm missing entrypoints**
-
-Run: `pnpm test tests/jobs/generate-research-brief-job.test.ts tests/scripts/research-brief.test.ts`
-
-Expected: FAIL because the job and script do not exist.
-
-- [ ] **Step 3: Implement the thin job and script**
-
-Export `generateResearchBriefJob` and `runGenerateResearchBriefScript`. Add `pnpm generate:brief <request-json>`; validate `pair`, evaluation time, code/run fields, and optional current-regime shape before external work. Resolve persistence, then construct `OpenAiLlmProvider` from the runtime's existing HTTP/environment ports using `LLM_BASE_URL`, required `LLM_API_KEY`, `LLM_MODEL`, optional `LLM_MODEL_VERSION`, and `LLM_TIMEOUT_MS`; always close the shared connection. Output only outcome, brief row ID, source bundle ID, generation status, prompt version, and warnings.
-
-- [ ] **Step 4: Document environment defaults**
-
-Add `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_MODEL_VERSION`, and `LLM_TIMEOUT_MS` to `.env.example`, with comments that keys are never persisted and the provider must support strict JSON-schema output.
-
-- [ ] **Step 5: Pass focused checks and commit**
-
-Run: `pnpm test tests/jobs/generate-research-brief-job.test.ts tests/scripts/research-brief.test.ts`
-
-Expected: PASS.
-
-Run: `pnpm exec eslint src/jobs/generate-research-brief-job.ts src/jobs/index.ts scripts/generate/research-brief.ts tests/jobs/generate-research-brief-job.test.ts tests/scripts/research-brief.test.ts --max-warnings 0`
-
-Expected: exit 0.
-
-```bash
-git add package.json .env.example src/jobs/generate-research-brief-job.ts src/jobs/index.ts scripts/generate/research-brief.ts tests/jobs/generate-research-brief-job.test.ts tests/scripts/research-brief.test.ts
-git commit -m "feat(briefs): expose research brief generation command"
-```
-
-## Task 6: Compose eligible briefs into evidence publication
-
-**Files:**
-
-- Modify: `src/application/publish-evidence-bundle.ts`
-- Modify: `src/jobs/publish-evidence-bundle-job.ts`
-- Modify: `scripts/collectors/publish-evidence-bundle.ts`
-- Modify: `src/adapters/node/composition-root.ts`
-- Modify: `tests/application/publish-evidence-bundle.test.ts`
-- Modify: `tests/scripts/publish-evidence-bundle.test.ts`
-
-**Invariants to test first:**
-
-- `publisher-attaches-only-eligible-complete-brief`: select the newest row by `receivedAtUnixMs` then ID, and require complete status, valid schema, exact source bundle ID/hash, and `expiresAt > now`.
-- `publisher-fails-closed-on-invalid-stored-brief`: malformed/degraded/expired/mismatched rows preserve the already-validated base payload and null research-brief audit reference.
-- `publisher-audits-composed-payload`: attach before contract validation; use the composed canonical payload/hash for HTTP and every audit row while preserving the base `evidenceBundleId`.
-- `publisher-retry-payload-is-stable`: all retry attempts reuse the one precomputed composed payload, hash, idempotency key, and brief ID.
-
-- [ ] **Step 1: Add focused cases to the existing publisher tests**
-
-Extend the existing helpers with `ResearchBriefRepo`. Add cases for valid attachment, newest-valid selection, malformed/degraded/expired/source-mismatched fallback, mapping/contract failure, composed request headers/hash, and retry audit stability. Update script runtime fixtures mechanically so the new required dependency typechecks. Keep new cases in a dedicated `describe("research brief composition", ...)` section of each large test file.
-
-- [ ] **Step 2: Run only the publisher test files**
-
-Run: `pnpm test tests/application/publish-evidence-bundle.test.ts tests/scripts/publish-evidence-bundle.test.ts`
-
-Expected: FAIL until the publisher loads and composes briefs.
-
-- [ ] **Step 3: Implement one-time preflight composition**
-
-Add `briefRepo` to `PublishEvidenceBundleDeps` and script/composition-root/job wiring. After the base bundle passes its stored canonical/hash check, load its brief rows, choose the newest eligible complete artifact, map it into a copied payload, and validate/canonicalize that composed payload. If no eligible row exists, retain the base canonical result. If a supposedly eligible row cannot map or validate, fail closed to the base bundle rather than publish an unvalidated brief. Carry selected `researchBriefId`, composed payload/hash, and composed idempotency key through all existing audit inserts and retry branches.
-
-- [ ] **Step 4: Pass focused checks and commit**
-
-Run: `pnpm test tests/application/publish-evidence-bundle.test.ts tests/scripts/publish-evidence-bundle.test.ts`
-
-Expected: PASS, including existing retry and audit behavior.
-
-Run: `pnpm exec eslint src/application/publish-evidence-bundle.ts scripts/collectors/publish-evidence-bundle.ts tests/application/publish-evidence-bundle.test.ts tests/scripts/publish-evidence-bundle.test.ts --max-warnings 0`
-
-Expected: exit 0.
-
-```bash
-git add src/application/publish-evidence-bundle.ts src/jobs/publish-evidence-bundle-job.ts scripts/collectors/publish-evidence-bundle.ts src/adapters/node/composition-root.ts tests/application/publish-evidence-bundle.test.ts tests/scripts/publish-evidence-bundle.test.ts
-git commit -m "feat(briefs): attach validated briefs during publication"
-```
-
-## Task 7: Document the operational brief lifecycle
-
-**Files:**
-
 - Modify: `README.md`
 - Modify: `docs/operator-runbook.md`
+- Reference only: `tests/fixtures/orca-pool.ts`
 
-- [ ] **Step 1: Document the command and authority boundary**
+- [ ] **Step 1: Replace operator-facing stale pool identities**
 
-Describe `pnpm generate:brief <request-json>`, its required environment, the bounded-context limits, complete versus degraded outcomes, optional caller-supplied current-regime evidence, and the fact that the LLM summarizes evidence but cannot synthesize policy.
+Replace every operator-facing occurrence of:
 
-- [ ] **Step 2: Document persistence and publication diagnostics**
-
-Add operator queries that join `research_briefs` to its source bundle and publish attempts, explain `structured_output.generationStatus`, prompt/model/input-hash fields, and state that only complete, unexpired, source-matching briefs are composed into publication. Include recovery guidance: rerun generation after provider/config recovery; never edit immutable bundle/brief rows.
-
-- [ ] **Step 3: Check only the changed documentation and commit**
-
-Run: `pnpm exec prettier --check README.md docs/operator-runbook.md`
-
-Expected: both files pass formatting.
-
-```bash
-git add README.md docs/operator-runbook.md
-git commit -m "docs(briefs): document generation and degraded recovery"
+```text
+HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw
 ```
 
-## Tests to add or update
+with:
 
-- Domain schema tests prove closed shapes, field bounds, confidence/status rules, and prompt authority restrictions.
-- Projection regression tests use calm, trending, stressed, and sparse fixtures and prove deterministic selection, explicit missing evidence, grounding, and hard context limits.
-- Adapter tests prove strict JSON-schema requests and reject all unvalidated provider output.
-- Application tests name every generation transition and verify no provider/database calls on gated inputs.
-- Job/script tests prove configuration validation, redaction, exit semantics, and connection closure.
-- Publisher tests preserve the existing retry suite while adding brief eligibility, composition, canonical validation, and audit lineage cases.
+```text
+Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE
+```
 
-## Validation commands
+in `.env.example`, `README.md`, and `docs/operator-runbook.md`. This includes both `ORCA_SOL_USDC_WHIRLPOOL` and `WHIRLPOOL_ADDRESS`, as well as pool IDs in example payloads. Add this exact sentence next to the operator-runbook variable description:
 
-The implementation loop automatically runs `pnpm -r typecheck` after each task. Use each task's exact file-scoped test/lint/format commands as its acceptance criteria. The orchestrator's dedicated validate phase owns the repository-wide configured gate after implementation; it is intentionally not represented as a standalone task or as a substitute for any task-local check.
+```text
+Existing deployments must update their local pool variables; changes to `.env.example` do not rewrite an existing `.env`.
+```
 
-## Risk areas
+- [ ] **Step 2: Verify only the changed configuration and documentation sections**
 
-- The pinned canonical brief is narrower than the persisted issue-level artifact. Mapping must remain explicit and must not edit generated contract assets.
-- OpenAI-compatible strict JSON-schema response envelopes vary by endpoint/provider. The adapter must support only the documented configured envelope and fail closed on any other shape.
-- The source bundle is immutable and has an idempotency key independent of its brief. Composed publication hashes must be audited separately without overwriting stored bundle hashes.
-- A degraded artifact is useful audit evidence but is not eligible for outbound attachment.
-- Prior-brief lookup through existing repository methods must stay bounded to seven days/ten bundles to avoid an accidental unbounded query loop.
-- Provider latency occurs before a database insert; the configured timeout must be finite and there is deliberately no retry loop in generation.
-- Publisher retry behavior already has many branches. Compute brief composition once before the loop so retries cannot select a different row mid-flight.
+Run:
 
-## Stop conditions
+```bash
+sed -n '48,68p' .env.example | grep -F 'ORCA_SOL_USDC_WHIRLPOOL=Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
+sed -n '48,68p' .env.example | grep -F 'WHIRLPOOL_ADDRESS=Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
+sed -n '325,340p' README.md | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
+sed -n '555,570p' README.md | grep -F 'ORCA_SOL_USDC_WHIRLPOOL=Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
+sed -n '55,66p' docs/operator-runbook.md | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
+sed -n '318,330p' docs/operator-runbook.md | grep -F 'WHIRLPOOL_ADDRESS=Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
+sed -n '416,428p' docs/operator-runbook.md | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
+git diff --check -- .env.example README.md docs/operator-runbook.md
+```
 
-- Abort if the configured provider cannot guarantee strict JSON-schema output; do not downgrade to free-form parsing.
-- Abort if attaching a brief would require changing the pinned Regime Engine schema/generated contract; coordinate that change in `regime-engine` first.
-- Abort if the canonical mapper cannot resolve every `sourceEvidenceId` to a feature or contextual evidence item in the exact source bundle.
-- Abort if implementation reveals that `research_briefs.structured_output` cannot retain the complete/degraded envelope and input lineage without a migration; design the migration explicitly before proceeding.
-- Abort if current-regime evidence is only available by scraping or inferring policy state. Keep the assessment `not_applicable` until a bounded caller-owned input exists.
-- Abort rather than persist or log any API key, authorization header, full provider response, or unbounded raw evidence payload.
-- Abort if blockers #8–#11 are not actually present in the branch or the latest bundle lacks the evidence families assumed by the regression fixtures.
+Expected: every scoped example reports the canonical address and `git diff --check` reports no whitespace errors.
+
+- [ ] **Step 3: Commit the operator-default update**
+
+```bash
+git add .env.example README.md docs/operator-runbook.md
+git commit -m "docs: set canonical Orca SOL USDC pool"
+```
+
+## Task 4: Update derive-script primary cases to the canonical pool
+
+**Files:**
+
+- Modify: `tests/scripts/derive-mvp-features.test.ts` (only the `derive-mvp-features script` cases before the nested `script validation` block, approximately lines 252-373)
+
+- [ ] **Step 1: Replace stale `WHIRLPOOL_ADDRESS` values in the scoped cases**
+
+Within the two top-level cases named `script prints deterministic status counts and sorted warnings after persistence` and `script fails for missing scope malformed position list or infrastructure failure`, replace each configured pool value with:
+
+```ts
+WHIRLPOOL_ADDRESS: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
+```
+
+Do not change the missing-variable fixture or any assertions; this task updates fixture identity only.
+
+- [ ] **Step 2: Run only the changed test cases and section checks**
+
+Run:
+
+```bash
+pnpm exec vitest run tests/scripts/derive-mvp-features.test.ts -t "script prints deterministic status counts|script fails for missing scope"
+sed -n '252,373p' tests/scripts/derive-mvp-features.test.ts | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
+! sed -n '252,373p' tests/scripts/derive-mvp-features.test.ts | grep -F 'HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw'
+pnpm exec eslint tests/scripts/derive-mvp-features.test.ts
+pnpm exec prettier --check tests/scripts/derive-mvp-features.test.ts
+```
+
+Expected: the two selected cases pass, the scoped section contains the canonical address and no stale address, and file lint/format checks pass.
+
+- [ ] **Step 3: Commit the first independently tested derive-script section**
+
+```bash
+git add tests/scripts/derive-mvp-features.test.ts
+git commit -m "test: update derive script pool fixtures"
+```
+
+## Task 5: Update derive-script validation cases to the canonical pool
+
+**Files:**
+
+- Modify: `tests/scripts/derive-mvp-features.test.ts` (only the nested `script validation` block, approximately lines 374-551)
+
+- [ ] **Step 1: Replace stale pool values in the validation block**
+
+Within `describe("script validation")`, replace every present `WHIRLPOOL_ADDRESS` value with:
+
+```ts
+WHIRLPOOL_ADDRESS: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
+```
+
+Keep the `should throw for missing WHIRLPOOL_ADDRESS` case without that variable so it continues to prove required configuration.
+
+- [ ] **Step 2: Run the validation block and scoped identity checks**
+
+Run:
+
+```bash
+pnpm exec vitest run tests/scripts/derive-mvp-features.test.ts -t "script validation"
+sed -n '374,551p' tests/scripts/derive-mvp-features.test.ts | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
+! sed -n '374,551p' tests/scripts/derive-mvp-features.test.ts | grep -F 'HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw'
+pnpm exec eslint tests/scripts/derive-mvp-features.test.ts
+pnpm exec prettier --check tests/scripts/derive-mvp-features.test.ts
+```
+
+Expected: every nested validation case passes and the scoped block contains no stale identity.
+
+- [ ] **Step 3: Commit the second independently tested derive-script section**
+
+```bash
+git add tests/scripts/derive-mvp-features.test.ts
+git commit -m "test: align derive validation pool identity"
+```
+
+## Task 6: Update bundle runtime and job fixtures to the canonical pool
+
+**Files:**
+
+- Modify: `tests/scripts/assemble-evidence-bundle.test.ts` (shared `VALID_REQUEST`, plus the runtime and job describe blocks through approximately line 595)
+
+- [ ] **Step 1: Update the shared request and job lineage fixtures**
+
+In the shared `VALID_REQUEST` and both cases under `job forwards an explicit immutable assembly request unchanged`, replace the stale pool ID in feature rows, raw payloads, `makePoolData`, and `makePositionData` with:
+
+```text
+Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE
+```
+
+Every pool identity participating in a single case must match so the test continues to exercise forwarding and lineage rather than wrong-pool rejection.
+
+- [ ] **Step 2: Run only the runtime/job subset and inspect its range**
+
+Run:
+
+```bash
+pnpm exec vitest run tests/scripts/assemble-evidence-bundle.test.ts -t "runtime composes the bundle repository|job forwards an explicit immutable assembly request unchanged"
+sed -n '80,595p' tests/scripts/assemble-evidence-bundle.test.ts | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
+! sed -n '80,595p' tests/scripts/assemble-evidence-bundle.test.ts | grep -F 'HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw'
+pnpm exec eslint tests/scripts/assemble-evidence-bundle.test.ts
+pnpm exec prettier --check tests/scripts/assemble-evidence-bundle.test.ts
+```
+
+Expected: runtime and job tests pass and their shared-fixture section has one consistent canonical pool.
+
+- [ ] **Step 3: Commit the first independently tested bundle section**
+
+```bash
+git add tests/scripts/assemble-evidence-bundle.test.ts
+git commit -m "test: update bundle job pool fixtures"
+```
+
+## Task 7: Update bundle output-summary fixtures to the canonical pool
+
+**Files:**
+
+- Modify: `tests/scripts/assemble-evidence-bundle.test.ts` (only `script parses required inputs and prints a redacted outcome summary`, approximately lines 596-908)
+
+- [ ] **Step 1: Update input, feature, and raw lineage pool IDs**
+
+Within `describe("script parses required inputs and prints a redacted outcome summary")`, replace the stale pool ID everywhere it appears in request input, candidate features, raw payloads, `makePoolData`, and `makePositionData` with:
+
+```text
+Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE
+```
+
+Keep wallet redaction and output assertions unchanged.
+
+- [ ] **Step 2: Run only the output-summary describe block and inspect its range**
+
+Run:
+
+```bash
+pnpm exec vitest run tests/scripts/assemble-evidence-bundle.test.ts -t "script parses required inputs and prints a redacted outcome summary"
+sed -n '596,908p' tests/scripts/assemble-evidence-bundle.test.ts | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
+! sed -n '596,908p' tests/scripts/assemble-evidence-bundle.test.ts | grep -F 'HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw'
+pnpm exec eslint tests/scripts/assemble-evidence-bundle.test.ts
+pnpm exec prettier --check tests/scripts/assemble-evidence-bundle.test.ts
+```
+
+Expected: both output-summary cases pass and the scoped describe block contains no stale pool.
+
+- [ ] **Step 3: Commit the second independently tested bundle section**
+
+```bash
+git add tests/scripts/assemble-evidence-bundle.test.ts
+git commit -m "test: update bundle output pool fixtures"
+```
+
+## Task 8: Update bundle replay fixtures to the canonical pool
+
+**Files:**
+
+- Modify: `tests/scripts/assemble-evidence-bundle.test.ts` (only `replaying the same input file preserves run and creation identity`, approximately lines 909-1122)
+
+- [ ] **Step 1: Update replay input and lineage pool IDs**
+
+Within `describe("replaying the same input file preserves run and creation identity")`, replace the stale pool ID in input data, feature candidates, raw payloads, `makePoolData`, and `makePositionData` with:
+
+```text
+Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE
+```
+
+Keep run identity, creation time, replay outcome, and persistence assertions unchanged.
+
+- [ ] **Step 2: Run only the replay describe block and inspect its range**
+
+Run:
+
+```bash
+pnpm exec vitest run tests/scripts/assemble-evidence-bundle.test.ts -t "replaying the same input file preserves run and creation identity"
+sed -n '909,1122p' tests/scripts/assemble-evidence-bundle.test.ts | grep -F 'Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE'
+! sed -n '909,1122p' tests/scripts/assemble-evidence-bundle.test.ts | grep -F 'HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw'
+pnpm exec eslint tests/scripts/assemble-evidence-bundle.test.ts
+pnpm exec prettier --check tests/scripts/assemble-evidence-bundle.test.ts
+```
+
+Expected: the replay test passes and the scoped describe block contains no stale pool identity.
+
+- [ ] **Step 3: Commit the final independently tested bundle section**
+
+```bash
+git add tests/scripts/assemble-evidence-bundle.test.ts
+git commit -m "test: align bundle replay pool identity"
+```
+
+### Tests to add or update
+
+- Add three parser cases in `tests/domain/pool-statistics/orca.test.ts` for non-first selection, absent configured address, and non-array `data`.
+- Update `tests/application/collect-orca-pool-statistics.test.ts` to assert the exact endpoint, encoded plural `addresses` parameter, `stats=24h`, timeout, attempt count, pre-persistence rejection, null optional metrics, and unchanged replay/conflict behavior.
+- Update `tests/fixtures/orca-pool.ts` to emit `{ data: [pool] }` and the canonical address.
+- Keep `tests/domain/pool-statistics/enrich.test.ts` unchanged but execute it as a compatibility check for fixture/parser consumers.
+- Update only pool identity values in the scoped sections of `tests/scripts/derive-mvp-features.test.ts` and `tests/scripts/assemble-evidence-bundle.test.ts`; do not weaken their existing assertions.
+
+### Dedicated validation phase commands
+
+After all implementation tasks and their automatic workspace typecheck gates complete, run:
+
+```bash
+pnpm verify
+git grep -n 'HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw' -- .env.example README.md docs/operator-runbook.md resources/sources.yaml src tests || true
+git grep -n '/public/pool' -- src tests resources || true
+```
+
+Expected: `pnpm verify` passes; the stale-address search returns no matches in implementation, tests, configuration, or operator docs; the dead endpoint search returns no matches in active source, tests, or resource declarations.
+
+For the issue's live acceptance criterion, an operator with an intentionally configured writable intelligence database and safe non-production environment must update local `WHIRLPOOL_ADDRESS` to the canonical value, then run:
+
+```bash
+pnpm collect:core
+```
+
+Expected: the printed `orca` outcome is successful (`accepted` or `identical_replay`) rather than 404/unavailable, and volume/fee values are sourced from the explicit 24-hour stats response. This command performs database writes and must not be run against an unintended environment.
+
+### Risk areas
+
+- The live endpoint may change field names beyond the wrapper described by the approved design. In particular, token, timestamp, slot, TVL, or stats fields must not be guessed or translated without verified evidence.
+- Returning the first array member would silently associate evidence with the wrong pool; exact address matching is mandatory even when the API appears filtered.
+- Omitting `stats=24h` would make every volume/fee value absent. The URL test and source catalog must pin this query parameter.
+- `encodeURIComponent(poolAddress)` prevents malformed query values while preserving normal base58 addresses.
+- `OrcaPoolResponse.data` is an exported breaking structural type change. All current consumers must compile in the same task; `src/domain/pool-statistics/index.ts` is a pass-through export and should remain unchanged.
+- The collector persists raw and normalized observations. Live validation is irreversible at the database level and must use an explicitly selected safe environment.
+- Existing deployments retain their local stale address until an operator changes it. Documentation must state this migration requirement.
+- The two script test files are large. Restrict each mechanical change to its named describe block and do not combine unrelated cleanup.
+
+### Stop conditions
+
+- Abort implementation if the verified live `/pools?addresses=<canonical-address>&stats=24h` payload does not expose the fields required by `OrcaPoolData`; revise the design with captured evidence instead of fabricating or silently coercing values.
+- Abort live validation if the database target, schema permissions, canonical pool address, or non-production safety of the environment cannot be confirmed.
+- Abort and re-plan if endpoint support requires a second API request, pagination, authentication changes, a repository-port change, a database migration, or a normalized contract change; each is outside this plan.
+- Stop before committing if a changed file contains unrelated user work that cannot be cleanly preserved.
+- Stop if the canonical address does not validate as the SOL/USDC pair under the configured SOL and USDC mints.

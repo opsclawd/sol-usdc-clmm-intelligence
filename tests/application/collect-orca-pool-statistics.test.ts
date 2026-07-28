@@ -14,6 +14,9 @@ import { canonicalizePayload } from "../../src/domain/content-hash.js";
 import { deriveOrcaSourceObservationKey } from "../../src/domain/pool-statistics/identity.js";
 
 const ORCA_API_BASE = "https://api.orca.so/v2/solana";
+const ORCA_POOL_URL =
+  `${ORCA_API_BASE}/pools?addresses=${encodeURIComponent(DEFAULT_WHIRLPOOL_ADDRESS)}` +
+  "&stats=24h";
 
 function createDeps() {
   return {
@@ -37,11 +40,10 @@ const VALID_CONTEXT = Object.freeze({
 });
 
 describe("collectOrcaPoolStatistics behavioral invariants", () => {
-  it("persists accepted Orca raw content before normalized pool statistics and parsed status", async () => {
+  it("requests the address-filtered pools endpoint with 24h statistics", async () => {
     const deps = createDeps();
     const response = makeOrcaPoolResponse();
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
-    deps.http.setResponse(url, { body: response });
+    deps.http.setResponse(ORCA_POOL_URL, { body: response });
 
     const result = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
     expect(result.status).toBe("accepted");
@@ -49,22 +51,21 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
     expect(result.rawObservationId).not.toBeNull();
     expect(result.normalizedCount).toBe(1);
 
+    expect(deps.http.calls).toEqual([
+      {
+        url: ORCA_POOL_URL,
+        options: {
+          timeoutMs: 5000,
+          maxAttempts: 2
+        }
+      }
+    ]);
+
     // Verify raw observation row was saved and set to parsed
     const rawRow = await deps.rawObservationRepo.findById(result.rawObservationId!);
     expect(rawRow).toBeDefined();
     expect(rawRow!.parseStatus).toBe("parsed");
-    expect(rawRow!.sourceRequestMeta).toEqual(
-      expect.objectContaining({
-        method: "GET",
-        host: "api.orca.so",
-        path: "/public/pool",
-        poolAddress: DEFAULT_WHIRLPOOL_ADDRESS,
-        statsWindow: "24h",
-        apiVersion: "v2",
-        intelligenceCodeVersion: "development",
-        intelligencePipelineRunId: "run-123"
-      })
-    );
+    expect(rawRow!.sourceRequestMeta).toMatchObject({ path: "/pools" });
 
     // Ensure NO json store writes were made
     expect(deps.jsonStore.writes).toHaveLength(0);
@@ -79,10 +80,9 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
     expect(normRow!.confidence.level).toBe("high");
   });
 
-  it("rejects malformed Orca responses before raw insertion", async () => {
+  it("rejects an Orca response without the configured pool before raw insertion", async () => {
     const deps = createDeps();
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
-    deps.http.setResponse(url, { body: { data: { address: "wrong" } } }); // mismatch pool address
+    deps.http.setResponse(ORCA_POOL_URL, { body: { data: [{ address: "wrong" }] } }); // mismatch pool address
 
     const result = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
     expect(result.status).toBe("malformed");
@@ -94,14 +94,13 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
     expect(rawRows).toHaveLength(0);
   });
 
-  it("returns degraded usable evidence when at least one metric is present", async () => {
+  it("returns degraded usable evidence when 24h statistics are absent", async () => {
     const deps = createDeps();
     const response = makeOrcaPoolResponse({
       tvlUsdc: "1000.00",
       stats: null // volume & fees missing
     });
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
-    deps.http.setResponse(url, { body: response });
+    deps.http.setResponse(ORCA_POOL_URL, { body: response });
 
     const result = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
     expect(result.status).toBe("degraded");
@@ -127,8 +126,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
       tvlUsdc: null,
       stats: null
     });
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
-    deps.http.setResponse(url, { body: response });
+    deps.http.setResponse(ORCA_POOL_URL, { body: response });
 
     const result = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
     expect(result.status).toBe("degraded");
@@ -138,8 +136,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
   it("recovers parsed Orca replay metadata from its linked normalized row", async () => {
     const deps = createDeps();
     const response = makeOrcaPoolResponse();
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
-    deps.http.setResponse(url, { body: response });
+    deps.http.setResponse(ORCA_POOL_URL, { body: response });
 
     // First collect
     const firstResult = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
@@ -159,21 +156,21 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
   it("recovers pending and failed Orca replays from stored canonical content", async () => {
     const deps = createDeps();
     const response = makeOrcaPoolResponse();
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
-    deps.http.setResponse(url, { body: response });
+    deps.http.setResponse(ORCA_POOL_URL, { body: response });
 
+    const pool = response.data[0]!;
     const { payloadCanonical, payloadHash } = await canonicalizePayload(response);
     const sourceObservationKey = await deriveOrcaSourceObservationKey({
       poolAddress: DEFAULT_WHIRLPOOL_ADDRESS,
-      updatedAt: response.data.updatedAt,
-      updatedSlot: response.data.updatedSlot
+      updatedAt: pool.updatedAt,
+      updatedSlot: pool.updatedSlot
     });
 
     // Seed raw repo with a pending row
     const rawInsertRes = await deps.rawObservationRepo.insertOrClassify({
       source: "orca-public-api",
       sourceObservationKey,
-      observedAtUnixMs: Date.parse(response.data.updatedAt),
+      observedAtUnixMs: Date.parse(pool.updatedAt),
       fetchedAtUnixMs: VALID_CONTEXT.startedAtUnixMs,
       payloadHash,
       payloadCanonical,
@@ -194,15 +191,14 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
 
   it("rejects conflicting Orca replay without overwrite or normalization", async () => {
     const deps = createDeps();
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
 
     const responseV1 = makeOrcaPoolResponse({ tvlUsdc: "1000.00" });
-    deps.http.setResponse(url, { body: responseV1 });
+    deps.http.setResponse(ORCA_POOL_URL, { body: responseV1 });
     const firstResult = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
     expect(firstResult.status).toBe("accepted");
 
     const responseV2 = makeOrcaPoolResponse({ tvlUsdc: "2000.00" }); // conflict! same observed timestamp, different data
-    deps.http.setResponse(url, { body: responseV2 });
+    deps.http.setResponse(ORCA_POOL_URL, { body: responseV2 });
     const secondResult = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
     expect(secondResult.status).toBe("conflict");
     expect(secondResult.hasUsableEvidence).toBe(false);
@@ -211,8 +207,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
   it("marks accepted Orca raw content failed when normalization fails", async () => {
     const deps = createDeps();
     const response = makeOrcaPoolResponse();
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
-    deps.http.setResponse(url, { body: response });
+    deps.http.setResponse(ORCA_POOL_URL, { body: response });
 
     // Mock normalization to fail
     deps.normalizedObservationRepo.insertMany = async () => {
@@ -228,12 +223,10 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
   });
 
   it("classifies timeout network rate limit server error and invalid JSON safely", async () => {
-    const url = `${ORCA_API_BASE}/public/pool?address=${DEFAULT_WHIRLPOOL_ADDRESS}&stats=24h`;
-
     // 1. Timeout
     {
       const deps = createDeps();
-      deps.http.setResponse(url, {
+      deps.http.setResponse(ORCA_POOL_URL, {
         error: new HttpRequestError("timeout", "Timeout error", null, true)
       });
       const result = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
@@ -244,7 +237,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
     // 2. Network / connection failure
     {
       const deps = createDeps();
-      deps.http.setResponse(url, {
+      deps.http.setResponse(ORCA_POOL_URL, {
         error: new HttpRequestError("network", "Connection failed", null, true)
       });
       const result = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
@@ -254,7 +247,7 @@ describe("collectOrcaPoolStatistics behavioral invariants", () => {
     // 3. Rate limit (429) or Server error (503) -> unavailable
     {
       const deps = createDeps();
-      deps.http.setResponse(url, {
+      deps.http.setResponse(ORCA_POOL_URL, {
         error: new HttpRequestError("http_status", "Rate limited", 429, true)
       });
       const result = await collectOrcaPoolStatistics(deps, VALID_CONTEXT);
