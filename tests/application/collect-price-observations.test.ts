@@ -16,7 +16,7 @@ const PYTH_HERMES_BASE_URL = "https://hermes.pyth.network";
 const PYTH_API_KEY = "test-api-key-12345";
 const PYTH_SOL_USD_FEED_ID = SOL_USD_FEED_ID;
 
-const JUPITER_API_BASE = "https://api.jup.ag/swap/v6";
+const JUPITER_API_BASE = "https://lite-api.jup.ag";
 const JUPITER_API_KEY = "test-jup-key-12345";
 
 const FIXED_CLOCK_TIME = "2026-05-10T12:00:00.000Z";
@@ -67,7 +67,7 @@ describe("collectPriceObservations", () => {
     // Assert both leaves receive the same object
     const deps = createDeps();
     const pythUrl = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
-    const jupUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+    const jupUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
     deps.http.setResponse(pythUrl, { body: makeRecentPythEnvelope() });
     deps.http.setResponse(jupUrl, { body: makeJupiterQuote() });
@@ -93,7 +93,7 @@ describe("collectPriceObservations", () => {
     const deps = createDeps();
 
     const pythUrl = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
-    const jupUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+    const jupUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
     let resolvePythPromise: (value: unknown) => void = () => {};
     const pythPromise = new Promise((resolve) => {
@@ -126,7 +126,7 @@ describe("collectPriceObservations", () => {
     const deps = createDeps();
 
     const pythUrl = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
-    const jupUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+    const jupUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
     deps.http.setResponse(pythUrl, { body: makeRecentPythEnvelope() });
     deps.http.setResponse(jupUrl, {
@@ -151,7 +151,7 @@ describe("collectPriceObservations", () => {
     const deps = createDeps();
 
     const pythUrl = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
-    const jupUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+    const jupUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
     const clockTimestampSecs = Math.floor(new Date(FIXED_CLOCK_TIME).getTime() / 1000);
     const oldTimestamp = clockTimestampSecs - 120; // stale
@@ -172,7 +172,7 @@ describe("collectPriceObservations", () => {
     {
       const deps = createDeps();
       const pythUrl = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
-      const jupUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+      const jupUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
       deps.http.setResponse(pythUrl, {
         error: new HttpRequestError(
@@ -201,7 +201,7 @@ describe("collectPriceObservations", () => {
     const deps = createDeps();
 
     const pythUrl = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
-    const jupUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+    const jupUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
     deps.http.setResponse(pythUrl, { body: makeRecentPythEnvelope() });
     deps.http.setResponse(jupUrl, { body: makeJupiterQuote() });

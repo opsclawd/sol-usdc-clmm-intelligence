@@ -8,7 +8,7 @@ import { collectJupiterQuote } from "../../src/application/collect-jupiter-quote
 import type { DegradedResult } from "../../src/application/price-source-result.js";
 import { mapSourceError } from "../../src/application/source-outcome.js";
 
-const JUPITER_API_BASE = "https://api.jup.ag/swap/v6";
+const JUPITER_API_BASE = "https://lite-api.jup.ag";
 const JUPITER_API_KEY = "test-jup-key-12345";
 
 const FIXED_CLOCK_TIME = "2026-05-10T12:00:00.000Z";
@@ -40,7 +40,7 @@ describe("collectJupiterQuote", () => {
   it("passes explicit immutable context without leaf environment rereads", async () => {
     const deps = createDeps();
     const quote = makeJupiterQuote();
-    const expectedUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+    const expectedUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
     deps.http.setResponse(expectedUrl, { body: quote });
 
     // Mock env to reject run ID reads
@@ -65,7 +65,7 @@ describe("collectJupiterQuote", () => {
     it("requests the deterministic generic Jupiter quote contract", async () => {
       const deps = createDeps();
       const quote = makeJupiterQuote();
-      const expectedUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+      const expectedUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
       deps.http.setResponse(expectedUrl, { body: quote });
 
@@ -87,8 +87,8 @@ describe("collectJupiterQuote", () => {
       expect(lastRow?.sourceRequestMeta).toBeDefined();
 
       const meta = lastRow?.sourceRequestMeta as Record<string, unknown>;
-      expect(meta.host).toBe("api.jup.ag");
-      expect(meta.path).toBe("/quote");
+      expect(meta.host).toBe("lite-api.jup.ag");
+      expect(meta.path).toBe("/swap/v1/quote");
       expect(meta.inputMint).toBe(SOL_MINT);
       expect(meta.outputMint).toBe(USDC_MINT);
       expect(meta.amount).toBe("1000000000");
@@ -104,7 +104,7 @@ describe("collectJupiterQuote", () => {
     it("updates compatibility snapshot only from normalized Jupiter evidence", async () => {
       const deps = createDeps();
       const quote = makeJupiterQuote();
-      const expectedUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+      const expectedUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
       deps.http.setResponse(expectedUrl, { body: quote });
 
@@ -127,7 +127,7 @@ describe("collectJupiterQuote", () => {
     it("preserves durable Jupiter evidence when compatibility snapshot writing fails", async () => {
       const deps = createDeps();
       const quote = makeJupiterQuote();
-      const expectedUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+      const expectedUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
       deps.http.setResponse(expectedUrl, { body: quote });
       deps.jsonStore.writeError = new Error("Disk full");
@@ -161,7 +161,7 @@ describe("collectJupiterQuote", () => {
   describe("error and edge cases", () => {
     it("handles malformed response before raw insert", async () => {
       const deps = createDeps();
-      const expectedUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+      const expectedUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
       deps.http.setResponse(expectedUrl, { body: { invalid: "data" } });
 
@@ -175,7 +175,7 @@ describe("collectJupiterQuote", () => {
 
     it("handles no route before raw insert", async () => {
       const deps = createDeps();
-      const expectedUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+      const expectedUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
       deps.http.setResponse(expectedUrl, {
         error: new HttpRequestError(
@@ -197,7 +197,7 @@ describe("collectJupiterQuote", () => {
     it("handles stale outcome", async () => {
       const deps = createDeps();
       const quote = makeJupiterQuote();
-      const expectedUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+      const expectedUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
       deps.http.setResponse(expectedUrl, { body: quote });
 
@@ -225,7 +225,7 @@ describe("collectJupiterQuote", () => {
     it("handles high price impact outcomes", async () => {
       const deps = createDeps();
       const quote = makeJupiterQuote({ highPriceImpact: true, priceImpactPct: "1.5" });
-      const expectedUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+      const expectedUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
       deps.http.setResponse(expectedUrl, { body: quote });
 
@@ -237,7 +237,7 @@ describe("collectJupiterQuote", () => {
     it("handles replay and conflict", async () => {
       const deps = createDeps();
       const quote1 = makeJupiterQuote();
-      const expectedUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+      const expectedUrl = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
       deps.http.setResponse(expectedUrl, { body: quote1 });
       const res1 = await collectJupiterQuote(deps, VALID_CONTEXT);

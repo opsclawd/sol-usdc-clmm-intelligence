@@ -3,14 +3,14 @@ export const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 export const MSOL_MINT = "mSoLzYCxHdDgdzmojag2KnE2dJ7RQfPpmZctD6Z2J6b";
 
 export interface JupiterQuoteRoutePlan {
-  swapMode: "ExactIn" | "ExactOut";
+  swapMode?: "ExactIn" | "ExactOut";
   swapInfo: {
     ammKey: string;
     label: string;
     inputMint: string;
     outputMint: string;
   };
-  intermediateTokens: string[];
+  intermediateTokens?: string[];
   percent: number;
 }
 
@@ -49,7 +49,7 @@ export interface JupiterQuote {
   inAmount: string;
   outputMint: string;
   outAmount: string;
-  otherAmounts: Array<{
+  otherAmounts?: Array<{
     idx: number;
     amount: string;
   }>;
@@ -58,25 +58,25 @@ export interface JupiterQuote {
   priceImpactPct: string;
   routePlan: JupiterQuoteRoutePlan[];
   contextSlot: number;
-  timeTaken: number;
-  platformFee: {
+  timeTaken?: number;
+  platformFee?: {
     amount: string;
     feeBps: number;
   } | null;
-  priceImpactPctList: string[];
-  trustlessBootstrapMode: boolean;
-  remainderAmount: string;
-  virtualTokenReserves: Record<string, unknown>;
-  lastUpdatedSlot: number;
-  requestId: string;
-  notEnoughLiquidity: boolean;
-  exceedsLiquidity: boolean;
-  highPriceImpact: boolean;
-  routeSummary: JupiterQuoteRouteSummary;
-  additionalTransferFeeAmount: string;
-  restrictIntermediateTokens: boolean;
-  bridgeUsed: boolean;
-  pubkey: string;
+  priceImpactPctList?: string[];
+  trustlessBootstrapMode?: boolean;
+  remainderAmount?: string;
+  virtualTokenReserves?: Record<string, unknown>;
+  lastUpdatedSlot?: number;
+  requestId?: string;
+  notEnoughLiquidity?: boolean;
+  exceedsLiquidity?: boolean;
+  highPriceImpact?: boolean;
+  routeSummary?: JupiterQuoteRouteSummary;
+  additionalTransferFeeAmount?: string;
+  restrictIntermediateTokens?: boolean;
+  bridgeUsed?: boolean;
+  pubkey?: string;
 }
 
 export function makeJupiterQuote(overrides?: Partial<JupiterQuote>): JupiterQuote {
@@ -175,7 +175,7 @@ export function makeJupiterMultiHopQuote(): JupiterQuote {
     priceImpactPct: "0.03",
     highPriceImpact: false,
     routeSummary: {
-      ...makeJupiterQuote().routeSummary,
+      ...makeJupiterQuote().routeSummary!,
       priceImpactPct: "0.03"
     }
   });
@@ -186,7 +186,7 @@ export function makeJupiterHighPriceImpactQuote(): JupiterQuote {
     priceImpactPct: "1.5",
     highPriceImpact: true,
     routeSummary: {
-      ...makeJupiterQuote().routeSummary,
+      ...makeJupiterQuote().routeSummary!,
       priceImpactPct: "1.5"
     }
   });

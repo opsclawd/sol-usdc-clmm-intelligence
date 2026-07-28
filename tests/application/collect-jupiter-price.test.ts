@@ -5,7 +5,7 @@ import { FakeHttp, FakeJsonStore, FakeEnv, FakeClock } from "../fakes/index.js";
 import { FakeObservationRepo } from "../fakes/fake-observation-repo.js";
 import { FakeNormalizedObservationRepo } from "../fakes/fake-normalized-observation-repo.js";
 
-const JUPITER_API_BASE = "https://api.jup.ag/swap/v6";
+const JUPITER_API_BASE = "https://lite-api.jup.ag";
 
 function createDeps() {
   return {
@@ -31,7 +31,7 @@ describe("collectJupiterPrice (compatibility wrapper)", () => {
   it("delegates to collectJupiterQuote and writes compatibility snapshot", async () => {
     const deps = createDeps();
     const quote = makeJupiterQuote();
-    const url = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+    const url = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
     deps.http.setResponse(url, { body: quote });
 
     await collectJupiterPrice(deps, VALID_CONTEXT);
@@ -52,7 +52,7 @@ describe("collectJupiterPrice (compatibility wrapper)", () => {
     const deps = createDeps();
     deps.env = new FakeEnv({ JUPITER_API_BASE });
     const quote = makeJupiterQuote();
-    const url = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+    const url = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
     deps.http.setResponse(url, { body: quote });
 
     await collectJupiterPrice(deps, VALID_CONTEXT);
@@ -61,7 +61,7 @@ describe("collectJupiterPrice (compatibility wrapper)", () => {
 
   it("rejects when quote schema is invalid", async () => {
     const deps = createDeps();
-    const url = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+    const url = `${JUPITER_API_BASE}/swap/v1/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
     deps.http.setResponse(url, { body: { invalid: "response" } });
 
     const result = await collectJupiterPrice(deps, VALID_CONTEXT);

@@ -137,7 +137,7 @@ describe("Jupiter Executable Quote Processing", () => {
       const quote = makeJupiterQuote();
       const result = acceptJupiterQuote(quote);
       expect(result.quote.routeSummary).toBeDefined();
-      expect(result.quote.routeSummary.inAmount).toBe("1000000000");
+      expect(result.quote.routeSummary!.inAmount).toBe("1000000000");
     });
   });
 

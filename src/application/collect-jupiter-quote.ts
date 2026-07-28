@@ -117,7 +117,7 @@ export async function collectJupiterQuote(
   const host = extractHost(baseUrl);
   const normalizedBase = baseUrl.replace(/\/$/, "");
 
-  const url = `${normalizedBase}/quote?inputMint=${encodeURIComponent(solMint)}&outputMint=${encodeURIComponent(usdcMint)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
+  const url = `${normalizedBase}/swap/v1/quote?inputMint=${encodeURIComponent(solMint)}&outputMint=${encodeURIComponent(usdcMint)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
 
   const headers: Record<string, string> = {};
   if (apiKey) {
@@ -183,7 +183,7 @@ export async function collectJupiterQuote(
 
   const redactedMeta = {
     host,
-    path: "/quote",
+    path: "/swap/v1/quote",
     inputMint: solMint,
     outputMint: usdcMint,
     amount: "1000000000",

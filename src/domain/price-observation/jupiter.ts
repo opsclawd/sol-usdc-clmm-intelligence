@@ -25,9 +25,9 @@ const JupiterQuoteSwapInfoSchema = z.object({
 });
 
 const JupiterQuoteRoutePlanSchema = z.object({
-  swapMode: z.enum(["ExactIn", "ExactOut"]),
+  swapMode: z.enum(["ExactIn", "ExactOut"]).optional(),
   swapInfo: JupiterQuoteSwapInfoSchema,
-  intermediateTokens: z.array(z.string()),
+  intermediateTokens: z.array(z.string()).optional(),
   percent: z.number()
 });
 
@@ -70,12 +70,14 @@ const JupiterQuoteSchema = z
       .string()
       .max(50, { message: "outAmount string too long" })
       .refine(isValidIntegerString, { message: "outAmount must be a valid integer string" }),
-    otherAmounts: z.array(
-      z.object({
-        idx: z.number(),
-        amount: z.string()
-      })
-    ),
+    otherAmounts: z
+      .array(
+        z.object({
+          idx: z.number(),
+          amount: z.string()
+        })
+      )
+      .optional(),
     swapMode: z.enum(["ExactIn", "ExactOut"]),
     slippageBps: z.number(),
     priceImpactPct: z
@@ -83,27 +85,28 @@ const JupiterQuoteSchema = z
       .regex(/^-?[0-9]+\.?[0-9]*$/, { message: "priceImpactPct must be a valid decimal string" }),
     routePlan: z.array(JupiterQuoteRoutePlanSchema).min(1),
     contextSlot: z.number(),
-    timeTaken: z.number(),
+    timeTaken: z.number().optional(),
     platformFee: z
       .object({
         amount: z.string(),
         feeBps: z.number()
       })
-      .nullable(),
-    priceImpactPctList: z.array(z.string()),
-    trustlessBootstrapMode: z.boolean(),
-    remainderAmount: z.string(),
-    virtualTokenReserves: z.record(z.unknown()),
-    lastUpdatedSlot: z.number(),
-    requestId: z.string(),
-    notEnoughLiquidity: z.boolean(),
-    exceedsLiquidity: z.boolean(),
-    highPriceImpact: z.boolean(),
-    routeSummary: JupiterQuoteRouteSummarySchema,
-    additionalTransferFeeAmount: z.string(),
-    restrictIntermediateTokens: z.boolean(),
-    bridgeUsed: z.boolean(),
-    pubkey: z.string()
+      .nullable()
+      .optional(),
+    priceImpactPctList: z.array(z.string()).optional(),
+    trustlessBootstrapMode: z.boolean().optional(),
+    remainderAmount: z.string().optional(),
+    virtualTokenReserves: z.record(z.unknown()).optional(),
+    lastUpdatedSlot: z.number().optional(),
+    requestId: z.string().optional(),
+    notEnoughLiquidity: z.boolean().optional(),
+    exceedsLiquidity: z.boolean().optional(),
+    highPriceImpact: z.boolean().optional(),
+    routeSummary: JupiterQuoteRouteSummarySchema.optional(),
+    additionalTransferFeeAmount: z.string().optional(),
+    restrictIntermediateTokens: z.boolean().optional(),
+    bridgeUsed: z.boolean().optional(),
+    pubkey: z.string().optional()
   })
   .passthrough();
 
