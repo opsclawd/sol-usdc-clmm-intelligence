@@ -1,4 +1,5 @@
 {
   "verdict": "done_with_fixes",
-  "summary": "Updated plan.md to add src/jobs/publish-evidence-bundle-job.ts and src/adapters/node/composition-root.ts to the global Affected Files list, ensuring all job and composition root wiring changes required by Task 6 are explicit. Synchronized top-level Behavioral Invariants across all tasks in plan.md, including Task 5 database connection lifecycle invariants and Task 6 retry payload stability invariants."
+  "summary": "Fixed two P1 findings: (1) Task 2 Step 1 now adds `expect(rawRow!.sourceRequestMeta).toMatchObject({ path: \"/pools\" })` alongside the HTTP call assertion, ensuring the test validates the updated path metadata that Task 2 Step 3 writes to the implementation. (2) Task 1 signature_changes now includes `AcceptOrcaPoolResponseResult` because the `wrapper` property type changes from `OrcaPoolData` to `OrcaPoolResponse` when the parser switches from object-only to array-validated parsing; this exported symbol was missing from the manifest.",
+  "rebuttal": null
 }

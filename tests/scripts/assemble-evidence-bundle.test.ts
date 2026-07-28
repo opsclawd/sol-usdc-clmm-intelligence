@@ -700,17 +700,17 @@ describe("script parses required inputs and prints a redacted outcome summary", 
         payload: {
           walletId: "Wallet1234567890abcdef",
           positionId: "Pos11111111111111111111111111111111111111111",
-          poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw"
+          poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
         },
         payloadHash: "raw-hash-200",
         payloadCanonical: JSON.stringify(
           makeClmmBundle({
-            pool: makePoolData({ poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw" }),
+            pool: makePoolData({ poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE" }),
             positions: [
               makePositionData({
                 walletId: "Wallet1234567890abcdef",
                 positionId: "Pos11111111111111111111111111111111111111111",
-                poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw"
+                poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
               })
             ],
             alerts: []
@@ -1013,17 +1013,17 @@ describe("replaying the same input file preserves run and creation identity", ()
         payload: {
           walletId: "Wallet1234567890abcdef",
           positionId: "Pos11111111111111111111111111111111111111111",
-          poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw"
+          poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
         },
         payloadHash: "raw-hash-200",
         payloadCanonical: JSON.stringify(
           makeClmmBundle({
-            pool: makePoolData({ poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw" }),
+            pool: makePoolData({ poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE" }),
             positions: [
               makePositionData({
                 walletId: "Wallet1234567890abcdef",
                 positionId: "Pos11111111111111111111111111111111111111111",
-                poolId: "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw"
+                poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
               })
             ],
             alerts: []
