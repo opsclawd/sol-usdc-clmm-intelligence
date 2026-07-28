@@ -44,7 +44,7 @@ export type WhaleTransferPayloadV1 = {
   readonly freshnessContext: OnChainFlowFreshnessContext;
   readonly transactionSignature: string;
   readonly eventIndex: number;
-  readonly slot?: number;
+  readonly slot: number;
   readonly stablecoinOperation: StablecoinOperation;
 };
 
@@ -82,7 +82,7 @@ export type StablecoinFlowPayloadV1 = {
   readonly freshnessContext: OnChainFlowFreshnessContext;
   readonly transactionSignature: string;
   readonly eventIndex: number;
-  readonly slot?: number;
+  readonly slot: number;
   readonly stablecoinOperation: StablecoinOperation;
 };
 

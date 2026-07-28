@@ -67,7 +67,7 @@ const heliusTransactionFlowSchema = z
     transactionHash: z
       .string()
       .regex(NO_LEADING_PLUS_REGEX, "transactionHash must not have + prefix"),
-    slot: z.number().int().nonnegative().optional(),
+    slot: z.number().int().nonnegative(),
     timestampUnixMs: z.number().int().positive(),
     flowSide: z.enum(["buy", "sell"]),
     nativeAmount: z.union([z.number().int().nonnegative(), z.string()]).refine(
@@ -105,7 +105,7 @@ const whaleTransferFlowSchema = z
     freshnessContext: freshnessContextSchema,
     transactionSignature: z.string().min(1),
     eventIndex: z.number().int().nonnegative(),
-    slot: z.number().int().nonnegative().optional(),
+    slot: z.number().int().nonnegative(),
     stablecoinOperation: z.enum(["mint", "burn", "transfer"])
   })
   .strict();
@@ -149,7 +149,7 @@ const stablecoinFlowSchema = z
     freshnessContext: freshnessContextSchema,
     transactionSignature: z.string().min(1),
     eventIndex: z.number().int().nonnegative(),
-    slot: z.number().int().nonnegative().optional(),
+    slot: z.number().int().nonnegative(),
     stablecoinOperation: z.enum(["mint", "burn", "transfer"])
   })
   .strict();

@@ -8,15 +8,6 @@ export interface HeliusTransactionFlowEvent {
   readonly sourceReferences: string[];
 }
 
-export interface BirdeyeNetFlowEvent {
-  readonly eventKind: "birdeye_net_flow";
-  readonly timestampUnixMs: number;
-  readonly buyVolume: number;
-  readonly sellVolume: number;
-  readonly netFlow: number;
-  readonly sourceReferences: string[];
-}
-
 export interface BirdeyeWhaleSwapEvent {
   readonly eventKind: "whale_swap";
   readonly sourceEventId: string;
@@ -73,7 +64,7 @@ export interface BirdeyeDexNetFlowEvent {
   readonly netFlowUsdc: string;
 }
 
-export type OnChainFlowSourceEvent = HeliusTransactionFlowEvent | BirdeyeNetFlowEvent;
+export type OnChainFlowSourceEvent = HeliusTransactionFlowEvent;
 
 export function makeHeliusTransactionFlowEvent(
   overrides?: Partial<HeliusTransactionFlowEvent>
@@ -86,20 +77,6 @@ export function makeHeliusTransactionFlowEvent(
     flowSide: "buy",
     nativeAmount: 1000000000,
     sourceReferences: ["https://helius.xyz/txn/txn_abc123"],
-    ...overrides
-  };
-}
-
-export function makeBirdeyeNetFlowEvent(
-  overrides?: Partial<BirdeyeNetFlowEvent>
-): BirdeyeNetFlowEvent {
-  return {
-    eventKind: "birdeye_net_flow",
-    timestampUnixMs: 1700000000000,
-    buyVolume: 50000000000,
-    sellVolume: 30000000000,
-    netFlow: 20000000000,
-    sourceReferences: ["https://birdeye.xyz/token/SOL"],
     ...overrides
   };
 }

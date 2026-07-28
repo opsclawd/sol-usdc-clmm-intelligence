@@ -1,6 +1,6 @@
 # Task Context: Task 1
 
-Title: Parse and fixture Orca array responses
+Title: Make slot absence explicit in canonical flow contracts
 
 ## Workspace & Scope Constraints
 
@@ -10,236 +10,157 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-47
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-67
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-47
-Start Commit: 519075961cf25d1b70b677a37ec123ad7f5ba213
+Branch: ai/issue-67
+Start Commit: d29094d0cd501b0b730f2530c25d4acf38fd8c60
 
 ## Task Requirements
 
 **Files:**
 
-- Modify: `src/domain/pool-statistics/orca.ts`
-- Modify: `tests/fixtures/orca-pool.ts`
-- Modify: `tests/domain/pool-statistics/orca.test.ts`
-- Modify: `tests/application/collect-orca-pool-statistics.test.ts`
-- Reference only: `src/domain/pool-statistics/index.ts`
-- Reference only: `tests/domain/pool-statistics/enrich.test.ts`
+- Modify: `src/contracts/on-chain-flow.ts`
+- Modify: `src/domain/on-chain-flow/validate.ts`
+- Modify: `src/domain/on-chain-flow/normalize.ts`
+- Modify: `src/domain/on-chain-flow/threshold.ts`
+- Modify: `tests/contracts/on-chain-flow.test.ts`
+- Modify: `tests/domain/on-chain-flow/validate.test.ts`
+- Modify: `tests/domain/on-chain-flow/normalize.test.ts`
+- Modify: `tests/fixtures/on-chain-flow.ts`
+- Reference: `src/ports/on-chain-flow-source.ts`
 
-- [ ] **Step 1: Write failing domain tests for array selection and rejection**
+**Behavioral invariants:**
 
-Add these exact cases to the first parser describe block in `tests/domain/pool-statistics/orca.test.ts` before changing the fixture or parser:
+- A Birdeye `whale_swap` with a real `blockTimestampUnixMs` and no slot is valid.
+- A Birdeye `dex_net_flow` with a real `blockTimestampUnixMs` and no slot is valid.
+- A provided slot must still be a non-negative integer; negative and fractional slots remain invalid.
+- Helius transaction input still requires its real top-level slot, and the Helius-derived normalized payload still carries it.
+- Omitting slot never causes a placeholder such as `0` to appear in accepted or normalized data.
 
-```ts
-it("selects the configured pool from a multi-pool response before validating it", () => {
-  const configured = {
-    address: DEFAULT_WHIRLPOOL_ADDRESS,
-    tokenA: { address: DEFAULT_SOL_MINT },
-    tokenB: { address: DEFAULT_USDC_MINT },
-    updatedAt: "2026-07-19T06:00:00.000Z",
-    updatedSlot: 1234567,
-    tvlUsdc: "5000000.75",
-    stats: {
-      "24h": {
-        volume: "1250000.50",
-        fees: "3750.25"
-      }
-    }
-  };
-  const response = {
-    data: [{ ...configured, address: "unrelatedPool" }, configured]
-  };
+- [ ] **Step 1: Write the failing contract and validation cases first**
 
-  const { accepted } = acceptOrcaPoolResponse(
-    response,
-    DEFAULT_WHIRLPOOL_ADDRESS,
-    DEFAULT_SOL_MINT,
-    DEFAULT_USDC_MINT
-  );
+  In the existing `WhaleSwapPayloadV1` contract case, construct a Birdeye payload without top-level `slot` and with:
 
-  expect(accepted.address).toBe(DEFAULT_WHIRLPOOL_ADDRESS);
-});
-
-it("rejects an array that does not contain the configured pool address", () => {
-  expect(() =>
-    acceptOrcaPoolResponse(
-      { data: [] },
-      DEFAULT_WHIRLPOOL_ADDRESS,
-      DEFAULT_SOL_MINT,
-      DEFAULT_USDC_MINT
-    )
-  ).toThrow(expect.objectContaining({ field: "address" }));
-});
-
-it("rejects a response whose data member is not an array", () => {
-  expect(() =>
-    acceptOrcaPoolResponse(
-      { data: { address: DEFAULT_WHIRLPOOL_ADDRESS } },
-      DEFAULT_WHIRLPOOL_ADDRESS,
-      DEFAULT_SOL_MINT,
-      DEFAULT_USDC_MINT
-    )
-  ).toThrow(expect.objectContaining({ field: "data" }));
-});
-```
-
-- [ ] **Step 2: Run the new cases and confirm the old object parser fails them**
-
-Run:
-
-```bash
-pnpm exec vitest run tests/domain/pool-statistics/orca.test.ts -t "selects the configured pool|rejects an array|data member is not an array"
-```
-
-Expected: FAIL because the fixture and parser still treat `data` as one object.
-
-- [ ] **Step 3: Change the shared fixture to emit the live wrapper shape and canonical address**
-
-In `tests/fixtures/orca-pool.ts`, change the response declaration and factory return while keeping `makeOrcaPoolResponse(overrides)` as the shared factory:
-
-```ts
-export interface OrcaPoolResponse {
-  data: OrcaPoolData[];
-}
-
-export const DEFAULT_WHIRLPOOL_ADDRESS = "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
-
-export function makeOrcaPoolResponse(overrides: Partial<OrcaPoolData> = {}): OrcaPoolResponse {
-  const statsOverride =
-    overrides.stats === undefined
-      ? {
-          "24h": {
-            volume: "1250000.50",
-            fees: "3750.25"
-          }
-        }
-      : overrides.stats;
-
-  const data: OrcaPoolData = {
-    address: DEFAULT_WHIRLPOOL_ADDRESS,
-    tokenA: {
-      address: DEFAULT_SOL_MINT
-    },
-    tokenB: {
-      address: DEFAULT_USDC_MINT
-    },
-    updatedAt: "2026-07-19T06:00:00.000Z",
-    updatedSlot: 1234567,
-    tvlUsdc: "5000000.75",
-    hasWarning: false,
-    ...overrides
-  };
-
-  if (statsOverride !== undefined) {
-    data.stats = statsOverride;
+  ```ts
+  freshnessContext: {
+    blockTimestampUnixMs: 1700000000000;
   }
+  ```
 
-  return { data: [data] };
-}
-```
+  In the canonical validation describe block, add these exact cases:
 
-Update every direct access in `tests/application/collect-orca-pool-statistics.test.ts` from `response.data.updatedAt` or `response.data.updatedSlot` to the non-null selected fixture entry:
+  ```ts
+  it("accepts Birdeye whale_swap without a fabricated slot", () => {
+    const result = acceptOnChainFlowSourceEvent(makeBirdeyeWhaleSwapEvent());
+    expect(result).not.toHaveProperty("slot");
+    expect(result.freshnessContext).not.toHaveProperty("slot");
+  });
 
-```ts
-const pool = response.data[0]!;
-```
+  it("accepts Birdeye dex_net_flow without a fabricated slot", () => {
+    const result = acceptOnChainFlowSourceEvent(makeBirdeyeDexNetFlowEvent());
+    expect(result).not.toHaveProperty("slot");
+    expect(result.freshnessContext).not.toHaveProperty("slot");
+  });
 
-Use `pool.updatedAt` and `pool.updatedSlot` when deriving replay identity or timestamps. Change the malformed response fixture from a bare object to an array containing the wrong-address object so the test exercises address lookup rather than obsolete wrapper validation:
+  it("rejects a provided negative freshness slot", () => {
+    expect(() =>
+      acceptOnChainFlowSourceEvent(
+        makeBirdeyeWhaleSwapEvent({
+          freshnessContext: { slot: -1, blockTimestampUnixMs: 1700000000000 }
+        })
+      )
+    ).toThrow("[freshnessContext.slot]");
+  });
+  ```
 
-```ts
-deps.http.setResponse(url, { body: { data: [{ address: "wrong" }] } });
-```
+  Replace the fictional fixture event with `makeBirdeyeWhaleSwapEvent()` and `makeBirdeyeDexNetFlowEvent()` factories whose defaults use provider `birdeye-api`, omit slot, use valid Solscan/Birdeye URLs, and match the canonical schemas.
 
-- [ ] **Step 4: Select the configured address from a validated array before existing field validation**
+- [ ] **Step 2: Run the focused cases and confirm they fail for the slot requirement**
 
-In `src/domain/pool-statistics/orca.ts`, make the exported wrapper shape:
+  Run:
 
-```ts
-export interface OrcaPoolResponse {
-  data: OrcaPoolData[];
-}
-```
+  ```bash
+  pnpm exec vitest run tests/contracts/on-chain-flow.test.ts tests/domain/on-chain-flow/validate.test.ts -t "slot|Birdeye whale_swap|Birdeye dex_net_flow"
+  ```
 
-Replace the current object-only preamble in `acceptOrcaPoolResponse` with runtime-safe array validation and exact selection:
+  Expected: FAIL because `OnChainFlowFreshnessContext.slot` and the whale-swap schema's top-level slot are required.
 
-```ts
-if (!response || typeof response !== "object" || !("data" in response)) {
-  throw new OrcaPoolValidationError(
-    "response",
-    "Response must be an object containing a data array"
-  );
-}
+- [ ] **Step 3: Relax only the Birdeye-compatible slot surfaces**
 
-const wrapper = response as OrcaPoolResponse;
-if (!Array.isArray(wrapper.data)) {
-  throw new OrcaPoolValidationError("data", "Response.data must be an array");
-}
+  Change the shared freshness context and whale-swap payload declaration to:
 
-const data = (wrapper.data as unknown[]).find(
-  (candidate): candidate is OrcaPoolData =>
-    candidate !== null &&
-    typeof candidate === "object" &&
-    "address" in candidate &&
-    candidate.address === configuredPoolAddress
-);
+  ```ts
+  export type OnChainFlowFreshnessContext = {
+    readonly slot?: number;
+    readonly blockTimestampUnixMs: number;
+  };
 
-if (!data) {
-  throw new OrcaPoolValidationError(
-    "address",
-    `Configured pool address not found: ${configuredPoolAddress}`
-  );
-}
-```
+  export type WhaleSwapPayloadV1 = {
+    readonly schemaVersion: 1;
+    readonly eventFamily: "on_chain_flow";
+    readonly eventType: "whale_swap";
+    readonly sourceEventId: string;
+    readonly observedAtUnixMs: number;
+    readonly amountUsdc: string;
+    readonly direction: OnChainFlowDirection;
+    readonly venue: "solana";
+    readonly addressContext: OnChainAddressContext;
+    readonly sourceReferences: readonly string[];
+    readonly sourceQuality: OnChainFlowSourceQuality;
+    readonly freshnessContext: OnChainFlowFreshnessContext;
+    readonly transactionSignature: string;
+    readonly eventIndex: number;
+    readonly slot?: number;
+    readonly stablecoinOperation: StablecoinOperation;
+  };
+  ```
 
-Remove the old top-level address mismatch branch. Leave token, timestamp, slot, TVL, volume, and fee validation unchanged and return `{ wrapper, accepted: data }`.
+  Make `freshnessContextSchema.slot` and `whaleSwapFlowSchema.slot` optional. Leave the Helius transaction schema and the Helius-only/top-level slot requirements for other event kinds unchanged. Remove `birdeyeNetFlowSchema` from the accepted union and replace its validation fixture coverage with canonical `whale_swap`/`dex_net_flow` coverage. Also remove the `birdeye_net_flow` branches from `normalize.ts` and `threshold.ts` and update `normalize.test.ts` to remove `birdeye_net_flow` fixture coverage in the same task — this avoids a typecheck failure caused by referencing an event kind removed from the union before the branch removals are applied.
 
-- [ ] **Step 5: Run the scoped parser and consumer checks**
+- [ ] **Step 4: Run focused validation and static checks**
 
-Run:
+  Run:
 
-```bash
-pnpm exec vitest run tests/domain/pool-statistics/orca.test.ts tests/domain/pool-statistics/enrich.test.ts tests/application/collect-orca-pool-statistics.test.ts
-pnpm exec eslint src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
-pnpm exec prettier --check src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
-pnpm exec tsc --noEmit
-```
+  ```bash
+  pnpm exec vitest run tests/contracts/on-chain-flow.test.ts tests/domain/on-chain-flow/validate.test.ts -t "slot|Birdeye whale_swap|Birdeye dex_net_flow|valid Helius"
+  pnpm exec eslint src/contracts/on-chain-flow.ts src/domain/on-chain-flow/validate.ts src/domain/on-chain-flow/normalize.ts src/domain/on-chain-flow/threshold.ts tests/contracts/on-chain-flow.test.ts tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/normalize.test.ts tests/fixtures/on-chain-flow.ts
+  ```
 
-Expected: all selected suites pass; lint and formatting report no errors; TypeScript compiles without errors. This also proves the read-only enrichment consumer accepts the widened wrapper without modification.
+  Expected: selected tests PASS and ESLint exits 0. The implementation loop's automatic `pnpm -r typecheck` gate must also pass.
 
-- [ ] **Step 6: Commit the independently compiling parser change**
+- [ ] **Step 5: Commit**
 
-```bash
-git add src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
-git commit -m "fix: parse Orca pool list responses"
-```
+  ```bash
+  git add src/contracts/on-chain-flow.ts src/domain/on-chain-flow/validate.ts src/domain/on-chain-flow/normalize.ts src/domain/on-chain-flow/threshold.ts tests/contracts/on-chain-flow.test.ts tests/domain/on-chain-flow/validate.test.ts tests/domain/on-chain-flow/normalize.test.ts tests/fixtures/on-chain-flow.ts
+  git commit -m "fix: represent Birdeye flow events without slots"
+  ```
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/domain/pool-statistics/orca.ts
-- tests/fixtures/orca-pool.ts
-- tests/domain/pool-statistics/orca.test.ts
-- tests/application/collect-orca-pool-statistics.test.ts
+- src/contracts/on-chain-flow.ts
+- src/domain/on-chain-flow/validate.ts
+- tests/contracts/on-chain-flow.test.ts
+- tests/domain/on-chain-flow/validate.test.ts
+- tests/fixtures/on-chain-flow.ts
 
 ### Reference Files
 
-- src/domain/pool-statistics/index.ts
-- tests/domain/pool-statistics/enrich.test.ts
+- src/domain/on-chain-flow/normalize.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/domain/pool-statistics/orca.test.ts tests/domain/pool-statistics/enrich.test.ts tests/application/collect-orca-pool-statistics.test.ts
-["pnpm","exec","eslint","src/domain/pool-statistics/orca.ts","tests/fixtures/orca-pool.ts","tests/domain/pool-statistics/orca.test.ts","tests/application/collect-orca-pool-statistics.test.ts"]
-["pnpm","exec","prettier","--check","src/domain/pool-statistics/orca.ts","tests/fixtures/orca-pool.ts","tests/domain/pool-statistics/orca.test.ts","tests/application/collect-orca-pool-statistics.test.ts"]
-pnpm exec tsc --noEmit
+pnpm exec vitest run tests/contracts/on-chain-flow.test.ts tests/domain/on-chain-flow/validate.test.ts -t "slot|Birdeye whale_swap|Birdeye dex_net_flow|valid Helius"
+["pnpm","exec","eslint","src/contracts/on-chain-flow.ts","src/domain/on-chain-flow/validate.ts","tests/contracts/on-chain-flow.test.ts","tests/domain/on-chain-flow/validate.test.ts","tests/fixtures/on-chain-flow.ts"]
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **configured-address selection**: When the response array contains unrelated entries and the configured pool, select the exact configured address regardless of array position. (Test: `selects the configured pool from a multi-pool response before validating it`)
-- **missing-address rejection**: When the response array does not contain the configured address, throw OrcaPoolValidationError for address and never use the first entry as a fallback. (Test: `rejects an array that does not contain the configured pool address`)
-- **wrapper-shape rejection**: When response.data is not an array, throw OrcaPoolValidationError for data before pool field validation. (Test: `rejects a response whose data member is not an array`)
+- **slotless Birdeye whale swap**: A Birdeye whale_swap with an authoritative block timestamp and no slot is accepted without adding a placeholder slot. (Test: `accepts Birdeye whale_swap without a fabricated slot`)
+- **slotless Birdeye aggregate**: A Birdeye dex_net_flow with an authoritative block timestamp and no slot is accepted without adding a placeholder slot. (Test: `accepts Birdeye dex_net_flow without a fabricated slot`)
+- **provided slot remains validated**: When a slot is supplied it must remain a non-negative integer. (Test: `rejects a provided negative freshness slot`)
+- **Helius slot remains required**: Helius transaction input continues to require and preserve its real slot. (Test: `accepts valid Helius transaction flow event`)

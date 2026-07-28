@@ -92,11 +92,11 @@ export function normalizeOnChainFlow(
         sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "full" },
         freshnessContext: {
           blockTimestampUnixMs: heliusEvent.timestampUnixMs,
-          ...(heliusEvent.slot !== undefined && { slot: heliusEvent.slot })
+          slot: heliusEvent.slot
         },
         transactionSignature: heliusEvent.transactionHash,
         eventIndex: 0,
-        ...(heliusEvent.slot !== undefined && { slot: heliusEvent.slot }),
+        slot: heliusEvent.slot,
         stablecoinOperation: "transfer"
       };
       return result;
@@ -124,7 +124,7 @@ export function normalizeOnChainFlow(
         },
         transactionSignature: wtEvent.transactionSignature,
         eventIndex: wtEvent.eventIndex,
-        ...(wtEvent.slot !== undefined && { slot: wtEvent.slot }),
+        slot: wtEvent.slot,
         stablecoinOperation: wtEvent.stablecoinOperation
       };
       return result;
@@ -188,7 +188,7 @@ export function normalizeOnChainFlow(
         },
         transactionSignature: sfEvent.transactionSignature,
         eventIndex: sfEvent.eventIndex,
-        ...(sfEvent.slot !== undefined && { slot: sfEvent.slot }),
+        slot: sfEvent.slot,
         stablecoinOperation: sfEvent.stablecoinOperation
       };
       return result;

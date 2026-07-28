@@ -1,51 +1,71 @@
-# Orca Collector Fix Design Document
+# On-chain flow Phase 1: dex_net_flow & whale_swap Implementation Design
 
-## The Problem and Why It Matters
+## 1. Problem Statement & Context
 
-The Orca collector is currently failing with a 404 Not Found error because the API endpoint `/public/pool` has been deprecated and removed by Orca. Additionally, the old default pool address (`HJPn...`) is a deprecated address that is no longer returned by the active Orca pools API. As a result, the intelligence pipeline cannot collect pool statistics (TVL, volume, fees) for the SOL/USDC pool from Orca, resulting in degraded evidence bundles.
+The current implementation of the Birdeye flow adapter (`HttpBirdeyeFlowSource`) uses a fictional API response schema (`BirdeyeNetFlowEvent`) which does not exist on Birdeye. It must be replaced with a real implementation that consumes Birdeye's pair-scoped trades endpoint (`/defi/txs/pair`) to extract `dex_net_flow` and `whale_swap` events. This is essential to transition the `collect:on-chain-flow` job from relying on synthetic data to using verified, real production data via the free-tier API, without needing a plan upgrade or a wallet watch-list.
 
-## Key Design Decisions and Trade-offs Considered
+## 2. Key Design Decisions & Trade-offs
 
-1. **Endpoint Choice (`/pools?addresses=<addr>` vs `/pools/<addr>`)**: The issue mentions `GET /pools?addresses=<addr>&stats=24h` returns an array wrapped in `{ data: [] }`. It also speculates that a single pool lookup `/pools/<addr>` _might_ exist. We choose to use `/pools?addresses=<addr>&stats=24h` because it is confirmed to work (even if it returns a list), guarantees we can fetch stats via query parameters, and easily aligns with standard list-fetching behavior. The trade-off is slightly more parsing logic to unwrap the array, but it provides a reliable, documented path.
-2. **Missing Pool Fallback**: When the array response does not contain the requested address, we must decide whether to throw a specific validation error or return a generic failure. The decision is to throw an `OrcaPoolValidationError` indicating the address was not found, which correctly surfaces as a "malformed" or "unavailable" status gracefully in the pipeline, adhering to the "never fabricate values" rule.
+### A. Handling the Missing `slot` Field
 
-## Proposed Approach with Rationale
+Birdeye’s pair-trades endpoint does not return a `slot` field for transactions.
 
-1. **Update Collection URL**: In `src/application/collect-orca-pool-statistics.ts`, change the requested path to `/pools` and modify the query string to `?addresses=${poolAddress}&stats=24h`. This matches the live Orca API's requirements for retrieving pool data with 24-hour volume and fee stats.
-2. **Update Response Parsing**: In `src/domain/pool-statistics/orca.ts`, modify `OrcaPoolResponse` and `acceptOrcaPoolResponse` to expect `{ data: Array<OrcaPoolData> }`. The validation logic will iterate through the `data` array, find the pool object where `address === configuredPoolAddress`, and then perform existing validations (tokens, timestamps, numbers) on that specific object.
-3. **Update Default Configuration**: Replace the stale address (`HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw`) with the canonical pool address (`Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE`) across the codebase. This includes:
-   - `.env.example`
-   - `README.md`
-   - `docs/operator-runbook.md`
-   - `tests/fixtures/orca-pool.ts`
-   - Test files like `tests/scripts/assemble-evidence-bundle.test.ts` and `tests/scripts/derive-mvp-features.test.ts`
-   - `resources/sources.yaml`
-4. **Update Test Fixtures**: Modify the test mock responses (e.g. in `tests/application/collect-orca-pool-statistics.test.ts` and related fixtures) to wrap the single pool object in an array (i.e. `{ data: [pool] }` instead of `{ data: pool }`), ensuring unit tests accurately reflect the new API shape.
+- **Option 1**: Look up the slot via a supplementary Solana RPC call for each trade.
+- **Option 2**: Make `slot` optional in the on-chain-flow schemas and contracts for Birdeye-sourced events.
+- **Decision**: We will proceed with **Option 2**. Performing RPC lookups introduces unnecessary network latency and complexity for a field that has limited analytical value in this specific context (where `blockUnixTime` is already authoritative).
 
-## Assumptions Made
+### B. Event Classification
 
-- The Orca API response shape wraps the array exactly as `{ "data": [ ...pools... ] }` and includes all previously verified fields (`tokenA`, `tokenB`, `updatedAt`, `updatedSlot`, `tvlUsdc`, `stats`).
-- The `volume24hUsdc` and `fees24hUsdc` fields within the `stats` block retain their decimal string format.
-- Passing `?addresses=<addr>` does filter the response or at least returns our target address in the `data` array.
-- There are no other API breaking changes (like token mint representations or pagination objects) that affect this specific endpoint beyond the array wrapping.
+- **Direction Logic**: Direction will be inferred from the `symbol` of the `from` and `to` fields in Birdeye's response. `from.symbol === "SOL"` and `to.symbol === "USDC"` indicates SOL was sold (`outbound` / sell pressure). The reverse indicates SOL was bought (`inbound` / buy pressure).
+- **Volume Calculation**: USD-denominated volume will be directly extracted from the USDC side's `uiAmount`, since USDC is practically pegged to $1.
 
-## Scope
+### C. Fallback for Helius
+
+The issue explicitly specifies that `whale_transfer`, `stablecoin_flow`, and `cex_flow_proxy` (which depend on Helius) are out of scope. Instead of leaving broken endpoints active, the Helius adapter path will be disabled to cleanly report an `unavailable` status, preventing unexpected errors during the cron execution.
+
+## 3. Proposed Approach with Rationale
+
+1. **Schema & Contract Updates**:
+   - Update `OnChainFlowFreshnessContext` in `src/contracts/on-chain-flow.ts` to make `slot?: number`.
+   - Update `freshnessContextSchema`, `whaleSwapFlowSchema`, and `dexNetFlowSchema` in `src/domain/on-chain-flow/validate.ts` to make `slot` optional.
+   - Add a fallback `eventIndex: 0` for `whale_swap` schemas, since Birdeye's flat trade list has no intra-transaction instruction index.
+
+2. **Adapter Rewrite (`HttpBirdeyeFlowSource`)**:
+   - Refactor `collect()` to query `https://public-api.birdeye.so/defi/txs/pair`.
+   - Include query parameters: `address` (Orca pool), `tx_type=swap`, `offset` (pagination), `after_time`, and `before_time`.
+   - Paginate through the endpoint's responses until `hasNext` is false or the bounds are exhausted.
+   - **dex_net_flow**: Accumulate USDC-side `uiAmount` into `buyVolumeUsdc` and `sellVolumeUsdc` across the entire polling window. Compute `netFlowUsdc = buyVolumeUsdc - sellVolumeUsdc`. Yield a single `dex_net_flow` event.
+   - **whale_swap**: Filter trades where the USDC-side `uiAmount` is $\ge$ `WHALE_SWAP_MIN_USDC` threshold. Construct a `whale_swap` event per qualifying trade, using the `owner` field as the wallet address, and the `txHash` for `sourceReferences` and `transactionSignature`.
+
+3. **Configuration & Documentation**:
+   - Update `.env.example` to ensure `BIRDEYE_FLOW_API_URL` points to `https://public-api.birdeye.so`.
+   - Update `cron/routines/on-chain-flow.md` to reflect the current state (only 2 of 5 events are live).
+
+## 4. Assumptions Made
+
+- The Birdeye pair endpoint guarantees the `SOL` and `USDC` symbols will reliably map to the respective sides of the trade for the pool in question.
+- The `WHALE_SWAP_MIN_USDC` threshold configuration can be securely injected into or accessed by the adapter/collector logic.
+- Setting `eventIndex: 0` for all `whale_swap` events accurately satisfies schema requirements without breaking any downstream unique constraints, given each `txHash` represents one swap.
+- The `after_time` and `before_time` query parameters correctly bound the time window inclusive-exclusive without causing edge-case duplicate event overlaps across consecutive cron executions.
+
+## 5. Scope
 
 **In Scope:**
 
-- Updating the HTTP path and query parameters for Orca pool collection.
-- Refactoring `acceptOrcaPoolResponse` to unwrap the `{ data: [] }` array.
-- Replacing the stale pool address string globally.
-- Updating all corresponding unit test fixtures and documentation.
+- Modifying schemas and types to make `slot` optional.
+- Complete rewrite of `HttpBirdeyeFlowSource` and related tests using the real Birdeye `/defi/txs/pair` payload structure.
+- Generation of valid `dex_net_flow` and `whale_swap` events from Birdeye data.
+- Stubbing the Helius adapter path to report `unavailable`.
+- `.env.example` and routine documentation updates.
 
 **Out of Scope:**
 
-- Modifying other adapters (e.g., Raydium, Meteora).
-- Handling paginated API responses (we assume `addresses=<addr>` restricts the response to a manageable size, containing our target).
-- Collecting additional metrics beyond what is currently defined in `OrcaPoolData`.
-- Altering the domain schema for normalized observations.
+- Implementation of `whale_transfer`, `stablecoin_flow`, and `cex_flow_proxy` event kinds.
+- Supplementary RPC calls to fetch block slots.
+- Adding wallet watch-lists or Helius API keys.
 
-## Risks or Concerns Identified
+## 6. Risks & Concerns
 
-- **Test Fixture Pervasiveness**: The stale pool address (`HJPn...`) is extensively hardcoded in large test files (`assemble-evidence-bundle.test.ts`). A global find-and-replace is required and must be done carefully to avoid breaking test assertions that might rely on the specific string length or format, although unlikely.
-- **Strict Array Parsing**: If the API occasionally returns `{ data: null }` or `{ data: {} }` upon errors instead of `{ data: [] }`, the parser must correctly handle these edge cases without throwing unhandled exceptions, mapping them neatly to `OrcaPoolValidationError`.
+- **Pagination Overhead**: Although the rate limit is 100 requests, a massive burst of trades during a volatile period could require significant pagination requests. If `limit` is small, it could theoretically hit rate limits. We should maximize the `limit` parameter (e.g., 50 or 100) per request to minimize network calls.
+- **Memory Consumption**: Aggregating all trades over a 15-minute window directly in memory before producing the `dex_net_flow` event is generally safe, but could scale linearly with network activity. It is deemed acceptable for this scale, but should be noted.
+- **Symbol Matching Fragility**: Relying on string matches for `symbol === "SOL"` may be fragile if the provider alters casing or naming. Checking the token mint address would be more resilient.
