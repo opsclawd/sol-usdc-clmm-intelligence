@@ -5,7 +5,7 @@ import { FakeHttp, FakeJsonStore, FakeEnv, FakeClock } from "../fakes/index.js";
 import { FakeObservationRepo } from "../fakes/fake-observation-repo.js";
 import { FakeNormalizedObservationRepo } from "../fakes/fake-normalized-observation-repo.js";
 
-const JUPITER_API_BASE = "https://api.jup.ag/swap/v6";
+const JUPITER_API_BASE = "https://lite-api.jup.ag/swap/v1";
 
 function createDeps() {
   return {
@@ -28,13 +28,16 @@ const VALID_CONTEXT = Object.freeze({
 });
 
 describe("collectJupiterPrice (compatibility wrapper)", () => {
-  it("delegates to collectJupiterQuote and writes compatibility snapshot", async () => {
+  it("delegates to the Jupiter Lite v1 quote endpoint and writes compatibility snapshot", async () => {
     const deps = createDeps();
     const quote = makeJupiterQuote();
     const url = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
     deps.http.setResponse(url, { body: quote });
 
     await collectJupiterPrice(deps, VALID_CONTEXT);
+
+    expect(deps.http.calls[0]?.url).toBe(url);
+    expect(deps.http.calls[0]?.url).toMatch(/^https:\/\/lite-api\.jup\.ag\/swap\/v1\/quote\?/);
 
     expect(deps.jsonStore.writes[0]).toEqual({
       path: "data/latest-price-snapshot.json",

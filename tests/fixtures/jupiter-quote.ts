@@ -3,15 +3,19 @@ export const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 export const MSOL_MINT = "mSoLzYCxHdDgdzmojag2KnE2dJ7RQfPpmZctD6Z2J6b";
 
 export interface JupiterQuoteRoutePlan {
-  swapMode: "ExactIn" | "ExactOut";
+  swapMode?: "ExactIn" | "ExactOut";
   swapInfo: {
     ammKey: string;
     label: string;
     inputMint: string;
     outputMint: string;
+    inAmount?: string;
+    outAmount?: string;
+    updateContextSlot?: string | number;
   };
-  intermediateTokens: string[];
+  intermediateTokens?: string[];
   percent: number;
+  bps?: number | null;
 }
 
 export interface JupiterQuoteHop {
@@ -49,10 +53,7 @@ export interface JupiterQuote {
   inAmount: string;
   outputMint: string;
   outAmount: string;
-  otherAmounts: Array<{
-    idx: number;
-    amount: string;
-  }>;
+  otherAmountThreshold?: string;
   swapMode: "ExactIn" | "ExactOut";
   slippageBps: number;
   priceImpactPct: string;
@@ -63,20 +64,28 @@ export interface JupiterQuote {
     amount: string;
     feeBps: number;
   } | null;
-  priceImpactPctList: string[];
-  trustlessBootstrapMode: boolean;
-  remainderAmount: string;
-  virtualTokenReserves: Record<string, unknown>;
-  lastUpdatedSlot: number;
-  requestId: string;
-  notEnoughLiquidity: boolean;
-  exceedsLiquidity: boolean;
-  highPriceImpact: boolean;
-  routeSummary: JupiterQuoteRouteSummary;
-  additionalTransferFeeAmount: string;
-  restrictIntermediateTokens: boolean;
-  bridgeUsed: boolean;
-  pubkey: string;
+  swapUsdValue?: string;
+  mostReliableAmmsQuoteReport?: Record<string, unknown>;
+  longtailMarketQuoteReport?: Record<string, unknown> | null;
+  useIncurredSlippageForQuoting?: boolean | null;
+  useRewards?: boolean | null;
+  otherRoutePlans?: JupiterQuoteRoutePlan[] | null;
+  loadedLongtailToken?: boolean;
+  instructionVersion?: number | null;
+  priceImpactPctList?: string[];
+  trustlessBootstrapMode?: boolean;
+  remainderAmount?: string;
+  virtualTokenReserves?: Record<string, unknown>;
+  lastUpdatedSlot?: number;
+  requestId?: string;
+  notEnoughLiquidity?: boolean;
+  exceedsLiquidity?: boolean;
+  highPriceImpact?: boolean;
+  routeSummary?: JupiterQuoteRouteSummary;
+  additionalTransferFeeAmount?: string;
+  restrictIntermediateTokens?: boolean;
+  bridgeUsed?: boolean;
+  pubkey?: string;
 }
 
 export function makeJupiterQuote(overrides?: Partial<JupiterQuote>): JupiterQuote {
@@ -85,52 +94,28 @@ export function makeJupiterQuote(overrides?: Partial<JupiterQuote>): JupiterQuot
     inAmount: "1000000000",
     outputMint: USDC_MINT,
     outAmount: "175000000",
-    otherAmounts: [],
+    otherAmountThreshold: "173250000",
     swapMode: "ExactIn",
     slippageBps: 50,
-    priceImpactPct: "0.015",
+    priceImpactPct: "0.004",
     routePlan: [
       {
-        swapMode: "ExactIn",
         swapInfo: {
           ammKey: SOL_MINT,
           label: "SOL-USDC",
           inputMint: SOL_MINT,
-          outputMint: USDC_MINT
+          outputMint: USDC_MINT,
+          inAmount: "1000000000",
+          outAmount: "175000000"
         },
-        intermediateTokens: [],
-        percent: 100
+        percent: 100,
+        bps: null
       }
     ],
     contextSlot: 123456789,
-    timeTaken: 42,
+    timeTaken: 0.042,
     platformFee: null,
-    priceImpactPctList: ["0.015"],
-    trustlessBootstrapMode: false,
-    remainderAmount: "0",
-    virtualTokenReserves: {},
-    lastUpdatedSlot: 123456789,
-    requestId: "req-123",
-    notEnoughLiquidity: false,
-    exceedsLiquidity: false,
-    highPriceImpact: false,
-    routeSummary: {
-      inAmount: "1000000000",
-      outAmount: "175000000",
-      priceImpactPct: "0.015",
-      marketInfos: {},
-      amount: "1000000000",
-      swapMode: "ExactIn",
-      slippageBps: 50,
-      otherAmounts: [],
-      splitNum: 1,
-      remainingAccounts: [],
-      jupiterQuoteVersion: "6.0"
-    },
-    additionalTransferFeeAmount: "0",
-    restrictIntermediateTokens: true,
-    bridgeUsed: false,
-    pubkey: "QuotePubkey123",
+    swapUsdValue: "175.00",
     ...overrides
   };
 }
@@ -150,44 +135,36 @@ export function makeJupiterMultiHopQuote(): JupiterQuote {
   return makeJupiterQuote({
     routePlan: [
       {
-        swapMode: "ExactIn",
         swapInfo: {
           ammKey: SOL_MINT,
           label: "SOL-mSOL",
           inputMint: SOL_MINT,
-          outputMint: MSOL_MINT
+          outputMint: MSOL_MINT,
+          inAmount: "1000000000",
+          outAmount: "23456789"
         },
-        intermediateTokens: [],
-        percent: 100
+        percent: 100,
+        bps: null
       },
       {
-        swapMode: "ExactIn",
         swapInfo: {
           ammKey: "mSoLeMN5玉",
           label: "mSOL-USDC",
           inputMint: MSOL_MINT,
-          outputMint: USDC_MINT
+          outputMint: USDC_MINT,
+          inAmount: "23456789",
+          outAmount: "173250000"
         },
-        intermediateTokens: [],
-        percent: 100
+        percent: 100,
+        bps: null
       }
     ],
-    priceImpactPct: "0.03",
-    highPriceImpact: false,
-    routeSummary: {
-      ...makeJupiterQuote().routeSummary,
-      priceImpactPct: "0.03"
-    }
+    priceImpactPct: "0.004"
   });
 }
 
 export function makeJupiterHighPriceImpactQuote(): JupiterQuote {
   return makeJupiterQuote({
-    priceImpactPct: "1.5",
-    highPriceImpact: true,
-    routeSummary: {
-      ...makeJupiterQuote().routeSummary,
-      priceImpactPct: "1.5"
-    }
+    priceImpactPct: "1.5"
   });
 }
