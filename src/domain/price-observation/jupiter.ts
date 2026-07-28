@@ -21,41 +21,14 @@ const JupiterQuoteSwapInfoSchema = z.object({
   inAmount: z.string().optional(),
   outAmount: z.string().optional(),
   feeAmount: z.string().optional(),
-  feeMint: z.string().optional()
+  feeMint: z.string().optional(),
+  updateContextSlot: z.union([z.string(), z.number()]).optional()
 });
 
 const JupiterQuoteRoutePlanSchema = z.object({
-  swapMode: z.enum(["ExactIn", "ExactOut"]),
   swapInfo: JupiterQuoteSwapInfoSchema,
-  intermediateTokens: z.array(z.string()),
-  percent: z.number()
-});
-
-const JupiterQuoteRouteSummarySchema = z.object({
-  inAmount: z.string(),
-  outAmount: z.string(),
-  priceImpactPct: z
-    .string()
-    .regex(/^-?[0-9]+\.?[0-9]*$/, { message: "priceImpactPct must be a valid decimal string" }),
-  marketInfos: z.record(z.unknown()),
-  amount: z.string(),
-  swapMode: z.enum(["ExactIn", "ExactOut"]),
-  slippageBps: z.number(),
-  otherAmounts: z.array(
-    z.object({
-      idx: z.number(),
-      amount: z.string()
-    })
-  ),
-  splitNum: z.number(),
-  remainingAccounts: z.array(
-    z.object({
-      pubkey: z.string(),
-      isSigner: z.boolean(),
-      isWritable: z.boolean()
-    })
-  ),
-  jupiterQuoteVersion: z.string()
+  percent: z.number(),
+  bps: z.number().nullable().optional()
 });
 
 const JupiterQuoteSchema = z
@@ -70,12 +43,7 @@ const JupiterQuoteSchema = z
       .string()
       .max(50, { message: "outAmount string too long" })
       .refine(isValidIntegerString, { message: "outAmount must be a valid integer string" }),
-    otherAmounts: z.array(
-      z.object({
-        idx: z.number(),
-        amount: z.string()
-      })
-    ),
+    otherAmountThreshold: z.string().optional(),
     swapMode: z.enum(["ExactIn", "ExactOut"]),
     slippageBps: z.number(),
     priceImpactPct: z
@@ -90,20 +58,14 @@ const JupiterQuoteSchema = z
         feeBps: z.number()
       })
       .nullable(),
-    priceImpactPctList: z.array(z.string()),
-    trustlessBootstrapMode: z.boolean(),
-    remainderAmount: z.string(),
-    virtualTokenReserves: z.record(z.unknown()),
-    lastUpdatedSlot: z.number(),
-    requestId: z.string(),
-    notEnoughLiquidity: z.boolean(),
-    exceedsLiquidity: z.boolean(),
-    highPriceImpact: z.boolean(),
-    routeSummary: JupiterQuoteRouteSummarySchema,
-    additionalTransferFeeAmount: z.string(),
-    restrictIntermediateTokens: z.boolean(),
-    bridgeUsed: z.boolean(),
-    pubkey: z.string()
+    swapUsdValue: z.string().optional(),
+    mostReliableAmmsQuoteReport: z.record(z.unknown()).nullable().optional(),
+    longtailMarketQuoteReport: z.record(z.unknown()).nullable().optional(),
+    useIncurredSlippageForQuoting: z.boolean().nullable().optional(),
+    useRewards: z.boolean().nullable().optional(),
+    otherRoutePlans: z.array(JupiterQuoteRoutePlanSchema).nullable().optional(),
+    loadedLongtailToken: z.boolean().optional(),
+    instructionVersion: z.number().nullable().optional()
   })
   .passthrough();
 
@@ -214,7 +176,8 @@ export function normalizeJupiterQuote(
 
   const warnings: PriceObservationWarning[] = [];
 
-  if (acceptedQuote.highPriceImpact) {
+  const priceImpactBps = BigInt(parsePriceImpactToBasisPoints(acceptedQuote.priceImpactPct));
+  if (priceImpactBps > 50n) {
     warnings.push("price_impact_exceeds_threshold");
   }
 

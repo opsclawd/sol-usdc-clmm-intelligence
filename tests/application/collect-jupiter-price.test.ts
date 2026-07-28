@@ -5,7 +5,7 @@ import { FakeHttp, FakeJsonStore, FakeEnv, FakeClock } from "../fakes/index.js";
 import { FakeObservationRepo } from "../fakes/fake-observation-repo.js";
 import { FakeNormalizedObservationRepo } from "../fakes/fake-normalized-observation-repo.js";
 
-const JUPITER_API_BASE = "https://api.jup.ag/swap/v6";
+const JUPITER_API_BASE = "https://lite-api.jup.ag/swap/v1";
 
 function createDeps() {
   return {

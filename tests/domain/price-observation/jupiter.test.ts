@@ -107,12 +107,11 @@ describe("Jupiter Executable Quote Processing", () => {
     });
 
     it("accepts high price impact above 100 bps as warning metadata", async () => {
-      const { acceptJupiterQuote } =
+      const { normalizeJupiterQuote } =
         await import("../../../src/domain/price-observation/jupiter.js");
       const quote = makeJupiterHighPriceImpactQuote();
-      expect(quote.highPriceImpact).toBe(true);
-      const result = acceptJupiterQuote(quote);
-      expect(result.quote.highPriceImpact).toBe(true);
+      const result = normalizeJupiterQuote(quote, Date.now());
+      expect(result.warnings).toContain("price_impact_exceeds_threshold");
     });
 
     it("accepts restrictIntermediateTokens=true", async () => {
@@ -131,13 +130,14 @@ describe("Jupiter Executable Quote Processing", () => {
       expect(result.quote.slippageBps).toBe(50);
     });
 
-    it("accepts route summary with hops", async () => {
+    it("accepts route plan with hops", async () => {
       const { acceptJupiterQuote } =
         await import("../../../src/domain/price-observation/jupiter.js");
       const quote = makeJupiterQuote();
       const result = acceptJupiterQuote(quote);
-      expect(result.quote.routeSummary).toBeDefined();
-      expect(result.quote.routeSummary.inAmount).toBe("1000000000");
+      expect(result.quote.routePlan).toBeDefined();
+      expect(result.quote.routePlan.length).toBeGreaterThan(0);
+      expect(result.quote.routePlan[0]?.swapInfo.ammKey).toBe(SOL_MINT);
     });
   });
 
@@ -331,8 +331,7 @@ describe("Jupiter Executable Quote Processing", () => {
       const { normalizeJupiterQuote } =
         await import("../../../src/domain/price-observation/jupiter.js");
       const quote = makeJupiterQuote({
-        highPriceImpact: false,
-        priceImpactPct: "0.015"
+        priceImpactPct: "0.004"
       });
       const result = normalizeJupiterQuote(quote, Date.now());
       expect(result.warnings).not.toContain("price_impact_exceeds_threshold");

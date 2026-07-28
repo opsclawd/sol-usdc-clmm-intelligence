@@ -89,7 +89,7 @@ describe("collectJupiterQuote", () => {
 
       const meta = lastRow?.sourceRequestMeta as Record<string, unknown>;
       expect(meta.host).toBe("lite-api.jup.ag");
-      expect(meta.path).toBe("/quote");
+      expect(meta.path).toBe("/swap/v1/quote");
       expect(meta.inputMint).toBe(SOL_MINT);
       expect(meta.outputMint).toBe(USDC_MINT);
       expect(meta.amount).toBe("1000000000");

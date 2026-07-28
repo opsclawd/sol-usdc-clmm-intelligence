@@ -105,7 +105,7 @@ export async function collectJupiterQuote(
 ): Promise<PriceSourceResult> {
   const { http, jsonStore, env, clock, rawObservationRepo, normalizedObservationRepo } = deps;
 
-  const baseUrl = env.get("JUPITER_API_BASE");
+  const baseUrl = env.get("JUPITER_API_BASE", "https://lite-api.jup.ag/swap/v1");
   const apiKey = env.getOptional("JUPITER_API_KEY");
 
   const solMint = env.get("SOL_MINT", "So11111111111111111111111111111111111111112");
@@ -183,7 +183,7 @@ export async function collectJupiterQuote(
 
   const redactedMeta = {
     host,
-    path: "/quote",
+    path: new URL(url).pathname,
     inputMint: solMint,
     outputMint: usdcMint,
     amount: "1000000000",
