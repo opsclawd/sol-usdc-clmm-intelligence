@@ -400,7 +400,7 @@ export async function publishEvidenceBundle(
     try {
       lastResponse = await http.postJsonRaw<unknown>(endpoint, payload, {
         headers: {
-          Authorization: `Bearer ${authToken}`,
+          "X-Evidence-Ingest-Token": authToken,
           "Idempotency-Key": idempotencyKey,
           "Content-Type": "application/json"
         },
