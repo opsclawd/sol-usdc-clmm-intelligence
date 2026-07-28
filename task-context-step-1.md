@@ -1,6 +1,6 @@
 # Task Context: Task 1
 
-Title: Parse and fixture Orca array responses
+Title: Emit required context and research-brief warnings
 
 ## Workspace & Scope Constraints
 
@@ -10,236 +10,177 @@ Your working directory is a dedicated git worktree with the repository's complet
 
 .ai-orchestrator.local.json, if one exists, lives only in the main checkout and is intentionally not copied into your worktree — it is operator-machine-specific and not part of your task. Do not search for it or read it outside this directory. Reason about configuration using only .ai-orchestrator.json in your own working directory; treat it as the effective config for your task.
 
-Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-47
+Working Directory: /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-64
 Repository: opsclawd/sol-usdc-clmm-intelligence
-Branch: ai/issue-47
-Start Commit: 519075961cf25d1b70b677a37ec123ad7f5ba213
+Branch: ai/issue-64
+Start Commit: d29094d0cd501b0b730f2530c25d4acf38fd8c60
 
 ## Task Requirements
 
 **Files:**
 
-- Modify: `src/domain/pool-statistics/orca.ts`
-- Modify: `tests/fixtures/orca-pool.ts`
-- Modify: `tests/domain/pool-statistics/orca.test.ts`
-- Modify: `tests/application/collect-orca-pool-statistics.test.ts`
-- Reference only: `src/domain/pool-statistics/index.ts`
-- Reference only: `tests/domain/pool-statistics/enrich.test.ts`
+- Modify: `tests/domain/evidence-bundle/quality.test.ts` — only the `classifies all seven fresh available slots...` and `maps deterministic-only context and brief absence exactly` describe-blocks.
+- Modify: `src/domain/evidence-bundle/quality.ts` — only `buildWarnings(...)`.
 
-- [ ] **Step 1: Write failing domain tests for array selection and rejection**
+**Reference files:**
 
-Add these exact cases to the first parser describe block in `tests/domain/pool-statistics/orca.test.ts` before changing the fixture or parser:
+- Read only: `schemas/regime-engine/evidence-bundle.v1/fixtures/valid/deterministic-only.json` for the canonical codes, messages, and affected-family names.
+- Read only: `src/adapters/node/evidence-bundle-v1-contract.ts` for the empty-context and null-brief cross-field checks.
+
+**Behavioral invariants and named tests:**
+
+1. **Both absence warnings:** Given `contextPresent: false` and `briefPresent: false`, append both required warnings with their exact canonical payloads.
+   Test first: `emits required contract warnings when context and brief are absent`.
+2. **No false absence warnings:** Given `contextPresent: true` and `briefPresent: true`, emit neither required warning.
+   Test first: `omits required absence warnings when context and brief are present`.
+3. **Independent brief warning:** Given `contextPresent: true` and `briefPresent: false`, emit `RESEARCH_BRIEF_UNAVAILABLE` but not `CONTEXTUAL_EVIDENCE_UNAVAILABLE`.
+   Test first: `emits only the research brief warning when context exists without a brief`.
+4. **Stable required-warning composition:** The two new warnings appear at most once and in contextual-then-brief order because `buildWarnings` executes each absence branch once.
+   Covered by the exact warning-code array assertion in the first test.
+
+- [ ] **Step 1: Write the failing warning truth-table tests**
+
+Update the obsolete assertion in the complete-deterministic-coverage case so it no longer expects an empty warning list when both optional evidence classes are absent. In the existing `maps deterministic-only context and brief absence exactly` describe-block, add focused tests using this shape:
 
 ```ts
-it("selects the configured pool from a multi-pool response before validating it", () => {
-  const configured = {
-    address: DEFAULT_WHIRLPOOL_ADDRESS,
-    tokenA: { address: DEFAULT_SOL_MINT },
-    tokenB: { address: DEFAULT_USDC_MINT },
-    updatedAt: "2026-07-19T06:00:00.000Z",
-    updatedSlot: 1234567,
-    tvlUsdc: "5000000.75",
-    stats: {
-      "24h": {
-        volume: "1250000.50",
-        fees: "3750.25"
-      }
-    }
-  };
-  const response = {
-    data: [{ ...configured, address: "unrelatedPool" }, configured]
-  };
-
-  const { accepted } = acceptOrcaPoolResponse(
-    response,
-    DEFAULT_WHIRLPOOL_ADDRESS,
-    DEFAULT_SOL_MINT,
-    DEFAULT_USDC_MINT
+it("emits required contract warnings when context and brief are absent", () => {
+  const result = classifyEvidenceBundleQuality(
+    makeQualityInput(makeSlotsAllAvailable(), {
+      contextPresent: false,
+      briefPresent: false
+    })
   );
 
-  expect(accepted.address).toBe(DEFAULT_WHIRLPOOL_ADDRESS);
+  expect(result.warnings.map((warning) => warning.code)).toEqual([
+    "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+    "RESEARCH_BRIEF_UNAVAILABLE"
+  ]);
+  expect(result.warnings).toContainEqual({
+    code: "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+    message: "All contextual evidence families are unavailable",
+    affectedFamilies: ["supportResistance", "flows", "derivatives", "events", "newsRegulatory"]
+  });
+  expect(result.warnings).toContainEqual({
+    code: "RESEARCH_BRIEF_UNAVAILABLE",
+    message: "Research brief is null",
+    affectedFamilies: ["researchBrief"]
+  });
 });
 
-it("rejects an array that does not contain the configured pool address", () => {
-  expect(() =>
-    acceptOrcaPoolResponse(
-      { data: [] },
-      DEFAULT_WHIRLPOOL_ADDRESS,
-      DEFAULT_SOL_MINT,
-      DEFAULT_USDC_MINT
+it("omits required absence warnings when context and brief are present", () => {
+  const result = classifyEvidenceBundleQuality(
+    makeQualityInput(makeSlotsAllAvailable(), {
+      contextPresent: true,
+      briefPresent: true
+    })
+  );
+
+  expect(
+    result.warnings.filter(
+      (warning) =>
+        warning.code === "CONTEXTUAL_EVIDENCE_UNAVAILABLE" ||
+        warning.code === "RESEARCH_BRIEF_UNAVAILABLE"
     )
-  ).toThrow(expect.objectContaining({ field: "address" }));
+  ).toEqual([]);
 });
 
-it("rejects a response whose data member is not an array", () => {
-  expect(() =>
-    acceptOrcaPoolResponse(
-      { data: { address: DEFAULT_WHIRLPOOL_ADDRESS } },
-      DEFAULT_WHIRLPOOL_ADDRESS,
-      DEFAULT_SOL_MINT,
-      DEFAULT_USDC_MINT
-    )
-  ).toThrow(expect.objectContaining({ field: "data" }));
+it("emits only the research brief warning when context exists without a brief", () => {
+  const result = classifyEvidenceBundleQuality(
+    makeQualityInput(makeSlotsAllAvailable(), {
+      contextPresent: true,
+      briefPresent: false
+    })
+  );
+
+  expect(result.warnings.map((warning) => warning.code)).toEqual(["RESEARCH_BRIEF_UNAVAILABLE"]);
 });
 ```
 
-- [ ] **Step 2: Run the new cases and confirm the old object parser fails them**
+- [ ] **Step 2: Run only the new warning cases and confirm the pre-fix failure**
 
 Run:
 
 ```bash
-pnpm exec vitest run tests/domain/pool-statistics/orca.test.ts -t "selects the configured pool|rejects an array|data member is not an array"
+pnpm exec vitest run tests/domain/evidence-bundle/quality.test.ts -t "emits required contract warnings|omits required absence warnings|emits only the research brief warning"
 ```
 
-Expected: FAIL because the fixture and parser still treat `data` as one object.
+Expected before implementation: the absence cases fail because `buildWarnings` does not use `contextPresent` or `briefPresent`; the present/present case may already pass.
 
-- [ ] **Step 3: Change the shared fixture to emit the live wrapper shape and canonical address**
+- [ ] **Step 3: Implement the minimal quality warning branches**
 
-In `tests/fixtures/orca-pool.ts`, change the response declaration and factory return while keeping `makeOrcaPoolResponse(overrides)` as the shared factory:
+Append the required warnings in `buildWarnings(...)` after the existing slot-status warning branches and before returning:
 
 ```ts
-export interface OrcaPoolResponse {
-  data: OrcaPoolData[];
+if (!contextPresent) {
+  warnings.push({
+    code: "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+    message: "All contextual evidence families are unavailable",
+    affectedFamilies: ["supportResistance", "flows", "derivatives", "events", "newsRegulatory"]
+  });
 }
 
-export const DEFAULT_WHIRLPOOL_ADDRESS = "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
-
-export function makeOrcaPoolResponse(overrides: Partial<OrcaPoolData> = {}): OrcaPoolResponse {
-  const statsOverride =
-    overrides.stats === undefined
-      ? {
-          "24h": {
-            volume: "1250000.50",
-            fees: "3750.25"
-          }
-        }
-      : overrides.stats;
-
-  const data: OrcaPoolData = {
-    address: DEFAULT_WHIRLPOOL_ADDRESS,
-    tokenA: {
-      address: DEFAULT_SOL_MINT
-    },
-    tokenB: {
-      address: DEFAULT_USDC_MINT
-    },
-    updatedAt: "2026-07-19T06:00:00.000Z",
-    updatedSlot: 1234567,
-    tvlUsdc: "5000000.75",
-    hasWarning: false,
-    ...overrides
-  };
-
-  if (statsOverride !== undefined) {
-    data.stats = statsOverride;
-  }
-
-  return { data: [data] };
+if (!briefPresent) {
+  warnings.push({
+    code: "RESEARCH_BRIEF_UNAVAILABLE",
+    message: "Research brief is null",
+    affectedFamilies: ["researchBrief"]
+  });
 }
 ```
 
-Update every direct access in `tests/application/collect-orca-pool-statistics.test.ts` from `response.data.updatedAt` or `response.data.updatedSlot` to the non-null selected fixture entry:
+Do not change `computeQualityLevel`, `computeOverallConfidence`, or the `coverage` object. The new warnings communicate absence without redefining those existing outputs.
 
-```ts
-const pool = response.data[0]!;
-```
-
-Use `pool.updatedAt` and `pool.updatedSlot` when deriving replay identity or timestamps. Change the malformed response fixture from a bare object to an array containing the wrong-address object so the test exercises address lookup rather than obsolete wrapper validation:
-
-```ts
-deps.http.setResponse(url, { body: { data: [{ address: "wrong" }] } });
-```
-
-- [ ] **Step 4: Select the configured address from a validated array before existing field validation**
-
-In `src/domain/pool-statistics/orca.ts`, make the exported wrapper shape:
-
-```ts
-export interface OrcaPoolResponse {
-  data: OrcaPoolData[];
-}
-```
-
-Replace the current object-only preamble in `acceptOrcaPoolResponse` with runtime-safe array validation and exact selection:
-
-```ts
-if (!response || typeof response !== "object" || !("data" in response)) {
-  throw new OrcaPoolValidationError(
-    "response",
-    "Response must be an object containing a data array"
-  );
-}
-
-const wrapper = response as OrcaPoolResponse;
-if (!Array.isArray(wrapper.data)) {
-  throw new OrcaPoolValidationError("data", "Response.data must be an array");
-}
-
-const data = (wrapper.data as unknown[]).find(
-  (candidate): candidate is OrcaPoolData =>
-    candidate !== null &&
-    typeof candidate === "object" &&
-    "address" in candidate &&
-    candidate.address === configuredPoolAddress
-);
-
-if (!data) {
-  throw new OrcaPoolValidationError(
-    "address",
-    `Configured pool address not found: ${configuredPoolAddress}`
-  );
-}
-```
-
-Remove the old top-level address mismatch branch. Leave token, timestamp, slot, TVL, volume, and fee validation unchanged and return `{ wrapper, accepted: data }`.
-
-- [ ] **Step 5: Run the scoped parser and consumer checks**
+- [ ] **Step 4: Run task-scoped tests and static checks**
 
 Run:
 
 ```bash
-pnpm exec vitest run tests/domain/pool-statistics/orca.test.ts tests/domain/pool-statistics/enrich.test.ts tests/application/collect-orca-pool-statistics.test.ts
-pnpm exec eslint src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
-pnpm exec prettier --check src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
-pnpm exec tsc --noEmit
+pnpm exec vitest run tests/domain/evidence-bundle/quality.test.ts
+pnpm exec eslint src/domain/evidence-bundle/quality.ts tests/domain/evidence-bundle/quality.test.ts
+pnpm exec prettier --check src/domain/evidence-bundle/quality.ts tests/domain/evidence-bundle/quality.test.ts
 ```
 
-Expected: all selected suites pass; lint and formatting report no errors; TypeScript compiles without errors. This also proves the read-only enrichment consumer accepts the widened wrapper without modification.
+Expected: the quality test file passes; ESLint and Prettier report no errors. The implementation loop's automatic `pnpm -r typecheck` gate must also pass.
 
-- [ ] **Step 6: Commit the independently compiling parser change**
+- [ ] **Step 5: Commit the warning behavior**
 
 ```bash
-git add src/domain/pool-statistics/orca.ts tests/fixtures/orca-pool.ts tests/domain/pool-statistics/orca.test.ts tests/application/collect-orca-pool-statistics.test.ts
-git commit -m "fix: parse Orca pool list responses"
+git add src/domain/evidence-bundle/quality.ts tests/domain/evidence-bundle/quality.test.ts
+git commit -m "fix: emit required evidence absence warnings"
 ```
+
+Acceptance criteria:
+
+- Both false flags produce both exact canonical warning payloads.
+- Each true flag suppresses only its corresponding absence warning.
+- Existing slot warning tests remain green.
+- No exported API signature changes.
 
 ## Repository Targets
 
 ### Expected Files
 
-- src/domain/pool-statistics/orca.ts
-- tests/fixtures/orca-pool.ts
-- tests/domain/pool-statistics/orca.test.ts
-- tests/application/collect-orca-pool-statistics.test.ts
+- src/domain/evidence-bundle/quality.ts
+- tests/domain/evidence-bundle/quality.test.ts
 
 ### Reference Files
 
-- src/domain/pool-statistics/index.ts
-- tests/domain/pool-statistics/enrich.test.ts
+- schemas/regime-engine/evidence-bundle.v1/fixtures/valid/deterministic-only.json
+- src/adapters/node/evidence-bundle-v1-contract.ts
 
 ## Validation Commands
 
 ```bash
-pnpm exec vitest run tests/domain/pool-statistics/orca.test.ts tests/domain/pool-statistics/enrich.test.ts tests/application/collect-orca-pool-statistics.test.ts
-["pnpm","exec","eslint","src/domain/pool-statistics/orca.ts","tests/fixtures/orca-pool.ts","tests/domain/pool-statistics/orca.test.ts","tests/application/collect-orca-pool-statistics.test.ts"]
-["pnpm","exec","prettier","--check","src/domain/pool-statistics/orca.ts","tests/fixtures/orca-pool.ts","tests/domain/pool-statistics/orca.test.ts","tests/application/collect-orca-pool-statistics.test.ts"]
-pnpm exec tsc --noEmit
+pnpm exec vitest run tests/domain/evidence-bundle/quality.test.ts
+["pnpm","exec","eslint","src/domain/evidence-bundle/quality.ts","tests/domain/evidence-bundle/quality.test.ts"]
+["pnpm","exec","prettier","--check","src/domain/evidence-bundle/quality.ts","tests/domain/evidence-bundle/quality.test.ts"]
 ```
 
 ## Behavioral Invariants
 
 You MUST implement the following behavioral invariants as named tests first (TDD):
 
-- **configured-address selection**: When the response array contains unrelated entries and the configured pool, select the exact configured address regardless of array position. (Test: `selects the configured pool from a multi-pool response before validating it`)
-- **missing-address rejection**: When the response array does not contain the configured address, throw OrcaPoolValidationError for address and never use the first entry as a fallback. (Test: `rejects an array that does not contain the configured pool address`)
-- **wrapper-shape rejection**: When response.data is not an array, throw OrcaPoolValidationError for data before pool field validation. (Test: `rejects a response whose data member is not an array`)
+- **both absence warnings**: When contextPresent and briefPresent are both false, append exactly one canonical CONTEXTUAL_EVIDENCE_UNAVAILABLE warning and one canonical RESEARCH_BRIEF_UNAVAILABLE warning. (Test: `emits required contract warnings when context and brief are absent`)
+- **no false absence warnings**: When contextPresent and briefPresent are both true, emit neither contract absence-warning code. (Test: `omits required absence warnings when context and brief are present`)
+- **independent brief warning**: When contextPresent is true and briefPresent is false, emit RESEARCH_BRIEF_UNAVAILABLE without CONTEXTUAL_EVIDENCE_UNAVAILABLE. (Test: `emits only the research brief warning when context exists without a brief`)
+- **stable warning composition**: Each required absence warning is appended at most once, with contextual absence preceding brief absence. (Test: `emits required contract warnings when context and brief are absent`)

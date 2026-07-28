@@ -200,7 +200,7 @@ function buildDeterministicFeature(
       warnings: normalizedWarnings.slice(0, 16) as [string, ...string[]],
       inputLineage: availableInputLineage
     };
-    return result as DeterministicFeature;
+    return result as unknown as DeterministicFeature;
   }
 
   if (slot.outcome === "selected_unavailable") {
