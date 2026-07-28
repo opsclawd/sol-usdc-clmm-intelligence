@@ -57,7 +57,7 @@ Durable core telemetry collection requires the following credentials and environ
 - `JUPITER_API_BASE`: Base URL for Jupiter's quote API (defaults to `https://lite-api.jup.ag/swap/v1`). Existing deployments must update their local environment value; `.env.example` does not rewrite an existing `.env`.
 - `JUPITER_API_KEY`: Optional Jupiter API Key for high-frequency or production rate-limit environments.
 - `ORCA_API_BASE`: Base URL for Orca's public statistics API (defaults to `https://api.orca.so/v2/solana`).
-- `ORCA_SOL_USDC_WHIRLPOOL` / `WHIRLPOOL_ADDRESS`: The Orca whirlpool pool address (e.g. `HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw`).
+- `ORCA_SOL_USDC_WHIRLPOOL` / `WHIRLPOOL_ADDRESS`: The Orca whirlpool pool address (e.g. `Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE`).
 - `SOLANA_RPC_URL`: Base URL for Solana RPC endpoint (defaults to `https://api.mainnet-beta.solana.com`).
 - `SOLANA_RPC_API_KEY`: Optional API Key or auth query parameter for hosted Solana RPC endpoints.
 
@@ -322,7 +322,7 @@ The `pnpm derive:mvp` command derives the seven canonical deterministic features
 
 ```bash
 # Whirlpool address for the SOL/USDC pool
-WHIRLPOOL_ADDRESS=HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw
+WHIRLPOOL_ADDRESS=Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE
 
 # Comma-separated list of position IDs to derive features for
 INTELLIGENCE_POSITION_IDS=Pos11111111111111111111111111111111111111111,Pos22222222222222222222222222222222222222222
@@ -420,7 +420,7 @@ pnpm assemble:bundle data/assembly-request.json
 ```json
 {
   "pair": "SOL/USDC",
-  "poolId": "HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw",
+  "poolId": "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
   "positionId": "Pos11111111111111111111111111111111111111111",
   "walletId": "Wallet1234567890abcdef",
   "pipelineRunId": "run-456",
