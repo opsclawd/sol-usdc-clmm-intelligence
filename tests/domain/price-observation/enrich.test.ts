@@ -462,8 +462,6 @@ describe("enrichPriceObservation", () => {
         warnings: [] as readonly PriceObservationWarning[]
       };
 
-      const { payloadHash: expectedCanonicalHash } = await canonicalizePayload(pythPayload);
-
       const result = await enrichPriceObservation({
         rawObservationId,
         source: "pyth-hermes",
@@ -480,13 +478,17 @@ describe("enrichPriceObservation", () => {
         jobName
       });
 
+      // The raw_observation ref must carry the hash of the actual raw observation
+      // (inputPayloadHash), not a hash of the normalized payload — a mismatch here
+      // means downstream lineage verification (evidence bundle assembly) will fail
+      // closed with PROVENANCE_HASH_MISMATCH against the real raw_observations row.
       const provenance = result.provenance as Provenance;
       expect(provenance.rawObservationRefs).toHaveLength(1);
       expect(provenance.rawObservationRefs[0]).toMatchObject({
         refType: "raw_observation",
         id: rawObservationId,
         source: "pyth-hermes",
-        payloadHash: expectedCanonicalHash
+        payloadHash: inputPayloadHash
       });
 
       expect(provenance.sourceRefs).toHaveLength(1);
@@ -494,7 +496,7 @@ describe("enrichPriceObservation", () => {
         refType: "raw_observation",
         id: rawObservationId,
         source: "pyth-hermes",
-        payloadHash: expectedCanonicalHash
+        payloadHash: inputPayloadHash
       });
 
       expect(provenance.processRef).toMatchObject({
@@ -565,8 +567,11 @@ describe("enrichPriceObservation", () => {
       });
 
       const { payloadHash: recomputedHash } = await canonicalizePayload(pythPayloadWithWarnings);
+      // The returned row's own payloadHash is the normalized payload's canonical hash.
+      expect(result.payloadHash).toBe(recomputedHash);
+      // The raw_observation ref carries the raw input's own hash, not this recomputed one.
       const provenance = result.provenance as Provenance;
-      expect(provenance.rawObservationRefs[0]!.payloadHash).toBe(recomputedHash);
+      expect(provenance.rawObservationRefs[0]!.payloadHash).toBe(payloadHash);
     });
   });
 });

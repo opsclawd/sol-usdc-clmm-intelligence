@@ -83,7 +83,7 @@ export async function enrichPriceObservation(
     rawObservationId,
     source,
     sourceObservationKey: _sourceObservationKey,
-    payloadHash: _rawPayloadHash,
+    payloadHash: rawPayloadHash,
     observedAtUnixMs,
     fetchedAtUnixMs,
     receivedAtUnixMs,
@@ -95,7 +95,6 @@ export async function enrichPriceObservation(
     jobName = "unknown-job"
   } = input;
   void _sourceObservationKey;
-  void _rawPayloadHash;
 
   const observationKind = payload.kind;
   const entry = getObservationKindEntry(observationKind);
@@ -157,7 +156,7 @@ export async function enrichPriceObservation(
         refType: "raw_observation" as const,
         id: rawObservationId,
         source,
-        payloadHash: canonicalPayloadHash
+        payloadHash: rawPayloadHash
       }
     ],
     rawObservationRefs: [
@@ -165,7 +164,7 @@ export async function enrichPriceObservation(
         refType: "raw_observation" as const,
         id: rawObservationId,
         source,
-        payloadHash: canonicalPayloadHash
+        payloadHash: rawPayloadHash
       }
     ],
     derivedFromRefs: [] as readonly {
