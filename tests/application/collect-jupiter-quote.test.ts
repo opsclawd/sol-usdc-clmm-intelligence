@@ -8,7 +8,7 @@ import { collectJupiterQuote } from "../../src/application/collect-jupiter-quote
 import type { DegradedResult } from "../../src/application/price-source-result.js";
 import { mapSourceError } from "../../src/application/source-outcome.js";
 
-const JUPITER_API_BASE = "https://api.jup.ag/swap/v6";
+const JUPITER_API_BASE = "https://lite-api.jup.ag/swap/v1";
 const JUPITER_API_KEY = "test-jup-key-12345";
 
 const FIXED_CLOCK_TIME = "2026-05-10T12:00:00.000Z";
@@ -62,7 +62,7 @@ describe("collectJupiterQuote", () => {
   });
 
   describe("behavioral invariants", () => {
-    it("requests the deterministic generic Jupiter quote contract", async () => {
+    it("requests the Jupiter Lite v1 quote contract", async () => {
       const deps = createDeps();
       const quote = makeJupiterQuote();
       const expectedUrl = `${JUPITER_API_BASE}/quote?inputMint=${encodeURIComponent(SOL_MINT)}&outputMint=${encodeURIComponent(USDC_MINT)}&amount=1000000000&swapMode=ExactIn&slippageBps=50&restrictIntermediateTokens=true`;
@@ -75,6 +75,7 @@ describe("collectJupiterQuote", () => {
       const call = deps.http.calls[0];
       expect(call).toBeDefined();
       expect(call?.url).toBe(expectedUrl);
+      expect(call?.url).toMatch(/^https:\/\/lite-api\.jup\.ag\/swap\/v1\/quote\?/);
       expect(call?.options?.timeoutMs).toBe(5000);
       expect(call?.options?.maxAttempts).toBe(2);
       expect(call?.options?.headers).toEqual({ "x-api-key": JUPITER_API_KEY });
@@ -87,7 +88,7 @@ describe("collectJupiterQuote", () => {
       expect(lastRow?.sourceRequestMeta).toBeDefined();
 
       const meta = lastRow?.sourceRequestMeta as Record<string, unknown>;
-      expect(meta.host).toBe("api.jup.ag");
+      expect(meta.host).toBe("lite-api.jup.ag");
       expect(meta.path).toBe("/quote");
       expect(meta.inputMint).toBe(SOL_MINT);
       expect(meta.outputMint).toBe(USDC_MINT);

@@ -54,7 +54,7 @@ Durable core telemetry collection requires the following credentials and environ
 - `PYTH_HERMES_BASE_URL`: Base URL for the Pyth Hermes API (defaults to `https://hermes.pyth.network`).
 - `PYTH_API_KEY`: API Key for Pyth Hermes. Optional for local development/low-frequency runs, but required in production.
 - `PYTH_SOL_USD_FEED_ID`: The price feed ID for SOL/USD (canonical feed ID `0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d`).
-- `JUPITER_API_BASE`: Base URL for Jupiter's quote API (defaults to `https://api.jup.ag`).
+- `JUPITER_API_BASE`: Base URL for Jupiter's quote API (defaults to `https://lite-api.jup.ag/swap/v1`). Existing deployments must update their local environment value; `.env.example` does not rewrite an existing `.env`.
 - `JUPITER_API_KEY`: Optional Jupiter API Key for high-frequency or production rate-limit environments.
 - `ORCA_API_BASE`: Base URL for Orca's public statistics API (defaults to `https://api.orca.so/v2/solana`).
 - `ORCA_SOL_USDC_WHIRLPOOL` / `WHIRLPOOL_ADDRESS`: The Orca whirlpool pool address (e.g. `HJPn8wAHkWZ25sfP45Rpggct383GCFU4e43Dmm4D97sw`).
