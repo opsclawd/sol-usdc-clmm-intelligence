@@ -13,10 +13,9 @@ export function makePythHermesParsedPrice(
 ): PythHermesParsedPrice {
   return {
     price: "175000000",
-    confidence: "1500000",
-    exponent: -8,
-    status: "trading",
-    timestamp: 1710000000,
+    conf: "1500000",
+    expo: -8,
+    publish_time: 1710000000,
     ...overrides
   };
 }
@@ -25,7 +24,7 @@ export function makePythHermesEnvelope(
   overrides?: Partial<PythHermesEnvelope>
 ): PythHermesEnvelope {
   return {
-    binary: "base64encodedbinarydata",
+    binary: { encoding: "hex", data: ["504e41550100"] },
     parsed: [makePythHermesPriceUpdate()],
     ...overrides
   };
@@ -47,7 +46,7 @@ export function makePythHermesEnvelopeWithExtraFields(): PythHermesEnvelope & {
   nested: { data: number };
 } {
   return {
-    binary: "base64encodedbinarydata",
+    binary: { encoding: "hex", data: ["504e41550100"] },
     parsed: [makePythHermesPriceUpdate()],
     extraField: "should be retained",
     nested: { data: 42 }

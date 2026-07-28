@@ -25,7 +25,7 @@ describe("Pyth Oracle Price Processing", () => {
 
     it("rejects missing parsed price", async () => {
       const { acceptPythEnvelope } = await import("../../../src/domain/price-observation/pyth.js");
-      const envelope = { binary: "data", parsed: [] };
+      const envelope = { binary: { encoding: "hex", data: ["504e41550100"] }, parsed: [] };
       expect(() => acceptPythEnvelope(envelope, SOL_USD_FEED_ID)).toThrow();
     });
 
@@ -46,7 +46,7 @@ describe("Pyth Oracle Price Processing", () => {
       const envelope = makePythHermesEnvelope({
         parsed: [
           makePythHermesPriceUpdate({
-            price: makePythHermesParsedPrice({ confidence: "NaN" })
+            price: makePythHermesParsedPrice({ conf: "NaN" })
           })
         ]
       });
@@ -58,7 +58,7 @@ describe("Pyth Oracle Price Processing", () => {
       const envelope = makePythHermesEnvelope({
         parsed: [
           makePythHermesPriceUpdate({
-            price: makePythHermesParsedPrice({ exponent: NaN })
+            price: makePythHermesParsedPrice({ expo: NaN })
           })
         ]
       });
@@ -70,7 +70,7 @@ describe("Pyth Oracle Price Processing", () => {
       const envelope = makePythHermesEnvelope({
         parsed: [
           makePythHermesPriceUpdate({
-            price: makePythHermesParsedPrice({ timestamp: Infinity })
+            price: makePythHermesParsedPrice({ publish_time: Infinity })
           })
         ]
       });
@@ -224,8 +224,8 @@ describe("Pyth Oracle Price Processing", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "175000000",
-              confidence: "1500000",
-              exponent: -8
+              conf: "1500000",
+              expo: -8
             })
           })
         ]
@@ -242,8 +242,8 @@ describe("Pyth Oracle Price Processing", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "100000000",
-              confidence: "1000000",
-              exponent: -8
+              conf: "1000000",
+              expo: -8
             })
           })
         ]
@@ -259,8 +259,8 @@ describe("Pyth Oracle Price Processing", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "100000000",
-              confidence: "2000000",
-              exponent: -8
+              conf: "2000000",
+              expo: -8
             })
           })
         ]
@@ -276,8 +276,8 @@ describe("Pyth Oracle Price Processing", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "100000000",
-              confidence: "1000000",
-              exponent: -8
+              conf: "1000000",
+              expo: -8
             })
           })
         ]
@@ -291,7 +291,7 @@ describe("Pyth Oracle Price Processing", () => {
       const envelope = makePythHermesEnvelope({
         parsed: [
           makePythHermesPriceUpdate({
-            price: makePythHermesParsedPrice({ timestamp: 1710000000 })
+            price: makePythHermesParsedPrice({ publish_time: 1710000000 })
           })
         ]
       });
@@ -305,7 +305,7 @@ describe("Pyth Oracle Price Processing", () => {
       const envelope = makePythHermesEnvelope({
         parsed: [
           makePythHermesPriceUpdate({
-            price: makePythHermesParsedPrice({ timestamp: 1710000000 })
+            price: makePythHermesParsedPrice({ publish_time: 1710000000 })
           })
         ]
       });
@@ -323,8 +323,8 @@ describe("Pyth Oracle Price Processing", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "175",
-              confidence: "15",
-              exponent: 0
+              conf: "15",
+              expo: 0
             })
           })
         ]
@@ -341,8 +341,8 @@ describe("Pyth Oracle Price Processing", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "175000000",
-              confidence: "1500000",
-              exponent: -8
+              conf: "1500000",
+              expo: -8
             })
           })
         ]
@@ -359,8 +359,8 @@ describe("Pyth Oracle Price Processing", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "17500000000",
-              confidence: "150000000",
-              exponent: -10
+              conf: "150000000",
+              expo: -10
             })
           })
         ]
@@ -377,8 +377,8 @@ describe("Pyth Oracle Price Processing", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "175000000",
-              confidence: "1500000",
-              exponent: -8
+              conf: "1500000",
+              expo: -8
             })
           })
         ]
@@ -395,8 +395,8 @@ describe("Pyth Oracle Price Processing", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "123456789",
-              confidence: "1234567",
-              exponent: -9
+              conf: "1234567",
+              expo: -9
             })
           })
         ]
@@ -413,8 +413,8 @@ describe("Pyth Oracle Price Processing", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "9999999999",
-              confidence: "99999999",
-              exponent: -10
+              conf: "99999999",
+              expo: -10
             })
           })
         ]
@@ -449,8 +449,8 @@ describe("Pyth Oracle Price Processing", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "175000000",
-              confidence: "1500000",
-              exponent: -8
+              conf: "1500000",
+              expo: -8
             })
           })
         ]
@@ -460,8 +460,8 @@ describe("Pyth Oracle Price Processing", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "176000000",
-              confidence: "1500000",
-              exponent: -8
+              conf: "1500000",
+              expo: -8
             })
           })
         ]
@@ -478,8 +478,8 @@ describe("Pyth Oracle Price Processing", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "175000000",
-              confidence: "1500000",
-              exponent: -8
+              conf: "1500000",
+              expo: -8
             })
           })
         ]
@@ -489,8 +489,8 @@ describe("Pyth Oracle Price Processing", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "175000000",
-              confidence: "2500000",
-              exponent: -8
+              conf: "2500000",
+              expo: -8
             })
           })
         ]

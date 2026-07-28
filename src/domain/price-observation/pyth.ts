@@ -24,14 +24,11 @@ const PythHermesParsedPriceSchema = z.object({
   price: z
     .string()
     .refine(isValidIntegerString, { message: "price must be a valid integer string" }),
-  confidence: z
-    .string()
-    .refine(isValidIntegerString, { message: "confidence must be a valid integer string" }),
-  exponent: z.number().refine(isValidExponent, { message: "exponent must be a finite integer" }),
-  status: z.enum(["trading", "halted", "auction", "unknown"]),
-  timestamp: z
+  conf: z.string().refine(isValidIntegerString, { message: "conf must be a valid integer string" }),
+  expo: z.number().refine(isValidExponent, { message: "expo must be a finite integer" }),
+  publish_time: z
     .number()
-    .refine(isValidTimestamp, { message: "timestamp must be a positive finite number" })
+    .refine(isValidTimestamp, { message: "publish_time must be a positive finite number" })
 });
 
 const PythHermesPriceUpdateSchema = z.object({
@@ -42,7 +39,10 @@ const PythHermesPriceUpdateSchema = z.object({
 
 const PythHermesEnvelopeSchema = z
   .object({
-    binary: z.string(),
+    binary: z.object({
+      encoding: z.string(),
+      data: z.array(z.string())
+    }),
     parsed: z.array(PythHermesPriceUpdateSchema).min(1)
   })
   .passthrough();
@@ -104,8 +104,8 @@ export function normalizePythPrice(
   const { priceUpdate } = acceptPythEnvelope(envelope, configuredFeedId);
 
   const priceAtomic = priceUpdate.price.price;
-  const confidenceAtomic = priceUpdate.price.confidence;
-  const exponent = priceUpdate.price.exponent;
+  const confidenceAtomic = priceUpdate.price.conf;
+  const exponent = priceUpdate.price.expo;
 
   const priceValue = BigInt(priceAtomic);
   if (priceValue <= BigInt(0)) {
@@ -128,7 +128,7 @@ export function normalizePythPrice(
     warnings.push("wide_confidence_interval");
   }
 
-  const observedAtUnixMs = priceUpdate.price.timestamp * 1000;
+  const observedAtUnixMs = priceUpdate.price.publish_time * 1000;
   const ageMs = Math.max(0, fetchedAtUnixMs - observedAtUnixMs);
 
   return {
@@ -139,7 +139,7 @@ export function normalizePythPrice(
     priceData: {
       price: priceDecimal,
       confidence: confidenceDecimal,
-      status: priceUpdate.price.status === "unknown" ? "trading" : priceUpdate.price.status,
+      status: "trading",
       ageMs
     },
     observedSource: {

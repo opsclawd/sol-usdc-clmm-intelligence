@@ -28,9 +28,9 @@ function makeRecentEnvelope(overrides?: {
     parsed: [
       makePythHermesPriceUpdate({
         price: makePythHermesParsedPrice({
-          timestamp: timestampSecs,
+          publish_time: timestampSecs,
           price: overrides?.price ?? "175000000",
-          confidence: overrides?.confidence ?? "1500000"
+          conf: overrides?.confidence ?? "1500000"
         })
       })
     ]
@@ -110,7 +110,7 @@ describe("collectPythPrice", () => {
       expect(insertedRow).toBeDefined();
       expect(insertedRow?.parseStatus).toBe("parsed");
 
-      const malformedEnvelope = { binary: "data", parsed: [] };
+      const malformedEnvelope = { binary: { encoding: "hex", data: ["504e4155"] }, parsed: [] };
       deps.http.setResponse(url, { body: malformedEnvelope });
 
       const malformedResult = await collectPythPrice(deps, VALID_CONTEXT);
@@ -156,7 +156,7 @@ describe("collectPythPrice", () => {
       const staleEnvelope = makePythHermesEnvelope({
         parsed: [
           makePythHermesPriceUpdate({
-            price: makePythHermesParsedPrice({ timestamp: oldTimestamp })
+            price: makePythHermesParsedPrice({ publish_time: oldTimestamp })
           })
         ]
       });
@@ -212,7 +212,7 @@ describe("collectPythPrice", () => {
       const envelope = makePythHermesEnvelope({
         parsed: [
           makePythHermesPriceUpdate({
-            price: makePythHermesParsedPrice({ timestamp: nowSeconds })
+            price: makePythHermesParsedPrice({ publish_time: nowSeconds })
           })
         ]
       });
@@ -300,9 +300,9 @@ describe("collectPythPrice", () => {
           makePythHermesPriceUpdate({
             price: makePythHermesParsedPrice({
               price: "100000000",
-              confidence: "3000000",
-              exponent: -8,
-              timestamp: FIXED_TIMESTAMP_SECS
+              conf: "3000000",
+              expo: -8,
+              publish_time: FIXED_TIMESTAMP_SECS
             })
           })
         ]

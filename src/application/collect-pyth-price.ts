@@ -177,7 +177,7 @@ export async function collectPythPrice(
 
   const sourceObservationKey = await derivePythSourceObservationKey({
     feedId,
-    publishTimeUnixSeconds: acceptResult.priceUpdate.price.timestamp,
+    publishTimeUnixSeconds: acceptResult.priceUpdate.price.publish_time,
     slot: acceptResult.priceUpdate.slot ?? 0
   });
 
@@ -188,7 +188,7 @@ export async function collectPythPrice(
     runId: pipelineRunId
   });
 
-  const observedAtUnixMs = acceptResult.priceUpdate.price.timestamp * 1000;
+  const observedAtUnixMs = acceptResult.priceUpdate.price.publish_time * 1000;
   const fetchedAtUnixMs = receivedAtUnixMs;
 
   const ingestDeps: IngestRawObservationDeps = {
