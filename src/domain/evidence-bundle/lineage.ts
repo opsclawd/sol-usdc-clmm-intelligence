@@ -8,6 +8,7 @@ import type {
 } from "../../contracts/index.js";
 import { acceptClmmBundle } from "../clmm-bundle/validate.js";
 import type { BundleSelectionRequest } from "./select.js";
+import { toCanonicalTimestamp } from "./timestamp.js";
 
 export type LineageVerificationErrorCode =
   | "MISSING_NORMALIZED_REFERENCE"
@@ -311,7 +312,7 @@ function collectLineage(
               referenceId: `raw-${rawRow.id}`,
               sourceType: sourceToSourceType(rawRow.source),
               locator: rawRow.sourceObservationKey,
-              observedAt: String(rawRow.observedAtUnixMs)
+              observedAt: toCanonicalTimestamp(rawRow.observedAtUnixMs)
             });
           }
         }
@@ -323,7 +324,7 @@ function collectLineage(
             referenceId: `raw-${rawRow.id}`,
             sourceType: sourceToSourceType(rawRow.source),
             locator: rawRow.sourceObservationKey,
-            observedAt: String(rawRow.observedAtUnixMs)
+            observedAt: toCanonicalTimestamp(rawRow.observedAtUnixMs)
           });
         }
       }
@@ -479,7 +480,7 @@ export function verifyEvidenceLineage(
           referenceId,
           sourceType: sourceToSourceType(rawRow.source),
           locator: rawRow.sourceObservationKey,
-          observedAt: String(rawRow.observedAtUnixMs)
+          observedAt: toCanonicalTimestamp(rawRow.observedAtUnixMs)
         });
       }
     }
