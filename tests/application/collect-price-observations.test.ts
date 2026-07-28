@@ -197,7 +197,7 @@ describe("collectPriceObservations", () => {
     }
   });
 
-  it("covers both usable success, parsed replay usability, deterministic warning ordering, and null/omitted missing fields rather than zeros", async () => {
+  it("collects accepted Pyth and Jupiter Lite v1 observations together", async () => {
     const deps = createDeps();
 
     const pythUrl = `${PYTH_HERMES_BASE_URL}/v2/updates/price/latest?ids[]=${encodeURIComponent(PYTH_SOL_USD_FEED_ID)}`;
@@ -207,6 +207,9 @@ describe("collectPriceObservations", () => {
     deps.http.setResponse(jupUrl, { body: makeJupiterQuote() });
 
     const result = await collectPriceObservations(deps, VALID_CONTEXT);
+
+    expect(deps.http.calls.map((call) => call.url)).toContain(jupUrl);
+    expect(jupUrl).toMatch(/^https:\/\/lite-api\.jup\.ag\/swap\/v1\/quote\?/);
 
     expect(result.pyth.status).toBe("accepted");
     expect(result.jupiter.status).toBe("accepted");
