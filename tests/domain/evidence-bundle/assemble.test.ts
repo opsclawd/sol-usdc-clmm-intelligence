@@ -7,6 +7,8 @@ import type { EvidenceBundleQuality } from "../../../src/domain/evidence-bundle/
 import { assembleEvidenceBundleCandidate } from "../../../src/domain/evidence-bundle/assemble.js";
 import type { AssembleEvidenceBundleInput } from "../../../src/domain/evidence-bundle/assemble.js";
 import type { VerifiedEvidenceLineage } from "../../../src/domain/evidence-bundle/lineage.js";
+import { createEvidenceBundleContract } from "../../../src/adapters/node/evidence-bundle-v1-contract.js";
+import { classifyEvidenceBundleQuality } from "../../../src/domain/evidence-bundle/quality.js";
 
 const DEFAULT_CONFIDENCE: Confidence = {
   components: {
@@ -144,13 +146,33 @@ function makeQuality(): EvidenceBundleQuality {
   };
 }
 
-function makeLineage(): VerifiedEvidenceLineage["lineage"] {
+function makeLineage(
+  sourceReferences: VerifiedEvidenceLineage["lineage"]["sourceReferences"] = []
+): VerifiedEvidenceLineage["lineage"] {
   return {
-    rawObservationIds: [],
+    rawObservationIds: sourceReferences.map((reference, index) => {
+      const rawId = Number(reference.referenceId.replace(/^raw-/, ""));
+      return Number.isFinite(rawId) ? rawId : index + 1;
+    }),
     normalizedObservationIds: [],
-    sourceReferences: []
+    sourceReferences
   };
 }
+
+const RAW_SOURCE_REFERENCES: VerifiedEvidenceLineage["lineage"]["sourceReferences"] = [
+  {
+    referenceId: "raw-10",
+    sourceType: "api",
+    locator: "jupiter:SOL-USDC",
+    observedAt: "2026-07-28T18:00:00.000Z"
+  },
+  {
+    referenceId: "raw-20",
+    sourceType: "chain",
+    locator: "orca:pool-abc",
+    observedAt: "2026-07-28T18:00:01.000Z"
+  }
+];
 
 function makeAssembleInput(
   slots: SelectedFeatureSlot[],
@@ -597,6 +619,369 @@ describe("assembleEvidenceBundleCandidate", () => {
       );
 
       expect(result.provenance.environment).toBe("production");
+    });
+  });
+
+  describe("maps available and partial features to every verified source reference", () => {
+    it("usable features receive assembled source lineage", () => {
+      const asOfUnixMs = Date.parse("2026-07-28T18:00:02.000Z");
+      const freshUntilUnixMs = Date.parse("2026-07-28T19:00:02.000Z");
+      const expiresAtUnixMs = Date.parse("2026-07-28T20:00:02.000Z");
+
+      function makeMixedSlots(asOf: number, freshUntil: number): SelectedFeatureSlot[] {
+        return MVP_FEATURE_KINDS.map((featureKind, index) => {
+          if (index === 2) return { featureKind, outcome: "missing" as const };
+          if (index === 3) {
+            return {
+              featureKind,
+              outcome: "selected_unavailable" as const,
+              rowId: index + 1,
+              confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0 },
+              provenance: DEFAULT_PROVENANCE,
+              warnings: ["no_valid_input"],
+              reasons: ["input_exhausted"],
+              asOfUnixMs: asOf,
+              validUntilUnixMs: freshUntil
+            };
+          }
+          if (index === 4) {
+            return { featureKind, outcome: "expired_only" as const, rowId: index + 1 };
+          }
+          if (index === 5) {
+            return { featureKind, outcome: "unsupported_version_only" as const, rowId: index + 1 };
+          }
+          return {
+            featureKind,
+            outcome: index === 1 ? ("selected_partial" as const) : ("selected_available" as const),
+            rowId: index + 1,
+            value: 1000 + index,
+            confidence: DEFAULT_CONFIDENCE,
+            provenance: DEFAULT_PROVENANCE,
+            warnings: [] as readonly string[],
+            reasons: [] as readonly string[],
+            asOfUnixMs: asOf,
+            validUntilUnixMs: freshUntil
+          };
+        });
+      }
+
+      const quality = makeQuality();
+      const slots = makeMixedSlots(asOfUnixMs, freshUntilUnixMs);
+      const lineage = makeLineage(RAW_SOURCE_REFERENCES);
+
+      const result = assembleEvidenceBundleCandidate(
+        makeAssembleInput(slots, quality, lineage, {
+          runId: "run-lineage-test",
+          correlationId: "corr-lineage-test",
+          createdAt: asOfUnixMs,
+          asOf: asOfUnixMs,
+          freshUntil: freshUntilUnixMs,
+          expiresAt: expiresAtUnixMs,
+          contextPresent: false,
+          briefPresent: false
+        })
+      );
+
+      const usableFeatures = result.deterministicFeatures.filter(
+        (feature) => feature.status === "available"
+      );
+      expect(usableFeatures.map((feature) => feature.inputLineage)).toEqual(
+        usableFeatures.map(() => ["raw-10", "raw-20"])
+      );
+    });
+  });
+
+  describe("maps every unavailable feature outcome to the canonical unavailable reference", () => {
+    it("missing, selected_unavailable, expired_only, and unsupported_version_only use feature_unavailable", () => {
+      const asOfUnixMs = Date.parse("2026-07-28T18:00:02.000Z");
+      const freshUntilUnixMs = Date.parse("2026-07-28T19:00:02.000Z");
+      const expiresAtUnixMs = Date.parse("2026-07-28T20:00:02.000Z");
+
+      function makeMixedSlots(asOf: number, freshUntil: number): SelectedFeatureSlot[] {
+        return MVP_FEATURE_KINDS.map((featureKind, index) => {
+          if (index === 2) return { featureKind, outcome: "missing" as const };
+          if (index === 3) {
+            return {
+              featureKind,
+              outcome: "selected_unavailable" as const,
+              rowId: index + 1,
+              confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0 },
+              provenance: DEFAULT_PROVENANCE,
+              warnings: ["no_valid_input"],
+              reasons: ["input_exhausted"],
+              asOfUnixMs: asOf,
+              validUntilUnixMs: freshUntil
+            };
+          }
+          if (index === 4) {
+            return { featureKind, outcome: "expired_only" as const, rowId: index + 1 };
+          }
+          if (index === 5) {
+            return { featureKind, outcome: "unsupported_version_only" as const, rowId: index + 1 };
+          }
+          return {
+            featureKind,
+            outcome: index === 1 ? ("selected_partial" as const) : ("selected_available" as const),
+            rowId: index + 1,
+            value: 1000 + index,
+            confidence: DEFAULT_CONFIDENCE,
+            provenance: DEFAULT_PROVENANCE,
+            warnings: [] as readonly string[],
+            reasons: [] as readonly string[],
+            asOfUnixMs: asOf,
+            validUntilUnixMs: freshUntil
+          };
+        });
+      }
+
+      const quality = makeQuality();
+      const slots = makeMixedSlots(asOfUnixMs, freshUntilUnixMs);
+      const lineage = makeLineage(RAW_SOURCE_REFERENCES);
+
+      const result = assembleEvidenceBundleCandidate(
+        makeAssembleInput(slots, quality, lineage, {
+          runId: "run-lineage-test",
+          correlationId: "corr-lineage-test",
+          createdAt: asOfUnixMs,
+          asOf: asOfUnixMs,
+          freshUntil: freshUntilUnixMs,
+          expiresAt: expiresAtUnixMs,
+          contextPresent: false,
+          briefPresent: false
+        })
+      );
+
+      const unavailableFeatures = result.deterministicFeatures.filter(
+        (feature) => feature.status === "unavailable"
+      );
+      expect(unavailableFeatures.map((feature) => feature.inputLineage)).toEqual(
+        unavailableFeatures.map(() => ["feature_unavailable"])
+      );
+    });
+  });
+
+  describe("registers the unavailable source exactly once only when it is needed", () => {
+    it("feature_unavailable source is registered when unavailable features exist", () => {
+      const asOfUnixMs = Date.parse("2026-07-28T18:00:02.000Z");
+      const freshUntilUnixMs = Date.parse("2026-07-28T19:00:02.000Z");
+      const expiresAtUnixMs = Date.parse("2026-07-28T20:00:02.000Z");
+
+      function makeMixedSlots(asOf: number, freshUntil: number): SelectedFeatureSlot[] {
+        return MVP_FEATURE_KINDS.map((featureKind, index) => {
+          if (index === 2) return { featureKind, outcome: "missing" as const };
+          if (index === 3) {
+            return {
+              featureKind,
+              outcome: "selected_unavailable" as const,
+              rowId: index + 1,
+              confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0 },
+              provenance: DEFAULT_PROVENANCE,
+              warnings: ["no_valid_input"],
+              reasons: ["input_exhausted"],
+              asOfUnixMs: asOf,
+              validUntilUnixMs: freshUntil
+            };
+          }
+          if (index === 4) {
+            return { featureKind, outcome: "expired_only" as const, rowId: index + 1 };
+          }
+          if (index === 5) {
+            return { featureKind, outcome: "unsupported_version_only" as const, rowId: index + 1 };
+          }
+          return {
+            featureKind,
+            outcome: index === 1 ? ("selected_partial" as const) : ("selected_available" as const),
+            rowId: index + 1,
+            value: 1000 + index,
+            confidence: DEFAULT_CONFIDENCE,
+            provenance: DEFAULT_PROVENANCE,
+            warnings: [] as readonly string[],
+            reasons: [] as readonly string[],
+            asOfUnixMs: asOf,
+            validUntilUnixMs: freshUntil
+          };
+        });
+      }
+
+      const quality = makeQuality();
+      const slots = makeMixedSlots(asOfUnixMs, freshUntilUnixMs);
+      const lineage = makeLineage(RAW_SOURCE_REFERENCES);
+
+      const result = assembleEvidenceBundleCandidate(
+        makeAssembleInput(slots, quality, lineage, {
+          runId: "run-lineage-test",
+          correlationId: "corr-lineage-test",
+          createdAt: asOfUnixMs,
+          asOf: asOfUnixMs,
+          freshUntil: freshUntilUnixMs,
+          expiresAt: expiresAtUnixMs,
+          contextPresent: false,
+          briefPresent: false
+        })
+      );
+
+      expect(
+        result.sourceReferences.filter(
+          (reference) => reference.referenceId === "feature_unavailable"
+        )
+      ).toEqual([
+        {
+          referenceId: "feature_unavailable",
+          sourceType: "internal_bundle",
+          locator: "unavailable",
+          observedAt: new Date(asOfUnixMs).toISOString()
+        }
+      ]);
+    });
+
+    it("feature_unavailable source is absent when all features are usable", () => {
+      const asOfUnixMs = Date.parse("2026-07-28T18:00:02.000Z");
+      const freshUntilUnixMs = Date.parse("2026-07-28T19:00:02.000Z");
+      const expiresAtUnixMs = Date.parse("2026-07-28T20:00:02.000Z");
+
+      const slots: SelectedFeatureSlot[] = MVP_FEATURE_KINDS.map((featureKind, index) => ({
+        featureKind,
+        outcome: "selected_available" as const,
+        rowId: index + 1,
+        value: 1000 + index,
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        warnings: [] as readonly string[],
+        reasons: [] as readonly string[],
+        asOfUnixMs,
+        validUntilUnixMs: freshUntilUnixMs
+      }));
+
+      const quality = makeQuality();
+      const lineage = makeLineage(RAW_SOURCE_REFERENCES);
+
+      const result = assembleEvidenceBundleCandidate(
+        makeAssembleInput(slots, quality, lineage, {
+          runId: "run-lineage-test",
+          correlationId: "corr-lineage-test",
+          createdAt: asOfUnixMs,
+          asOf: asOfUnixMs,
+          freshUntil: freshUntilUnixMs,
+          expiresAt: expiresAtUnixMs,
+          contextPresent: false,
+          briefPresent: false
+        })
+      );
+
+      expect(
+        result.sourceReferences.filter(
+          (reference) => reference.referenceId === "feature_unavailable"
+        )
+      ).toEqual([]);
+    });
+  });
+
+  describe("uses the existing no-sources reference for usable features when lineage is empty", () => {
+    it("usable features reference no_sources_available when lineage has no external sources", () => {
+      const asOfUnixMs = Date.parse("2026-07-28T18:00:02.000Z");
+      const freshUntilUnixMs = Date.parse("2026-07-28T19:00:02.000Z");
+      const expiresAtUnixMs = Date.parse("2026-07-28T20:00:02.000Z");
+
+      const quality = makeQuality();
+      const slots = makeSlotsAllAvailable([]);
+      const lineage = makeLineage([]);
+
+      const result = assembleEvidenceBundleCandidate(
+        makeAssembleInput(slots, quality, lineage, {
+          runId: "run-lineage-test",
+          correlationId: "corr-lineage-test",
+          createdAt: asOfUnixMs,
+          asOf: asOfUnixMs,
+          freshUntil: freshUntilUnixMs,
+          expiresAt: expiresAtUnixMs,
+          contextPresent: false,
+          briefPresent: false
+        })
+      );
+
+      const usableFeatures = result.deterministicFeatures.filter(
+        (feature) => feature.status === "available"
+      );
+      expect(usableFeatures.map((feature) => feature.inputLineage)).toEqual(
+        usableFeatures.map(() => ["no_sources_available"])
+      );
+    });
+  });
+
+  describe("passes strict contract validation for mixed availability without context or a brief", () => {
+    it("mixed availability candidate with empty context and null brief passes contract validation", async () => {
+      const asOfUnixMs = Date.parse("2026-07-28T18:00:02.000Z");
+      const freshUntilUnixMs = Date.parse("2026-07-28T19:00:02.000Z");
+      const expiresAtUnixMs = Date.parse("2026-07-28T20:00:02.000Z");
+
+      function makeMixedSlots(asOf: number, freshUntil: number): SelectedFeatureSlot[] {
+        return MVP_FEATURE_KINDS.map((featureKind, index) => {
+          if (index === 2) return { featureKind, outcome: "missing" as const };
+          if (index === 3) {
+            return {
+              featureKind,
+              outcome: "selected_unavailable" as const,
+              rowId: index + 1,
+              confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0 },
+              provenance: DEFAULT_PROVENANCE,
+              warnings: ["no_valid_input"],
+              reasons: ["input_exhausted"],
+              asOfUnixMs: asOf,
+              validUntilUnixMs: freshUntil
+            };
+          }
+          if (index === 4) {
+            return { featureKind, outcome: "expired_only" as const, rowId: index + 1 };
+          }
+          if (index === 5) {
+            return { featureKind, outcome: "unsupported_version_only" as const, rowId: index + 1 };
+          }
+          return {
+            featureKind,
+            outcome: index === 1 ? ("selected_partial" as const) : ("selected_available" as const),
+            rowId: index + 1,
+            value: 1000 + index,
+            confidence: DEFAULT_CONFIDENCE,
+            provenance: DEFAULT_PROVENANCE,
+            warnings: [] as readonly string[],
+            reasons: [] as readonly string[],
+            asOfUnixMs: asOf,
+            validUntilUnixMs: freshUntil
+          };
+        });
+      }
+
+      const slots = makeMixedSlots(asOfUnixMs, freshUntilUnixMs);
+      const quality = classifyEvidenceBundleQuality({
+        slots,
+        runId: "run-contract-regression",
+        correlationId: "corr-contract-regression",
+        createdAt: asOfUnixMs,
+        asOf: asOfUnixMs,
+        freshUntil: freshUntilUnixMs,
+        expiresAt: expiresAtUnixMs,
+        contextPresent: false,
+        briefPresent: false
+      });
+      const candidate = assembleEvidenceBundleCandidate(
+        makeAssembleInput(slots, quality, makeLineage(RAW_SOURCE_REFERENCES), {
+          runId: "run-contract-regression",
+          correlationId: "corr-contract-regression",
+          createdAt: asOfUnixMs,
+          asOf: asOfUnixMs,
+          freshUntil: freshUntilUnixMs,
+          expiresAt: expiresAtUnixMs,
+          contextPresent: false,
+          briefPresent: false,
+          gitCommit: "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234"
+        })
+      );
+
+      await expect(
+        createEvidenceBundleContract().validateCanonicalizeAndHash(candidate)
+      ).resolves.toMatchObject({
+        schemaVersion: "evidence-bundle.v1"
+      });
     });
   });
 });
