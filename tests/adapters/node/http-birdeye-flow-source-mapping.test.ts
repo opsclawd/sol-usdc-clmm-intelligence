@@ -43,7 +43,7 @@ describe("HttpBirdeyeFlowSource", () => {
               }
             }
           ],
-          hasNext: true
+          hasNext: false
         },
         success: true
       });
@@ -1494,6 +1494,116 @@ describe("HttpBirdeyeFlowSource", () => {
         amountUsdc: string;
       };
       expect(whaleSwap.amountUsdc).toBe("589.920174");
+    });
+  });
+
+  describe("paginates trades using offset and hasNext", () => {
+    it("fetches multiple pages incrementing offset by limit until hasNext is false", async () => {
+      const page1Items = Array.from({ length: 100 }, (_, i) => ({
+        txHash: `hash-${i}`,
+        source: "whirlpool",
+        blockUnixTime: 1785278000 + i,
+        txType: "swap",
+        address: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
+        owner: `Wallet-${i}`,
+        from: {
+          symbol: "SOL",
+          decimals: 9,
+          address: "So11111111111111111111111111111111111111112",
+          amount: 1000000000,
+          uiAmount: 1,
+          price: 100
+        },
+        to: {
+          symbol: "USDC",
+          decimals: 6,
+          address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          amount: 100000000,
+          uiAmount: 100,
+          price: 1.0
+        }
+      }));
+
+      const page2Items = [
+        {
+          txHash: "hash-page2",
+          source: "whirlpool",
+          blockUnixTime: 1785278200,
+          txType: "swap",
+          address: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
+          owner: "Wallet-Page2",
+          from: {
+            symbol: "USDC",
+            decimals: 6,
+            address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            amount: 200000000,
+            uiAmount: 200,
+            price: 1.0
+          },
+          to: {
+            symbol: "SOL",
+            decimals: 9,
+            address: "So11111111111111111111111111111111111111112",
+            amount: 2000000000,
+            uiAmount: 2,
+            price: 100
+          }
+        }
+      ];
+
+      const getJson = vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: { items: page1Items, hasNext: true },
+          success: true
+        })
+        .mockResolvedValueOnce({
+          data: { items: page2Items, hasNext: false },
+          success: true
+        });
+
+      const mockHttp = {
+        getJson,
+        postJsonRaw: vi.fn()
+      } as unknown as HttpClient;
+
+      const source = new HttpBirdeyeFlowSource({
+        http: mockHttp,
+        url: "https://public-api.birdeye.so",
+        apiKey: "birdeye-secret",
+        poolAddress: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
+        whaleSwapMinUsdc: "500"
+      });
+
+      const result = await source.collect({
+        pair: "SOL/USDC",
+        fromUnixMs: 1785270000000,
+        toUnixMs: 1785280000000
+      });
+
+      expect(getJson).toHaveBeenCalledTimes(2);
+      expect(getJson).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining("offset=0"),
+        expect.anything()
+      );
+      expect(getJson).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining("offset=100"),
+        expect.anything()
+      );
+
+      const dexNetFlow = result.events.find((e) => e.eventKind === "dex_net_flow") as {
+        sellVolumeUsdc: string;
+        buyVolumeUsdc: string;
+        netFlowUsdc: string;
+      };
+
+      // 100 trades selling 100 USDC = 10,000 sell volume
+      expect(dexNetFlow.sellVolumeUsdc).toBe("10000");
+      // 1 trade buying 200 USDC = 200 buy volume
+      expect(dexNetFlow.buyVolumeUsdc).toBe("200");
+      expect(dexNetFlow.netFlowUsdc).toBe("-9800");
     });
   });
 });

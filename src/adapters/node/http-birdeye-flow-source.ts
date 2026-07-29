@@ -104,24 +104,34 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
 
     for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
       try {
-        const url = new URL(baseUrl);
-        url.searchParams.set("address", this.poolAddress);
-        url.searchParams.set("tx_type", "swap");
-        url.searchParams.set("offset", "0");
-        url.searchParams.set("limit", "100");
-        url.searchParams.set("after_time", String(Math.floor(request.fromUnixMs / 1000)));
-        url.searchParams.set("before_time", String(Math.floor(request.toUnixMs / 1000)));
+        const allItems: BirdeyePairTradeItem[] = [];
+        let offset = 0;
+        const limit = 100;
+        let hasNext = true;
 
-        const response = await this.options.http.getJson<BirdeyePairTradesResponse>(
-          url.toString(),
-          {
+        while (hasNext) {
+          const url = new URL(baseUrl);
+          url.searchParams.set("address", this.poolAddress);
+          url.searchParams.set("tx_type", "swap");
+          url.searchParams.set("offset", String(offset));
+          url.searchParams.set("limit", String(limit));
+          url.searchParams.set("after_time", String(Math.floor(request.fromUnixMs / 1000)));
+          url.searchParams.set("before_time", String(Math.floor(request.toUnixMs / 1000)));
+
+          const response = await this.options.http.getJson<unknown>(url.toString(), {
             headers,
             timeoutMs: this.timeoutMs,
             maxAttempts: 1
-          }
-        );
+          });
 
-        return this.acceptBirdeyeSnapshot(response, request);
+          this.validateResponseEnvelope(response);
+
+          allItems.push(...response.data.items);
+          hasNext = response.data.hasNext === true;
+          offset += limit;
+        }
+
+        return this.acceptBirdeyeSnapshot(allItems, request);
       } catch (e) {
         lastError = e instanceof Error ? e : new Error(String(e));
 
@@ -149,19 +159,20 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
     );
   }
 
-  private acceptBirdeyeSnapshot(
-    response: BirdeyePairTradesResponse,
-    request: OnChainFlowSourceRequest
-  ): OnChainFlowSourceSnapshot {
+  private validateResponseEnvelope(
+    response: unknown
+  ): asserts response is BirdeyePairTradesResponse {
     if (typeof response !== "object" || response === null) {
       throw new HttpRequestError("invalid_json", "Response is not an object", null, false);
     }
 
-    if (typeof response.success !== "boolean" || response.success !== true) {
+    const res = response as Partial<BirdeyePairTradesResponse>;
+
+    if (typeof res.success !== "boolean" || res.success !== true) {
       throw new HttpRequestError("invalid_json", "Response success is not true", null, false);
     }
 
-    if (typeof response.data !== "object" || response.data === null) {
+    if (typeof res.data !== "object" || res.data === null) {
       throw new HttpRequestError(
         "invalid_json",
         "Response data is missing or not an object",
@@ -170,7 +181,7 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
       );
     }
 
-    if (!Array.isArray(response.data.items)) {
+    if (!Array.isArray(res.data.items)) {
       throw new HttpRequestError(
         "invalid_json",
         "Response data.items is not an array",
@@ -178,7 +189,12 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
         false
       );
     }
+  }
 
+  private acceptBirdeyeSnapshot(
+    items: BirdeyePairTradeItem[],
+    request: OnChainFlowSourceRequest
+  ): OnChainFlowSourceSnapshot {
     const seenTxHashes = new Set<string>();
     let buyVolumeUsdc = BigInt(0);
     let sellVolumeUsdc = BigInt(0);
@@ -187,7 +203,7 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
     const USDC_SCALE = 6;
     const whaleMinRaw = parseDecimalStringForBigInt(this.whaleSwapMinUsdc, USDC_SCALE);
 
-    for (const item of response.data.items) {
+    for (const item of items) {
       if (!this.isValidItem(item)) {
         throw new HttpRequestError("invalid_json", "Invalid item in response", null, false);
       }
@@ -424,9 +440,9 @@ function formatDecimalStringFromBigInt(value: bigint, scale: number): string {
   const absValue = isNegative ? -value : value;
   const absStr = absValue.toString();
   const padded = absStr.padStart(scale + 1, "0");
-  const intPart = padded.slice(0, -scale) || "0";
-  const fracPart = padded.slice(-scale);
+  const intPart = padded.slice(0, padded.length - scale) || "0";
+  const fracPart = padded.slice(padded.length - scale);
   const result = intPart + (scale > 0 ? "." + fracPart : "");
   const trimmed = result.replace(/\.?0+$/, "");
-  return isNegative ? "-" + trimmed : trimmed;
+  return isNegative ? "-" + (trimmed || "0") : trimmed || "0";
 }
