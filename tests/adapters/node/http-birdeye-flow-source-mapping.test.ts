@@ -1056,7 +1056,7 @@ describe("HttpBirdeyeFlowSource", () => {
       }
     });
 
-    it("retries 429 rate limit errors up to maxAttempts", async () => {
+    it("does not retry 429 rate limit errors without retry guidance", async () => {
       const mockHttp = {
         getJson: vi.fn().mockImplementation(async () => {
           throw new HttpRequestError("http_status", "Rate limited", 429, true);
@@ -1083,7 +1083,7 @@ describe("HttpBirdeyeFlowSource", () => {
       } catch (e) {
         const error = e as OnChainFlowSourceError;
         expect(error.kind).toBe("unavailable");
-        expect(mockHttp.getJson).toHaveBeenCalledTimes(3);
+        expect(mockHttp.getJson).toHaveBeenCalledTimes(1);
       }
     });
 
