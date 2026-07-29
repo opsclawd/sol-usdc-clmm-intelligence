@@ -99,7 +99,8 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
     for (let page = 0, offset = 0; page < MAX_PAGES; page++, offset += PAGE_LIMIT) {
       const pageData = await this.fetchPageWithRetry(offset, request);
       trades.push(...pageData.items);
-      if (!pageData.hasNext) {
+      const isLastPage = !pageData.hasNext || pageData.items.length < PAGE_LIMIT;
+      if (isLastPage) {
         try {
           return this.acceptBirdeyeSnapshot(trades, request);
         } catch (e) {
@@ -206,8 +207,17 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
 
     const res = response as Partial<BirdeyePairTradesResponse>;
 
-    if (typeof res.success !== "boolean" || res.success !== true) {
-      throw new HttpRequestError("invalid_json", "Response success is not true", null, false);
+    if (res.success === false) {
+      throw new HttpRequestError("network", "Response success is false", null, true);
+    }
+
+    if (typeof res.success !== "boolean") {
+      throw new HttpRequestError(
+        "invalid_json",
+        "Response success is missing or not a boolean",
+        null,
+        false
+      );
     }
 
     if (typeof res.data !== "object" || res.data === null) {
