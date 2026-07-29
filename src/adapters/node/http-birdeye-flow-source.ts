@@ -99,7 +99,8 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
     for (let page = 0, offset = 0; page < MAX_PAGES; page++, offset += PAGE_LIMIT) {
       const pageData = await this.fetchPageWithRetry(offset, request);
       trades.push(...pageData.items);
-      if (!pageData.hasNext) {
+      const isLastPage = !pageData.hasNext || pageData.items.length < PAGE_LIMIT;
+      if (isLastPage) {
         try {
           return this.acceptBirdeyeSnapshot(trades, request);
         } catch (e) {

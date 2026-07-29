@@ -40,15 +40,21 @@ function makeTradeItem(txHash: string, fromSymbol: string, toSymbol: string, amo
   };
 }
 
+function makeFullPage(prefix: string, fromSymbol = "SOL", toSymbol = "USDC") {
+  return Array.from({ length: 50 }, (_, index) =>
+    makeTradeItem(`${prefix}-${index}`, fromSymbol, toSymbol, 100)
+  );
+}
+
 describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
   it("requests Birdeye pages with limit 50 and advances offsets by 50 until hasNext is false", async () => {
-    const page1Item = makeTradeItem("tx1", "SOL", "USDC", 1000);
+    const page1Items = makeFullPage("page1", "SOL", "USDC");
     const page2Item = makeTradeItem("tx2", "USDC", "SOL", 500);
 
     const getJsonMock = vi
       .fn<HttpClient["getJson"]>()
       .mockResolvedValueOnce({
-        data: { items: [page1Item], hasNext: true },
+        data: { items: page1Items, hasNext: true },
         success: true
       })
       .mockResolvedValueOnce({
@@ -90,25 +96,60 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
       buyVolumeUsdc: string;
       netFlowUsdc: string;
     };
-    expect(dexNetFlow.sellVolumeUsdc).toBe("1000");
+    expect(dexNetFlow.sellVolumeUsdc).toBe("5000");
     expect(dexNetFlow.buyVolumeUsdc).toBe("500");
-    expect(dexNetFlow.netFlowUsdc).toBe("-500");
+    expect(dexNetFlow.netFlowUsdc).toBe("-4500");
 
     const whaleSwaps = result.events.filter((e) => e.eventKind === "whale_swap");
-    expect(whaleSwaps).toHaveLength(2);
+    expect(whaleSwaps).toHaveLength(1);
   });
 
-  it("advances by 50 past an empty page whose hasNext is true", async () => {
-    const page2Item = makeTradeItem("tx1", "SOL", "USDC", 1000);
+  it("stops after an under-filled page even when hasNext is true", async () => {
+    const getJsonMock = vi.fn<HttpClient["getJson"]>().mockResolvedValueOnce({
+      data: { items: [makeTradeItem("partial-0", "SOL", "USDC", 100)], hasNext: true },
+      success: true
+    });
 
+    const mockHttp = {
+      getJson: getJsonMock,
+      postJsonRaw: vi.fn()
+    } as unknown as HttpClient;
+
+    const source = new HttpBirdeyeFlowSource({
+      http: mockHttp,
+      url: "https://public-api.birdeye.so",
+      apiKey: DEFAULT_API_KEY,
+      poolAddress: DEFAULT_POOL,
+      whaleSwapMinUsdc: "500"
+    });
+
+    const result = await source.collect({
+      pair: "SOL/USDC",
+      fromUnixMs: 1785270000000,
+      toUnixMs: 1785280000000
+    });
+
+    expect(getJsonMock).toHaveBeenCalledTimes(1);
+
+    const dexNetFlow = result.events.find((e) => e.eventKind === "dex_net_flow") as {
+      sellVolumeUsdc: string;
+      buyVolumeUsdc: string;
+      netFlowUsdc: string;
+    };
+    expect(dexNetFlow.sellVolumeUsdc).toBe("100");
+    expect(dexNetFlow.buyVolumeUsdc).toBe("0");
+    expect(dexNetFlow.netFlowUsdc).toBe("-100");
+  });
+
+  it("continues after a full page when hasNext is true", async () => {
     const getJsonMock = vi
       .fn<HttpClient["getJson"]>()
       .mockResolvedValueOnce({
-        data: { items: [], hasNext: true },
+        data: { items: makeFullPage("full-first"), hasNext: true },
         success: true
       })
       .mockResolvedValueOnce({
-        data: { items: [page2Item], hasNext: false },
+        data: { items: [], hasNext: false },
         success: true
       });
 
@@ -132,21 +173,49 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
     });
 
     expect(getJsonMock).toHaveBeenCalledTimes(2);
-
-    const url1 = new URL(getJsonMock.mock.calls[0]![0]);
-    expect(url1.searchParams.get("offset")).toBe("0");
-
-    const url2 = new URL(getJsonMock.mock.calls[1]![0]);
-    expect(url2.searchParams.get("offset")).toBe("50");
+    expect(new URL(getJsonMock.mock.calls[1]![0]).searchParams.get("offset")).toBe("50");
 
     const dexNetFlow = result.events.find((e) => e.eventKind === "dex_net_flow") as {
       sellVolumeUsdc: string;
     };
-    expect(dexNetFlow.sellVolumeUsdc).toBe("1000");
+    expect(dexNetFlow.sellVolumeUsdc).toBe("5000");
+  });
+
+  it("stops after a full page when hasNext is false", async () => {
+    const getJsonMock = vi.fn<HttpClient["getJson"]>().mockResolvedValueOnce({
+      data: { items: makeFullPage("full-final"), hasNext: false },
+      success: true
+    });
+
+    const mockHttp = {
+      getJson: getJsonMock,
+      postJsonRaw: vi.fn()
+    } as unknown as HttpClient;
+
+    const source = new HttpBirdeyeFlowSource({
+      http: mockHttp,
+      url: "https://public-api.birdeye.so",
+      apiKey: DEFAULT_API_KEY,
+      poolAddress: DEFAULT_POOL,
+      whaleSwapMinUsdc: "500"
+    });
+
+    const result = await source.collect({
+      pair: "SOL/USDC",
+      fromUnixMs: 1785270000000,
+      toUnixMs: 1785280000000
+    });
+
+    expect(getJsonMock).toHaveBeenCalledTimes(1);
+
+    const dexNetFlow = result.events.find((e) => e.eventKind === "dex_net_flow") as {
+      sellVolumeUsdc: string;
+    };
+    expect(dexNetFlow.sellVolumeUsdc).toBe("5000");
   });
 
   it("retries only the failed page at the same 50-trade offset", async () => {
-    const page1Item = makeTradeItem("tx1", "SOL", "USDC", 1000);
+    const page1Items = makeFullPage("page1", "SOL", "USDC");
     const page2Item = makeTradeItem("tx2", "USDC", "SOL", 500);
 
     const fakeRetry = new FakeRetry([0]);
@@ -155,7 +224,7 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
       .fn<HttpClient["getJson"]>()
       // Page 1 (offset 0) succeeds
       .mockResolvedValueOnce({
-        data: { items: [page1Item], hasNext: true },
+        data: { items: page1Items, hasNext: true },
         success: true
       })
       // Page 2 (offset 50) attempt 1 fails with 500 error
@@ -201,7 +270,7 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
       sellVolumeUsdc: string;
       buyVolumeUsdc: string;
     };
-    expect(dexNetFlow.sellVolumeUsdc).toBe("1000");
+    expect(dexNetFlow.sellVolumeUsdc).toBe("5000");
     expect(dexNetFlow.buyVolumeUsdc).toBe("500");
   });
 
@@ -340,12 +409,14 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
     }
   });
 
-  it("preserves 10000-trade capacity and fails closed after 200 continuing pages", async () => {
+  it("preserves 10000-trade capacity and fails closed after 200 continuing full pages", async () => {
     const getJsonMock = vi.fn<HttpClient["getJson"]>();
-    for (let i = 0; i < 200; i++) {
+    for (let page = 0; page < 200; page++) {
       getJsonMock.mockResolvedValueOnce({
         data: {
-          items: [makeTradeItem(`tx-${i}`, "SOL", "USDC", 100)],
+          items: Array.from({ length: 50 }, (_, item) =>
+            makeTradeItem(`tx-${page}-${item}`, "SOL", "USDC", 100)
+          ),
           hasNext: true
         },
         success: true
@@ -381,13 +452,13 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
   });
 
   it("sends the pair address window swap type limit and Solana headers on every page", async () => {
-    const page1Item = makeTradeItem("tx1", "SOL", "USDC", 1000);
+    const page1Items = makeFullPage("page1", "SOL", "USDC");
     const page2Item = makeTradeItem("tx2", "USDC", "SOL", 500);
 
     const getJsonMock = vi
       .fn<HttpClient["getJson"]>()
       .mockResolvedValueOnce({
-        data: { items: [page1Item], hasNext: true },
+        data: { items: page1Items, hasNext: true },
         success: true
       })
       .mockResolvedValueOnce({

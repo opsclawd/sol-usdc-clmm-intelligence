@@ -333,11 +333,18 @@ describe("HttpBirdeyeFlowSource rate limiting", () => {
       }
     };
 
+    const page1Items = Array.from({ length: 50 }, (_, i) => ({
+      ...item1,
+      txHash: `tx-page-1-${i}`,
+      from: { ...item1.from, uiAmount: i === 0 ? 100 : 0 },
+      to: { ...item1.to, uiAmount: i === 0 ? 100 : 0 }
+    }));
+
     const mockHttp = {
       getJson: vi
         .fn()
         .mockResolvedValueOnce({
-          data: { items: [item1], hasNext: true },
+          data: { items: page1Items, hasNext: true },
           success: true
         })
         .mockRejectedValueOnce(rateLimitError({ "Retry-After": "2" }))
