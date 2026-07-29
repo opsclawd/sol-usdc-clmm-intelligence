@@ -4,7 +4,8 @@ import type {
   SourceReference,
   ContextualEvidence,
   EventClaim,
-  FlowClaim
+  FlowClaim,
+  Identifier128
 } from "../../contracts/generated/evidence-bundle-v1.js";
 import type { SelectedFeatureSlot } from "./select.js";
 import type { EvidenceBundleQuality } from "./quality.js";
@@ -18,6 +19,8 @@ import type {
 } from "../../contracts/context-events.js";
 import type { OnChainFlowPayloadV1 } from "../../contracts/on-chain-flow.js";
 import { toCanonicalTimestamp } from "./timestamp.js";
+
+const FEATURE_UNAVAILABLE_REFERENCE_ID = "feature_unavailable" as Identifier128;
 
 export const EVIDENCE_BUNDLE_ASSEMBLE_VERSION = "mvp-evidence-bundle-assemble/v1";
 
@@ -140,7 +143,8 @@ function getValidUntilUnixMsFromSlot(slot: SelectedFeatureSlot): number | null {
 
 function buildDeterministicFeature(
   slot: SelectedFeatureSlot,
-  featureKind: FeatureKind
+  featureKind: FeatureKind,
+  availableInputLineage: [Identifier128, ...Identifier128[]]
 ): DeterministicFeature {
   const family = mapFeatureKindToFamily(featureKind);
   const featureKindType = mapFeatureKindToKind(featureKind);
@@ -149,6 +153,8 @@ function buildDeterministicFeature(
   const asOfUnixMs = getAsOfUnixMsFromSlot(slot);
   const validUntilUnixMs = getValidUntilUnixMsFromSlot(slot);
   const unit = mapFeatureKindToUnit(featureKind);
+
+  const unavailableInputLineage = [FEATURE_UNAVAILABLE_REFERENCE_ID] as [Identifier128];
 
   if (slot.outcome === "missing") {
     const result = {
@@ -165,10 +171,10 @@ function buildDeterministicFeature(
         name: "mvp-calculator",
         version: "1.0"
       },
-      inputLineage: ["missing"] as [string, ...string[]],
+      inputLineage: unavailableInputLineage,
       warnings: ["missing_slot"] as [string, ...string[]]
     };
-    return result as DeterministicFeature;
+    return result as unknown as DeterministicFeature;
   }
 
   const normalizedWarnings = normalizeWarnings([...warnings]);
@@ -179,8 +185,7 @@ function buildDeterministicFeature(
     calculator: {
       name: "mvp-calculator",
       version: "1.0"
-    },
-    inputLineage: [`row-${rowId}`] as [string, ...string[]]
+    }
   };
 
   if (slot.outcome === "selected_available" || slot.outcome === "selected_partial") {
@@ -192,9 +197,10 @@ function buildDeterministicFeature(
       observedAt: asOfUnixMs !== null ? toCanonicalTimestamp(asOfUnixMs) : null,
       freshUntil: validUntilUnixMs !== null ? toCanonicalTimestamp(validUntilUnixMs) : null,
       confidenceBps: slot.confidence.compositeScore,
-      warnings: normalizedWarnings.slice(0, 16) as [string, ...string[]]
+      warnings: normalizedWarnings.slice(0, 16) as [string, ...string[]],
+      inputLineage: availableInputLineage
     };
-    return result as DeterministicFeature;
+    return result as unknown as DeterministicFeature;
   }
 
   if (slot.outcome === "selected_unavailable") {
@@ -210,9 +216,10 @@ function buildDeterministicFeature(
       observedAt: null,
       freshUntil: null,
       confidenceBps: 0,
-      warnings: unavailableWarnings
+      warnings: unavailableWarnings,
+      inputLineage: unavailableInputLineage
     };
-    return result as DeterministicFeature;
+    return result as unknown as DeterministicFeature;
   }
 
   const expiredWarnings: [string, ...string[]] =
@@ -227,9 +234,10 @@ function buildDeterministicFeature(
     observedAt: null,
     freshUntil: null,
     confidenceBps: 0,
-    warnings: expiredWarnings
+    warnings: expiredWarnings,
+    inputLineage: unavailableInputLineage
   };
-  return result as DeterministicFeature;
+  return result as unknown as DeterministicFeature;
 }
 
 function buildContextualEvidence(
@@ -398,16 +406,35 @@ export function assembleEvidenceBundleCandidate(
     contextualEvents
   } = input;
 
+  const sourceReferences = buildSourceReferences(lineage);
+  const availableInputLineage = sourceReferences.map((reference) => reference.referenceId) as [
+    Identifier128,
+    ...Identifier128[]
+  ];
+
   const deterministicFeatures: DeterministicFeature[] = MVP_FEATURE_KINDS.map(
     (featureKind, index) => {
       const slot = slots[index];
       if (!slot || slot.featureKind !== featureKind) {
         const missingSlot: SelectedFeatureSlot = { featureKind, outcome: "missing" };
-        return buildDeterministicFeature(missingSlot, featureKind);
+        return buildDeterministicFeature(missingSlot, featureKind, availableInputLineage);
       }
-      return buildDeterministicFeature(slot, featureKind);
+      return buildDeterministicFeature(slot, featureKind, availableInputLineage);
     }
   );
+
+  const needsUnavailableReference = deterministicFeatures.some((feature) =>
+    feature.inputLineage.includes(FEATURE_UNAVAILABLE_REFERENCE_ID)
+  );
+
+  if (needsUnavailableReference) {
+    sourceReferences.push({
+      referenceId: FEATURE_UNAVAILABLE_REFERENCE_ID,
+      sourceType: "internal_bundle",
+      locator: "unavailable",
+      observedAt: toCanonicalTimestamp(asOf)
+    });
+  }
 
   const scope = {
     kind: "position" as const,
@@ -447,7 +474,7 @@ export function assembleEvidenceBundleCandidate(
     ],
     contextualEvidence,
     researchBrief,
-    sourceReferences: buildSourceReferences(lineage) as [SourceReference, ...SourceReference[]],
+    sourceReferences: sourceReferences as [SourceReference, ...SourceReference[]],
     assessment: buildBundleAssessment(quality),
     provenance: buildBundleProvenance(input, lineage)
   };
