@@ -8,6 +8,7 @@ describe("HttpDriftSource", () => {
     const fakeRetry = new FakeRetry();
     const adapter = new HttpDriftSource({
       baseUrl: "https://drift-api.example.com",
+      symbol: "SOL-PERP",
       marketIndex: 0,
       http: fakeHttp,
       retry: fakeRetry,
@@ -75,6 +76,7 @@ describe("HttpDriftSource", () => {
     const fakeRetry = new FakeRetry();
     const adapter = new HttpDriftSource({
       baseUrl: "https://drift-api.example.com",
+      symbol: "SOL-PERP",
       marketIndex: 0,
       http: fakeHttp,
       retry: fakeRetry,
@@ -131,6 +133,7 @@ describe("HttpDriftSource", () => {
     const fakeRetry = new FakeRetry();
     const adapter = new HttpDriftSource({
       baseUrl: "https://drift-api.example.com",
+      symbol: "SOL-PERP",
       marketIndex: 0,
       http: fakeHttp,
       retry: fakeRetry,

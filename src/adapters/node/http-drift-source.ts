@@ -26,6 +26,7 @@ export interface DriftPrecisions {
 
 export interface HttpDriftSourceConfig {
   readonly baseUrl: string;
+  readonly symbol: string;
   readonly marketIndex: number;
   readonly http: HttpClient;
   readonly retry?: RetryControl;
@@ -65,6 +66,7 @@ function scaleIntegerString(valStr: string, exp: number): string {
 
 export class HttpDriftSource implements PerpLiquidationSourcePort {
   private readonly baseUrl: string;
+  private readonly symbol: string;
   private readonly marketIndex: number;
   private readonly http: HttpClient;
   private readonly retryControl: RetryControl;
@@ -73,6 +75,7 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
 
   constructor(config: HttpDriftSourceConfig) {
     this.baseUrl = config.baseUrl;
+    this.symbol = config.symbol;
     this.marketIndex = config.marketIndex;
     this.http = config.http;
     this.retryControl = config.retry ?? new SystemRetryControl();
@@ -145,7 +148,7 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
               evidenceFamily: "perp_liquidation",
               pair: request.pair,
               venue: "drift-api",
-              instrument: `SOL-PERP-${this.marketIndex}`,
+              instrument: this.symbol,
               sourceEventId: `drift-funding-${row.recordId}`,
               observedAtUnixMs: tsMs,
               kind: "funding_rate",
@@ -229,7 +232,7 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
             evidenceFamily: "perp_liquidation",
             pair: request.pair,
             venue: "drift-api",
-            instrument: `SOL-PERP-${this.marketIndex}`,
+            instrument: this.symbol,
             sourceEventId: `drift-oi-${asOfUnixMs}`,
             observedAtUnixMs: asOfUnixMs,
             kind: "open_interest",
@@ -245,7 +248,7 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
             evidenceFamily: "perp_liquidation",
             pair: request.pair,
             venue: "drift-api",
-            instrument: `SOL-PERP-${this.marketIndex}`,
+            instrument: this.symbol,
             sourceEventId: `drift-basis-${asOfUnixMs}`,
             observedAtUnixMs: asOfUnixMs,
             kind: "perp_basis",
@@ -336,7 +339,7 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
               evidenceFamily: "perp_liquidation",
               pair: request.pair,
               venue: "drift-api",
-              instrument: `SOL-PERP-${this.marketIndex}`,
+              instrument: this.symbol,
               sourceEventId: String(row.liquidationId),
               observedAtUnixMs: rawTs < 1e11 ? rawTs * 1000 : rawTs,
               kind: "liquidation_event",
@@ -388,7 +391,7 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
           evidenceFamily: "perp_liquidation",
           pair: request.pair,
           venue: "drift-api",
-          instrument: `SOL-PERP-${this.marketIndex}`,
+          instrument: this.symbol,
           sourceEventId: `drift-leverage-${asOfUnixMs}`,
           observedAtUnixMs: asOfUnixMs,
           kind: "leverage_proxy",
