@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HttpClient } from "../../../src/ports/http.js";
 import { HttpHeliusFlowSource } from "../../../src/adapters/node/http-helius-flow-source.js";
-import heliusTransactionsFixture from "../../fixtures/helius-address-transactions.json";
+import heliusTransactionsFixture from "../../fixtures/helius-address-transactions.json" with { type: "json" };
 
 const WATCHED_WALLET = "Wallet123";
 const FROM_UNIX_MS = 1700000000000;
@@ -46,7 +46,7 @@ describe("HttpHeliusFlowSource mapping", () => {
       });
 
       expect(result.events).toHaveLength(1);
-      const event = result.events[0];
+      const event = result.events[0]!;
       expect(event.eventKind).toBe("whale_transfer");
       expect((event as { amountUsdc: string }).amountUsdc).toBe("1250000.25");
       expect((event as { addressContext: { address: string } }).addressContext.address).toBe(
@@ -84,7 +84,7 @@ describe("HttpHeliusFlowSource mapping", () => {
       });
 
       expect(result.events).toHaveLength(1);
-      const event = result.events[0];
+      const event = result.events[0]!;
       expect(event.eventKind).toBe("whale_transfer");
       expect((event as { direction: string }).direction).toBe("outbound");
       expect((event as { sourceEventId: string }).sourceEventId).toBe(
@@ -186,10 +186,10 @@ describe("HttpHeliusFlowSource mapping", () => {
       });
 
       expect(mockHttp.getJson).toHaveBeenCalledTimes(1);
-      const [url, options] = mockHttp.getJson.mock.calls[0] as [
-        string,
-        { headers: Record<string, string> }
-      ];
+      const mockFn = mockHttp.getJson as ReturnType<typeof vi.fn>;
+      const calls = mockFn.mock.calls;
+      expect(calls).toHaveLength(1);
+      const [url, options] = calls[0] as [string, { headers: Record<string, string> }];
 
       const parsedUrl = new URL(url);
       expect(parsedUrl.origin).toBe("https://api.helius.com");
