@@ -587,13 +587,14 @@ SUPPORT_RESISTANCE_API_URL=<technical-analysis-api-provider-url>
 SUPPORT_RESISTANCE_API_KEY=<optional-api-key>
 ```
 
-For On-Chain Flow collection (Helius transaction flows, Birdeye DEX net flows; see `docs/operator-runbook.md` for threshold overrides):
+For On-Chain Flow collection (Helius whale_transfer for position wallet, Birdeye whale_swap and dex_net_flow; see `docs/operator-runbook.md` for threshold overrides):
 
 ```bash
-HELIUS_FLOW_API_URL=<helius-transactions-api-url>
+HELIUS_FLOW_API_URL=https://api.helius.xyz
 HELIUS_API_KEY=<helius-api-key>
-BIRDEYE_FLOW_API_URL=<birdeye-defi-portfolio-api-url>
+BIRDEYE_FLOW_API_URL=https://public-api.birdeye.so
 BIRDEYE_API_KEY=<birdeye-api-key>
+WALLET_PUBLIC_KEY=<position-wallet>
 ```
 
 For Perp & Liquidation collection (Binance fAPI, Drift):
