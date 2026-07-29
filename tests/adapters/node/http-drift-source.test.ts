@@ -3,52 +3,48 @@ import { HttpDriftSource } from "../../../src/adapters/node/http-drift-source.js
 import { FakeHttp, FakeRetry } from "../../fakes/index.js";
 
 describe("HttpDriftSource", () => {
-  it("keeps venue response fields inside adapters and emits only canonical source facts", async () => {
+  it("maps Velocity funding and market statistics into canonical facts", async () => {
     const fakeHttp = new FakeHttp();
     const fakeRetry = new FakeRetry();
     const adapter = new HttpDriftSource({
-      baseUrl: "https://drift-api.example.com",
+      baseUrl: "https://data.velocity.exchange",
       symbol: "SOL-PERP",
       marketIndex: 0,
       http: fakeHttp,
-      retry: fakeRetry,
-      precisions: {
-        basePrecisionExp: 9,
-        quotePrecisionExp: 6,
-        pricePrecisionExp: 6
-      }
+      retry: fakeRetry
     });
 
-    fakeHttp.setResponse("https://drift-api.example.com/fundingRates?marketIndex=0", {
-      body: [{ marketIndex: 0, recordId: "1", fundingRate: "1000", ts: "1700000000" }]
+    fakeHttp.setResponse("https://data.velocity.exchange/market/SOL-PERP/fundingRates", {
+      body: [{ id: "f1", ts: 1700000000000, fundingRate: "0.015717" }]
     });
-    fakeHttp.setResponse("https://drift-api.example.com/marketState?marketIndex=0", {
-      body: {
-        marketIndex: 0,
-        baseAssetAmountWithUnsettledLp: "1000000000000",
-        amm: {
-          historicalOracleData: { lastOraclePrice: "150000000" },
-          lastMarkPrice: "150250000"
+
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/markets", {
+      body: [
+        {
+          symbol: "SOL-PERP",
+          oraclePrice: "73.857295",
+          markPrice: "73.504000",
+          openInterest: { long: "52.16", short: "-182.12" },
+          fundingRate: { long: "0.015717", short: "-0.015717" },
+          fundingRate24h: "-0.016384"
         }
-      }
+      ]
     });
-    fakeHttp.setResponse(
-      "https://drift-api.example.com/liquidations?marketIndex=0&fromMs=1699999000000&toMs=1700000000000",
-      {
-        body: [
+
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/liquidations", {
+      body: {
+        records: [
           {
-            liquidationId: "liq-100",
+            id: "liq-sol-1",
             marketIndex: 0,
-            direction: "long",
-            baseAssetAmount: "5000000000",
-            quoteAssetAmount: "750000000",
+            liquidationType: "perp",
+            side: "long",
+            amountBase: "5.5",
+            notionalUsdc: "404.272",
             ts: 1700000000000
           }
         ]
       }
-    );
-    fakeHttp.setResponse("https://drift-api.example.com/netPositionRatio?marketIndex=0", {
-      body: { netPositionRatio: "1.15" }
     });
 
     const snapshot = await adapter.collect({
@@ -58,60 +54,198 @@ describe("HttpDriftSource", () => {
     });
 
     expect(snapshot.source).toBe("drift-api");
+    expect(snapshot.coverage.funding_rate.status).toBe("available");
+    expect(snapshot.coverage.open_interest.status).toBe("available");
+    expect(snapshot.coverage.perp_basis.status).toBe("available");
+    expect(snapshot.coverage.leverage_proxy.status).toBe("available");
     expect(snapshot.coverage.liquidation_event.status).toBe("available");
-    expect(snapshot.facts.length).toBeGreaterThan(0);
+
+    const fundingFact = snapshot.facts.find((f) => f.kind === "funding_rate");
+    expect(fundingFact).toBeDefined();
+    expect(fundingFact?.payload).toEqual({
+      schemaVersion: 1,
+      evidenceFamily: "perp_liquidation",
+      pair: "SOL/USDC",
+      venue: "drift-api",
+      instrument: "SOL-PERP",
+      sourceEventId: "drift-funding-f1",
+      observedAtUnixMs: 1700000000000,
+      kind: "funding_rate",
+      fundingRate: "0.015717",
+      fundingIntervalHours: 1
+    });
+
+    const oiFact = snapshot.facts.find((f) => f.kind === "open_interest");
+    expect(oiFact).toBeDefined();
+    expect(oiFact?.payload).toMatchObject({
+      schemaVersion: 1,
+      evidenceFamily: "perp_liquidation",
+      pair: "SOL/USDC",
+      venue: "drift-api",
+      instrument: "SOL-PERP",
+      kind: "open_interest",
+      openInterestBase: "234.28",
+      openInterestUsdc: "17220.51712",
+      sampleWindowSeconds: 300
+    });
+
+    const basisFact = snapshot.facts.find((f) => f.kind === "perp_basis");
+    expect(basisFact).toBeDefined();
+    expect(basisFact?.payload).toMatchObject({
+      schemaVersion: 1,
+      evidenceFamily: "perp_liquidation",
+      pair: "SOL/USDC",
+      venue: "drift-api",
+      instrument: "SOL-PERP",
+      kind: "perp_basis",
+      perpPriceUsdc: "73.504000",
+      spotPriceUsdc: "73.857295"
+    });
 
     for (const fact of snapshot.facts) {
-      expect(fact.venue).toBe("drift-api");
-      const payload = fact.payload as unknown as Record<string, unknown>;
-      expect(payload).not.toHaveProperty("baseAssetAmountWithUnsettledLp");
-      expect(payload).not.toHaveProperty("lastOraclePrice");
-      expect(payload).not.toHaveProperty("baseAssetAmount");
-      expect(payload.schemaVersion).toBe(1);
+      const payload = fact.payload as Record<string, unknown>;
+      expect(payload).not.toHaveProperty("oraclePrice");
+      expect(payload).not.toHaveProperty("markPrice");
+      expect(payload).not.toHaveProperty("openInterest");
+      expect(payload).not.toHaveProperty("fundingRate24h");
+      expect(payload).not.toHaveProperty("records");
+      expect(payload).not.toHaveProperty("liquidationType");
     }
   });
 
-  it("maps Drift liquidation precision only from configured documented precision", async () => {
+  it("computes leverage proxy from absolute long and short open interest", async () => {
     const fakeHttp = new FakeHttp();
     const fakeRetry = new FakeRetry();
     const adapter = new HttpDriftSource({
-      baseUrl: "https://drift-api.example.com",
+      baseUrl: "https://data.velocity.exchange",
       symbol: "SOL-PERP",
       marketIndex: 0,
       http: fakeHttp,
-      retry: fakeRetry,
-      precisions: {
-        basePrecisionExp: 9,
-        quotePrecisionExp: 6,
-        pricePrecisionExp: 6
-      }
+      retry: fakeRetry
     });
 
-    fakeHttp.setResponse("https://drift-api.example.com/fundingRates?marketIndex=0", { body: [] });
-    fakeHttp.setResponse("https://drift-api.example.com/marketState?marketIndex=0", {
-      body: {
-        marketIndex: 0,
-        baseAssetAmountWithUnsettledLp: "1000000000",
-        amm: { historicalOracleData: { lastOraclePrice: "1000000" }, lastMarkPrice: "1000000" }
-      }
+    fakeHttp.setResponse("https://data.velocity.exchange/market/SOL-PERP/fundingRates", {
+      body: []
     });
-    fakeHttp.setResponse(
-      "https://drift-api.example.com/liquidations?marketIndex=0&fromMs=1699999000000&toMs=1700000000000",
-      {
-        body: [
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/liquidations", {
+      body: { records: [] }
+    });
+
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/markets", {
+      body: [
+        {
+          symbol: "SOL-PERP",
+          oraclePrice: "73.857295",
+          markPrice: "73.504000",
+          openInterest: { long: "52.16", short: "-182.12" },
+          fundingRate: { long: "0.015717", short: "-0.015717" }
+        }
+      ]
+    });
+
+    const snapshot1 = await adapter.collect({
+      pair: "SOL/USDC",
+      fromUnixMs: 1699999000000,
+      toUnixMs: 1700000000000
+    });
+
+    expect(snapshot1.coverage.leverage_proxy.status).toBe("available");
+    const levFact = snapshot1.facts.find((f) => f.kind === "leverage_proxy");
+    expect(levFact).toBeDefined();
+    expect(levFact?.payload).toMatchObject({
+      kind: "leverage_proxy",
+      longShortRatio: "0.286404568416",
+      methodology: "market_net_position_ratio"
+    });
+
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/markets", {
+      body: [
+        {
+          symbol: "SOL-PERP",
+          oraclePrice: "73.857295",
+          markPrice: "73.504000",
+          openInterest: { long: "52.16", short: "0.0" },
+          fundingRate: { long: "0.015717", short: "-0.015717" }
+        }
+      ]
+    });
+
+    const snapshot2 = await adapter.collect({
+      pair: "SOL/USDC",
+      fromUnixMs: 1699999000000,
+      toUnixMs: 1700000000000
+    });
+
+    expect(snapshot2.coverage.leverage_proxy.status).toBe("unavailable");
+    expect(snapshot2.facts.some((f) => f.kind === "leverage_proxy")).toBe(false);
+  });
+
+  it("filters Velocity liquidation records by market index and requested time window", async () => {
+    const fakeHttp = new FakeHttp();
+    const fakeRetry = new FakeRetry();
+    const adapter = new HttpDriftSource({
+      baseUrl: "https://data.velocity.exchange",
+      symbol: "SOL-PERP",
+      marketIndex: 0,
+      http: fakeHttp,
+      retry: fakeRetry
+    });
+
+    fakeHttp.setResponse("https://data.velocity.exchange/market/SOL-PERP/fundingRates", {
+      body: []
+    });
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/markets", { body: [] });
+
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/liquidations", {
+      body: {
+        records: [
           {
-            liquidationId: "liq-1",
+            id: "liq-before",
             marketIndex: 0,
-            direction: "short",
-            baseAssetAmount: "2000000000",
-            quoteAssetAmount: "300000000",
-            ts: 1700000000000
+            liquidationType: "perp",
+            side: "long",
+            amountBase: "10.0",
+            notionalUsdc: "735.04",
+            ts: 1699998999999
+          },
+          {
+            id: "liq-in-window",
+            marketIndex: 0,
+            liquidationType: "perp",
+            side: "long",
+            amountBase: "5.5",
+            notionalUsdc: "404.272",
+            ts: 1699999500000
+          },
+          {
+            id: "liq-after",
+            marketIndex: 0,
+            liquidationType: "perp",
+            side: "short",
+            amountBase: "8.0",
+            notionalUsdc: "588.032",
+            ts: 1700000000001
+          },
+          {
+            id: "liq-other-market",
+            marketIndex: 1,
+            liquidationType: "perp",
+            side: "long",
+            amountBase: "1.0",
+            notionalUsdc: "40000.0",
+            ts: 1699999500000
+          },
+          {
+            id: "liq-spot",
+            marketIndex: 0,
+            liquidationType: "spot",
+            side: "long",
+            amountBase: "2.0",
+            notionalUsdc: "147.0",
+            ts: 1699999500000
           }
         ]
       }
-    );
-    fakeHttp.setResponse("https://drift-api.example.com/netPositionRatio?marketIndex=0", {
-      body: null
     });
 
     const snapshot = await adapter.collect({
@@ -120,40 +254,124 @@ describe("HttpDriftSource", () => {
       toUnixMs: 1700000000000
     });
 
-    const liqFact = snapshot.facts.find((f) => f.kind === "liquidation_event");
-    expect(liqFact).toBeDefined();
-    if (liqFact && liqFact.payload.kind === "liquidation_event") {
-      expect(liqFact.payload.amountBase).toBe("2");
-      expect(liqFact.payload.notionalUsdc).toBe("300");
-    }
+    const liqFacts = snapshot.facts.filter((f) => f.kind === "liquidation_event");
+    expect(liqFacts).toHaveLength(1);
+    expect(liqFacts[0]?.payload).toMatchObject({
+      kind: "liquidation_event",
+      sourceEventId: "liq-in-window",
+      side: "long",
+      amountBase: "5.5",
+      notionalUsdc: "404.272",
+      observedAtUnixMs: 1699999500000
+    });
   });
 
-  it("emits leverage proxy only when documented market net-position ratio is supplied", async () => {
+  it("marks missing configured market and malformed liquidation envelopes without emitting facts", async () => {
     const fakeHttp = new FakeHttp();
     const fakeRetry = new FakeRetry();
     const adapter = new HttpDriftSource({
-      baseUrl: "https://drift-api.example.com",
+      baseUrl: "https://data.velocity.exchange",
+      symbol: "SOL-PERP",
+      marketIndex: 0,
+      http: fakeHttp,
+      retry: fakeRetry
+    });
+
+    fakeHttp.setResponse("https://data.velocity.exchange/market/SOL-PERP/fundingRates", {
+      body: []
+    });
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/markets", {
+      body: [
+        {
+          symbol: "BTC-PERP",
+          oraclePrice: "40000",
+          markPrice: "40000",
+          openInterest: { long: "10", short: "-10" }
+        }
+      ]
+    });
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/liquidations", {
+      body: { status: "ok" }
+    });
+
+    const snapshot = await adapter.collect({
+      pair: "SOL/USDC",
+      fromUnixMs: 1699999000000,
+      toUnixMs: 1700000000000
+    });
+
+    expect(snapshot.coverage.open_interest.status).toBe("malformed");
+    expect(snapshot.coverage.perp_basis.status).toBe("malformed");
+    expect(snapshot.coverage.leverage_proxy.status).toBe("malformed");
+    expect(snapshot.coverage.liquidation_event.status).toBe("malformed");
+
+    expect(snapshot.facts.some((f) => f.kind === "open_interest")).toBe(false);
+    expect(snapshot.facts.some((f) => f.kind === "perp_basis")).toBe(false);
+    expect(snapshot.facts.some((f) => f.kind === "leverage_proxy")).toBe(false);
+    expect(snapshot.facts.some((f) => f.kind === "liquidation_event")).toBe(false);
+  });
+
+  it("preserves partial coverage when one Velocity endpoint fails", async () => {
+    const fakeHttp = new FakeHttp();
+    const fakeRetry = new FakeRetry();
+    const adapter = new HttpDriftSource({
+      baseUrl: "https://data.velocity.exchange",
+      symbol: "SOL-PERP",
+      marketIndex: 0,
+      http: fakeHttp,
+      retry: fakeRetry
+    });
+
+    fakeHttp.setResponse("https://data.velocity.exchange/market/SOL-PERP/fundingRates", {
+      error: new Error("HTTP 500 Internal Server Error")
+    });
+
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/markets", {
+      body: [
+        {
+          symbol: "SOL-PERP",
+          oraclePrice: "73.857295",
+          markPrice: "73.504000",
+          openInterest: { long: "52.16", short: "-182.12" }
+        }
+      ]
+    });
+
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/liquidations", {
+      body: { records: [] }
+    });
+
+    const snapshot = await adapter.collect({
+      pair: "SOL/USDC",
+      fromUnixMs: 1699999000000,
+      toUnixMs: 1700000000000
+    });
+
+    expect(snapshot.coverage.funding_rate.status).toBe("unavailable");
+    expect(snapshot.coverage.open_interest.status).toBe("available");
+    expect(snapshot.coverage.perp_basis.status).toBe("available");
+    expect(snapshot.coverage.leverage_proxy.status).toBe("available");
+    expect(snapshot.coverage.liquidation_event.status).toBe("available");
+  });
+
+  it("retries only retryable Velocity request failures and redacts diagnostics", async () => {
+    const fakeHttp = new FakeHttp();
+    const fakeRetry = new FakeRetry();
+    const adapter = new HttpDriftSource({
+      baseUrl: "https://data.velocity.exchange",
       symbol: "SOL-PERP",
       marketIndex: 0,
       http: fakeHttp,
       retry: fakeRetry,
-      precisions: { basePrecisionExp: 9, quotePrecisionExp: 6, pricePrecisionExp: 6 }
+      maxAttempts: 2
     });
 
-    fakeHttp.setResponse("https://drift-api.example.com/fundingRates?marketIndex=0", { body: [] });
-    fakeHttp.setResponse("https://drift-api.example.com/marketState?marketIndex=0", {
-      body: {
-        marketIndex: 0,
-        baseAssetAmountWithUnsettledLp: "1000000000",
-        amm: { historicalOracleData: { lastOraclePrice: "1000000" }, lastMarkPrice: "1000000" }
-      }
+    fakeHttp.setResponse("https://data.velocity.exchange/market/SOL-PERP/fundingRates", {
+      error: new Error("Network error key=secret12345")
     });
-    fakeHttp.setResponse(
-      "https://drift-api.example.com/liquidations?marketIndex=0&fromMs=1699999000000&toMs=1700000000000",
-      { body: [] }
-    );
-    fakeHttp.setResponse("https://drift-api.example.com/netPositionRatio?marketIndex=0", {
-      error: new Error("HTTP 404 Not Found")
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/markets", { body: [] });
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/liquidations", {
+      body: { records: [] }
     });
 
     const snapshot = await adapter.collect({
@@ -162,7 +380,8 @@ describe("HttpDriftSource", () => {
       toUnixMs: 1700000000000
     });
 
-    expect(snapshot.coverage.leverage_proxy.status).toBe("unavailable");
-    expect(snapshot.facts.some((f) => f.kind === "leverage_proxy")).toBe(false);
+    expect(snapshot.coverage.funding_rate.status).toBe("unavailable");
+    expect(snapshot.coverage.funding_rate.diagnostic).toContain("[REDACTED]");
+    expect(snapshot.coverage.funding_rate.diagnostic).not.toContain("secret12345");
   });
 });
