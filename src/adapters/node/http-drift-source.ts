@@ -203,15 +203,20 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
     try {
       const url = `${this.baseUrl}/market/${encodeURIComponent(this.symbol)}/fundingRates`;
       const res = await this.fetchWithRetry<unknown>(url);
-      if (!Array.isArray(res)) {
+      if (
+        typeof res !== "object" ||
+        res === null ||
+        !Array.isArray((res as Record<string, unknown>).records)
+      ) {
         coverage = {
           kind: "funding_rate",
           status: "malformed",
-          diagnostic: "Expected array from fundingRates endpoint"
+          diagnostic: "Expected object with records array from fundingRates endpoint"
         };
       } else {
+        const records = (res as Record<string, unknown>).records as unknown[];
         const fundingFacts: PerpLiquidationSourceFact[] = [];
-        for (const item of res) {
+        for (const item of records) {
           if (typeof item === "object" && item !== null) {
             const row = item as Record<string, unknown>;
             const rawId = row.id ?? row.recordId;
