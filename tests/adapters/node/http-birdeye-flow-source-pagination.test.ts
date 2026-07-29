@@ -207,13 +207,15 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
 
   it("retries timeout 429 and 5xx responses up to maxAttempts", async () => {
     const timeoutErr = new HttpRequestError("timeout", "Request timed out", null, true);
-    const rateLimitErr = new HttpRequestError("http_status", "Too Many Requests", 429, true);
+    const rateLimitErr = new HttpRequestError("http_status", "Too Many Requests", 429, true, {
+      responseHeaders: { "Retry-After": "1" }
+    });
     const serverErr = new HttpRequestError("http_status", "Internal Server Error", 503, true);
 
     const cases = [
-      { error: timeoutErr, expectedKind: "timeout" },
-      { error: rateLimitErr, expectedKind: "unavailable" },
-      { error: serverErr, expectedKind: "unavailable" }
+      { error: timeoutErr, expectedKind: "timeout", expectedDelays: [25, 50] },
+      { error: rateLimitErr, expectedKind: "unavailable", expectedDelays: [1000, 1000] },
+      { error: serverErr, expectedKind: "unavailable", expectedDelays: [25, 50] }
     ];
 
     for (const c of cases) {
@@ -246,7 +248,7 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
         const error = e as OnChainFlowSourceError;
         expect(error.kind).toBe(c.expectedKind);
         expect(getJsonMock).toHaveBeenCalledTimes(3);
-        expect(fakeRetry.delays).toEqual([25, 50]);
+        expect(fakeRetry.delays).toEqual(c.expectedDelays);
       }
     }
   });
