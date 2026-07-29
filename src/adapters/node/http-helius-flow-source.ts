@@ -104,6 +104,7 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
       }
 
       let pageSuccess = false;
+      let saturatedPage = false;
 
       for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
         try {
@@ -128,11 +129,20 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
             break;
           }
 
-          const oldestTimestamp = pageTransactions[pageTransactions.length - 1]?.timestamp;
+          const oldestTimestampMs = getOldestTransactionTimestampMs(pageTransactions);
+
           if (
-            oldestTimestamp === undefined ||
-            oldestTimestamp < Math.floor(request.fromUnixMs / 1000)
+            pageTransactions.length === LIMIT_PARAM &&
+            oldestTimestampMs !== undefined &&
+            oldestTimestampMs > request.fromUnixMs
           ) {
+            saturatedPage = true;
+            pageSuccess = true;
+            shouldContinuePagination = false;
+            break;
+          }
+
+          if (oldestTimestampMs !== undefined && oldestTimestampMs < request.fromUnixMs) {
             pageSuccess = true;
             shouldContinuePagination = false;
             break;
@@ -166,6 +176,13 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
 
           await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
         }
+      }
+
+      if (saturatedPage) {
+        throw mapToOnChainFlowSourceError(
+          new HttpRequestError("http_status", "Page does not cover requested lookback", 429, false),
+          this.options.apiKey
+        );
       }
 
       if (!pageSuccess) {
@@ -206,15 +223,39 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
   }
 }
 
-function mapToOnChainFlowSourceError(e: HttpRequestError, apiKey?: string): OnChainFlowSourceError {
-  const diagnostic = e.message;
-  let redactedDiagnostic = apiKey ? diagnostic.split(apiKey).join("[REDACTED]") : diagnostic;
-  if (apiKey) {
+function redactApiKey(diagnostic: string, apiKey?: string): string {
+  let redacted = diagnostic;
+  if (apiKey && apiKey.length > 0) {
+    redacted = redacted.split(apiKey).join("[REDACTED]");
     const encodedKey = encodeURIComponent(apiKey);
     if (encodedKey !== apiKey) {
-      redactedDiagnostic = redactedDiagnostic.split(encodedKey).join("[REDACTED]");
+      redacted = redacted.split(encodedKey).join("[REDACTED]");
     }
   }
+  redacted = redacted.replace(/([?&]api-?key=)([^&\s"']+)/gi, "$1[REDACTED]");
+  return redacted;
+}
+
+function getOldestTransactionTimestampMs(transactions: HeliusRawTransaction[]): number | undefined {
+  let oldestMs: number | undefined;
+  for (const tx of transactions) {
+    if (
+      typeof tx === "object" &&
+      tx !== null &&
+      typeof tx.timestamp === "number" &&
+      Number.isInteger(tx.timestamp)
+    ) {
+      const txMs = tx.timestamp * 1000;
+      if (oldestMs === undefined || txMs < oldestMs) {
+        oldestMs = txMs;
+      }
+    }
+  }
+  return oldestMs;
+}
+
+function mapToOnChainFlowSourceError(e: HttpRequestError, apiKey?: string): OnChainFlowSourceError {
+  const redactedDiagnostic = redactApiKey(e.message, apiKey);
 
   switch (e.kind) {
     case "timeout":
