@@ -1,0 +1,100 @@
+[
+  {
+    "signature": "captured-inbound-signature",
+    "slot": 24681012,
+    "timestamp": 1700000000,
+    "type": "TRANSFER",
+    "nativeTransfers": [{ "amount": 1000000000 }],
+    "tokenTransfers": [
+      {
+        "fromUserAccount": "Counterparty111",
+        "toUserAccount": "Wallet123",
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "tokenAmount": 1250000.25
+      }
+    ]
+  },
+  {
+    "signature": "captured-outbound-signature",
+    "slot": 24682000,
+    "timestamp": 1700000100,
+    "type": "TRANSFER",
+    "nativeTransfers": [],
+    "tokenTransfers": [
+      {
+        "fromUserAccount": "Wallet123",
+        "toUserAccount": "Counterparty222",
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "tokenAmount": 2500000.5
+      }
+    ]
+  },
+  {
+    "signature": "non-transfer-signature",
+    "slot": 24683000,
+    "timestamp": 1700000200,
+    "type": "STAKE",
+    "nativeTransfers": [],
+    "tokenTransfers": []
+  },
+  {
+    "signature": "non-usdc-signature",
+    "slot": 24684000,
+    "timestamp": 1700000300,
+    "type": "TRANSFER",
+    "nativeTransfers": [],
+    "tokenTransfers": [
+      {
+        "fromUserAccount": "RandomWallet",
+        "toUserAccount": "AnotherWallet",
+        "mint": "SomeOtherToken1111111111111111111111111111111",
+        "tokenAmount": 1000000
+      }
+    ]
+  },
+  {
+    "signature": "unrelated-wallet-signature",
+    "slot": 24685000,
+    "timestamp": 1700000400,
+    "type": "TRANSFER",
+    "nativeTransfers": [],
+    "tokenTransfers": [
+      {
+        "fromUserAccount": "OtherWalletAAA",
+        "toUserAccount": "OtherWalletBBB",
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "tokenAmount": 500000
+      }
+    ]
+  },
+  {
+    "signature": "self-transfer-signature",
+    "slot": 24686000,
+    "timestamp": 1700000500,
+    "type": "TRANSFER",
+    "nativeTransfers": [],
+    "tokenTransfers": [
+      {
+        "fromUserAccount": "Wallet123",
+        "toUserAccount": "Wallet123",
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "tokenAmount": 100000
+      }
+    ]
+  },
+  {
+    "signature": "out-of-window-signature",
+    "slot": 24687000,
+    "timestamp": 169999999999,
+    "type": "TRANSFER",
+    "nativeTransfers": [],
+    "tokenTransfers": [
+      {
+        "fromUserAccount": "Counterparty111",
+        "toUserAccount": "Wallet123",
+        "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "tokenAmount": 999999.99
+      }
+    ]
+  }
+]

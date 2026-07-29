@@ -57,10 +57,35 @@ export interface BirdeyeDexNetFlowEvent {
   readonly netFlowUsdc: string;
 }
 
+export interface HeliusWhaleTransferEvent {
+  readonly eventKind: "whale_transfer";
+  readonly sourceEventId: string;
+  readonly observedAtUnixMs: number;
+  readonly amountUsdc: string;
+  readonly direction: "inbound" | "outbound";
+  readonly venue: "solana";
+  readonly addressContext: { readonly addressType: "wallet"; readonly address: string };
+  readonly sourceReferences: readonly string[];
+  readonly sourceQuality: {
+    readonly provider: "helius-api";
+    readonly freshness: "realtime";
+    readonly completeness: "full";
+  };
+  readonly freshnessContext: {
+    readonly slot: number;
+    readonly blockTimestampUnixMs: number;
+  };
+  readonly transactionSignature: string;
+  readonly eventIndex: number;
+  readonly slot: number;
+  readonly stablecoinOperation: "transfer";
+}
+
 export type OnChainFlowSourceEvent =
   | HeliusTransactionFlowEvent
   | BirdeyeWhaleSwapEvent
-  | BirdeyeDexNetFlowEvent;
+  | BirdeyeDexNetFlowEvent
+  | HeliusWhaleTransferEvent;
 
 export interface OnChainFlowSourceSnapshot {
   readonly source: "helius-api" | "birdeye-api";

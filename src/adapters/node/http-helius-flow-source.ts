@@ -3,7 +3,7 @@ import type {
   OnChainFlowSourceRequest,
   OnChainFlowSourceSnapshot,
   OnChainFlowSourceError,
-  HeliusTransactionFlowEvent
+  HeliusWhaleTransferEvent
 } from "../../ports/on-chain-flow-source.js";
 import { HttpRequestError } from "../../ports/http.js";
 import type { HttpClient } from "../../ports/http.js";
@@ -12,6 +12,8 @@ import { SystemRetryControl } from "./system-retry.js";
 
 const BASE_BACKOFF_MS = 25;
 const MAX_BACKOFF_MS = 400;
+const LIMIT_PARAM = 100;
+const CANONICAL_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 function computeBackoffMs(attempt: number, retryControl: RetryControl): number {
   const base = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** attempt);
@@ -25,6 +27,20 @@ export interface HttpHeliusFlowSourceOptions {
   readonly timeoutMs?: number;
   readonly maxAttempts?: number;
   readonly retryControl?: RetryControl;
+}
+
+interface HeliusRawTransaction {
+  signature: string;
+  slot: number;
+  timestamp: number;
+  type: string;
+  nativeTransfers: Array<{ amount: number }>;
+  tokenTransfers: Array<{
+    fromUserAccount: string;
+    toUserAccount: string;
+    mint: string;
+    tokenAmount: number;
+  }>;
 }
 
 export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
@@ -51,24 +67,33 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
       );
     }
 
-    const headers: Record<string, string> = {};
-    if (this.options.apiKey) {
-      headers["Authorization"] = `Bearer ${this.options.apiKey}`;
+    const walletAddress = request.walletAddress;
+    if (!walletAddress) {
+      throw mapToOnChainFlowSourceError(
+        new HttpRequestError("invalid_json", "walletAddress is required", null, false),
+        this.options.apiKey
+      );
     }
 
-    const url = `${this.options.url}?fromUnixMs=${request.fromUnixMs}&toUnixMs=${request.toUnixMs}`;
+    const encodedWallet = encodeURIComponent(walletAddress);
+    const baseUrl = this.options.url.replace("{address}", encodedWallet);
+    const url = new URL(baseUrl);
+    url.searchParams.set("api-key", this.options.apiKey ?? "");
+    url.searchParams.set("limit", String(LIMIT_PARAM));
+
+    const headers: Record<string, string> = {};
 
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
       try {
-        const response = await this.options.http.getJson<unknown>(url, {
+        const response = await this.options.http.getJson<unknown>(url.toString(), {
           headers,
           timeoutMs: this.timeoutMs,
           maxAttempts: 1
         });
 
-        return acceptHeliusSnapshot(response);
+        return acceptHeliusSnapshot(response, walletAddress, request);
       } catch (e) {
         lastError = e instanceof Error ? e : new Error(String(e));
 
@@ -121,93 +146,131 @@ function isFiniteNumber(value: number): boolean {
   return Number.isFinite(value);
 }
 
-function acceptHeliusSnapshot(response: unknown): OnChainFlowSourceSnapshot {
-  if (typeof response !== "object" || response === null) {
-    throw new HttpRequestError("invalid_json", "Response is not an object", null, false);
+function toPlainDecimalString(value: number): string {
+  if (Number.isInteger(value)) {
+    return String(value);
+  }
+  return value.toString();
+}
+
+function isValidDecimalString(value: string): boolean {
+  if (value === "") return false;
+  if (value.startsWith("+")) return false;
+  if (!/^-?[0-9]+(\.[0-9]+)?$/.test(value)) return false;
+  return true;
+}
+
+function acceptHeliusSnapshot(
+  response: unknown,
+  walletAddress: string,
+  request: OnChainFlowSourceRequest
+): OnChainFlowSourceSnapshot {
+  if (!Array.isArray(response)) {
+    throw new HttpRequestError("invalid_json", "Response is not an array", null, false);
   }
 
-  const obj = response as Record<string, unknown>;
+  const transactions = response as HeliusRawTransaction[];
+  const whaleEvents: HeliusWhaleTransferEvent[] = [];
+  const fromUnixMsSeconds = Math.floor(request.fromUnixMs / 1000);
+  const toUnixMsSeconds = Math.floor(request.toUnixMs / 1000);
 
-  if (typeof obj.providerId !== "string") {
-    throw new HttpRequestError("invalid_json", "Missing or invalid providerId", null, false);
+  for (let i = 0; i < transactions.length; i++) {
+    const tx = transactions[i];
+
+    if (typeof tx !== "object" || tx === null) {
+      continue;
+    }
+
+    if (typeof tx.signature !== "string" || tx.signature.length === 0) {
+      continue;
+    }
+    if (typeof tx.slot !== "number" || !Number.isInteger(tx.slot) || tx.slot < 0) {
+      continue;
+    }
+    if (typeof tx.timestamp !== "number" || !Number.isInteger(tx.timestamp)) {
+      continue;
+    }
+    if (typeof tx.type !== "string" || tx.type !== "TRANSFER") {
+      continue;
+    }
+
+    if (tx.timestamp < fromUnixMsSeconds || tx.timestamp > toUnixMsSeconds) {
+      continue;
+    }
+
+    if (!Array.isArray(tx.tokenTransfers)) {
+      continue;
+    }
+
+    for (let j = 0; j < tx.tokenTransfers.length; j++) {
+      const transfer = tx.tokenTransfers[j];
+
+      if (typeof transfer !== "object" || transfer === null) {
+        continue;
+      }
+      if (typeof transfer.mint !== "string" || transfer.mint !== CANONICAL_USDC_MINT) {
+        continue;
+      }
+      if (typeof transfer.tokenAmount !== "number" || !isFiniteNumber(transfer.tokenAmount)) {
+        continue;
+      }
+
+      const isInbound = transfer.toUserAccount === walletAddress;
+      const isOutbound = transfer.fromUserAccount === walletAddress;
+
+      if (!isInbound && !isOutbound) {
+        continue;
+      }
+
+      if (isInbound && isOutbound) {
+        continue;
+      }
+
+      const amountUsdc = toPlainDecimalString(transfer.tokenAmount);
+      if (!isValidDecimalString(amountUsdc)) {
+        continue;
+      }
+
+      const direction: "inbound" | "outbound" = isInbound ? "inbound" : "outbound";
+      const sourceEventId = `${tx.signature}:${j}`;
+      const observedAtUnixMs = tx.timestamp * 1000;
+      const blockTimestampUnixMs = tx.timestamp * 1000;
+
+      whaleEvents.push({
+        eventKind: "whale_transfer",
+        sourceEventId,
+        observedAtUnixMs,
+        amountUsdc,
+        direction,
+        venue: "solana",
+        addressContext: { addressType: "wallet", address: walletAddress },
+        sourceReferences: [`https://solscan.io/tx/${tx.signature}`],
+        sourceQuality: {
+          provider: "helius-api",
+          freshness: "realtime",
+          completeness: "full"
+        },
+        freshnessContext: {
+          slot: tx.slot,
+          blockTimestampUnixMs
+        },
+        transactionSignature: tx.signature,
+        eventIndex: j,
+        slot: tx.slot,
+        stablecoinOperation: "transfer"
+      });
+    }
   }
-  if (typeof obj.providerRunId !== "string") {
-    throw new HttpRequestError("invalid_json", "Missing or invalid providerRunId", null, false);
-  }
-  if (typeof obj.asOfUnixMs !== "number") {
-    throw new HttpRequestError("invalid_json", "Missing or invalid asOfUnixMs", null, false);
-  }
-  if (typeof obj.license !== "string") {
-    throw new HttpRequestError("invalid_json", "Missing or invalid license", null, false);
-  }
-  if (!Array.isArray(obj.events)) {
-    throw new HttpRequestError("invalid_json", "Missing or invalid events", null, false);
-  }
 
-  const events = obj.events as unknown[];
-  const validatedEvents: HeliusTransactionFlowEvent[] = [];
-
-  for (const event of events) {
-    if (typeof event !== "object" || event === null) {
-      throw new HttpRequestError("invalid_json", "Invalid event: not an object", null, false);
-    }
-
-    const e = event as Record<string, unknown>;
-
-    if (e.eventKind !== "helius_transaction") {
-      throw new HttpRequestError(
-        "invalid_json",
-        `Invalid event kind: ${String(e.eventKind)}. Helius adapter only accepts helius_transaction events.`,
-        null,
-        false
-      );
-    }
-
-    if (typeof e.transactionHash !== "string") {
-      throw new HttpRequestError("invalid_json", "Missing or invalid transactionHash", null, false);
-    }
-    if (typeof e.slot !== "number") {
-      throw new HttpRequestError("invalid_json", "Missing or invalid slot", null, false);
-    }
-    if (typeof e.timestampUnixMs !== "number") {
-      throw new HttpRequestError("invalid_json", "Missing or invalid timestampUnixMs", null, false);
-    }
-    if (e.flowSide !== "buy" && e.flowSide !== "sell") {
-      throw new HttpRequestError("invalid_json", "Missing or invalid flowSide", null, false);
-    }
-    if (typeof e.nativeAmount !== "number" || !isFiniteNumber(e.nativeAmount)) {
-      throw new HttpRequestError("invalid_json", "Missing or invalid nativeAmount", null, false);
-    }
-    if (
-      !Array.isArray(e.sourceReferences) ||
-      !e.sourceReferences.every((s) => typeof s === "string")
-    ) {
-      throw new HttpRequestError(
-        "invalid_json",
-        "Missing or invalid sourceReferences",
-        null,
-        false
-      );
-    }
-
-    validatedEvents.push({
-      eventKind: "helius_transaction",
-      transactionHash: e.transactionHash as string,
-      slot: e.slot as number,
-      timestampUnixMs: e.timestampUnixMs as number,
-      flowSide: e.flowSide as "buy" | "sell",
-      nativeAmount: e.nativeAmount as number,
-      sourceReferences: e.sourceReferences as readonly string[]
-    });
-  }
+  const providerRunId = `helius-address-history:${walletAddress}:${request.fromUnixMs}:${request.toUnixMs}`;
 
   return Object.freeze({
     source: "helius-api" as const,
-    providerId: obj.providerId as string,
-    providerRunId: obj.providerRunId as string,
-    asOfUnixMs: obj.asOfUnixMs as number,
-    license: obj.license as string,
-    retention: "bounded" as const,
-    events: Object.freeze(validatedEvents)
+    providerId: "helius-address-history",
+    providerRunId,
+    asOfUnixMs: request.toUnixMs,
+    license: "Helius API",
+    retention: "bounded",
+    events: Object.freeze(whaleEvents)
   });
 }
