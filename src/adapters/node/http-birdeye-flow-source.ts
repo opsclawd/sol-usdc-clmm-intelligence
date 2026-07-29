@@ -13,8 +13,8 @@ import { SystemRetryControl } from "./system-retry.js";
 
 const BASE_BACKOFF_MS = 25;
 const MAX_BACKOFF_MS = 400;
-const PAGE_LIMIT = 100;
-const MAX_PAGES = 100;
+const PAGE_LIMIT = 50;
+const MAX_PAGES = 200;
 
 function computeBackoffMs(attempt: number, retryControl: RetryControl): number {
   const base = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** attempt);
