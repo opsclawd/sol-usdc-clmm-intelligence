@@ -10,52 +10,12 @@ import { HttpRequestError } from "../../ports/http.js";
 import type { HttpClient } from "../../ports/http.js";
 import type { RetryControl } from "../../ports/retry.js";
 import { SystemRetryControl } from "./system-retry.js";
+import { parseRateLimitDelayMs } from "./fetch-http.js";
 
 const BASE_BACKOFF_MS = 25;
 const MAX_BACKOFF_MS = 400;
 const PAGE_LIMIT = 50;
 const MAX_PAGES = 200;
-const MAX_RATE_LIMIT_DELAY_MS = 60_000;
-
-function getHeaderCaseInsensitive(
-  headers: Readonly<Record<string, string>> | undefined,
-  name: string
-): string | undefined {
-  const entry = Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === name);
-  return entry?.[1];
-}
-
-function parseRateLimitDelayMs(
-  headers: Readonly<Record<string, string>> | undefined,
-  nowUnixMs: number
-): number | null {
-  const retryAfter = getHeaderCaseInsensitive(headers, "retry-after");
-  let delayMs: number;
-
-  if (retryAfter !== undefined) {
-    const value = retryAfter.trim();
-    if (/^\d+$/.test(value)) {
-      delayMs = Number(value) * 1_000;
-    } else {
-      const retryAtUnixMs = Date.parse(value);
-      if (!Number.isFinite(retryAtUnixMs)) {
-        return null;
-      }
-      delayMs = Math.max(0, retryAtUnixMs - nowUnixMs);
-    }
-  } else {
-    const reset = getHeaderCaseInsensitive(headers, "x-ratelimit-reset")?.trim();
-    if (reset === undefined || !/^\d+$/.test(reset)) {
-      return null;
-    }
-    delayMs = Math.max(0, Number(reset) * 1_000 - nowUnixMs);
-  }
-
-  if (!Number.isFinite(delayMs) || delayMs > MAX_RATE_LIMIT_DELAY_MS) {
-    return null;
-  }
-  return delayMs;
-}
 
 function computeBackoffMs(attempt: number, retryControl: RetryControl): number {
   const base = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** attempt);

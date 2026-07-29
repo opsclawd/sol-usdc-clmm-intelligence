@@ -61,6 +61,48 @@ function classifyError(
   return { kind: "http_status", retryable: false };
 }
 
+const MAX_RATE_LIMIT_DELAY_MS = 60_000;
+
+export function getHeaderCaseInsensitive(
+  headers: Readonly<Record<string, string>> | undefined,
+  name: string
+): string | undefined {
+  const entry = Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === name);
+  return entry?.[1];
+}
+
+export function parseRateLimitDelayMs(
+  headers: Readonly<Record<string, string>> | undefined,
+  nowUnixMs: number = Date.now()
+): number | null {
+  const retryAfter = getHeaderCaseInsensitive(headers, "retry-after");
+  let delayMs: number;
+
+  if (retryAfter !== undefined) {
+    const value = retryAfter.trim();
+    if (/^\d+$/.test(value)) {
+      delayMs = Number(value) * 1_000;
+    } else {
+      const retryAtUnixMs = Date.parse(value);
+      if (!Number.isFinite(retryAtUnixMs)) {
+        return null;
+      }
+      delayMs = Math.max(0, retryAtUnixMs - nowUnixMs);
+    }
+  } else {
+    const reset = getHeaderCaseInsensitive(headers, "x-ratelimit-reset")?.trim();
+    if (reset === undefined || !/^\d+$/.test(reset)) {
+      return null;
+    }
+    delayMs = Math.max(0, Number(reset) * 1_000 - nowUnixMs);
+  }
+
+  if (!Number.isFinite(delayMs) || delayMs > MAX_RATE_LIMIT_DELAY_MS) {
+    return null;
+  }
+  return delayMs;
+}
+
 function responseHeadersToRecord(headers: Headers): Record<string, string> {
   const result: Record<string, string> = {};
   headers.forEach((value, key) => {
@@ -132,7 +174,15 @@ export class FetchHttpClient implements HttpClient {
         clearTimeout(timeoutId);
       }
 
-      await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
+      const rateLimitDelayMs =
+        lastError instanceof HttpRequestError
+          ? parseRateLimitDelayMs(lastError.responseHeaders)
+          : null;
+
+      const sleepMs =
+        rateLimitDelayMs !== null ? rateLimitDelayMs : computeBackoffMs(attempt, this.retryControl);
+
+      await this.retryControl.sleep(sleepMs);
     }
 
     throw (
