@@ -8,12 +8,18 @@ import { FakeRetry } from "../../fakes/fake-retry.js";
 const DEFAULT_POOL = "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
 const DEFAULT_API_KEY = "birdeye-secret-key-123";
 
-function makeTradeItem(txHash: string, fromSymbol: string, toSymbol: string, amountUsdc: number) {
+function makeTradeItem(
+  txHash: string,
+  fromSymbol: string,
+  toSymbol: string,
+  amountUsdc: number,
+  blockUnixTime = 1785277855
+) {
   const isFromUsdc = fromSymbol === "USDC";
   return {
     txHash,
     source: "whirlpool",
-    blockUnixTime: 1785277855,
+    blockUnixTime,
     txType: "swap",
     address: DEFAULT_POOL,
     owner: "WalletAddress123",
@@ -575,5 +581,124 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
     });
     expect(getJsonMock).toHaveBeenCalledTimes(2);
     expect(fakeRetry.delays).toEqual([25]);
+  });
+
+  it("stops at the lower time boundary and excludes only older trades from the crossing page", async () => {
+    const firstPage = makeFullPage("in-window");
+    const crossingPage = [
+      makeTradeItem("crossing-newer-1", "SOL", "USDC", 100, 1785270100),
+      makeTradeItem("crossing-older-whale", "SOL", "USDC", 1000, 1785269999),
+      makeTradeItem("crossing-newer-2", "SOL", "USDC", 200, 1785270050),
+      ...Array.from({ length: 47 }, (_, index) =>
+        makeTradeItem(`crossing-older-${index}`, "SOL", "USDC", 1000, 1785269900 - index)
+      )
+    ];
+    const getJsonMock = vi
+      .fn<HttpClient["getJson"]>()
+      .mockResolvedValueOnce({
+        data: { items: firstPage, hasNext: true },
+        success: true
+      })
+      .mockResolvedValueOnce({
+        data: { items: crossingPage, hasNext: true },
+        success: true
+      });
+    const mockHttp = {
+      getJson: getJsonMock,
+      postJsonRaw: vi.fn()
+    } as unknown as HttpClient;
+    const source = new HttpBirdeyeFlowSource({
+      http: mockHttp,
+      url: "https://public-api.birdeye.so",
+      apiKey: DEFAULT_API_KEY,
+      poolAddress: DEFAULT_POOL,
+      whaleSwapMinUsdc: "500"
+    });
+
+    const result = await source.collect({
+      pair: "SOL/USDC",
+      fromUnixMs: 1785270000000,
+      toUnixMs: 1785280000000
+    });
+
+    expect(getJsonMock).toHaveBeenCalledTimes(2);
+    expect(new URL(getJsonMock.mock.calls[1]![0]).searchParams.get("offset")).toBe("50");
+    const dexNetFlow = result.events.find((event) => event.eventKind === "dex_net_flow") as {
+      sellVolumeUsdc: string;
+    };
+    expect(dexNetFlow.sellVolumeUsdc).toBe("5300");
+    expect(result.events.filter((event) => event.eventKind === "whale_swap")).toEqual([]);
+  });
+
+  it("keeps a trade exactly on the inclusive lower time boundary", async () => {
+    const getJsonMock = vi.fn<HttpClient["getJson"]>().mockResolvedValueOnce({
+      data: {
+        items: [
+          makeTradeItem("at-boundary", "SOL", "USDC", 500, 1785270000),
+          makeTradeItem("before-boundary", "SOL", "USDC", 1000, 1785269999)
+        ],
+        hasNext: true
+      },
+      success: true
+    });
+    const mockHttp = {
+      getJson: getJsonMock,
+      postJsonRaw: vi.fn()
+    } as unknown as HttpClient;
+    const source = new HttpBirdeyeFlowSource({
+      http: mockHttp,
+      url: "https://public-api.birdeye.so",
+      apiKey: DEFAULT_API_KEY,
+      poolAddress: DEFAULT_POOL,
+      whaleSwapMinUsdc: "500"
+    });
+
+    const result = await source.collect({
+      pair: "SOL/USDC",
+      fromUnixMs: 1785270000999,
+      toUnixMs: 1785280000000
+    });
+
+    expect(getJsonMock).toHaveBeenCalledTimes(1);
+    const dexNetFlow = result.events.find((event) => event.eventKind === "dex_net_flow") as {
+      sellVolumeUsdc: string;
+    };
+    expect(dexNetFlow.sellVolumeUsdc).toBe("500");
+    expect(result.events.find((event) => event.eventKind === "whale_swap")).toMatchObject({
+      sourceEventId: "at-boundary"
+    });
+  });
+
+  it("preserves malformed timestamps for fail-closed snapshot validation", async () => {
+    for (const blockUnixTime of [undefined, "invalid", Number.NaN, Number.POSITIVE_INFINITY]) {
+      const malformedItem = {
+        ...makeTradeItem("malformed-time", "SOL", "USDC", 100),
+        blockUnixTime
+      };
+      const getJsonMock = vi.fn<HttpClient["getJson"]>().mockResolvedValueOnce({
+        data: { items: [malformedItem], hasNext: false },
+        success: true
+      });
+      const mockHttp = {
+        getJson: getJsonMock,
+        postJsonRaw: vi.fn()
+      } as unknown as HttpClient;
+      const source = new HttpBirdeyeFlowSource({
+        http: mockHttp,
+        url: "https://public-api.birdeye.so",
+        apiKey: DEFAULT_API_KEY,
+        poolAddress: DEFAULT_POOL,
+        whaleSwapMinUsdc: "500"
+      });
+
+      await expect(
+        source.collect({
+          pair: "SOL/USDC",
+          fromUnixMs: 1785270000000,
+          toUnixMs: 1785280000000
+        })
+      ).rejects.toMatchObject({ kind: "malformed" });
+      expect(getJsonMock).toHaveBeenCalledTimes(1);
+    }
   });
 });
