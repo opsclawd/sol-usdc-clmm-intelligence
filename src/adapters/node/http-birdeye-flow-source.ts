@@ -106,8 +106,6 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
     let hasNext = true;
 
     while (hasNext) {
-      let lastError: Error | null = null;
-
       for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
         try {
           const url = new URL(baseUrl);
@@ -131,7 +129,7 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
           offset += limit;
           break;
         } catch (e) {
-          lastError = e instanceof Error ? e : new Error(String(e));
+          const lastError = e instanceof Error ? e : new Error(String(e));
 
           let httpError: HttpRequestError;
 
@@ -149,18 +147,6 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
 
           await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
         }
-      }
-
-      if (lastError !== null && hasNext) {
-        throw mapToOnChainFlowSourceError(
-          new HttpRequestError(
-            "network",
-            lastError ? lastError.message : "Unknown error",
-            null,
-            true
-          ),
-          this.options.apiKey
-        );
       }
     }
 
@@ -468,6 +454,6 @@ function formatDecimalStringFromBigInt(value: bigint, scale: number): string {
   const intPart = padded.slice(0, padded.length - scale) || "0";
   const fracPart = padded.slice(padded.length - scale);
   const result = intPart + (scale > 0 ? "." + fracPart : "");
-  const trimmed = result.replace(/\.?0+$/, "");
+  const trimmed = scale > 0 ? result.replace(/\.?0+$/, "") : result;
   return isNegative ? "-" + (trimmed || "0") : trimmed || "0";
 }
