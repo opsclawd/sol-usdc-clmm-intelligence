@@ -60,6 +60,15 @@ Durable core telemetry collection requires the following credentials and environ
 - `ORCA_SOL_USDC_WHIRLPOOL` / `WHIRLPOOL_ADDRESS`: The Orca whirlpool pool address (e.g. `Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE`). Existing deployments must update their local pool variables; changes to `.env.example` does not rewrite an existing `.env`.
 - `SOLANA_RPC_URL`: Base URL for Solana RPC endpoint (defaults to `https://api.mainnet-beta.solana.com`).
 - `SOLANA_RPC_API_KEY`: Optional API Key or auth query parameter for hosted Solana RPC endpoints.
+- `BINANCE_FAPI_BASE_URL`: Base URL for Binance Futures public API (defaults to `https://fapi.binance.com`).
+- `BINANCE_SOL_PERP_SYMBOL`: SOL perpetual symbol for Binance Futures (e.g., `SOLUSDT`). Required; collector fails closed if missing.
+- `DRIFT_DATA_API_BASE_URL`: Base URL for Velocity Exchange Data API (`drift-api`). Required; collector fails closed if missing.
+- `DRIFT_SOL_PERP_SYMBOL`: SOL perpetual symbol for Drift/Velocity (e.g., `SOL-PERP`). Required; collector fails closed if missing.
+- `DRIFT_SOL_PERP_MARKET_INDEX`: Market index for SOL perpetual on Drift/Velocity (e.g., `0`). Required integer; collector fails closed if missing or non-integer.
+- `DRIFT_PRICE_PRECISION`: Drift price precision scaling exponent factor (defaults to `1000000` / 10^6).
+- `DRIFT_BASE_PRECISION`: Drift base precision scaling exponent factor (defaults to `1000000000` / 10^9).
+- `DRIFT_QUOTE_PRECISION`: Drift quote precision scaling exponent factor (defaults to `1000000` / 10^6).
+- `PERP_LIQUIDATION_LOOKBACK_MS`: Lookback window in milliseconds for perp and liquidation collection (defaults to `14400000` / 4 hours minimum). Must be an integer >= 14,400,000 to cover the `oi_trend_4h` window; collector fails closed if less than 14,400,000.
 
 Ensure no actual credentials, keys, or authorization tokens are logged. The CLI automatically redacts headers, URL credentials, and API keys. Note that `SOLANA_RPC_URL` measures only the configured RPC endpoint's health and slot rather than global Solana consensus.
 
@@ -111,6 +120,38 @@ Required environment variables:
 - `SUPPORT_RESISTANCE_API_KEY`: Optional API key for authenticated endpoints.
 
 The collector reads `SUPPORT_RESISTANCE_API_URL` and optional `SUPPORT_RESISTANCE_API_KEY` from environment. API credentials are redacted from all output, diagnostics, and persisted metadata.
+
+## Perp & Liquidation Collector Exit Behavior
+
+When running `pnpm collect:perp-liquidation` or `runPerpLiquidationJob` via scheduling:
+
+1. **Complete Success (COMPLETE, Exit Code: 0)**: Both venues (`binance-fapi` and `drift-api`) collected, normalized, and derived feature observations successfully (or replayed identically).
+2. **Partial Success (PARTIAL, Exit Code: 0)**: One venue succeeded yielding usable evidence, but the other venue failed, degraded, or was unavailable (e.g. Binance API rate-limited or unavailable while Drift succeeded). Structured warnings are output, but no rollback of already committed sibling evidence occurs.
+3. **Unavailable (UNAVAILABLE, Exit Code: 1)**: Both venues are unavailable (e.g. rate-limiting HTTP 429s, API timeouts, network errors, or endpoint service disruptions on both Binance Futures and Velocity Exchange).
+4. **Failure (FAILED, Exit Code: 1)**: Total failure with zero usable evidence across both venues, database uniqueness/identity conflict (replay conflict), malformed payload structure, or invalid startup configuration.
+
+### Failure Modes & Specific Behaviors
+
+1. **Startup & Configuration Validation Failure (FAILED, Exit Code: 1)**:
+   - If `BINANCE_SOL_PERP_SYMBOL`, `DRIFT_DATA_API_BASE_URL`, `DRIFT_SOL_PERP_SYMBOL`, or `DRIFT_SOL_PERP_MARKET_INDEX` is missing or empty, the script aborts immediately with exit code 1 and outputs a `failed` status diagnostic before making any network calls.
+   - If `DRIFT_SOL_PERP_MARKET_INDEX` is not a valid integer, the script aborts immediately with exit code 1.
+   - If `PERP_LIQUIDATION_LOOKBACK_MS` is set to a value less than `14400000` (4 hours), `parseLookbackMs` throws an error and the script fails closed with exit code 1.
+   - If runtime source configuration does not contain exactly two sources (one `binance-fapi` and one `drift-api`), `runPerpLiquidationJob` throws an error before executing network requests.
+
+2. **Single-Venue Degradation / Partial Outage (PARTIAL, Exit Code: 0)**:
+   - If one venue experiences network errors, HTTP 429 rate limits, or malformed responses while the other venue succeeds, the overall job status is `PARTIAL` with exit code 0.
+   - Raw and normalized observations and derived features for the succeeding venue are committed. No rollback of committed sibling evidence occurs.
+
+3. **Both-Venue Outage (UNAVAILABLE, Exit Code: 1)**:
+   - If both Binance Futures and Drift/Velocity endpoints return network errors, timeouts, or HTTP 429s, status is `UNAVAILABLE` and exit code is 1.
+
+4. **Feature Derivation Guardrails**:
+   - **`liquidation_cluster_1h`**: Requires a same-venue open-interest sample from Drift. If Drift OI is unavailable or degraded, `liquidation_cluster_1h` is set to `UNAVAILABLE` with reason `no_same_venue_oi_denominator`. Binance public REST API does not provide unauthenticated liquidation history, so Binance never contributes to this feature.
+   - **`oi_trend_4h`**: Requires at least 2 open-interest samples within the 4-hour lookback window for the venue. If fewer than 2 samples exist, status is `UNAVAILABLE` with reason `fewer_than_two_oi_samples`.
+   - **Coverage Gating**: If a provider's coverage for an observation kind is reported as non-available (e.g., `unavailable` or `malformed`), any feature depending on that kind is forced to `UNAVAILABLE` with reason `coverage_unavailable`.
+
+5. **Database Connection Errors**:
+   - Failure to initialize or close the database connection produces a diagnostic message with exit code 1. All secrets in error strings are automatically redacted.
 
 ## Pre-deployment Preflight Checks
 
