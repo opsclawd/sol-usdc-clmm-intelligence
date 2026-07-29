@@ -10,6 +10,7 @@ import { HttpRequestError } from "../../ports/http.js";
 import type { HttpClient } from "../../ports/http.js";
 import type { RetryControl } from "../../ports/retry.js";
 import { SystemRetryControl } from "./system-retry.js";
+import { parseRateLimitDelayMs } from "./fetch-http.js";
 
 const BASE_BACKOFF_MS = 25;
 const MAX_BACKOFF_MS = 400;
@@ -175,6 +176,15 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
 
         if (!httpError.retryable || attempt >= this.maxAttempts - 1) {
           throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
+        }
+
+        if (httpError.status === 429) {
+          const delayMs = parseRateLimitDelayMs(httpError.responseHeaders, Date.now());
+          if (delayMs === null) {
+            throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
+          }
+          await this.retryControl.sleep(delayMs);
+          continue;
         }
 
         await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));

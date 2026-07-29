@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { FetchHttpClient } from "../../../src/adapters/node/fetch-http.js";
+import { FakeRetry } from "../../fakes/fake-retry.js";
 
 type FetchFn = typeof fetch;
 
@@ -119,8 +120,9 @@ describe("FetchHttpClient", () => {
       expect(result).toEqual({ success: true });
     });
 
-    it("retries 429 too many requests", async () => {
+    it("retries 429 too many requests respecting Retry-After header", async () => {
       const callCount = { value: 0 };
+      const headers = new Headers({ "retry-after": "5" });
       const mockFetch = vi.fn().mockImplementation(async (): Promise<Response> => {
         callCount.value++;
         if (callCount.value === 1) {
@@ -128,6 +130,7 @@ describe("FetchHttpClient", () => {
             ok: false,
             status: 429,
             statusText: "Too Many Requests",
+            headers,
             json: async () => ({}),
             text: async () => "Rate Limited"
           } as unknown as Response;
@@ -136,16 +139,60 @@ describe("FetchHttpClient", () => {
           ok: true,
           status: 200,
           statusText: "OK",
+          headers: new Headers(),
           json: async () => ({ success: true }),
           text: async () => '{"success":true}'
         } as unknown as Response;
       });
 
-      const client = new FetchHttpClient(mockFetch);
+      const fakeRetry = new FakeRetry();
+      const client = new FetchHttpClient(mockFetch, fakeRetry);
       const result = await client.getJson("http://example.com/data");
 
       expect(callCount.value).toBe(2);
       expect(result).toEqual({ success: true });
+      expect(fakeRetry.delays).toEqual([5000]);
+    });
+
+    it("retries 429 too many requests respecting X-RateLimit-Reset header when Retry-After is missing", async () => {
+      vi.useFakeTimers();
+      const nowSec = 1_785_326_400;
+      vi.setSystemTime(nowSec * 1000);
+      try {
+        const callCount = { value: 0 };
+        const headers = new Headers({ "x-ratelimit-reset": String(nowSec + 10) });
+        const mockFetch = vi.fn().mockImplementation(async (): Promise<Response> => {
+          callCount.value++;
+          if (callCount.value === 1) {
+            return {
+              ok: false,
+              status: 429,
+              statusText: "Too Many Requests",
+              headers,
+              json: async () => ({}),
+              text: async () => "Rate Limited"
+            } as unknown as Response;
+          }
+          return {
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            headers: new Headers(),
+            json: async () => ({ success: true }),
+            text: async () => '{"success":true}'
+          } as unknown as Response;
+        });
+
+        const fakeRetry = new FakeRetry();
+        const client = new FetchHttpClient(mockFetch, fakeRetry);
+        const result = await client.getJson("http://example.com/data");
+
+        expect(callCount.value).toBe(2);
+        expect(result).toEqual({ success: true });
+        expect(fakeRetry.delays).toEqual([10000]);
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("retries 5xx server errors", async () => {
