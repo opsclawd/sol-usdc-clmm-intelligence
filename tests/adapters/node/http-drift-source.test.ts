@@ -3,7 +3,7 @@ import { HttpDriftSource } from "../../../src/adapters/node/http-drift-source.js
 import { FakeHttp, FakeRetry } from "../../fakes/index.js";
 
 describe("HttpDriftSource", () => {
-  it("maps Velocity funding and market statistics into canonical facts", async () => {
+  it("unwraps Velocity funding-rate records and maps canonical market facts", async () => {
     const fakeHttp = new FakeHttp();
     const fakeRetry = new FakeRetry();
     const adapter = new HttpDriftSource({
@@ -15,7 +15,10 @@ describe("HttpDriftSource", () => {
     });
 
     fakeHttp.setResponse("https://data.velocity.exchange/market/SOL-PERP/fundingRates", {
-      body: [{ id: "f1", ts: 1700000000000, fundingRate: "0.015717" }]
+      body: {
+        success: true,
+        records: [{ id: "f1", ts: 1700000000000, fundingRate: "0.015717" }]
+      }
     });
 
     fakeHttp.setResponse("https://data.velocity.exchange/stats/markets", {
@@ -85,8 +88,7 @@ describe("HttpDriftSource", () => {
       instrument: "SOL-PERP",
       kind: "open_interest",
       openInterestBase: "234.28",
-      openInterestUsdc: "17220.51712",
-      sampleWindowSeconds: 300
+      openInterestUsdc: "17220.51712"
     });
 
     const basisFact = snapshot.facts.find((f) => f.kind === "perp_basis");
@@ -102,6 +104,35 @@ describe("HttpDriftSource", () => {
       spotPriceUsdc: "73.857295"
     });
 
+    const levFact = snapshot.facts.find((f) => f.kind === "leverage_proxy");
+    expect(levFact).toBeDefined();
+    expect(levFact?.payload).toMatchObject({
+      schemaVersion: 1,
+      evidenceFamily: "perp_liquidation",
+      pair: "SOL/USDC",
+      venue: "drift-api",
+      instrument: "SOL-PERP",
+      kind: "leverage_proxy",
+      longShortRatio: "0.286404568416",
+      methodology: "market_net_position_ratio"
+    });
+
+    const liqFact = snapshot.facts.find((f) => f.kind === "liquidation_event");
+    expect(liqFact).toBeDefined();
+    expect(liqFact?.payload).toEqual({
+      schemaVersion: 1,
+      evidenceFamily: "perp_liquidation",
+      pair: "SOL/USDC",
+      venue: "drift-api",
+      instrument: "SOL-PERP",
+      sourceEventId: "liq-sol-1",
+      observedAtUnixMs: 1700000000000,
+      kind: "liquidation_event",
+      side: "long",
+      amountBase: "5.5",
+      notionalUsdc: "404.272"
+    });
+
     for (const fact of snapshot.facts) {
       const payload = fact.payload as unknown as Record<string, unknown>;
       expect(payload).not.toHaveProperty("oraclePrice");
@@ -111,6 +142,41 @@ describe("HttpDriftSource", () => {
       expect(payload).not.toHaveProperty("records");
       expect(payload).not.toHaveProperty("liquidationType");
     }
+  });
+
+  it("marks a bare funding-rate array malformed and emits no funding facts", async () => {
+    const fakeHttp = new FakeHttp();
+    const fakeRetry = new FakeRetry();
+    const adapter = new HttpDriftSource({
+      baseUrl: "https://data.velocity.exchange",
+      symbol: "SOL-PERP",
+      marketIndex: 0,
+      http: fakeHttp,
+      retry: fakeRetry
+    });
+
+    fakeHttp.setResponse("https://data.velocity.exchange/market/SOL-PERP/fundingRates", {
+      body: []
+    });
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/markets", {
+      body: []
+    });
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/liquidations", {
+      body: { records: [] }
+    });
+
+    const snapshot = await adapter.collect({
+      pair: "SOL/USDC",
+      fromUnixMs: 1699999000000,
+      toUnixMs: 1700000000000
+    });
+
+    expect(snapshot.coverage.funding_rate).toEqual({
+      kind: "funding_rate",
+      status: "malformed",
+      diagnostic: "Expected object with records array from fundingRates endpoint"
+    });
+    expect(snapshot.facts.some((fact) => fact.kind === "funding_rate")).toBe(false);
   });
 
   it("computes leverage proxy from absolute long and short open interest", async () => {
