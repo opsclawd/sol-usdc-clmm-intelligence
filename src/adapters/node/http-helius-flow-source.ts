@@ -50,6 +50,11 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
   private readonly retryControl: RetryControl;
 
   constructor(private readonly options: HttpHeliusFlowSourceOptions) {
+    if (!options.url.includes("{address}")) {
+      throw new Error(
+        `HttpHeliusFlowSource: options.url must contain the "{address}" placeholder, got: ${options.url}`
+      );
+    }
     this.timeoutMs = options.timeoutMs ?? 5000;
     this.maxAttempts = options.maxAttempts ?? 2;
     this.retryControl = options.retryControl ?? new SystemRetryControl();
@@ -87,7 +92,7 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
     const headers: Record<string, string> = {};
 
     let lastError: Error | null = null;
-    let allEvents: HeliusWhaleTransferEvent[] = [];
+    let allTransactions: HeliusRawTransaction[] = [];
     let beforeCursor: string | undefined;
     let shouldContinuePagination = true;
     let pages = 0;
@@ -109,8 +114,7 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
           });
 
           const pageTransactions = parseHeliusTransactionPage(response);
-          const pageEvents = mapTransactionsToWhaleEvents(pageTransactions, walletAddress, request);
-          allEvents = allEvents.concat(pageEvents);
+          allTransactions = allTransactions.concat(pageTransactions);
 
           if (pageTransactions.length === 0) {
             pageSuccess = true;
@@ -178,6 +182,15 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
 
       pages++;
     }
+
+    const truncatedByPageLimit = shouldContinuePagination && pages >= MAX_PAGES;
+    const completeness: "full" | "partial" = truncatedByPageLimit ? "partial" : "full";
+    const allEvents = mapTransactionsToWhaleEvents(
+      allTransactions,
+      walletAddress,
+      request,
+      completeness
+    );
 
     const providerRunId = `helius-address-history:${walletAddress}:${request.fromUnixMs}:${request.toUnixMs}`;
 
@@ -247,7 +260,8 @@ function parseHeliusTransactionPage(response: unknown): HeliusRawTransaction[] {
 function mapTransactionsToWhaleEvents(
   transactions: HeliusRawTransaction[],
   walletAddress: string,
-  request: OnChainFlowSourceRequest
+  request: OnChainFlowSourceRequest,
+  completeness: "full" | "partial"
 ): HeliusWhaleTransferEvent[] {
   const whaleEvents: HeliusWhaleTransferEvent[] = [];
   const fromUnixMsSeconds = Math.floor(request.fromUnixMs / 1000);
@@ -327,7 +341,7 @@ function mapTransactionsToWhaleEvents(
         sourceQuality: {
           provider: "helius-api",
           freshness: "realtime",
-          completeness: "full"
+          completeness
         },
         freshnessContext: {
           slot: tx.slot,

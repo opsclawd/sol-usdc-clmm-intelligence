@@ -69,7 +69,7 @@ export interface HeliusWhaleTransferEvent {
   readonly sourceQuality: {
     readonly provider: "helius-api";
     readonly freshness: "realtime";
-    readonly completeness: "full";
+    readonly completeness: "full" | "partial";
   };
   readonly freshnessContext: {
     readonly slot: number;

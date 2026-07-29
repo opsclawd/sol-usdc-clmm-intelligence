@@ -580,5 +580,66 @@ describe("HttpHeliusFlowSource mapping", () => {
         expect(error.kind).toBe("malformed");
       }
     });
+
+    it("marks completeness as partial when the MAX_PAGES limit is hit before exhausting history", async () => {
+      const inboundTx = (heliusTransactionsFixture as HeliusRawTransaction[]).find(
+        (t) => t.signature === "captured-inbound-signature"
+      )!;
+
+      let callCount = 0;
+      const mockHttp = {
+        getJson: vi.fn().mockImplementation(async (): Promise<unknown> => {
+          callCount++;
+          return Array(100)
+            .fill(null)
+            .map((_, i) => ({
+              ...inboundTx,
+              signature: `page${callCount}-tx-${i}`,
+              slot: inboundTx.slot + i
+            }));
+        }),
+        postJsonRaw: vi.fn().mockRejectedValue(new Error("Not implemented"))
+      } as unknown as HttpClient;
+
+      const source = new HttpHeliusFlowSource({
+        http: mockHttp,
+        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        apiKey: "test-api-key"
+      });
+
+      const result = await source.collect({
+        pair: "SOL/USDC",
+        walletAddress: WATCHED_WALLET,
+        fromUnixMs: FROM_UNIX_MS,
+        toUnixMs: TO_UNIX_MS
+      });
+
+      expect(mockHttp.getJson).toHaveBeenCalledTimes(100);
+      expect(result.events.length).toBeGreaterThan(0);
+      for (const event of result.events) {
+        expect(event.eventKind).toBe("whale_transfer");
+        if (event.eventKind === "whale_transfer") {
+          expect(event.sourceQuality.completeness).toBe("partial");
+        }
+      }
+    });
+  });
+
+  describe("constructor validation", () => {
+    it("throws when options.url does not contain the {address} placeholder", () => {
+      const mockHttp = {
+        getJson: vi.fn(),
+        postJsonRaw: vi.fn().mockRejectedValue(new Error("Not implemented"))
+      } as unknown as HttpClient;
+
+      expect(
+        () =>
+          new HttpHeliusFlowSource({
+            http: mockHttp,
+            url: "https://api.helius.com/v0/addresses/transactions",
+            apiKey: "test-api-key"
+          })
+      ).toThrow(/\{address\}/);
+    });
   });
 });
