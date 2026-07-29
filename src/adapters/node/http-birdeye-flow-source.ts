@@ -100,16 +100,16 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
       headers["X-API-Key"] = this.options.apiKey;
     }
 
-    let lastError: Error | null = null;
+    const allItems: BirdeyePairTradeItem[] = [];
+    let offset = 0;
+    const limit = 100;
+    let hasNext = true;
 
-    for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
-      try {
-        const allItems: BirdeyePairTradeItem[] = [];
-        let offset = 0;
-        const limit = 100;
-        let hasNext = true;
+    while (hasNext) {
+      let lastError: Error | null = null;
 
-        while (hasNext) {
+      for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
+        try {
           const url = new URL(baseUrl);
           url.searchParams.set("address", this.poolAddress);
           url.searchParams.set("tx_type", "swap");
@@ -129,34 +129,59 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
           allItems.push(...response.data.items);
           hasNext = response.data.hasNext === true;
           offset += limit;
+          break;
+        } catch (e) {
+          lastError = e instanceof Error ? e : new Error(String(e));
+
+          let httpError: HttpRequestError;
+
+          if (e instanceof DOMException && e.name === "AbortError") {
+            httpError = new HttpRequestError("timeout", lastError.message, null, true);
+          } else if (e instanceof HttpRequestError) {
+            httpError = e;
+          } else {
+            httpError = new HttpRequestError("network", lastError.message, null, true);
+          }
+
+          if (!httpError.retryable || attempt >= this.maxAttempts - 1) {
+            throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
+          }
+
+          await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
         }
+      }
 
-        return this.acceptBirdeyeSnapshot(allItems, request);
-      } catch (e) {
-        lastError = e instanceof Error ? e : new Error(String(e));
-
-        let httpError: HttpRequestError;
-
-        if (e instanceof DOMException && e.name === "AbortError") {
-          httpError = new HttpRequestError("timeout", lastError.message, null, true);
-        } else if (e instanceof HttpRequestError) {
-          httpError = e;
-        } else {
-          httpError = new HttpRequestError("network", lastError.message, null, true);
-        }
-
-        if (!httpError.retryable || attempt >= this.maxAttempts - 1) {
-          throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
-        }
-
-        await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
+      if (lastError !== null && hasNext) {
+        throw mapToOnChainFlowSourceError(
+          new HttpRequestError(
+            "network",
+            lastError ? lastError.message : "Unknown error",
+            null,
+            true
+          ),
+          this.options.apiKey
+        );
       }
     }
 
-    throw mapToOnChainFlowSourceError(
-      new HttpRequestError("network", lastError ? lastError.message : "Unknown error", null, true),
-      this.options.apiKey
-    );
+    try {
+      return this.acceptBirdeyeSnapshot(allItems, request);
+    } catch (e) {
+      let httpError: HttpRequestError;
+      if (e instanceof HttpRequestError) {
+        httpError = e;
+      } else if (e instanceof DOMException && e.name === "AbortError") {
+        httpError = new HttpRequestError("timeout", e.message, null, true);
+      } else {
+        httpError = new HttpRequestError(
+          "network",
+          e instanceof Error ? e.message : String(e),
+          null,
+          true
+        );
+      }
+      throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
+    }
   }
 
   private validateResponseEnvelope(
