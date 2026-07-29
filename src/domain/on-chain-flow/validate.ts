@@ -57,7 +57,7 @@ const sourceQualityBirdeyeSchema = z.object({
 });
 
 const freshnessContextSchema = z.object({
-  slot: z.number().int().nonnegative(),
+  slot: z.number().int().nonnegative().optional(),
   blockTimestampUnixMs: z.number().int().positive()
 });
 
@@ -88,49 +88,6 @@ const heliusTransactionFlowSchema = z
     sourceReferences: z.array(z.string().url()).min(1, "sourceReferences cannot be empty")
   })
   .strict();
-
-const birdeyeNetFlowSchema = z
-  .object({
-    eventKind: z.literal("birdeye_net_flow"),
-    timestampUnixMs: z.number().int().positive(),
-    buyVolume: z.union([z.number().int().nonnegative(), z.string()]).refine(
-      (val) => {
-        if (typeof val === "number") return isFiniteNonNegative(val) && isSafeInteger(val);
-        if (typeof val === "string") return isValidDecimalString(val);
-        return false;
-      },
-      { message: "buyVolume must be a non-negative finite number or valid decimal string" }
-    ),
-    sellVolume: z.union([z.number().int().nonnegative(), z.string()]).refine(
-      (val) => {
-        if (typeof val === "number") return isFiniteNonNegative(val) && isSafeInteger(val);
-        if (typeof val === "string") return isValidDecimalString(val);
-        return false;
-      },
-      { message: "sellVolume must be a non-negative finite number or valid decimal string" }
-    ),
-    netFlow: z.union([z.number().int(), z.string()]).refine(
-      (val) => {
-        if (typeof val === "number") return Number.isFinite(val) && isSafeInteger(val);
-        if (typeof val === "string") return isValidDecimalString(val);
-        return false;
-      },
-      { message: "netFlow must be a finite number or valid decimal string" }
-    ),
-    sourceReferences: z.array(z.string().url()).min(1, "sourceReferences cannot be empty"),
-    windowStartUnixMs: z.number().int().positive().optional(),
-    windowEndUnixMs: z.number().int().positive().optional()
-  })
-  .strict()
-  .refine(
-    (data) => {
-      if (data.windowStartUnixMs !== undefined && data.windowEndUnixMs !== undefined) {
-        return data.windowEndUnixMs >= data.windowStartUnixMs;
-      }
-      return true;
-    },
-    { message: "windowEndUnixMs cannot be before windowStartUnixMs", path: ["windowEndUnixMs"] }
-  );
 
 const whaleTransferFlowSchema = z
   .object({
@@ -169,10 +126,8 @@ const whaleSwapFlowSchema = z
     freshnessContext: freshnessContextSchema,
     transactionSignature: z.string().min(1),
     eventIndex: z.number().int().nonnegative(),
-    slot: z.number().int().nonnegative(),
-    stablecoinOperation: z.enum(["mint", "burn", "transfer"]),
-    solDelta: z.number().int().optional(),
-    usdcDelta: z.number().int().optional()
+    slot: z.number().int().nonnegative().optional(),
+    stablecoinOperation: z.enum(["mint", "burn", "transfer"])
   })
   .strict();
 
@@ -254,7 +209,6 @@ const cexFlowProxySchema = z
 
 const onChainFlowSourceEventSchema = z.union([
   heliusTransactionFlowSchema,
-  birdeyeNetFlowSchema,
   whaleTransferFlowSchema,
   whaleSwapFlowSchema,
   stablecoinFlowSchema,

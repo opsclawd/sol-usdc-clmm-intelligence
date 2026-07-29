@@ -1,0 +1,70 @@
+
+> clmm-autopilot-pipeline@0.1.0 typecheck /home/gary/.openclaw/workspace/sol-usdc-clmm-intelligence/.ai-worktrees/issue-67
+> tsc --noEmit
+
+src/domain/on-chain-flow/normalize.ts(29,45): error TS2367: This comparison appears to be unintentional because the types '"whale_transfer" | "whale_swap" | "stablecoin_flow" | "cex_flow_proxy" | "helius_transaction"' and '"birdeye_net_flow"' have no overlap.
+src/domain/on-chain-flow/normalize.ts(37,7): error TS2367: This comparison appears to be unintentional because the types '"dex_net_flow"' and '"birdeye_net_flow"' have no overlap.
+src/domain/on-chain-flow/normalize.ts(38,33): error TS2339: Property 'buyVolume' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(38,64): error TS2339: Property 'buyVolume' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(38,89): error TS2339: Property 'buyVolume' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(40,20): error TS2339: Property 'sellVolume' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(40,52): error TS2339: Property 'sellVolume' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(40,78): error TS2339: Property 'sellVolume' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(41,31): error TS2339: Property 'netFlow' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(41,60): error TS2339: Property 'netFlow' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(41,83): error TS2339: Property 'netFlow' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(104,9): error TS2375: Type '{ slot: number | undefined; blockTimestampUnixMs: number; }' is not assignable to type 'OnChainFlowFreshnessContext' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+  Types of property 'slot' are incompatible.
+    Type 'number | undefined' is not assignable to type 'number'.
+      Type 'undefined' is not assignable to type 'number'.
+src/domain/on-chain-flow/normalize.ts(130,9): error TS2375: Type '{ blockTimestampUnixMs: number; slot?: number | undefined; }' is not assignable to type 'OnChainFlowFreshnessContext' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+  Types of property 'slot' are incompatible.
+    Type 'number | undefined' is not assignable to type 'number'.
+      Type 'undefined' is not assignable to type 'number'.
+src/domain/on-chain-flow/normalize.ts(161,9): error TS2375: Type '{ blockTimestampUnixMs: number; slot?: number | undefined; }' is not assignable to type 'OnChainFlowFreshnessContext' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+  Types of property 'slot' are incompatible.
+    Type 'number | undefined' is not assignable to type 'number'.
+      Type 'undefined' is not assignable to type 'number'.
+src/domain/on-chain-flow/normalize.ts(184,9): error TS2375: Type '{ blockTimestampUnixMs: number; slot?: number | undefined; }' is not assignable to type 'OnChainFlowFreshnessContext' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+  Types of property 'slot' are incompatible.
+    Type 'number | undefined' is not assignable to type 'number'.
+      Type 'undefined' is not assignable to type 'number'.
+src/domain/on-chain-flow/normalize.ts(193,10): error TS2678: Type '"birdeye_net_flow"' is not comparable to type '"whale_transfer" | "whale_swap" | "stablecoin_flow" | "dex_net_flow" | "cex_flow_proxy" | "helius_transaction"'.
+src/domain/on-chain-flow/normalize.ts(200,43): error TS2339: Property 'timestampUnixMs' does not exist on type 'never'.
+  Property 'timestampUnixMs' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(201,35): error TS2339: Property 'timestampUnixMs' does not exist on type 'never'.
+  Property 'timestampUnixMs' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(208,68): error TS2339: Property 'timestampUnixMs' does not exist on type 'never'.
+  Property 'timestampUnixMs' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(209,36): error TS2339: Property 'windowStartUnixMs' does not exist on type 'never'.
+  Property 'windowStartUnixMs' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(209,65): error TS2339: Property 'timestampUnixMs' does not exist on type 'never'.
+  Property 'timestampUnixMs' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(210,34): error TS2339: Property 'windowEndUnixMs' does not exist on type 'never'.
+  Property 'windowEndUnixMs' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(210,61): error TS2339: Property 'timestampUnixMs' does not exist on type 'never'.
+  Property 'timestampUnixMs' does not exist on type 'never'.
+src/domain/on-chain-flow/normalize.ts(233,9): error TS2375: Type '{ blockTimestampUnixMs: number; slot?: number | undefined; }' is not assignable to type 'OnChainFlowFreshnessContext' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+  Types of property 'slot' are incompatible.
+    Type 'number | undefined' is not assignable to type 'number'.
+      Type 'undefined' is not assignable to type 'number'.
+src/domain/on-chain-flow/normalize.ts(257,9): error TS2375: Type '{ blockTimestampUnixMs: number; slot?: number | undefined; }' is not assignable to type 'OnChainFlowFreshnessContext' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+  Types of property 'slot' are incompatible.
+    Type 'number | undefined' is not assignable to type 'number'.
+      Type 'undefined' is not assignable to type 'number'.
+src/domain/on-chain-flow/threshold.ts(148,10): error TS2678: Type '"birdeye_net_flow"' is not comparable to type '"whale_transfer" | "whale_swap" | "stablecoin_flow" | "dex_net_flow" | "cex_flow_proxy" | "helius_transaction"'.
+src/domain/on-chain-flow/threshold.ts(149,24): error TS2339: Property 'netFlow' does not exist on type 'never'.
+src/domain/on-chain-flow/threshold.ts(150,27): error TS2339: Property 'netFlow' does not exist on type 'never'.
+src/domain/on-chain-flow/threshold.ts(152,34): error TS2339: Property 'netFlow' does not exist on type 'never'.
+src/domain/on-chain-flow/threshold.ts(181,10): error TS2678: Type '"birdeye_net_flow"' is not comparable to type '"whale_transfer" | "whale_swap" | "stablecoin_flow" | "dex_net_flow" | "cex_flow_proxy" | "helius_transaction"'.
+src/domain/on-chain-flow/threshold.ts(198,7): error TS2367: This comparison appears to be unintentional because the types '"whale_transfer" | "whale_swap" | "stablecoin_flow" | "dex_net_flow" | "cex_flow_proxy" | "helius_transaction"' and '"birdeye_net_flow"' have no overlap.
+tests/domain/on-chain-flow/normalize.test.ts(234,43): error TS2345: Argument of type '{ eventKind: "birdeye_net_flow"; timestampUnixMs: number; buyVolume: string; sellVolume: string; netFlow: string; sourceReferences: string[]; }' is not assignable to parameter of type '{ sourceReferences: string[]; eventKind: "helius_transaction"; transactionHash: string; timestampUnixMs: number; flowSide: "buy" | "sell"; nativeAmount: string | number; slot?: number | undefined; } | ... 4 more ... | { ...; }'.
+  Type '{ eventKind: "birdeye_net_flow"; timestampUnixMs: number; buyVolume: string; sellVolume: string; netFlow: string; sourceReferences: string[]; }' is missing the following properties from type '{ sourceReferences: string[]; eventKind: "helius_transaction"; transactionHash: string; timestampUnixMs: number; flowSide: "buy" | "sell"; nativeAmount: string | number; slot?: number | undefined; }': transactionHash, flowSide, nativeAmount
+tests/domain/on-chain-flow/normalize.test.ts(250,41): error TS2345: Argument of type '{ eventKind: "birdeye_net_flow"; timestampUnixMs: number; buyVolume: string; sellVolume: string; netFlow: string; sourceReferences: string[]; }' is not assignable to parameter of type '{ sourceReferences: string[]; eventKind: "helius_transaction"; transactionHash: string; timestampUnixMs: number; flowSide: "buy" | "sell"; nativeAmount: string | number; slot?: number | undefined; } | ... 4 more ... | { ...; }'.
+  Type '{ eventKind: "birdeye_net_flow"; timestampUnixMs: number; buyVolume: string; sellVolume: string; netFlow: string; sourceReferences: string[]; }' is missing the following properties from type '{ sourceReferences: string[]; eventKind: "helius_transaction"; transactionHash: string; timestampUnixMs: number; flowSide: "buy" | "sell"; nativeAmount: string | number; slot?: number | undefined; }': transactionHash, flowSide, nativeAmount
+tests/domain/on-chain-flow/normalize.test.ts(262,41): error TS2345: Argument of type '{ eventKind: "birdeye_net_flow"; timestampUnixMs: number; buyVolume: string; sellVolume: string; netFlow: string; sourceReferences: string[]; }' is not assignable to parameter of type '{ sourceReferences: string[]; eventKind: "helius_transaction"; transactionHash: string; timestampUnixMs: number; flowSide: "buy" | "sell"; nativeAmount: string | number; slot?: number | undefined; } | ... 4 more ... | { ...; }'.
+  Type '{ eventKind: "birdeye_net_flow"; timestampUnixMs: number; buyVolume: string; sellVolume: string; netFlow: string; sourceReferences: string[]; }' is missing the following properties from type '{ sourceReferences: string[]; eventKind: "helius_transaction"; transactionHash: string; timestampUnixMs: number; flowSide: "buy" | "sell"; nativeAmount: string | number; slot?: number | undefined; }': transactionHash, flowSide, nativeAmount
+tests/domain/on-chain-flow/normalize.test.ts(274,41): error TS2345: Argument of type '{ eventKind: "birdeye_net_flow"; timestampUnixMs: number; buyVolume: string; sellVolume: string; netFlow: string; sourceReferences: string[]; }' is not assignable to parameter of type '{ sourceReferences: string[]; eventKind: "helius_transaction"; transactionHash: string; timestampUnixMs: number; flowSide: "buy" | "sell"; nativeAmount: string | number; slot?: number | undefined; } | ... 4 more ... | { ...; }'.
+  Type '{ eventKind: "birdeye_net_flow"; timestampUnixMs: number; buyVolume: string; sellVolume: string; netFlow: string; sourceReferences: string[]; }' is missing the following properties from type '{ sourceReferences: string[]; eventKind: "helius_transaction"; transactionHash: string; timestampUnixMs: number; flowSide: "buy" | "sell"; nativeAmount: string | number; slot?: number | undefined; }': transactionHash, flowSide, nativeAmount
+ ELIFECYCLE  Command failed with exit code 2.
+ WARN   Local package.json exists, but node_modules missing, did you mean to install?

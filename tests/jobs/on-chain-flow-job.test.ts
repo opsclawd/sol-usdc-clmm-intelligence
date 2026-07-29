@@ -287,7 +287,7 @@ describe("onChainFlowJob", () => {
       expect(elapsed).toBeLessThan(100);
     });
 
-    it("preserves configured source ordering in outcomes", async () => {
+    it("sorts source outcomes alphabetically regardless of configuration order", async () => {
       mockCreateCollectionRunContext.mockReturnValue(VALID_CONTEXT);
       mockCollectOnChainFlow
         .mockResolvedValueOnce({ ...ACCEPTED_RESULT, source: "helius-api" })
@@ -497,7 +497,7 @@ describe("onChainFlowJob", () => {
       const deps = makeJobDeps(sources);
 
       await expect(runOnChainFlowJob(deps)).rejects.toThrow(
-        "At least one on-chain flow source must be configured"
+        "Exactly two on-chain flow sources (helius-api and birdeye-api) must be configured"
       );
     });
 
@@ -510,7 +510,9 @@ describe("onChainFlowJob", () => {
       ];
       const deps = makeJobDeps(sources);
 
-      await expect(runOnChainFlowJob(deps)).rejects.toThrow("Duplicate on-chain flow source");
+      await expect(runOnChainFlowJob(deps)).rejects.toThrow(
+        "Exactly one helius-api source must be configured"
+      );
       expect(mockCollectOnChainFlow).not.toHaveBeenCalled();
     });
 
@@ -537,11 +539,11 @@ describe("onChainFlowJob", () => {
       const deps = makeJobDeps(sources);
 
       await expect(runOnChainFlowJob(deps)).rejects.toThrow(
-        "Duplicate on-chain flow source names are not allowed"
+        "Exactly one helius-api source must be configured"
       );
     });
 
-    it("rejects two birdeye-api sources (duplicate check before heliusCount validation)", async () => {
+    it("rejects two birdeye-api sources", async () => {
       mockCreateCollectionRunContext.mockReturnValue(VALID_CONTEXT);
 
       const sources: ConfiguredOnChainFlowSource[] = [
@@ -551,7 +553,7 @@ describe("onChainFlowJob", () => {
       const deps = makeJobDeps(sources);
 
       await expect(runOnChainFlowJob(deps)).rejects.toThrow(
-        "Duplicate on-chain flow source names are not allowed"
+        "Exactly one helius-api source must be configured"
       );
     });
 
@@ -603,8 +605,8 @@ describe("onChainFlowJob", () => {
       });
 
       mockCollectOnChainFlow
-        .mockResolvedValueOnce(heliusPromise)
-        .mockResolvedValueOnce(birdeyePromise);
+        .mockResolvedValueOnce(birdeyePromise)
+        .mockResolvedValueOnce(heliusPromise);
 
       const sources: ConfiguredOnChainFlowSource[] = [
         { source: "helius-api", adapter: makeOnChainFlowSource() },

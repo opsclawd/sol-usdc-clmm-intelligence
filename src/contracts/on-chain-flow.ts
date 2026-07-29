@@ -11,7 +11,7 @@ export type OnChainAddressContext =
     };
 
 export type OnChainFlowFreshnessContext = {
-  readonly slot: number;
+  readonly slot?: number;
   readonly blockTimestampUnixMs: number;
 };
 
@@ -63,7 +63,7 @@ export type WhaleSwapPayloadV1 = {
   readonly freshnessContext: OnChainFlowFreshnessContext;
   readonly transactionSignature: string;
   readonly eventIndex: number;
-  readonly slot: number;
+  readonly slot?: number;
   readonly stablecoinOperation: StablecoinOperation;
 };
 
@@ -94,7 +94,7 @@ export type DexNetFlowPayloadV1 = {
   readonly observedAtUnixMs: number;
   readonly amountUsdc: string;
   readonly direction: OnChainFlowDirection;
-  readonly venue: string;
+  readonly venue: "solana";
   readonly addressContext: OnChainAddressContext;
   readonly sourceReferences: readonly string[];
   readonly sourceQuality: OnChainFlowSourceQuality;

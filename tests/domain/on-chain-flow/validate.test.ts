@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import {
   makeHeliusTransactionFlowEvent,
-  makeBirdeyeNetFlowEvent
+  makeBirdeyeWhaleSwapEvent,
+  makeBirdeyeDexNetFlowEvent
 } from "../../fixtures/on-chain-flow.js";
+import type { AcceptedOnChainFlowSourceEvent } from "../../../src/domain/on-chain-flow/validate.js";
 import {
   acceptOnChainFlowSourceEvent,
   OnChainFlowValidationError
@@ -17,11 +19,34 @@ describe("acceptOnChainFlowSourceEvent", () => {
       expect(result.eventKind).toBe("helius_transaction");
     });
 
-    it("accepts valid Birdeye net flow event", () => {
-      const event = makeBirdeyeNetFlowEvent();
-      const result = acceptOnChainFlowSourceEvent(event);
-      expect(result).toBeDefined();
-      expect(result.eventKind).toBe("birdeye_net_flow");
+    it("accepts Birdeye whale_swap without a fabricated slot", () => {
+      const result = acceptOnChainFlowSourceEvent(
+        makeBirdeyeWhaleSwapEvent()
+      ) as AcceptedOnChainFlowSourceEvent & {
+        freshnessContext: { slot?: number; blockTimestampUnixMs: number };
+      };
+      expect(result).not.toHaveProperty("slot");
+      expect(result.freshnessContext).not.toHaveProperty("slot");
+    });
+
+    it("accepts Birdeye dex_net_flow without a fabricated slot", () => {
+      const result = acceptOnChainFlowSourceEvent(
+        makeBirdeyeDexNetFlowEvent()
+      ) as AcceptedOnChainFlowSourceEvent & {
+        freshnessContext: { slot?: number; blockTimestampUnixMs: number };
+      };
+      expect(result).not.toHaveProperty("slot");
+      expect(result.freshnessContext).not.toHaveProperty("slot");
+    });
+
+    it("rejects a provided negative freshness slot", () => {
+      expect(() =>
+        acceptOnChainFlowSourceEvent(
+          makeBirdeyeWhaleSwapEvent({
+            freshnessContext: { slot: -1, blockTimestampUnixMs: 1700000000000 }
+          })
+        )
+      ).toThrow(OnChainFlowValidationError);
     });
 
     it("rejects event with motive field (narrative)", () => {
@@ -65,14 +90,25 @@ describe("acceptOnChainFlowSourceEvent", () => {
 
     it("rejects Birdeye event with invalid time window (windowEnd before windowStart)", () => {
       const event = {
-        eventKind: "birdeye_net_flow" as const,
-        timestampUnixMs: 1700000000000,
-        buyVolume: "50000000000",
-        sellVolume: "30000000000",
-        netFlow: "20000000000",
+        eventKind: "dex_net_flow" as const,
+        sourceEventId: "dex-001",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "20000000000",
+        direction: "inbound" as const,
+        venue: "solana",
+        addressContext: { addressType: "wallet" as const, address: "WalletXYZ" },
         sourceReferences: ["https://birdeye.xyz/token/SOL"],
+        sourceQuality: {
+          provider: "birdeye-api" as const,
+          freshness: "windowed" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { blockTimestampUnixMs: 1700000000000 },
         windowStartUnixMs: 1700000000000,
-        windowEndUnixMs: 1699999999000
+        windowEndUnixMs: 1699999999000,
+        buyVolumeUsdc: "50000000000",
+        sellVolumeUsdc: "30000000000",
+        netFlowUsdc: "20000000000"
       };
       expect(() => acceptOnChainFlowSourceEvent(event)).toThrow(OnChainFlowValidationError);
     });

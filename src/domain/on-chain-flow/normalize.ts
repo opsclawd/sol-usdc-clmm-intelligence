@@ -26,24 +26,13 @@ function normalizeDexNetFlow(event: AcceptedOnChainFlowSourceEvent): {
   sellVolumeUsdc: string;
   netFlowUsdc: string;
 } {
-  if (event.eventKind !== "dex_net_flow" && event.eventKind !== "birdeye_net_flow") {
+  if (event.eventKind !== "dex_net_flow") {
     throw new OnChainFlowNormalizationError("Event is not a DEX net flow event");
   }
 
-  let buyVolumeStr: string;
-  let sellVolumeStr: string;
-  let netFlowStr: string;
-
-  if (event.eventKind === "birdeye_net_flow") {
-    buyVolumeStr = typeof event.buyVolume === "string" ? event.buyVolume : String(event.buyVolume);
-    sellVolumeStr =
-      typeof event.sellVolume === "string" ? event.sellVolume : String(event.sellVolume);
-    netFlowStr = typeof event.netFlow === "string" ? event.netFlow : String(event.netFlow);
-  } else {
-    buyVolumeStr = event.buyVolumeUsdc;
-    sellVolumeStr = event.sellVolumeUsdc;
-    netFlowStr = event.netFlowUsdc;
-  }
+  const buyVolumeStr = event.buyVolumeUsdc;
+  const sellVolumeStr = event.sellVolumeUsdc;
+  const netFlowStr = event.netFlowUsdc;
 
   const buyDecimal = parseDecimalString(buyVolumeStr);
   const sellDecimal = parseDecimalString(sellVolumeStr);
@@ -102,8 +91,8 @@ export function normalizeOnChainFlow(
         sourceReferences,
         sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "full" },
         freshnessContext: {
-          slot: heliusEvent.slot,
-          blockTimestampUnixMs: heliusEvent.timestampUnixMs
+          blockTimestampUnixMs: heliusEvent.timestampUnixMs,
+          slot: heliusEvent.slot
         },
         transactionSignature: heliusEvent.transactionHash,
         eventIndex: 0,
@@ -127,7 +116,12 @@ export function normalizeOnChainFlow(
         addressContext: wtEvent.addressContext,
         sourceReferences,
         sourceQuality: wtEvent.sourceQuality,
-        freshnessContext: wtEvent.freshnessContext,
+        freshnessContext: {
+          blockTimestampUnixMs: wtEvent.freshnessContext.blockTimestampUnixMs,
+          ...(wtEvent.freshnessContext.slot !== undefined && {
+            slot: wtEvent.freshnessContext.slot
+          })
+        },
         transactionSignature: wtEvent.transactionSignature,
         eventIndex: wtEvent.eventIndex,
         slot: wtEvent.slot,
@@ -138,14 +132,6 @@ export function normalizeOnChainFlow(
 
     case "whale_swap": {
       const wsEvent = event as AcceptedOnChainFlowSourceEvent & { eventKind: "whale_swap" };
-      const solDelta = wsEvent.solDelta ?? 0;
-      const usdcDelta = wsEvent.usdcDelta ?? 0;
-      const direction: "inbound" | "outbound" =
-        solDelta > 0 && usdcDelta < 0
-          ? "inbound"
-          : solDelta < 0 && usdcDelta > 0
-            ? "outbound"
-            : (wsEvent.direction as "inbound" | "outbound");
       const result: WhaleSwapPayloadV1 = {
         schemaVersion: 1,
         eventFamily: "on_chain_flow",
@@ -153,15 +139,20 @@ export function normalizeOnChainFlow(
         sourceEventId: wsEvent.sourceEventId,
         observedAtUnixMs: wsEvent.observedAtUnixMs,
         amountUsdc: wsEvent.amountUsdc,
-        direction,
+        direction: wsEvent.direction,
         venue: wsEvent.venue,
         addressContext: wsEvent.addressContext,
         sourceReferences,
         sourceQuality: wsEvent.sourceQuality,
-        freshnessContext: wsEvent.freshnessContext,
+        freshnessContext: {
+          blockTimestampUnixMs: wsEvent.freshnessContext.blockTimestampUnixMs,
+          ...(wsEvent.freshnessContext.slot !== undefined && {
+            slot: wsEvent.freshnessContext.slot
+          })
+        },
         transactionSignature: wsEvent.transactionSignature,
         eventIndex: wsEvent.eventIndex,
-        slot: wsEvent.slot,
+        ...(wsEvent.slot !== undefined && { slot: wsEvent.slot }),
         stablecoinOperation: wsEvent.stablecoinOperation
       };
       return result;
@@ -181,36 +172,16 @@ export function normalizeOnChainFlow(
         addressContext: sfEvent.addressContext,
         sourceReferences,
         sourceQuality: sfEvent.sourceQuality,
-        freshnessContext: sfEvent.freshnessContext,
+        freshnessContext: {
+          blockTimestampUnixMs: sfEvent.freshnessContext.blockTimestampUnixMs,
+          ...(sfEvent.freshnessContext.slot !== undefined && {
+            slot: sfEvent.freshnessContext.slot
+          })
+        },
         transactionSignature: sfEvent.transactionSignature,
         eventIndex: sfEvent.eventIndex,
         slot: sfEvent.slot,
         stablecoinOperation: sfEvent.stablecoinOperation
-      };
-      return result;
-    }
-
-    case "birdeye_net_flow": {
-      const beEvent = event as AcceptedOnChainFlowSourceEvent & { eventKind: "birdeye_net_flow" };
-      const dexFlow = normalizeDexNetFlow(beEvent);
-      const result: DexNetFlowPayloadV1 = {
-        schemaVersion: 1,
-        eventFamily: "on_chain_flow",
-        eventType: "dex_net_flow",
-        sourceEventId: `birdeye-${beEvent.timestampUnixMs}`,
-        observedAtUnixMs: beEvent.timestampUnixMs,
-        amountUsdc: dexFlow.netFlowUsdc.replace(/^-/, ""),
-        direction: dexFlow.netFlowUsdc.startsWith("-") ? "outbound" : "inbound",
-        venue: "solana",
-        addressContext: { addressType: "wallet", address: "birdeye-aggregated" },
-        sourceReferences,
-        sourceQuality: { provider: "birdeye-api", freshness: "windowed", completeness: "full" },
-        freshnessContext: { slot: 0, blockTimestampUnixMs: beEvent.timestampUnixMs },
-        windowStartUnixMs: beEvent.windowStartUnixMs ?? beEvent.timestampUnixMs - 86400000,
-        windowEndUnixMs: beEvent.windowEndUnixMs ?? beEvent.timestampUnixMs,
-        buyVolumeUsdc: dexFlow.buyVolumeUsdc,
-        sellVolumeUsdc: dexFlow.sellVolumeUsdc,
-        netFlowUsdc: dexFlow.netFlowUsdc
       };
       return result;
     }
@@ -230,7 +201,12 @@ export function normalizeOnChainFlow(
         addressContext: dnEvent.addressContext,
         sourceReferences,
         sourceQuality: dnEvent.sourceQuality,
-        freshnessContext: dnEvent.freshnessContext,
+        freshnessContext: {
+          blockTimestampUnixMs: dnEvent.freshnessContext.blockTimestampUnixMs,
+          ...(dnEvent.freshnessContext.slot !== undefined && {
+            slot: dnEvent.freshnessContext.slot
+          })
+        },
         windowStartUnixMs: dnEvent.windowStartUnixMs,
         windowEndUnixMs: dnEvent.windowEndUnixMs,
         buyVolumeUsdc: dexFlow.buyVolumeUsdc,
@@ -254,7 +230,12 @@ export function normalizeOnChainFlow(
         addressContext: cexEvent.addressContext,
         sourceReferences,
         sourceQuality: cexEvent.sourceQuality,
-        freshnessContext: cexEvent.freshnessContext,
+        freshnessContext: {
+          blockTimestampUnixMs: cexEvent.freshnessContext.blockTimestampUnixMs,
+          ...(cexEvent.freshnessContext.slot !== undefined && {
+            slot: cexEvent.freshnessContext.slot
+          })
+        },
         quality: "proxy",
         attributionConfidence: cexEvent.attributionConfidence,
         attributionProvider: cexEvent.attributionProvider,

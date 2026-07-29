@@ -14,16 +14,52 @@ export interface HeliusTransactionFlowEvent {
   readonly sourceReferences: readonly string[];
 }
 
-export interface BirdeyeNetFlowEvent {
-  readonly eventKind: "birdeye_net_flow";
-  readonly timestampUnixMs: number;
-  readonly buyVolume: number;
-  readonly sellVolume: number;
-  readonly netFlow: number;
+export interface BirdeyeWhaleSwapEvent {
+  readonly eventKind: "whale_swap";
+  readonly sourceEventId: string;
+  readonly observedAtUnixMs: number;
+  readonly amountUsdc: string;
+  readonly direction: "inbound" | "outbound";
+  readonly venue: "solana";
+  readonly addressContext: { readonly addressType: "wallet"; readonly address: string };
   readonly sourceReferences: readonly string[];
+  readonly sourceQuality: {
+    readonly provider: "birdeye-api";
+    readonly freshness: "windowed";
+    readonly completeness: "full";
+  };
+  readonly freshnessContext: { readonly blockTimestampUnixMs: number };
+  readonly transactionSignature: string;
+  readonly eventIndex: 0;
+  readonly stablecoinOperation: "transfer";
 }
 
-export type OnChainFlowSourceEvent = HeliusTransactionFlowEvent | BirdeyeNetFlowEvent;
+export interface BirdeyeDexNetFlowEvent {
+  readonly eventKind: "dex_net_flow";
+  readonly sourceEventId: string;
+  readonly observedAtUnixMs: number;
+  readonly amountUsdc: string;
+  readonly direction: "inbound" | "outbound";
+  readonly venue: "solana";
+  readonly addressContext: { readonly addressType: "contract"; readonly address: string };
+  readonly sourceReferences: readonly string[];
+  readonly sourceQuality: {
+    readonly provider: "birdeye-api";
+    readonly freshness: "windowed";
+    readonly completeness: "full";
+  };
+  readonly freshnessContext: { readonly blockTimestampUnixMs: number };
+  readonly windowStartUnixMs: number;
+  readonly windowEndUnixMs: number;
+  readonly buyVolumeUsdc: string;
+  readonly sellVolumeUsdc: string;
+  readonly netFlowUsdc: string;
+}
+
+export type OnChainFlowSourceEvent =
+  | HeliusTransactionFlowEvent
+  | BirdeyeWhaleSwapEvent
+  | BirdeyeDexNetFlowEvent;
 
 export interface OnChainFlowSourceSnapshot {
   readonly source: "helius-api" | "birdeye-api";

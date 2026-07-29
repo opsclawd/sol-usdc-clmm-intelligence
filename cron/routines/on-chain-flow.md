@@ -1,6 +1,6 @@
 Collect SOL/USDC on-chain flow evidence by running `pnpm collect:on-chain-flow`.
 
-This routine collects on-chain flow events from two allowed sources: Helius (transaction flows) and Birdeye (DEX net flows). It reports source outcomes (COMPLETE, PARTIAL, UNAVAILABLE, FAILED) and persists normalized observations to the database.
+This routine collects on-chain flow events from Birdeye pair trades (Phase 1). Helius-derived kinds are documented as future work. It reports source outcomes (COMPLETE, PARTIAL, UNAVAILABLE, FAILED) and persists normalized observations to the database.
 
 ## Authority Boundaries
 
@@ -11,43 +11,35 @@ This routine collects on-chain flow events from two allowed sources: Helius (tra
 - Synthesize policy (regime-engine owns final PolicyInsight)
 - Execute transactions or manage positions
 
-## Two-Source Allowlist
+## Birdeye Phase 1 Configuration
 
-This routine only collects from two approved sources configured via environment variables:
+Phase 1 uses Birdeye `/defi/txs/pair` for SOL/USDC pair trades:
 
-- `HELIUS_API_URL`: Base URL for the Helius API provider.
-- `HELIUS_API_KEY`: API key for the Helius provider.
-- `BIRDEYE_API_URL`: Base URL for the Birdeye API provider.
-- `BIRDEYE_API_KEY`: API key for the Birdeye provider.
+- `BIRDEYE_FLOW_API_URL`: Base URL (`https://public-api.birdeye.so`)
+- `BIRDEYE_API_KEY`: Birdeye API key
+- `ORCA_SOL_USDC_WHIRLPOOL`: Orca whirlpool address (`Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE`)
+- `ON_CHAIN_FLOW_LOOKBACK_MS`: Lookback window in milliseconds (`900000` = 15 minutes)
 
-## Flow Event Types
+## Event Coverage Matrix
 
-The routine collects five on-chain flow event kinds:
-
-| Event Kind        | Source  | Description                         |
-| ----------------- | ------- | ----------------------------------- |
-| `whale_transfer`  | Helius  | Large SOL/USDC transfers            |
-| `whale_swap`      | Helius  | Large DEX swaps                     |
-| `stablecoin_flow` | Helius  | Stablecoin mint/burn/transfer flows |
-| `dex_net_flow`    | Birdeye | DEX buy/sell volume imbalance       |
-| `cex_flow_proxy`  | Helius  | Probabilistic CEX flow attribution  |
+| Event kind        | Phase 1 status | Source                      |
+| ----------------- | -------------- | --------------------------- |
+| `whale_swap`      | Live           | Birdeye pair trades         |
+| `dex_net_flow`    | Live           | Birdeye pair trades         |
+| `whale_transfer`  | Unavailable    | Helius follow-up            |
+| `stablecoin_flow` | Unavailable    | Helius follow-up            |
+| `cex_flow_proxy`  | Unavailable    | Helius/watch-list follow-up |
 
 ## Threshold Gating
 
-Each event kind has a minimum USD value threshold configured via environment variables:
+Live event kinds use minimum USD value thresholds:
 
-- `WHALE_TRANSFER_MIN_USDC`: Minimum transfer amount (default: 10000)
-- `WHALE_SWAP_MIN_USDC`: Minimum swap amount (default: 10000)
-- `STABLECOIN_FLOW_MIN_USDC`: Minimum stablecoin flow amount (default: 50000)
-- `DEX_NET_FLOW_MIN_USDC`: Minimum DEX net flow amount (default: 10000)
-- `CEX_FLOW_PROXY_MIN_USDC`: Minimum CEX proxy amount (default: 10000)
-- `CEX_MIN_ATTRIBUTION_CONFIDENCE`: Minimum attribution confidence for CEX proxy (default: 0.5)
+- `ON_CHAIN_WHALE_SWAP_MIN_USDC`: Minimum swap amount (default: 1000000)
+- `ON_CHAIN_DEX_NET_FLOW_MIN_USDC`: Minimum DEX net flow amount (default: 5000000)
 
-## Provenance and Freshness
+## Source Health Semantics
 
-- All flow events carry 15-minute freshness windows (`maxObservedAgeMs: 900000`)
-- Clock skew tolerance is 5 seconds
-- Stale behavior is `allow_context_only` — events may be used as contextual evidence but not core telemetry
+A healthy Phase 1 run is normally `PARTIAL` because Birdeye provides usable evidence while the disabled Helius source reports unavailable. This is expected behavior, not a failure condition.
 
 ## Command Exit Statuses
 

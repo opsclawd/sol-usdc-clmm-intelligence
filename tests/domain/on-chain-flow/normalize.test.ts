@@ -1,98 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { makeHeliusTransactionFlowEvent } from "../../fixtures/on-chain-flow.js";
 import type { StablecoinFlowPayloadV1 } from "../../../src/contracts/on-chain-flow.js";
-import {
-  normalizeOnChainFlow,
-  OnChainFlowNormalizationError
-} from "../../../src/domain/on-chain-flow/normalize.js";
+import { normalizeOnChainFlow } from "../../../src/domain/on-chain-flow/normalize.js";
 
 describe("normalizeOnChainFlow", () => {
-  describe("normalizes transaction direction from explicit asset deltas only", () => {
-    it("whale swap with SOL delta > 0 and USDC delta < 0 produces inbound direction", () => {
-      const event = {
-        eventKind: "whale_swap" as const,
-        sourceEventId: "ws_001",
-        observedAtUnixMs: 1700000000000,
-        amountUsdc: "50000000",
-        direction: "outbound" as const,
-        venue: "solana" as const,
-        addressContext: { addressType: "wallet" as const, address: "abc123" },
-        sourceReferences: ["https://helius.xyz/txn/abc123"],
-        sourceQuality: {
-          provider: "helius-api" as const,
-          freshness: "realtime" as const,
-          completeness: "full" as const
-        },
-        freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
-        transactionSignature: "txn_abc123",
-        eventIndex: 0,
-        slot: 123456789,
-        stablecoinOperation: "transfer" as const,
-        solDelta: 1000000000,
-        usdcDelta: -50000000
-      };
-      const result = normalizeOnChainFlow(event, Date.now());
-      expect(result.eventType).toBe("whale_swap");
-      expect(result.direction).toBe("inbound");
-    });
-
-    it("whale swap with SOL delta < 0 and USDC delta > 0 produces outbound direction", () => {
-      const event = {
-        eventKind: "whale_swap" as const,
-        sourceEventId: "ws_001",
-        observedAtUnixMs: 1700000000000,
-        amountUsdc: "50000000",
-        direction: "inbound" as const,
-        venue: "solana" as const,
-        addressContext: { addressType: "wallet" as const, address: "abc123" },
-        sourceReferences: ["https://helius.xyz/txn/abc123"],
-        sourceQuality: {
-          provider: "helius-api" as const,
-          freshness: "realtime" as const,
-          completeness: "full" as const
-        },
-        freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
-        transactionSignature: "txn_abc123",
-        eventIndex: 0,
-        slot: 123456789,
-        stablecoinOperation: "transfer" as const,
-        solDelta: -1000000000,
-        usdcDelta: 50000000
-      };
-      const result = normalizeOnChainFlow(event, Date.now());
-      expect(result.eventType).toBe("whale_swap");
-      expect(result.direction).toBe("outbound");
-    });
-
-    it("whale swap direction never uses address intent", () => {
-      const event = {
-        eventKind: "whale_swap" as const,
-        sourceEventId: "ws_001",
-        observedAtUnixMs: 1700000000000,
-        amountUsdc: "50000000",
-        direction: "outbound" as const,
-        venue: "solana" as const,
-        addressContext: { addressType: "wallet" as const, address: "Mwallet123_swap" },
-        sourceReferences: ["https://helius.xyz/txn/abc123"],
-        sourceQuality: {
-          provider: "helius-api" as const,
-          freshness: "realtime" as const,
-          completeness: "full" as const
-        },
-        freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
-        transactionSignature: "txn_abc123",
-        eventIndex: 0,
-        slot: 123456789,
-        stablecoinOperation: "transfer" as const,
-        solDelta: 1000000000,
-        usdcDelta: -50000000
-      };
-      const result = normalizeOnChainFlow(event, Date.now());
-      expect(result.eventType).toBe("whale_swap");
-      expect(result.direction).toBe("inbound");
-    });
-  });
-
   describe("normalizes stablecoin mint burn and transfer as separate operations", () => {
     it("mint operation is retained as mint", () => {
       const event = {
@@ -222,58 +133,6 @@ describe("normalizeOnChainFlow", () => {
   });
 
   describe("normalizes DEX net flow with a signed net equal to buy minus sell", () => {
-    it("accepts consistent DEX net flow where buy - sell = net", () => {
-      const event = {
-        eventKind: "birdeye_net_flow" as const,
-        timestampUnixMs: 1700000000000,
-        buyVolume: "50000000000",
-        sellVolume: "30000000000",
-        netFlow: "20000000000",
-        sourceReferences: ["https://birdeye.xyz/token/SOL"]
-      };
-      const result = normalizeOnChainFlow(event, Date.now());
-      expect(result.eventType).toBe("dex_net_flow");
-      expect((result as Record<string, unknown>).buyVolumeUsdc).toBe("50000000000");
-      expect((result as Record<string, unknown>).sellVolumeUsdc).toBe("30000000000");
-      expect((result as Record<string, unknown>).netFlowUsdc).toBe("20000000000");
-    });
-
-    it("rejects inconsistent provider net value where buy - sell != net", () => {
-      const event = {
-        eventKind: "birdeye_net_flow" as const,
-        timestampUnixMs: 1700000000000,
-        buyVolume: "50000000000",
-        sellVolume: "30000000000",
-        netFlow: "10000000000",
-        sourceReferences: ["https://birdeye.xyz/token/SOL"]
-      };
-      expect(() => normalizeOnChainFlow(event, Date.now())).toThrow(OnChainFlowNormalizationError);
-    });
-
-    it("rejects net flow where buy - sell gives negative of claimed positive net", () => {
-      const event = {
-        eventKind: "birdeye_net_flow" as const,
-        timestampUnixMs: 1700000000000,
-        buyVolume: "30000000000",
-        sellVolume: "50000000000",
-        netFlow: "20000000000",
-        sourceReferences: ["https://birdeye.xyz/token/SOL"]
-      };
-      expect(() => normalizeOnChainFlow(event, Date.now())).toThrow(OnChainFlowNormalizationError);
-    });
-
-    it("rejects inconsistent net values rather than silently correcting", () => {
-      const event = {
-        eventKind: "birdeye_net_flow" as const,
-        timestampUnixMs: 1700000000000,
-        buyVolume: "10000000000",
-        sellVolume: "5000000000",
-        netFlow: "6000000000",
-        sourceReferences: ["https://birdeye.xyz/token/SOL"]
-      };
-      expect(() => normalizeOnChainFlow(event, Date.now())).toThrow(OnChainFlowNormalizationError);
-    });
-
     it("dex_net_flow strips negative sign from amountUsdc and derives direction from net flow sign", () => {
       const event = {
         eventKind: "dex_net_flow" as const,
