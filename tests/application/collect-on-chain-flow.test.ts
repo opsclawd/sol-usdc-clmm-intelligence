@@ -295,6 +295,31 @@ describe("collectOnChainFlow", () => {
     });
   });
 
+  describe("forwards the configured wallet and inclusive lookback window to the source", () => {
+    it("includes walletAddress and correct time range in source request", async () => {
+      const { source, rawObservationRepo, normalizedObservationRepo } = makeDeps();
+      source.setResponse(makeValidSnapshot([]));
+
+      await collectOnChainFlow(
+        { source, rawObservationRepo, normalizedObservationRepo },
+        VALID_CONTEXT,
+        {
+          source: "helius-api",
+          thresholds: VALID_THRESHOLDS,
+          lookbackMs: LOOKBACK_MS,
+          walletAddress: "Wallet123"
+        }
+      );
+
+      expect(source.calls[0]?.request).toEqual({
+        pair: "SOL/USDC",
+        walletAddress: "Wallet123",
+        fromUnixMs: VALID_CONTEXT.startedAtUnixMs - LOOKBACK_MS,
+        toUnixMs: VALID_CONTEXT.startedAtUnixMs
+      });
+    });
+  });
+
   describe("stale qualifying event is retained raw and normalized but returns degraded", () => {
     it("stale context is visible and cannot masquerade as fresh evidence", async () => {
       const { source, rawObservationRepo, normalizedObservationRepo } = makeDeps();

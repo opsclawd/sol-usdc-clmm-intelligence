@@ -89,6 +89,18 @@ export async function runOnChainFlowCollect(): Promise<void> {
     return;
   }
 
+  const walletPublicKey = runtime.env.getOptional("WALLET_PUBLIC_KEY")?.trim();
+  if (!walletPublicKey || walletPublicKey.length === 0) {
+    console.error(
+      JSON.stringify({
+        status: "failed",
+        diagnostic: "WALLET_PUBLIC_KEY is not configured"
+      })
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   let thresholds: OnChainFlowThresholds;
   try {
     const whaleTransferMinUsdc = parseThreshold(
@@ -181,7 +193,8 @@ export async function runOnChainFlowCollect(): Promise<void> {
       clock: runtime.clock,
       runIdFactory: runtime.runIdFactory,
       thresholds,
-      lookbackMs
+      lookbackMs,
+      walletAddress: walletPublicKey
     });
 
     console.log(JSON.stringify(result, secretRedactingReplacer, 2));

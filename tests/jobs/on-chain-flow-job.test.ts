@@ -19,7 +19,7 @@ vi.mock("../../src/application/collect-on-chain-flow.js", () => {
     collectOnChainFlow: (
       deps: unknown,
       context: unknown,
-      input: { source: string; thresholds: unknown; lookbackMs: number }
+      input: { source: string; thresholds: unknown; lookbackMs: number; walletAddress?: string }
     ) => mockCollectOnChainFlow(deps, context, input)
   };
 });
@@ -75,7 +75,8 @@ function makeJobDeps(sources: readonly ConfiguredOnChainFlowSource[]) {
       nextRunId: vi.fn()
     },
     thresholds: VALID_THRESHOLDS,
-    lookbackMs: LOOKBACK_MS
+    lookbackMs: LOOKBACK_MS,
+    walletAddress: "Wallet123"
   };
 }
 
@@ -247,6 +248,22 @@ describe("onChainFlowJob", () => {
       const allCalls = mockCollectOnChainFlow.mock.calls;
       expect(allCalls.every((call) => call[2].thresholds === VALID_THRESHOLDS)).toBe(true);
       expect(allCalls.every((call) => call[2].lookbackMs === LOOKBACK_MS)).toBe(true);
+    });
+
+    it("passes the configured wallet to every source collection", async () => {
+      mockCreateCollectionRunContext.mockReturnValue(VALID_CONTEXT);
+      mockCollectOnChainFlow.mockResolvedValue(ACCEPTED_RESULT);
+
+      const sources: ConfiguredOnChainFlowSource[] = [
+        { source: "helius-api", adapter: makeOnChainFlowSource() },
+        { source: "birdeye-api", adapter: makeOnChainFlowSource() }
+      ];
+      const deps = makeJobDeps(sources);
+      const job = onChainFlowJob(deps);
+      await job();
+
+      const allCalls = mockCollectOnChainFlow.mock.calls;
+      expect(allCalls.every((call) => call[2].walletAddress === "Wallet123")).toBe(true);
     });
 
     it("executes all configured sources concurrently", async () => {

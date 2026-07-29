@@ -45,6 +45,7 @@ function createMockRuntime() {
         if (name === "BIRDEYE_API_KEY") return "birdeye-secret-key-456";
         if (name === "ORCA_SOL_USDC_WHIRLPOOL")
           return "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
+        if (name === "WALLET_PUBLIC_KEY") return "Wallet123";
         throw new Error(`Unexpected env var: ${name}`);
       }),
       getOptional: vi.fn((name: string) => {
@@ -55,6 +56,8 @@ function createMockRuntime() {
             return "birdeye-secret-key-456";
           case "ORCA_SOL_USDC_WHIRLPOOL":
             return "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
+          case "WALLET_PUBLIC_KEY":
+            return "Wallet123";
           case "ON_CHAIN_WHALE_TRANSFER_MIN_USDC":
             return "1000000";
           case "ON_CHAIN_WHALE_SWAP_MIN_USDC":
@@ -257,10 +260,12 @@ describe("on-chain-flow collector script", () => {
             if (name === "BIRDEYE_API_KEY") return "birdeye-secret-key-456";
             if (name === "ORCA_SOL_USDC_WHIRLPOOL")
               throw new Error("Missing required environment variable: ORCA_SOL_USDC_WHIRLPOOL");
+            if (name === "WALLET_PUBLIC_KEY") return "Wallet123";
             throw new Error(`Unexpected env var: ${name}`);
           }),
           getOptional: vi.fn((name: string) => {
             if (name === "ORCA_SOL_USDC_WHIRLPOOL") return undefined;
+            if (name === "WALLET_PUBLIC_KEY") return "Wallet123";
             return createMockRuntime().env.getOptional(name);
           })
         }
@@ -270,6 +275,30 @@ describe("on-chain-flow collector script", () => {
 
       expect(process.exitCode).toBe(1);
       expect(mockClose).not.toHaveBeenCalled();
+    });
+
+    it("fails before persistence when WALLET_PUBLIC_KEY is missing", async () => {
+      mockCreateNodeRuntime.mockReturnValue({
+        ...createMockRuntime(),
+        env: {
+          ...createMockRuntime().env,
+          get: vi.fn((name: string) => {
+            if (name === "WALLET_PUBLIC_KEY")
+              throw new Error("Missing required environment variable: WALLET_PUBLIC_KEY");
+            return createMockRuntime().env.get(name);
+          }),
+          getOptional: vi.fn((name: string) => {
+            if (name === "WALLET_PUBLIC_KEY") return undefined;
+            return createMockRuntime().env.getOptional(name);
+          })
+        }
+      });
+
+      await runOnChainFlowCollect();
+
+      expect(process.exitCode).toBe(1);
+      expect(mockGetPersistence).not.toHaveBeenCalled();
+      expect(mockRunOnChainFlowJob).not.toHaveBeenCalled();
     });
 
     it("passes the pool and whale threshold to the Birdeye adapter", async () => {

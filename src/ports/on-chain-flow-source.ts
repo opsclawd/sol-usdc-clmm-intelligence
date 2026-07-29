@@ -1,5 +1,6 @@
 export interface OnChainFlowSourceRequest {
   readonly pair: "SOL/USDC";
+  readonly walletAddress?: string;
   readonly fromUnixMs: number;
   readonly toUnixMs: number;
 }
