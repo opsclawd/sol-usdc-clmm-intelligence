@@ -49,11 +49,6 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
   private readonly retryControl: RetryControl;
 
   constructor(private readonly options: HttpHeliusFlowSourceOptions) {
-    if (!options.url.includes("{address}")) {
-      throw new Error(
-        `HttpHeliusFlowSource: options.url must contain the "{address}" placeholder, got: ${options.url}`
-      );
-    }
     this.timeoutMs = options.timeoutMs ?? 5000;
     this.maxAttempts = options.maxAttempts ?? 2;
     this.retryControl = options.retryControl ?? new SystemRetryControl();
@@ -81,7 +76,7 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
     }
 
     const encodedWallet = encodeURIComponent(walletAddress);
-    const baseUrl = this.options.url.replace("{address}", encodedWallet);
+    const baseUrl = `${this.options.url}/v0/addresses/${encodedWallet}/transactions`;
     const url = new URL(baseUrl);
     if (this.options.apiKey) {
       url.searchParams.set("api-key", this.options.apiKey);

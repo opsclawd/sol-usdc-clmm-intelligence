@@ -68,7 +68,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: "test-api-key"
       });
 
@@ -106,7 +106,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: "test-api-key"
       });
 
@@ -152,7 +152,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: "test-api-key"
       });
 
@@ -182,7 +182,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: "test-api-key"
       });
 
@@ -208,7 +208,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: "test-api-key"
       });
 
@@ -269,7 +269,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: "test-api-key",
         maxAttempts: 3,
         retryControl: fakeRetry
@@ -296,7 +296,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: "test-api-key",
         maxAttempts: 3,
         retryControl: fakeRetry
@@ -323,7 +323,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: "test-api-key",
         maxAttempts: 3,
         retryControl: fakeRetry
@@ -349,7 +349,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: "test-api-key",
         maxAttempts: 3
       });
@@ -377,7 +377,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: secretKey
       });
 
@@ -402,7 +402,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: secretKey
       });
 
@@ -427,7 +427,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: secretKey
       });
 
@@ -460,7 +460,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: "test-api-key"
       });
 
@@ -487,7 +487,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: "test-api-key"
       });
 
@@ -510,7 +510,7 @@ describe("HttpHeliusFlowSource mapping", () => {
 
       const source = new HttpHeliusFlowSource({
         http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        url: "https://api.helius.com",
         apiKey: "test-api-key"
       });
 
@@ -526,24 +526,6 @@ describe("HttpHeliusFlowSource mapping", () => {
         const error = e as OnChainFlowSourceError;
         expect(error.kind).toBe("malformed");
       }
-    });
-  });
-
-  describe("constructor validation", () => {
-    it("throws when options.url does not contain the {address} placeholder", () => {
-      const mockHttp = {
-        getJson: vi.fn(),
-        postJsonRaw: vi.fn().mockRejectedValue(new Error("Not implemented"))
-      } as unknown as HttpClient;
-
-      expect(
-        () =>
-          new HttpHeliusFlowSource({
-            http: mockHttp,
-            url: "https://api.helius.com/v0/addresses/transactions",
-            apiKey: "test-api-key"
-          })
-      ).toThrow(/\{address\}/);
     });
   });
 });

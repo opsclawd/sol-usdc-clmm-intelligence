@@ -45,7 +45,7 @@ describe("HttpHeliusFlowSource reliability", () => {
 
     const source = new HttpHeliusFlowSource({
       http: mockHttp,
-      url: "https://api.helius.com/v0/addresses/{address}/transactions",
+      url: "https://api.helius.com",
       apiKey: SECRET_API_KEY
     });
 
@@ -82,7 +82,7 @@ describe("HttpHeliusFlowSource reliability", () => {
 
     const source = new HttpHeliusFlowSource({
       http: mockHttp,
-      url: "https://api.helius.com/v0/addresses/{address}/transactions",
+      url: "https://api.helius.com",
       apiKey: SECRET_API_KEY
     });
 
@@ -126,7 +126,7 @@ describe("HttpHeliusFlowSource reliability", () => {
 
     const source = new HttpHeliusFlowSource({
       http: mockHttp,
-      url: "https://api.helius.com/v0/addresses/{address}/transactions",
+      url: "https://api.helius.com",
       apiKey: SECRET_API_KEY,
       maxAttempts: 3,
       retryControl: fakeRetry
@@ -155,7 +155,7 @@ describe("HttpHeliusFlowSource reliability", () => {
 
     const sourceMalformed = new HttpHeliusFlowSource({
       http: mockHttpMalformed,
-      url: "https://api.helius.com/v0/addresses/{address}/transactions",
+      url: "https://api.helius.com",
       apiKey: SECRET_API_KEY,
       maxAttempts: 3,
       retryControl: fakeRetry
@@ -192,7 +192,7 @@ describe("HttpHeliusFlowSource reliability", () => {
 
     const source400 = new HttpHeliusFlowSource({
       http: mockHttp400,
-      url: "https://api.helius.com/v0/addresses/{address}/transactions",
+      url: "https://api.helius.com",
       apiKey: SECRET_API_KEY,
       maxAttempts: 3,
       retryControl: fakeRetry
@@ -224,7 +224,7 @@ describe("HttpHeliusFlowSource reliability", () => {
 
     const sourceTimeout = new HttpHeliusFlowSource({
       http: mockHttpTimeout,
-      url: "https://api.helius.com/v0/addresses/{address}/transactions",
+      url: "https://api.helius.com",
       maxAttempts: 3,
       retryControl: fakeRetry
     });
@@ -253,7 +253,7 @@ describe("HttpHeliusFlowSource reliability", () => {
 
     const source429 = new HttpHeliusFlowSource({
       http: mockHttp429,
-      url: "https://api.helius.com/v0/addresses/{address}/transactions",
+      url: "https://api.helius.com",
       maxAttempts: 3,
       retryControl: fakeRetry
     });
@@ -284,7 +284,7 @@ describe("HttpHeliusFlowSource reliability", () => {
 
     const source503 = new HttpHeliusFlowSource({
       http: mockHttp503,
-      url: "https://api.helius.com/v0/addresses/{address}/transactions",
+      url: "https://api.helius.com",
       maxAttempts: 3,
       retryControl: fakeRetry
     });
@@ -321,7 +321,7 @@ describe("HttpHeliusFlowSource reliability", () => {
 
     const source = new HttpHeliusFlowSource({
       http: mockHttp,
-      url: "https://api.helius.com/v0/addresses/{address}/transactions",
+      url: "https://api.helius.com",
       apiKey: SECRET_API_KEY,
       maxAttempts: 1
     });
