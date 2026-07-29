@@ -12,6 +12,29 @@ coverage/
 # agent worktrees created for automation runs
 .ai-worktrees/
 
+# AI SDLC orchestrator run scratch/audit artifacts. Ephemeral per-run state,
+# not meant to be version-controlled — every run rewrites these under the
+# same filenames regardless of which issue it's working, so committing them
+# causes merge conflicts between any two orchestrator runs that land on main
+# (e.g. issue-64's run and issue-67's run both rewrote design.md/plan.md/
+# task-context-step-*.md with unrelated content; #69 conflicted as a result).
+design.md
+issue.md
+issue-comments.md
+plan.md
+plan-fix-result.json
+plan-review-findings.md
+prompt.md
+fix-result.json
+diff.txt
+*_diff.txt
+task-context-step-*.md
+quality-review-result*.json
+spec-review-result*.json
+apply_task_*.sh
+typecheck_output.txt
+validate/
+
 # local runtime snapshots; keep .gitkeep files
 /data/*.json
 /outputs/*.json
