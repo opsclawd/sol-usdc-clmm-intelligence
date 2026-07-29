@@ -29,6 +29,7 @@ export interface OnChainFlowJobDeps {
   readonly runIdFactory: RunIdFactory;
   readonly thresholds: OnChainFlowThresholds;
   readonly lookbackMs: number;
+  readonly walletAddress?: string;
 }
 
 export type OnChainFlowJobStatus = "COMPLETE" | "PARTIAL" | "UNAVAILABLE" | "FAILED";
@@ -173,7 +174,8 @@ export async function runOnChainFlowJob(deps: OnChainFlowJobDeps): Promise<OnCha
           {
             source: configuredSource.source,
             thresholds: deps.thresholds,
-            lookbackMs: deps.lookbackMs
+            lookbackMs: deps.lookbackMs,
+            ...(deps.walletAddress !== undefined ? { walletAddress: deps.walletAddress } : {})
           }
         );
       } catch (err: unknown) {

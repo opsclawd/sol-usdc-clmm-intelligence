@@ -132,16 +132,15 @@ sources:
     apiKeyEnv: HELIUS_API_KEY
     purpose:
       - whale_transfer
-      - whale_swap
-      - stablecoin_flow
-      - cex_flow_proxy
     policy:
       timeoutMs: 10000
       maxAttempts: 2
     limitations:
-      - Requires Helius API key with flow subscription.
-      - Returns realtime transaction-level flow events within the configured lookback window.
-      - CEX flow attribution is probabilistic and may be noisy; explicit confidence threshold required.
+      - Uses a legacy address-history endpoint confirmed working on current free-tier key.
+      - Endpoint is single-page with limit=100; highly active wallets may exceed this and return incomplete windows.
+      - No comprehensive realtime flow subscription; endpoint is polled and returns transaction history.
+      - Does NOT supply whale_swap, stablecoin_flow, or CEX proxy attribution on free tier.
+      - whale_transfer is scoped to WALLET_PUBLIC_KEY only; comprehensive whale surveillance is out of scope.
       - Bounded retention: license must declare "bounded" retention mode.
 
   - name: birdeye-flow
@@ -150,11 +149,13 @@ sources:
     env: BIRDEYE_FLOW_API_URL
     apiKeyEnv: BIRDEYE_API_KEY
     purpose:
+      - whale_swap
       - dex_net_flow
     policy:
       timeoutMs: 10000
       maxAttempts: 2
     limitations:
-      - Requires Birdeye API key with flow data subscription.
-      - Returns windowed DEX net flow data (buy/sell volume and net flow).
+      - Requires Birdeye API key with DEX portfolio data access.
+      - Returns windowed pair-trade data (buy/sell volume and net flow) for configured pool.
+      - whale_swap and dex_net_flow are both live from Birdeye; no Helius overlap on these kinds.
       - Bounded retention: license must declare "bounded" retention mode.

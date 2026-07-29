@@ -151,7 +151,7 @@ Research collector packs add:
 
 - **news evidence** (`crypto-news-api`, `regulatory-monitor-api`): Collects bounded factual extracts from two allowed news sources. Produces `ecosystem_news` and `regulatory_risk` observations with immutable article/version identities, correction semantics, corroboration state, and source quality metadata. Ecosystem news carries a 24-hour freshness cap; regulatory risk carries a 72-hour cap. Syndication is distinguished from independent corroboration. Missing coverage does not imply no risk. No full-text retention, LLM briefs, policy synthesis, or execution authority.
 
-- **on-chain flow** (`pnpm collect:on-chain-flow`, Helius + Birdeye): Collects whale transfers, whale swaps, stablecoin mint/burn/transfer flows, DEX net flow, and probabilistic CEX flow proxies. Produces `whale_transfer`, `whale_swap`, `stablecoin_flow`, `dex_net_flow`, and `cex_flow_proxy` observations with exact-decimal thresholds. On-chain flow data describes what happened, not why — no output claims motive or policy. See `docs/architecture.md` and `docs/operator-runbook.md` for the full contract.
+- **on-chain flow** (`pnpm collect:on-chain-flow`, Helius + Birdeye): Collects whale transfers, whale swaps, and DEX net flow. Produces `whale_transfer`, `whale_swap`, and `dex_net_flow` observations with exact-decimal thresholds. `stablecoin_flow` and `cex_flow_proxy` are deferred. On-chain flow data describes what happened, not why — no output claims motive or policy. See `docs/architecture.md` and `docs/operator-runbook.md` for the full contract.
 
 - **perp & liquidation** (`pnpm collect:perp-liquidation`, Binance fAPI + Drift): Collects funding rates, open interest, perp/spot basis, and liquidation-cluster evidence for leverage-crowding context. Derives deterministic perp stress features from the two-venue observations.
 
@@ -538,7 +538,7 @@ pnpm collect:clmm-bundle  # legacy command: fetches and writes SOL/USDC CLMM bun
 pnpm collect:context-events  # collects contextual events (scheduled macro events, protocol incidents)
 pnpm collect:support-resistance  # collects support/resistance levels from technical-analysis-api provider
 pnpm collect:news-evidence  # collects ecosystem and regulatory news from two-source allowlist
-pnpm collect:on-chain-flow    # collects on-chain flow evidence (whale transfers/swaps, stablecoin flow, DEX net flow, CEX proxies) from Helius and Birdeye
+pnpm collect:on-chain-flow    # collects on-chain flow evidence (whale transfers/swaps, DEX net flow) from Helius and Birdeye; stablecoin_flow and cex_flow_proxy are deferred
 pnpm collect:perp-liquidation # collects perp/liquidation stress evidence (funding, OI, basis, liquidation clusters) from Binance fAPI and Drift
 pnpm derive:mvp           # derives the seven canonical MVP evidence features from normalized observations
 pnpm assemble:bundle      # assembles evidence bundle from derived features and observations
@@ -587,13 +587,14 @@ SUPPORT_RESISTANCE_API_URL=<technical-analysis-api-provider-url>
 SUPPORT_RESISTANCE_API_KEY=<optional-api-key>
 ```
 
-For On-Chain Flow collection (Helius transaction flows, Birdeye DEX net flows; see `docs/operator-runbook.md` for threshold overrides):
+For On-Chain Flow collection (Helius whale_transfer for position wallet, Birdeye whale_swap and dex_net_flow; see `docs/operator-runbook.md` for threshold overrides):
 
 ```bash
-HELIUS_FLOW_API_URL=<helius-transactions-api-url>
+HELIUS_FLOW_API_URL=https://api.helius.xyz
 HELIUS_API_KEY=<helius-api-key>
-BIRDEYE_FLOW_API_URL=<birdeye-defi-portfolio-api-url>
+BIRDEYE_FLOW_API_URL=https://public-api.birdeye.so
 BIRDEYE_API_KEY=<birdeye-api-key>
+WALLET_PUBLIC_KEY=<position-wallet>
 ```
 
 For Perp & Liquidation collection (Binance fAPI, Drift):

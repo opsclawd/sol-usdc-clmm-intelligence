@@ -1,6 +1,6 @@
 import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
-import { UnavailableOnChainFlowSource } from "../../src/adapters/node/unavailable-on-chain-flow-source.js";
 import { HttpBirdeyeFlowSource } from "../../src/adapters/node/http-birdeye-flow-source.js";
+import { HttpHeliusFlowSource } from "../../src/adapters/node/http-helius-flow-source.js";
 import {
   runOnChainFlowJob,
   type ConfiguredOnChainFlowSource
@@ -55,6 +55,8 @@ export async function runOnChainFlowCollect(): Promise<void> {
   const birdeyeUrl = runtime.env.getOptional("BIRDEYE_FLOW_API_URL")?.trim();
   const birdeyeApiKey = runtime.env.getOptional("BIRDEYE_API_KEY")?.trim();
   const orcaPoolAddress = runtime.env.getOptional("ORCA_SOL_USDC_WHIRLPOOL")?.trim();
+  const heliusUrl = runtime.env.getOptional("HELIUS_FLOW_API_URL")?.trim();
+  const heliusApiKey = runtime.env.getOptional("HELIUS_API_KEY")?.trim();
 
   if (!birdeyeUrl) {
     console.error(
@@ -83,6 +85,40 @@ export async function runOnChainFlowCollect(): Promise<void> {
       JSON.stringify({
         status: "failed",
         diagnostic: "ORCA_SOL_USDC_WHIRLPOOL is not configured"
+      })
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!heliusUrl) {
+    console.error(
+      JSON.stringify({
+        status: "failed",
+        diagnostic: "HELIUS_FLOW_API_URL is not configured"
+      })
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!heliusApiKey) {
+    console.error(
+      JSON.stringify({
+        status: "failed",
+        diagnostic: "HELIUS_API_KEY is not configured"
+      })
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  const walletPublicKey = runtime.env.getOptional("WALLET_PUBLIC_KEY")?.trim();
+  if (!walletPublicKey || walletPublicKey.length === 0) {
+    console.error(
+      JSON.stringify({
+        status: "failed",
+        diagnostic: "WALLET_PUBLIC_KEY is not configured"
       })
     );
     process.exitCode = 1;
@@ -139,9 +175,12 @@ export async function runOnChainFlowCollect(): Promise<void> {
 
   const lookbackMs = parseLookbackMs(runtime.env.getOptional("ON_CHAIN_FLOW_LOOKBACK_MS"));
 
-  const heliusSource = new UnavailableOnChainFlowSource(
-    "Helius flow kinds are not implemented in Phase 1"
-  );
+  const heliusSource = new HttpHeliusFlowSource({
+    http: runtime.http,
+    url: heliusUrl,
+    apiKey: heliusApiKey,
+    retryControl: runtime.retryControl
+  });
 
   const birdeyeSource = new HttpBirdeyeFlowSource({
     http: runtime.http,
@@ -181,7 +220,8 @@ export async function runOnChainFlowCollect(): Promise<void> {
       clock: runtime.clock,
       runIdFactory: runtime.runIdFactory,
       thresholds,
-      lookbackMs
+      lookbackMs,
+      walletAddress: walletPublicKey
     });
 
     console.log(JSON.stringify(result, secretRedactingReplacer, 2));

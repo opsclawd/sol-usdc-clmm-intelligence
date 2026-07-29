@@ -109,10 +109,11 @@ export async function collectOnChainFlow(
     source: "helius-api" | "birdeye-api";
     thresholds: OnChainFlowThresholds;
     lookbackMs: number;
+    walletAddress?: string;
   }
 ): Promise<OnChainFlowCollectionResult> {
   const { source, rawObservationRepo, normalizedObservationRepo } = deps;
-  const { lookbackMs } = input;
+  const { lookbackMs, walletAddress } = input;
 
   const toUnixMs = context.startedAtUnixMs;
   const fromUnixMs = toUnixMs - lookbackMs;
@@ -122,7 +123,8 @@ export async function collectOnChainFlow(
     const request: OnChainFlowSourceRequest = {
       pair: "SOL/USDC",
       fromUnixMs,
-      toUnixMs
+      toUnixMs,
+      ...(walletAddress !== undefined ? { walletAddress } : {})
     };
     snapshot = await source.collect(request);
   } catch (err) {
