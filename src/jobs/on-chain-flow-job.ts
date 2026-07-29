@@ -135,26 +135,14 @@ export function onChainFlowJob(deps: OnChainFlowJobDeps): () => Promise<OnChainF
 }
 
 export async function runOnChainFlowJob(deps: OnChainFlowJobDeps): Promise<OnChainFlowJobResult> {
-  if (!deps.sources || deps.sources.length === 0) {
-    throw new Error("At least one on-chain flow source must be configured");
-  }
-
-  const sourceNames = deps.sources.map((s) => s.source);
-  const uniqueSourceNames = new Set(sourceNames);
-  const hasDuplicates = uniqueSourceNames.size !== sourceNames.length;
-
-  const heliusCount = deps.sources.filter((s) => s.source === "helius-api").length;
-  const birdeyeCount = deps.sources.filter((s) => s.source === "birdeye-api").length;
-
-  if (deps.sources.length !== 2) {
+  if (!deps.sources || deps.sources.length !== 2) {
     throw new Error(
       "Exactly two on-chain flow sources (helius-api and birdeye-api) must be configured"
     );
   }
 
-  if (hasDuplicates) {
-    throw new Error("Duplicate on-chain flow source names are not allowed");
-  }
+  const heliusCount = deps.sources.filter((s) => s.source === "helius-api").length;
+  const birdeyeCount = deps.sources.filter((s) => s.source === "birdeye-api").length;
 
   if (heliusCount !== 1) {
     throw new Error("Exactly one helius-api source must be configured");
