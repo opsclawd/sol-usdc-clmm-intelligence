@@ -39,6 +39,7 @@ export async function runPerpLiquidationCollect(): Promise<void> {
       runtime.env.getOptional("BINANCE_FAPI_BASE_URL")?.trim() || DEFAULT_BINANCE_BASE_URL;
     const binanceSymbol = runtime.env.getOptional("BINANCE_SOL_PERP_SYMBOL")?.trim();
     const driftBaseUrl = runtime.env.getOptional("DRIFT_DATA_API_BASE_URL")?.trim();
+    const driftSymbol = runtime.env.getOptional("DRIFT_SOL_PERP_SYMBOL")?.trim();
     const driftMarketIndexStr = runtime.env.getOptional("DRIFT_SOL_PERP_MARKET_INDEX")?.trim();
 
     if (!binanceSymbol) {
@@ -57,6 +58,17 @@ export async function runPerpLiquidationCollect(): Promise<void> {
         JSON.stringify({
           status: "failed",
           diagnostic: "DRIFT_DATA_API_BASE_URL is not configured"
+        })
+      );
+      process.exitCode = 1;
+      return;
+    }
+
+    if (!driftSymbol) {
+      console.error(
+        JSON.stringify({
+          status: "failed",
+          diagnostic: "DRIFT_SOL_PERP_SYMBOL is not configured"
         })
       );
       process.exitCode = 1;
@@ -105,6 +117,7 @@ export async function runPerpLiquidationCollect(): Promise<void> {
       binanceBaseUrl,
       binanceSymbol,
       driftBaseUrl,
+      driftSymbol,
       driftMarketIndex,
       driftPrecisions: {
         pricePrecisionExp,

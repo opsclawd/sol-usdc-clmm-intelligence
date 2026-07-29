@@ -36,20 +36,23 @@ function createMockRuntime() {
     jsonStore: { readJson: vi.fn(), writeJson: vi.fn() },
     textReader: { readText: vi.fn() },
     env: {
-      get: vi.fn((name: string) => {
+      get: vi.fn((name: string): string => {
         if (name === "BINANCE_SOL_PERP_SYMBOL") return "SOLUSDT";
-        if (name === "DRIFT_DATA_API_BASE_URL") return "https://mainnet-beta.api.drift.trade";
+        if (name === "DRIFT_DATA_API_BASE_URL") return "https://data.velocity.exchange";
+        if (name === "DRIFT_SOL_PERP_SYMBOL") return "SOL-PERP";
         if (name === "DRIFT_SOL_PERP_MARKET_INDEX") return "0";
         throw new Error(`Unexpected env var: ${name}`);
       }),
-      getOptional: vi.fn((name: string) => {
+      getOptional: vi.fn((name: string): string | undefined => {
         switch (name) {
           case "BINANCE_FAPI_BASE_URL":
             return "https://fapi.binance.com";
           case "BINANCE_SOL_PERP_SYMBOL":
             return "SOLUSDT";
           case "DRIFT_DATA_API_BASE_URL":
-            return "https://mainnet-beta.api.drift.trade";
+            return "https://data.velocity.exchange";
+          case "DRIFT_SOL_PERP_SYMBOL":
+            return "SOL-PERP";
           case "DRIFT_SOL_PERP_MARKET_INDEX":
             return "0";
           case "DRIFT_PRICE_PRECISION":
@@ -159,5 +162,48 @@ describe("perp-liquidation script", () => {
     await runPerpLiquidationCollect();
 
     expect(mockClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails closed when DRIFT_SOL_PERP_SYMBOL is missing", async () => {
+    const runtime = createMockRuntime();
+    runtime.env.getOptional.mockImplementation((name: string) => {
+      if (name === "DRIFT_SOL_PERP_SYMBOL") return "   ";
+      switch (name) {
+        case "BINANCE_FAPI_BASE_URL":
+          return "https://fapi.binance.com";
+        case "BINANCE_SOL_PERP_SYMBOL":
+          return "SOLUSDT";
+        case "DRIFT_DATA_API_BASE_URL":
+          return "https://data.velocity.exchange";
+        case "DRIFT_SOL_PERP_MARKET_INDEX":
+          return "0";
+        default:
+          return undefined;
+      }
+    });
+    mockCreateNodeRuntime.mockReturnValue(runtime);
+
+    await runPerpLiquidationCollect();
+
+    expect(process.exitCode).toBe(1);
+    expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining("DRIFT_SOL_PERP_SYMBOL"));
+    expect(runtime.getPerpLiquidationSources).not.toHaveBeenCalled();
+    expect(mockClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes Velocity symbol and market index to the source factory", async () => {
+    const runtime = createMockRuntime();
+    mockCreateNodeRuntime.mockReturnValue(runtime);
+    mockRunPerpLiquidationJob.mockResolvedValue(COMPLETE_RESULT);
+
+    await runPerpLiquidationCollect();
+
+    expect(runtime.getPerpLiquidationSources).toHaveBeenCalledWith(
+      expect.objectContaining({
+        driftBaseUrl: "https://data.velocity.exchange",
+        driftSymbol: "SOL-PERP",
+        driftMarketIndex: 0
+      })
+    );
   });
 });

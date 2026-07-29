@@ -52,6 +52,7 @@ export interface NodeRuntime {
     binanceBaseUrl: string;
     binanceSymbol: string;
     driftBaseUrl: string;
+    driftSymbol: string;
     driftMarketIndex: number;
     driftPrecisions: {
       pricePrecisionExp: number;
@@ -167,6 +168,7 @@ export function createNodeRuntime(): NodeRuntime {
 
       const driftAdapter = new HttpDriftSource({
         baseUrl: options.driftBaseUrl,
+        symbol: options.driftSymbol,
         marketIndex: options.driftMarketIndex,
         http: this.http,
         retry: this.retryControl,

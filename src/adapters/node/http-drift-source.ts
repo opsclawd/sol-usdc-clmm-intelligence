@@ -17,20 +17,28 @@ import type {
   PerpBasisPayloadV1,
   PerpObservationKind
 } from "../../contracts/perp-liquidation.js";
+import {
+  add,
+  divide,
+  multiply,
+  parseDecimal,
+  type Rational
+} from "../../domain/derived-feature/decimal.js";
 
 export interface DriftPrecisions {
-  readonly basePrecisionExp: number;
-  readonly quotePrecisionExp: number;
-  readonly pricePrecisionExp: number;
+  readonly basePrecisionExp?: number;
+  readonly quotePrecisionExp?: number;
+  readonly pricePrecisionExp?: number;
 }
 
 export interface HttpDriftSourceConfig {
   readonly baseUrl: string;
+  readonly symbol: string;
   readonly marketIndex: number;
   readonly http: HttpClient;
   readonly retry?: RetryControl;
   readonly maxAttempts?: number;
-  readonly precisions: DriftPrecisions;
+  readonly precisions?: DriftPrecisions;
 }
 
 const BASE_BACKOFF_MS = 25;
@@ -45,39 +53,115 @@ function sanitizeDiagnostic(str: string): string {
   return str.replace(/(?:key|secret|token|password)=[^&\s]+/gi, "[REDACTED]");
 }
 
-function scaleIntegerString(valStr: string, exp: number): string {
-  const big = BigInt(valStr);
-  const scale = 10n ** BigInt(exp);
-  const integerPart = big / scale;
-  const remainder = big % scale;
+function isValidDecimalString(val: unknown): val is string {
+  if (typeof val !== "string") return false;
+  if (val === "" || val.trim() !== val) return false;
+  if (/[eE]/.test(val)) return false;
+  if (val === "NaN" || val === "Infinity" || val === "-Infinity") return false;
+  const num = Number(val);
+  return Number.isFinite(num) && !Number.isNaN(num);
+}
 
-  if (remainder === 0n) {
-    return integerPart.toString();
+function isPositiveDecimalString(val: unknown): val is string {
+  if (!isValidDecimalString(val)) return false;
+  return Number(val) > 0;
+}
+
+function normalizeTimestamp(ts: unknown): number | null {
+  let num: number | null = null;
+  if (typeof ts === "number" && Number.isFinite(ts)) {
+    num = ts;
+  } else if (typeof ts === "string" && isValidDecimalString(ts)) {
+    num = Number(ts);
+  }
+  if (num === null || !Number.isInteger(num) || num < 0) return null;
+  return num < 1e11 ? num * 1000 : num;
+}
+
+function absDecimal(val: string): string {
+  if (val.startsWith("-") || val.startsWith("+")) {
+    return val.slice(1);
+  }
+  return val;
+}
+
+function rationalToString(r: Rational): string {
+  if (r.denominator === 1n) {
+    return r.numerator.toString();
+  }
+  const isNeg = r.numerator < 0n;
+  const absNum = isNeg ? -r.numerator : r.numerator;
+  const absDen = r.denominator;
+  const intPart = absNum / absDen;
+  const rem = absNum % absDen;
+  if (rem === 0n) {
+    return (isNeg ? "-" : "") + intPart.toString();
   }
 
-  const remainderStr = (remainder < 0n ? -remainder : remainder)
+  let scale = 0;
+  let tempDen = absDen;
+  while (tempDen % 10n === 0n && tempDen > 1n) {
+    scale++;
+    tempDen /= 10n;
+  }
+  if (tempDen === 1n) {
+    const fracStr = rem.toString().padStart(scale, "0");
+    return `${isNeg ? "-" : ""}${intPart.toString()}.${fracStr}`;
+  }
+
+  const fracDigits = 12;
+  const scaledNum = (absNum * 10n ** BigInt(fracDigits)) / absDen;
+  const scaledInt = scaledNum / 10n ** BigInt(fracDigits);
+  const scaledFrac = (scaledNum % 10n ** BigInt(fracDigits))
     .toString()
-    .padStart(exp, "0")
+    .padStart(fracDigits, "0")
     .replace(/0+$/, "");
-  const sign = big < 0n && integerPart === 0n ? "-" : "";
-  return `${sign}${integerPart.toString()}.${remainderStr}`;
+  if (scaledFrac === "") {
+    return `${isNeg ? "-" : ""}${scaledInt.toString()}`;
+  }
+  return `${isNeg ? "-" : ""}${scaledInt.toString()}.${scaledFrac}`;
+}
+
+function addDecimals(aStr: string, bStr: string): string | null {
+  const rA = parseDecimal(aStr);
+  const rB = parseDecimal(bStr);
+  if (typeof rA === "string" || typeof rB === "string") return null;
+  const sum = add(rA, rB);
+  return rationalToString(sum);
+}
+
+function multiplyDecimals(aStr: string, bStr: string): string | null {
+  const rA = parseDecimal(aStr);
+  const rB = parseDecimal(bStr);
+  if (typeof rA === "string" || typeof rB === "string") return null;
+  const prod = multiply(rA, rB);
+  return rationalToString(prod);
+}
+
+function divideDecimals(aStr: string, bStr: string): string | null {
+  const rA = parseDecimal(aStr);
+  const rB = parseDecimal(bStr);
+  if (typeof rA === "string" || typeof rB === "string") return null;
+  const quot = divide(rA, rB);
+  if (typeof quot === "string") return null;
+  return rationalToString(quot);
 }
 
 export class HttpDriftSource implements PerpLiquidationSourcePort {
   private readonly baseUrl: string;
+  private readonly symbol: string;
   private readonly marketIndex: number;
   private readonly http: HttpClient;
   private readonly retryControl: RetryControl;
   private readonly maxAttempts: number;
-  private readonly precisions: DriftPrecisions;
 
   constructor(config: HttpDriftSourceConfig) {
     this.baseUrl = config.baseUrl;
+    this.symbol = config.symbol;
     this.marketIndex = config.marketIndex;
     this.http = config.http;
     this.retryControl = config.retry ?? new SystemRetryControl();
     this.maxAttempts = config.maxAttempts ?? 2;
-    this.precisions = config.precisions;
   }
 
   private async fetchWithRetry<T>(url: string): Promise<T> {
@@ -117,7 +201,7 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
     const facts: PerpLiquidationSourceFact[] = [];
 
     try {
-      const url = `${this.baseUrl}/fundingRates?marketIndex=${this.marketIndex}`;
+      const url = `${this.baseUrl}/market/${encodeURIComponent(this.symbol)}/fundingRates`;
       const res = await this.fetchWithRetry<unknown>(url);
       if (!Array.isArray(res)) {
         coverage = {
@@ -128,31 +212,28 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
       } else {
         const fundingFacts: PerpLiquidationSourceFact[] = [];
         for (const item of res) {
-          if (
-            typeof item === "object" &&
-            item !== null &&
-            (item as Record<string, unknown>).marketIndex === this.marketIndex &&
-            (item as Record<string, unknown>).recordId &&
-            (item as Record<string, unknown>).ts
-          ) {
+          if (typeof item === "object" && item !== null) {
             const row = item as Record<string, unknown>;
-            const rawTs = Number(row.ts);
-            const tsMs = rawTs < 1e11 ? rawTs * 1000 : rawTs;
-            const fundingDecimal = scaleIntegerString(String(row.fundingRate), 9);
+            const rawId = row.id ?? row.recordId;
+            const idStr = rawId !== undefined && rawId !== null ? String(rawId) : "";
+            const tsMs = normalizeTimestamp(row.ts ?? row.timestamp ?? row.observedAtUnixMs);
+            const fundingRateStr = row.fundingRate ?? row.rate;
 
-            const payload: FundingRatePayloadV1 = {
-              schemaVersion: 1,
-              evidenceFamily: "perp_liquidation",
-              pair: request.pair,
-              venue: "drift-api",
-              instrument: `SOL-PERP-${this.marketIndex}`,
-              sourceEventId: `drift-funding-${row.recordId}`,
-              observedAtUnixMs: tsMs,
-              kind: "funding_rate",
-              fundingRate: fundingDecimal,
-              fundingIntervalHours: 1
-            };
-            fundingFacts.push({ venue: "drift-api", kind: "funding_rate", payload });
+            if (idStr !== "" && tsMs !== null && isValidDecimalString(fundingRateStr)) {
+              const payload: FundingRatePayloadV1 = {
+                schemaVersion: 1,
+                evidenceFamily: "perp_liquidation",
+                pair: request.pair,
+                venue: "drift-api",
+                instrument: this.symbol,
+                sourceEventId: `drift-funding-${idStr}`,
+                observedAtUnixMs: tsMs,
+                kind: "funding_rate",
+                fundingRate: fundingRateStr,
+                fundingIntervalHours: 1
+              };
+              fundingFacts.push({ venue: "drift-api", kind: "funding_rate", payload });
+            }
           }
         }
         coverage = { kind: "funding_rate", status: "available" };
@@ -171,12 +252,13 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
     return { coverage, facts };
   }
 
-  private async fetchMarketState(
+  private async fetchMarketStats(
     request: PerpLiquidationSourceRequest,
     asOfUnixMs: number
   ): Promise<{
     oiCoverage: PerpMetricCoverage;
     basisCoverage: PerpMetricCoverage;
+    leverageCoverage: PerpMetricCoverage;
     facts: PerpLiquidationSourceFact[];
   }> {
     let oiCoverage: PerpMetricCoverage = {
@@ -189,94 +271,147 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
       status: "unavailable",
       diagnostic: "Not collected"
     };
+    let leverageCoverage: PerpMetricCoverage = {
+      kind: "leverage_proxy",
+      status: "unavailable",
+      diagnostic: "Not collected"
+    };
     const facts: PerpLiquidationSourceFact[] = [];
 
     try {
-      const url = `${this.baseUrl}/marketState?marketIndex=${this.marketIndex}`;
+      const url = `${this.baseUrl}/stats/markets`;
       const res = await this.fetchWithRetry<unknown>(url);
+      if (!Array.isArray(res)) {
+        const diag = "Expected array from stats/markets endpoint";
+        return {
+          oiCoverage: { kind: "open_interest", status: "malformed", diagnostic: diag },
+          basisCoverage: { kind: "perp_basis", status: "malformed", diagnostic: diag },
+          leverageCoverage: { kind: "leverage_proxy", status: "malformed", diagnostic: diag },
+          facts
+        };
+      }
+
+      const marketRow = res.find(
+        (item) =>
+          typeof item === "object" &&
+          item !== null &&
+          (item as Record<string, unknown>).symbol === this.symbol
+      ) as Record<string, unknown> | undefined;
+
+      if (!marketRow) {
+        const diag = `Configured symbol ${this.symbol} not found in markets stats`;
+        return {
+          oiCoverage: { kind: "open_interest", status: "malformed", diagnostic: diag },
+          basisCoverage: { kind: "perp_basis", status: "malformed", diagnostic: diag },
+          leverageCoverage: { kind: "leverage_proxy", status: "malformed", diagnostic: diag },
+          facts
+        };
+      }
+
+      const oraclePrice = marketRow.oraclePrice;
+      const markPrice = marketRow.markPrice;
+      const openInterest = marketRow.openInterest as Record<string, unknown> | undefined;
+
+      const longOi = openInterest?.long;
+      const shortOi = openInterest?.short;
+
       if (
-        typeof res === "object" &&
-        res !== null &&
-        (res as Record<string, unknown>).marketIndex === this.marketIndex
+        !isPositiveDecimalString(oraclePrice) ||
+        !isPositiveDecimalString(markPrice) ||
+        !isValidDecimalString(longOi) ||
+        !isValidDecimalString(shortOi)
       ) {
-        const row = res as Record<string, unknown>;
-        const amm = row.amm as Record<string, unknown> | undefined;
-        const oracleData = amm?.historicalOracleData as Record<string, unknown> | undefined;
+        const diag = "Invalid prices or open interest in market stats";
+        return {
+          oiCoverage: { kind: "open_interest", status: "malformed", diagnostic: diag },
+          basisCoverage: { kind: "perp_basis", status: "malformed", diagnostic: diag },
+          leverageCoverage: { kind: "leverage_proxy", status: "malformed", diagnostic: diag },
+          facts
+        };
+      }
 
-        if (
-          row.baseAssetAmountWithUnsettledLp &&
-          amm?.lastMarkPrice &&
-          oracleData?.lastOraclePrice
-        ) {
-          const baseDecimal = scaleIntegerString(
-            String(row.baseAssetAmountWithUnsettledLp),
-            this.precisions.basePrecisionExp
-          );
-          const markPriceDecimal = scaleIntegerString(
-            String(amm.lastMarkPrice),
-            this.precisions.pricePrecisionExp
-          );
-          const oraclePriceDecimal = scaleIntegerString(
-            String(oracleData.lastOraclePrice),
-            this.precisions.pricePrecisionExp
-          );
+      const absLong = absDecimal(longOi);
+      const absShort = absDecimal(shortOi);
 
-          const usdcOiNum = Number(baseDecimal) * Number(markPriceDecimal);
-          const usdcOiDecimal = usdcOiNum.toFixed(2);
+      const openInterestBase = addDecimals(absLong, absShort);
+      const openInterestUsdc = openInterestBase
+        ? multiplyDecimals(openInterestBase, markPrice)
+        : null;
 
-          const oiPayload: OpenInterestPayloadV1 = {
-            schemaVersion: 1,
-            evidenceFamily: "perp_liquidation",
-            pair: request.pair,
-            venue: "drift-api",
-            instrument: `SOL-PERP-${this.marketIndex}`,
-            sourceEventId: `drift-oi-${asOfUnixMs}`,
-            observedAtUnixMs: asOfUnixMs,
-            kind: "open_interest",
-            openInterestBase: baseDecimal,
-            openInterestUsdc: usdcOiDecimal,
-            sampleWindowSeconds: 300
-          };
-          oiCoverage = { kind: "open_interest", status: "available" };
-          facts.push({ venue: "drift-api", kind: "open_interest", payload: oiPayload });
-
-          const basisPayload: PerpBasisPayloadV1 = {
-            schemaVersion: 1,
-            evidenceFamily: "perp_liquidation",
-            pair: request.pair,
-            venue: "drift-api",
-            instrument: `SOL-PERP-${this.marketIndex}`,
-            sourceEventId: `drift-basis-${asOfUnixMs}`,
-            observedAtUnixMs: asOfUnixMs,
-            kind: "perp_basis",
-            perpPriceUsdc: markPriceDecimal,
-            spotPriceUsdc: oraclePriceDecimal
-          };
-          basisCoverage = { kind: "perp_basis", status: "available" };
-          facts.push({ venue: "drift-api", kind: "perp_basis", payload: basisPayload });
-        } else {
-          oiCoverage = {
-            kind: "open_interest",
-            status: "malformed",
-            diagnostic: "Missing base asset amount or prices in marketState"
-          };
-          basisCoverage = {
-            kind: "perp_basis",
-            status: "malformed",
-            diagnostic: "Missing prices in marketState"
-          };
-        }
+      if (
+        openInterestBase &&
+        openInterestUsdc &&
+        isPositiveDecimalString(openInterestBase) &&
+        isPositiveDecimalString(openInterestUsdc)
+      ) {
+        const oiPayload: OpenInterestPayloadV1 = {
+          schemaVersion: 1,
+          evidenceFamily: "perp_liquidation",
+          pair: request.pair,
+          venue: "drift-api",
+          instrument: this.symbol,
+          sourceEventId: `drift-oi-${asOfUnixMs}`,
+          observedAtUnixMs: asOfUnixMs,
+          kind: "open_interest",
+          openInterestBase,
+          openInterestUsdc,
+          sampleWindowSeconds: 300
+        };
+        oiCoverage = { kind: "open_interest", status: "available" };
+        facts.push({ venue: "drift-api", kind: "open_interest", payload: oiPayload });
       } else {
         oiCoverage = {
           kind: "open_interest",
           status: "malformed",
-          diagnostic: "Malformed marketState response"
+          diagnostic: "Calculated open interest values are invalid"
         };
-        basisCoverage = {
-          kind: "perp_basis",
-          status: "malformed",
-          diagnostic: "Malformed marketState response"
+      }
+
+      const basisPayload: PerpBasisPayloadV1 = {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: request.pair,
+        venue: "drift-api",
+        instrument: this.symbol,
+        sourceEventId: `drift-basis-${asOfUnixMs}`,
+        observedAtUnixMs: asOfUnixMs,
+        kind: "perp_basis",
+        perpPriceUsdc: markPrice,
+        spotPriceUsdc: oraclePrice
+      };
+      basisCoverage = { kind: "perp_basis", status: "available" };
+      facts.push({ venue: "drift-api", kind: "perp_basis", payload: basisPayload });
+
+      if (Number(absShort) === 0 || absShort === "0" || absShort === "0.0") {
+        leverageCoverage = {
+          kind: "leverage_proxy",
+          status: "unavailable",
+          diagnostic: "Zero short open interest for leverage proxy"
         };
+      } else {
+        const ratio = divideDecimals(absLong, absShort);
+        if (ratio && isPositiveDecimalString(ratio)) {
+          const leveragePayload: LeverageProxyPayloadV1 = {
+            schemaVersion: 1,
+            evidenceFamily: "perp_liquidation",
+            pair: request.pair,
+            venue: "drift-api",
+            instrument: this.symbol,
+            sourceEventId: `drift-leverage-${asOfUnixMs}`,
+            observedAtUnixMs: asOfUnixMs,
+            kind: "leverage_proxy",
+            longShortRatio: ratio,
+            methodology: "market_net_position_ratio"
+          };
+          leverageCoverage = { kind: "leverage_proxy", status: "available" };
+          facts.push({ venue: "drift-api", kind: "leverage_proxy", payload: leveragePayload });
+        } else {
+          leverageCoverage = {
+            kind: "leverage_proxy",
+            status: "unavailable",
+            diagnostic: "Invalid leverage proxy ratio"
+          };
+        }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -285,9 +420,10 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
         msg.includes("Expected") || msg.includes("SyntaxError") ? "malformed" : "unavailable";
       oiCoverage = { kind: "open_interest", status, diagnostic: diag };
       basisCoverage = { kind: "perp_basis", status, diagnostic: diag };
+      leverageCoverage = { kind: "leverage_proxy", status, diagnostic: diag };
     }
 
-    return { oiCoverage, basisCoverage, facts };
+    return { oiCoverage, basisCoverage, leverageCoverage, facts };
   }
 
   private async fetchLiquidations(
@@ -301,55 +437,87 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
     const facts: PerpLiquidationSourceFact[] = [];
 
     try {
-      const url = `${this.baseUrl}/liquidations?marketIndex=${this.marketIndex}&fromMs=${request.fromUnixMs}&toMs=${request.toUnixMs}`;
+      const url = `${this.baseUrl}/stats/liquidations`;
       const res = await this.fetchWithRetry<unknown>(url);
-      if (!Array.isArray(res)) {
-        coverage = {
-          kind: "liquidation_event",
-          status: "malformed",
-          diagnostic: "Expected array from liquidations endpoint"
+      if (
+        typeof res !== "object" ||
+        res === null ||
+        !Array.isArray((res as Record<string, unknown>).records)
+      ) {
+        return {
+          coverage: {
+            kind: "liquidation_event",
+            status: "malformed",
+            diagnostic: "Expected object with records array from liquidations endpoint"
+          },
+          facts: []
         };
-      } else {
-        const liqFacts: PerpLiquidationSourceFact[] = [];
-        for (const item of res) {
-          if (
-            typeof item === "object" &&
-            item !== null &&
-            (item as Record<string, unknown>).marketIndex === this.marketIndex &&
-            (item as Record<string, unknown>).liquidationId &&
-            ((item as Record<string, unknown>).direction === "long" ||
-              (item as Record<string, unknown>).direction === "short")
-          ) {
-            const row = item as Record<string, unknown>;
-            const amountBase = scaleIntegerString(
-              String(row.baseAssetAmount),
-              this.precisions.basePrecisionExp
-            );
-            const notionalUsdc = scaleIntegerString(
-              String(row.quoteAssetAmount),
-              this.precisions.quotePrecisionExp
-            );
-            const rawTs = Number(row.ts);
-
-            const payload: LiquidationEventPayloadV1 = {
-              schemaVersion: 1,
-              evidenceFamily: "perp_liquidation",
-              pair: request.pair,
-              venue: "drift-api",
-              instrument: `SOL-PERP-${this.marketIndex}`,
-              sourceEventId: String(row.liquidationId),
-              observedAtUnixMs: rawTs < 1e11 ? rawTs * 1000 : rawTs,
-              kind: "liquidation_event",
-              side: row.direction as "long" | "short",
-              amountBase,
-              notionalUsdc
-            };
-            liqFacts.push({ venue: "drift-api", kind: "liquidation_event", payload });
-          }
-        }
-        coverage = { kind: "liquidation_event", status: "available" };
-        facts.push(...liqFacts);
       }
+
+      const records = (res as Record<string, unknown>).records as unknown[];
+      const liqFacts: PerpLiquidationSourceFact[] = [];
+
+      for (const item of records) {
+        if (typeof item === "object" && item !== null) {
+          const row = item as Record<string, unknown>;
+
+          const mIndex = row.marketIndex ?? row.market;
+          if (mIndex !== undefined && Number(mIndex) !== this.marketIndex) {
+            continue;
+          }
+
+          const lType = row.liquidationType ?? row.marketType ?? row.type;
+          if (lType !== undefined && String(lType) !== "perp") {
+            continue;
+          }
+
+          const tsMs = normalizeTimestamp(row.ts ?? row.timestamp ?? row.observedAtUnixMs);
+          if (tsMs === null || tsMs < request.fromUnixMs || tsMs > request.toUnixMs) {
+            continue;
+          }
+
+          const side = row.side ?? row.direction;
+          const amountBase = row.amountBase ?? row.baseAssetAmount ?? row.baseAmount;
+          const notionalUsdc = row.notionalUsdc ?? row.quoteAssetAmount ?? row.quoteAmount;
+          const rawId = row.id ?? row.liquidationId ?? row.recordId;
+          const idStr = rawId !== undefined && rawId !== null ? String(rawId) : "";
+
+          if (
+            (side !== "long" && side !== "short") ||
+            !isPositiveDecimalString(amountBase) ||
+            !isPositiveDecimalString(notionalUsdc) ||
+            idStr === ""
+          ) {
+            return {
+              coverage: {
+                kind: "liquidation_event",
+                status: "malformed",
+                diagnostic:
+                  "Relevant liquidation record lacks unambiguous side or valid positive amounts"
+              },
+              facts: []
+            };
+          }
+
+          const payload: LiquidationEventPayloadV1 = {
+            schemaVersion: 1,
+            evidenceFamily: "perp_liquidation",
+            pair: request.pair,
+            venue: "drift-api",
+            instrument: this.symbol,
+            sourceEventId: idStr,
+            observedAtUnixMs: tsMs,
+            kind: "liquidation_event",
+            side: side as "long" | "short",
+            amountBase,
+            notionalUsdc
+          };
+          liqFacts.push({ venue: "drift-api", kind: "liquidation_event", payload });
+        }
+      }
+
+      coverage = { kind: "liquidation_event", status: "available" };
+      facts.push(...liqFacts);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       coverage = {
@@ -363,84 +531,28 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
     return { coverage, facts };
   }
 
-  private async fetchNetPositionRatio(
-    request: PerpLiquidationSourceRequest,
-    asOfUnixMs: number
-  ): Promise<{ coverage: PerpMetricCoverage; facts: PerpLiquidationSourceFact[] }> {
-    let coverage: PerpMetricCoverage = {
-      kind: "leverage_proxy",
-      status: "unavailable",
-      diagnostic: "Not collected"
-    };
-    const facts: PerpLiquidationSourceFact[] = [];
-
-    try {
-      const url = `${this.baseUrl}/netPositionRatio?marketIndex=${this.marketIndex}`;
-      const res = await this.fetchWithRetry<unknown>(url);
-      if (
-        typeof res === "object" &&
-        res !== null &&
-        typeof (res as Record<string, unknown>).netPositionRatio === "string"
-      ) {
-        const row = res as Record<string, unknown>;
-        const payload: LeverageProxyPayloadV1 = {
-          schemaVersion: 1,
-          evidenceFamily: "perp_liquidation",
-          pair: request.pair,
-          venue: "drift-api",
-          instrument: `SOL-PERP-${this.marketIndex}`,
-          sourceEventId: `drift-leverage-${asOfUnixMs}`,
-          observedAtUnixMs: asOfUnixMs,
-          kind: "leverage_proxy",
-          longShortRatio: row.netPositionRatio as string,
-          methodology: "market_net_position_ratio"
-        };
-        coverage = { kind: "leverage_proxy", status: "available" };
-        facts.push({ venue: "drift-api", kind: "leverage_proxy", payload });
-      } else {
-        coverage = {
-          kind: "leverage_proxy",
-          status: "unavailable",
-          diagnostic: "Net position ratio not supplied"
-        };
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      coverage = {
-        kind: "leverage_proxy",
-        status:
-          msg.includes("Expected") || msg.includes("SyntaxError") ? "malformed" : "unavailable",
-        diagnostic: sanitizeDiagnostic(msg)
-      };
-    }
-
-    return { coverage, facts };
-  }
-
   async collect(request: PerpLiquidationSourceRequest): Promise<PerpLiquidationSourceSnapshot> {
     const asOfUnixMs = Date.now();
     const providerRunId = `drift-api-${asOfUnixMs}`;
 
-    const [fundingRes, marketStateRes, liqRes, leverageRes] = await Promise.all([
+    const [fundingRes, marketStatsRes, liqRes] = await Promise.all([
       this.fetchFundingRates(request),
-      this.fetchMarketState(request, asOfUnixMs),
-      this.fetchLiquidations(request),
-      this.fetchNetPositionRatio(request, asOfUnixMs)
+      this.fetchMarketStats(request, asOfUnixMs),
+      this.fetchLiquidations(request)
     ]);
 
     const coverage: Record<PerpObservationKind, PerpMetricCoverage> = {
       funding_rate: fundingRes.coverage,
-      open_interest: marketStateRes.oiCoverage,
-      perp_basis: marketStateRes.basisCoverage,
-      liquidation_event: liqRes.coverage,
-      leverage_proxy: leverageRes.coverage
+      open_interest: marketStatsRes.oiCoverage,
+      perp_basis: marketStatsRes.basisCoverage,
+      leverage_proxy: marketStatsRes.leverageCoverage,
+      liquidation_event: liqRes.coverage
     };
 
     const facts: PerpLiquidationSourceFact[] = [
       ...fundingRes.facts,
-      ...marketStateRes.facts,
-      ...liqRes.facts,
-      ...leverageRes.facts
+      ...marketStatsRes.facts,
+      ...liqRes.facts
     ];
 
     return {
