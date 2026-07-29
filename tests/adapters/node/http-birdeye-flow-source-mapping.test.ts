@@ -535,27 +535,17 @@ describe("HttpBirdeyeFlowSource", () => {
         whaleSwapMinUsdc: "500"
       });
 
-      const result = await source.collect({
-        pair: "SOL/USDC",
-        fromUnixMs: 1785270000000,
-        toUnixMs: 1785280000000
-      });
-
-      expect(result.events).toHaveLength(1);
-
-      const dexNetFlow = result.events[0];
-      expect(dexNetFlow).toBeDefined();
-      if (!dexNetFlow) throw new Error("dexNetFlow is undefined");
-      expect(dexNetFlow.eventKind).toBe("dex_net_flow");
-
-      const dexEvent = dexNetFlow as {
-        buyVolumeUsdc: string;
-        sellVolumeUsdc: string;
-        netFlowUsdc: string;
-      };
-      expect(dexEvent.buyVolumeUsdc).toBe("0");
-      expect(dexEvent.sellVolumeUsdc).toBe("0");
-      expect(dexEvent.netFlowUsdc).toBe("0");
+      try {
+        await source.collect({
+          pair: "SOL/USDC",
+          fromUnixMs: 1785270000000,
+          toUnixMs: 1785280000000
+        });
+        expect.fail("Should have thrown");
+      } catch (e) {
+        const error = e as OnChainFlowSourceError;
+        expect(error.kind).toBe("malformed");
+      }
     });
   });
 

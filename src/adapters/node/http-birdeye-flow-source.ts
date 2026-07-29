@@ -185,8 +185,7 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
     const whaleEvents: BirdeyeWhaleSwapEvent[] = [];
 
     const USDC_SCALE = 6;
-    const whaleMinDecimal = parseDecimalStringForBigInt(this.whaleSwapMinUsdc);
-    const whaleMinRaw = scaleDecimalToRaw(whaleMinDecimal, USDC_SCALE);
+    const whaleMinRaw = parseDecimalStringForBigInt(this.whaleSwapMinUsdc, USDC_SCALE);
 
     for (const item of response.data.items) {
       if (!this.isValidItem(item)) {
@@ -201,7 +200,7 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
       const fromSymbol = item.from.symbol;
       const toSymbol = item.to.symbol;
       const usdcItem = item.to.symbol === "USDC" ? item.to : item.from;
-      const usdcAmountRaw = BigInt(usdcItem.amount);
+      const usdcAmountRaw = parseDecimalStringForBigInt(String(usdcItem.uiAmount), USDC_SCALE);
       const usdcUiAmount = usdcItem.uiAmount;
 
       if (fromSymbol === "SOL" && toSymbol === "USDC") {
@@ -278,10 +277,22 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
     if (typeof item.to !== "object" || item.to === null) return false;
     if (typeof item.from.symbol !== "string") return false;
     if (typeof item.to.symbol !== "string") return false;
+    if (typeof item.from.amount !== "number") return false;
+    if (typeof item.to.amount !== "number") return false;
     if (typeof item.from.uiAmount !== "number" || !Number.isFinite(item.from.uiAmount))
       return false;
     if (typeof item.to.uiAmount !== "number" || !Number.isFinite(item.to.uiAmount)) return false;
     if (item.from.uiAmount < 0 || item.to.uiAmount < 0) return false;
+    const fromSymbol = item.from.symbol;
+    const toSymbol = item.to.symbol;
+    if (
+      !(
+        (fromSymbol === "SOL" && toSymbol === "USDC") ||
+        (fromSymbol === "USDC" && toSymbol === "SOL")
+      )
+    ) {
+      return false;
+    }
     return true;
   }
 
@@ -328,7 +339,7 @@ function mapToOnChainFlowSourceError(e: HttpRequestError, apiKey?: string): OnCh
   }
 }
 
-function parseDecimalStringForBigInt(value: string): bigint {
+function parseDecimalStringForBigInt(value: string, targetScale: number): bigint {
   const isNegative = value.startsWith("-");
   const absValue = isNegative ? value.slice(1) : value;
   const dotIndex = absValue.indexOf(".");
@@ -345,8 +356,8 @@ function parseDecimalStringForBigInt(value: string): bigint {
     scale = fracPart.length;
   }
 
-  const scaledDigits = digits + "0".repeat(scale);
-  const result = BigInt(scaledDigits);
+  const adjustedDigits = digits + "0".repeat(targetScale - scale);
+  const result = BigInt(adjustedDigits);
   return isNegative ? -result : result;
 }
 
@@ -368,9 +379,4 @@ function formatDecimalStringFromBigInt(value: bigint, scale: number): string {
   const result = intPart + (scale > 0 ? "." + fracPart : "");
   const trimmed = result.replace(/\.?0+$/, "");
   return isNegative ? "-" + trimmed : trimmed;
-}
-
-function scaleDecimalToRaw(decimalValue: bigint, scale: number): bigint {
-  if (decimalValue === BigInt(0)) return BigInt(0);
-  return decimalValue * BigInt(10 ** scale);
 }
