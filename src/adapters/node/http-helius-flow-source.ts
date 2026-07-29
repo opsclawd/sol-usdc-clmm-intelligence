@@ -86,7 +86,7 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
     const headers: Record<string, string> = {};
 
     let lastError: Error | null = null;
-    let allTransactions: HeliusRawTransaction[] = [];
+    let allEvents: HeliusWhaleTransferEvent[] = [];
     let beforeCursor: string | undefined;
     let shouldContinuePagination = true;
 
@@ -107,7 +107,8 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
           });
 
           const pageTransactions = parseHeliusTransactionPage(response);
-          allTransactions = allTransactions.concat(pageTransactions);
+          const pageEvents = mapTransactionsToWhaleEvents(pageTransactions, walletAddress, request);
+          allEvents = allEvents.concat(pageEvents);
 
           if (pageTransactions.length === 0) {
             pageSuccess = true;
@@ -174,7 +175,17 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
       }
     }
 
-    return acceptHeliusSnapshot(allTransactions, walletAddress, request);
+    const providerRunId = `helius-address-history:${walletAddress}:${request.fromUnixMs}:${request.toUnixMs}`;
+
+    return Object.freeze({
+      source: "helius-api" as const,
+      providerId: "helius-address-history",
+      providerRunId,
+      asOfUnixMs: request.toUnixMs,
+      license: "Helius API",
+      retention: "bounded",
+      events: Object.freeze(allEvents)
+    });
   }
 }
 
@@ -223,11 +234,11 @@ function parseHeliusTransactionPage(response: unknown): HeliusRawTransaction[] {
   return response as HeliusRawTransaction[];
 }
 
-function acceptHeliusSnapshot(
+function mapTransactionsToWhaleEvents(
   transactions: HeliusRawTransaction[],
   walletAddress: string,
   request: OnChainFlowSourceRequest
-): OnChainFlowSourceSnapshot {
+): HeliusWhaleTransferEvent[] {
   const whaleEvents: HeliusWhaleTransferEvent[] = [];
   const fromUnixMsSeconds = Math.floor(request.fromUnixMs / 1000);
   const toUnixMsSeconds = Math.floor(request.toUnixMs / 1000);
@@ -320,15 +331,5 @@ function acceptHeliusSnapshot(
     }
   }
 
-  const providerRunId = `helius-address-history:${walletAddress}:${request.fromUnixMs}:${request.toUnixMs}`;
-
-  return Object.freeze({
-    source: "helius-api" as const,
-    providerId: "helius-address-history",
-    providerRunId,
-    asOfUnixMs: request.toUnixMs,
-    license: "Helius API",
-    retention: "bounded",
-    events: Object.freeze(whaleEvents)
-  });
+  return whaleEvents;
 }

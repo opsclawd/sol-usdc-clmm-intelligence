@@ -21,13 +21,9 @@ vi.mock("../../src/adapters/node/http-birdeye-flow-source.js", () => {
   };
 });
 
-const mockUnavailableOnChainFlowSource = vi.fn();
-vi.mock("../../src/adapters/node/unavailable-on-chain-flow-source.js", () => {
+vi.mock("../../src/adapters/node/http-helius-flow-source.js", () => {
   return {
-    UnavailableOnChainFlowSource: vi.fn().mockImplementation((...args: unknown[]) => {
-      mockUnavailableOnChainFlowSource(...args);
-      return {};
-    })
+    HttpHeliusFlowSource: vi.fn().mockImplementation(() => ({}))
   };
 });
 
@@ -54,6 +50,10 @@ function createMockRuntime() {
             return "https://public-api.birdeye.so";
           case "BIRDEYE_API_KEY":
             return "birdeye-secret-key-456";
+          case "HELIUS_FLOW_API_URL":
+            return "https://api.helius.xyz";
+          case "HELIUS_API_KEY":
+            return "helius-secret-key-123";
           case "ORCA_SOL_USDC_WHIRLPOOL":
             return "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
           case "WALLET_PUBLIC_KEY":
