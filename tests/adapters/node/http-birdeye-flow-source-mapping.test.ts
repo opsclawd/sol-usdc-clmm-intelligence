@@ -1341,7 +1341,7 @@ describe("HttpBirdeyeFlowSource", () => {
         expect.anything()
       );
       expect(mockHttp.getJson).toHaveBeenCalledWith(
-        expect.stringContaining("limit=100"),
+        expect.stringContaining("limit=50"),
         expect.anything()
       );
       expect(mockHttp.getJson).toHaveBeenCalledWith(
@@ -1589,7 +1589,7 @@ describe("HttpBirdeyeFlowSource", () => {
       );
       expect(getJson).toHaveBeenNthCalledWith(
         2,
-        expect.stringContaining("offset=100"),
+        expect.stringContaining("offset=50"),
         expect.anything()
       );
 

@@ -41,7 +41,7 @@ function makeTradeItem(txHash: string, fromSymbol: string, toSymbol: string, amo
 }
 
 describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
-  it("paginates offsets until hasNext is false and aggregates every page once", async () => {
+  it("requests Birdeye pages with limit 50 and advances offsets by 50 until hasNext is false", async () => {
     const page1Item = makeTradeItem("tx1", "SOL", "USDC", 1000);
     const page2Item = makeTradeItem("tx2", "USDC", "SOL", 500);
 
@@ -79,11 +79,11 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
 
     const url1 = new URL(getJsonMock.mock.calls[0]![0]);
     expect(url1.searchParams.get("offset")).toBe("0");
-    expect(url1.searchParams.get("limit")).toBe("100");
+    expect(url1.searchParams.get("limit")).toBe("50");
 
     const url2 = new URL(getJsonMock.mock.calls[1]![0]);
-    expect(url2.searchParams.get("offset")).toBe("100");
-    expect(url2.searchParams.get("limit")).toBe("100");
+    expect(url2.searchParams.get("offset")).toBe("50");
+    expect(url2.searchParams.get("limit")).toBe("50");
 
     const dexNetFlow = result.events.find((e) => e.eventKind === "dex_net_flow") as {
       sellVolumeUsdc: string;
@@ -98,7 +98,7 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
     expect(whaleSwaps).toHaveLength(2);
   });
 
-  it("advances past an empty page whose hasNext is true", async () => {
+  it("advances by 50 past an empty page whose hasNext is true", async () => {
     const page2Item = makeTradeItem("tx1", "SOL", "USDC", 1000);
 
     const getJsonMock = vi
@@ -137,7 +137,7 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
     expect(url1.searchParams.get("offset")).toBe("0");
 
     const url2 = new URL(getJsonMock.mock.calls[1]![0]);
-    expect(url2.searchParams.get("offset")).toBe("100");
+    expect(url2.searchParams.get("offset")).toBe("50");
 
     const dexNetFlow = result.events.find((e) => e.eventKind === "dex_net_flow") as {
       sellVolumeUsdc: string;
@@ -145,7 +145,7 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
     expect(dexNetFlow.sellVolumeUsdc).toBe("1000");
   });
 
-  it("retries only the failed page without refetching completed pages", async () => {
+  it("retries only the failed page at the same 50-trade offset", async () => {
     const page1Item = makeTradeItem("tx1", "SOL", "USDC", 1000);
     const page2Item = makeTradeItem("tx2", "USDC", "SOL", 500);
 
@@ -158,11 +158,11 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
         data: { items: [page1Item], hasNext: true },
         success: true
       })
-      // Page 2 (offset 100) attempt 1 fails with 500 error
+      // Page 2 (offset 50) attempt 1 fails with 500 error
       .mockRejectedValueOnce(
         new HttpRequestError("http_status", "500 Internal Server Error", 500, true)
       )
-      // Page 2 (offset 100) attempt 2 succeeds
+      // Page 2 (offset 50) attempt 2 succeeds
       .mockResolvedValueOnce({
         data: { items: [page2Item], hasNext: false },
         success: true
@@ -192,8 +192,8 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
     expect(getJsonMock).toHaveBeenCalledTimes(3);
 
     expect(new URL(getJsonMock.mock.calls[0]![0]).searchParams.get("offset")).toBe("0");
-    expect(new URL(getJsonMock.mock.calls[1]![0]).searchParams.get("offset")).toBe("100");
-    expect(new URL(getJsonMock.mock.calls[2]![0]).searchParams.get("offset")).toBe("100");
+    expect(new URL(getJsonMock.mock.calls[1]![0]).searchParams.get("offset")).toBe("50");
+    expect(new URL(getJsonMock.mock.calls[2]![0]).searchParams.get("offset")).toBe("50");
 
     expect(fakeRetry.delays).toEqual([25]);
 
@@ -338,9 +338,9 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
     }
   });
 
-  it("fails unavailable instead of publishing a partial aggregate at the page cap", async () => {
+  it("preserves 10000-trade capacity and fails closed after 200 continuing pages", async () => {
     const getJsonMock = vi.fn<HttpClient["getJson"]>();
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 200; i++) {
       getJsonMock.mockResolvedValueOnce({
         data: {
           items: [makeTradeItem(`tx-${i}`, "SOL", "USDC", 100)],
@@ -373,8 +373,8 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
     } catch (e) {
       const error = e as OnChainFlowSourceError;
       expect(error.kind).toBe("unavailable");
-      expect(error.diagnostic).toBe("Birdeye pagination exceeded 100 pages");
-      expect(getJsonMock).toHaveBeenCalledTimes(100);
+      expect(error.diagnostic).toBe("Birdeye pagination exceeded 200 pages");
+      expect(getJsonMock).toHaveBeenCalledTimes(200);
     }
   });
 
@@ -424,8 +424,8 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
       expect(url.searchParams.get("tx_type")).toBe("swap");
       expect(url.searchParams.get("after_time")).toBe("1785270000");
       expect(url.searchParams.get("before_time")).toBe("1785280000");
-      expect(url.searchParams.get("limit")).toBe("100");
-      expect(url.searchParams.get("offset")).toBe(String(i * 100));
+      expect(url.searchParams.get("limit")).toBe("50");
+      expect(url.searchParams.get("offset")).toBe(String(i * 50));
 
       expect(opts?.headers).toEqual({
         "x-chain": "solana",
