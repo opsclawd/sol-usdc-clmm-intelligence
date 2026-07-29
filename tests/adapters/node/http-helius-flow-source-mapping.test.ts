@@ -448,59 +448,6 @@ describe("HttpHeliusFlowSource mapping", () => {
   });
 
   describe("pagination", () => {
-    it("updates the before cursor and fetches subsequent pages", async () => {
-      const inboundTx = (heliusTransactionsFixture as HeliusRawTransaction[]).find(
-        (t) => t.signature === "captured-inbound-signature"
-      )!;
-      const outboundTx = (heliusTransactionsFixture as HeliusRawTransaction[]).find(
-        (t) => t.signature === "captured-outbound-signature"
-      )!;
-
-      const page1Transactions = Array(100)
-        .fill(null)
-        .map((_, i) => ({
-          ...inboundTx,
-          signature: `page1-tx-${i}`,
-          slot: 24681012 + i
-        }));
-      const page2Transactions = [outboundTx];
-
-      let callCount = 0;
-      const mockHttp = {
-        getJson: vi.fn().mockImplementation(async (): Promise<unknown> => {
-          callCount++;
-          if (callCount === 1) {
-            return page1Transactions;
-          }
-          return page2Transactions;
-        }),
-        postJsonRaw: vi.fn().mockRejectedValue(new Error("Not implemented"))
-      } as unknown as HttpClient;
-
-      const source = new HttpHeliusFlowSource({
-        http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
-        apiKey: "test-api-key"
-      });
-
-      const result = await source.collect({
-        pair: "SOL/USDC",
-        walletAddress: WATCHED_WALLET,
-        fromUnixMs: FROM_UNIX_MS,
-        toUnixMs: TO_UNIX_MS
-      });
-
-      expect(mockHttp.getJson).toHaveBeenCalledTimes(2);
-      const mockFn = mockHttp.getJson as ReturnType<typeof vi.fn>;
-      const calls = mockFn.mock.calls;
-      const firstUrl = new URL(calls[0]![0] as string);
-      const secondUrl = new URL(calls[1]![0] as string);
-      expect(firstUrl.searchParams.has("before")).toBe(false);
-      expect(secondUrl.searchParams.has("before")).toBe(true);
-      expect(secondUrl.searchParams.get("before")).toBe("page1-tx-99");
-      expect(result.events).toHaveLength(101);
-    });
-
     it("stops pagination when page has fewer results than limit", async () => {
       const tx = (heliusTransactionsFixture as HeliusRawTransaction[]).find(
         (t) => t.signature === "captured-inbound-signature"
@@ -578,49 +525,6 @@ describe("HttpHeliusFlowSource mapping", () => {
       } catch (e) {
         const error = e as OnChainFlowSourceError;
         expect(error.kind).toBe("malformed");
-      }
-    });
-
-    it("marks completeness as partial when the MAX_PAGES limit is hit before exhausting history", async () => {
-      const inboundTx = (heliusTransactionsFixture as HeliusRawTransaction[]).find(
-        (t) => t.signature === "captured-inbound-signature"
-      )!;
-
-      let callCount = 0;
-      const mockHttp = {
-        getJson: vi.fn().mockImplementation(async (): Promise<unknown> => {
-          callCount++;
-          return Array(100)
-            .fill(null)
-            .map((_, i) => ({
-              ...inboundTx,
-              signature: `page${callCount}-tx-${i}`,
-              slot: inboundTx.slot + i
-            }));
-        }),
-        postJsonRaw: vi.fn().mockRejectedValue(new Error("Not implemented"))
-      } as unknown as HttpClient;
-
-      const source = new HttpHeliusFlowSource({
-        http: mockHttp,
-        url: "https://api.helius.com/v0/addresses/{address}/transactions",
-        apiKey: "test-api-key"
-      });
-
-      const result = await source.collect({
-        pair: "SOL/USDC",
-        walletAddress: WATCHED_WALLET,
-        fromUnixMs: FROM_UNIX_MS,
-        toUnixMs: TO_UNIX_MS
-      });
-
-      expect(mockHttp.getJson).toHaveBeenCalledTimes(100);
-      expect(result.events.length).toBeGreaterThan(0);
-      for (const event of result.events) {
-        expect(event.eventKind).toBe("whale_transfer");
-        if (event.eventKind === "whale_transfer") {
-          expect(event.sourceQuality.completeness).toBe("partial");
-        }
       }
     });
   });

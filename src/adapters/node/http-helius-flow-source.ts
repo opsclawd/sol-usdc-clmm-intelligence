@@ -13,7 +13,6 @@ import { SystemRetryControl } from "./system-retry.js";
 const BASE_BACKOFF_MS = 25;
 const MAX_BACKOFF_MS = 400;
 const LIMIT_PARAM = 100;
-const MAX_PAGES = 100;
 const CANONICAL_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 function computeBackoffMs(attempt: number, retryControl: RetryControl): number {
@@ -93,115 +92,85 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
 
     let lastError: Error | null = null;
     let allTransactions: HeliusRawTransaction[] = [];
-    let beforeCursor: string | undefined;
-    let shouldContinuePagination = true;
-    let pages = 0;
+    let pageSuccess = false;
+    let saturatedPage = false;
 
-    while (shouldContinuePagination && pages < MAX_PAGES) {
-      const paginatedUrl = new URL(url.toString());
-      if (beforeCursor) {
-        paginatedUrl.searchParams.set("before", beforeCursor);
-      }
+    for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
+      try {
+        const response = await this.options.http.getJson<unknown>(url.toString(), {
+          headers,
+          timeoutMs: this.timeoutMs,
+          maxAttempts: 1
+        });
 
-      let pageSuccess = false;
-      let saturatedPage = false;
+        const pageTransactions = parseHeliusTransactionPage(response);
+        allTransactions = pageTransactions;
 
-      for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
-        try {
-          const response = await this.options.http.getJson<unknown>(paginatedUrl.toString(), {
-            headers,
-            timeoutMs: this.timeoutMs,
-            maxAttempts: 1
-          });
-
-          const pageTransactions = parseHeliusTransactionPage(response);
-          allTransactions = allTransactions.concat(pageTransactions);
-
-          if (pageTransactions.length === 0) {
-            pageSuccess = true;
-            shouldContinuePagination = false;
-            break;
-          }
-
-          if (pageTransactions.length < LIMIT_PARAM) {
-            pageSuccess = true;
-            shouldContinuePagination = false;
-            break;
-          }
-
-          const oldestTimestampMs = getOldestTransactionTimestampMs(pageTransactions);
-
-          if (
-            pageTransactions.length === LIMIT_PARAM &&
-            oldestTimestampMs !== undefined &&
-            oldestTimestampMs > request.fromUnixMs
-          ) {
-            saturatedPage = true;
-            pageSuccess = true;
-            shouldContinuePagination = false;
-            break;
-          }
-
-          if (oldestTimestampMs !== undefined && oldestTimestampMs < request.fromUnixMs) {
-            pageSuccess = true;
-            shouldContinuePagination = false;
-            break;
-          }
-
-          beforeCursor = pageTransactions[pageTransactions.length - 1]?.signature;
-          if (!beforeCursor) {
-            pageSuccess = true;
-            shouldContinuePagination = false;
-            break;
-          }
-
+        if (pageTransactions.length === 0) {
           pageSuccess = true;
           break;
-        } catch (e) {
-          lastError = e instanceof Error ? e : new Error(String(e));
-
-          let httpError: HttpRequestError;
-
-          if (e instanceof DOMException && e.name === "AbortError") {
-            httpError = new HttpRequestError("timeout", lastError.message, null, true);
-          } else if (e instanceof HttpRequestError) {
-            httpError = e;
-          } else {
-            httpError = new HttpRequestError("network", lastError.message, null, true);
-          }
-
-          if (!httpError.retryable || attempt >= this.maxAttempts - 1) {
-            throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
-          }
-
-          await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
         }
-      }
 
-      if (saturatedPage) {
-        throw mapToOnChainFlowSourceError(
-          new HttpRequestError("http_status", "Page does not cover requested lookback", 429, false),
-          this.options.apiKey
-        );
-      }
+        if (pageTransactions.length < LIMIT_PARAM) {
+          pageSuccess = true;
+          break;
+        }
 
-      if (!pageSuccess) {
-        throw mapToOnChainFlowSourceError(
-          new HttpRequestError(
-            "network",
-            lastError ? lastError.message : "Unknown error",
-            null,
-            true
-          ),
-          this.options.apiKey
-        );
-      }
+        const oldestTimestampMs = getOldestTransactionTimestampMs(pageTransactions);
 
-      pages++;
+        if (
+          pageTransactions.length === LIMIT_PARAM &&
+          oldestTimestampMs !== undefined &&
+          oldestTimestampMs > request.fromUnixMs
+        ) {
+          saturatedPage = true;
+          pageSuccess = true;
+          break;
+        }
+
+        pageSuccess = true;
+        break;
+      } catch (e) {
+        lastError = e instanceof Error ? e : new Error(String(e));
+
+        let httpError: HttpRequestError;
+
+        if (e instanceof DOMException && e.name === "AbortError") {
+          httpError = new HttpRequestError("timeout", lastError.message, null, true);
+        } else if (e instanceof HttpRequestError) {
+          httpError = e;
+        } else {
+          httpError = new HttpRequestError("network", lastError.message, null, true);
+        }
+
+        if (!httpError.retryable || attempt >= this.maxAttempts - 1) {
+          throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
+        }
+
+        await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
+      }
     }
 
-    const truncatedByPageLimit = shouldContinuePagination && pages >= MAX_PAGES;
-    const completeness: "full" | "partial" = truncatedByPageLimit ? "partial" : "full";
+    if (saturatedPage) {
+      throw mapToOnChainFlowSourceError(
+        new HttpRequestError("http_status", "Page does not cover requested lookback", 429, false),
+        this.options.apiKey
+      );
+    }
+
+    if (!pageSuccess) {
+      throw mapToOnChainFlowSourceError(
+        new HttpRequestError(
+          "network",
+          lastError ? lastError.message : "Unknown error",
+          null,
+          true
+        ),
+        this.options.apiKey
+      );
+    }
+
+    const completeness: "full" | "partial" = "full";
     const allEvents = mapTransactionsToWhaleEvents(
       allTransactions,
       walletAddress,
