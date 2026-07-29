@@ -78,47 +78,103 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
     const encodedWallet = encodeURIComponent(walletAddress);
     const baseUrl = this.options.url.replace("{address}", encodedWallet);
     const url = new URL(baseUrl);
-    url.searchParams.set("api-key", this.options.apiKey ?? "");
+    if (this.options.apiKey) {
+      url.searchParams.set("api-key", this.options.apiKey);
+    }
     url.searchParams.set("limit", String(LIMIT_PARAM));
 
     const headers: Record<string, string> = {};
 
     let lastError: Error | null = null;
+    let allTransactions: HeliusRawTransaction[] = [];
+    let beforeCursor: string | undefined;
+    let shouldContinuePagination = true;
 
-    for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
-      try {
-        const response = await this.options.http.getJson<unknown>(url.toString(), {
-          headers,
-          timeoutMs: this.timeoutMs,
-          maxAttempts: 1
-        });
+    while (shouldContinuePagination) {
+      const paginatedUrl = new URL(url.toString());
+      if (beforeCursor) {
+        paginatedUrl.searchParams.set("before", beforeCursor);
+      }
 
-        return acceptHeliusSnapshot(response, walletAddress, request);
-      } catch (e) {
-        lastError = e instanceof Error ? e : new Error(String(e));
+      let pageSuccess = false;
 
-        let httpError: HttpRequestError;
+      for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
+        try {
+          const response = await this.options.http.getJson<unknown>(paginatedUrl.toString(), {
+            headers,
+            timeoutMs: this.timeoutMs,
+            maxAttempts: 1
+          });
 
-        if (e instanceof DOMException && e.name === "AbortError") {
-          httpError = new HttpRequestError("timeout", lastError.message, null, true);
-        } else if (e instanceof HttpRequestError) {
-          httpError = e;
-        } else {
-          httpError = new HttpRequestError("network", lastError.message, null, true);
+          const pageTransactions = parseHeliusTransactionPage(response);
+          allTransactions = allTransactions.concat(pageTransactions);
+
+          if (pageTransactions.length === 0) {
+            pageSuccess = true;
+            shouldContinuePagination = false;
+            break;
+          }
+
+          if (pageTransactions.length < LIMIT_PARAM) {
+            pageSuccess = true;
+            shouldContinuePagination = false;
+            break;
+          }
+
+          const oldestTimestamp = pageTransactions[pageTransactions.length - 1]?.timestamp;
+          if (
+            oldestTimestamp === undefined ||
+            oldestTimestamp < Math.floor(request.fromUnixMs / 1000)
+          ) {
+            pageSuccess = true;
+            shouldContinuePagination = false;
+            break;
+          }
+
+          beforeCursor = pageTransactions[pageTransactions.length - 1]?.signature;
+          if (!beforeCursor) {
+            pageSuccess = true;
+            shouldContinuePagination = false;
+            break;
+          }
+
+          pageSuccess = true;
+          break;
+        } catch (e) {
+          lastError = e instanceof Error ? e : new Error(String(e));
+
+          let httpError: HttpRequestError;
+
+          if (e instanceof DOMException && e.name === "AbortError") {
+            httpError = new HttpRequestError("timeout", lastError.message, null, true);
+          } else if (e instanceof HttpRequestError) {
+            httpError = e;
+          } else {
+            httpError = new HttpRequestError("network", lastError.message, null, true);
+          }
+
+          if (!httpError.retryable || attempt >= this.maxAttempts - 1) {
+            throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
+          }
+
+          await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
         }
+      }
 
-        if (!httpError.retryable || attempt >= this.maxAttempts - 1) {
-          throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
-        }
-
-        await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
+      if (!pageSuccess) {
+        throw mapToOnChainFlowSourceError(
+          new HttpRequestError(
+            "network",
+            lastError ? lastError.message : "Unknown error",
+            null,
+            true
+          ),
+          this.options.apiKey
+        );
       }
     }
 
-    throw mapToOnChainFlowSourceError(
-      new HttpRequestError("network", lastError ? lastError.message : "Unknown error", null, true),
-      this.options.apiKey
-    );
+    return acceptHeliusSnapshot(allTransactions, walletAddress, request);
   }
 }
 
@@ -160,16 +216,18 @@ function isValidDecimalString(value: string): boolean {
   return true;
 }
 
+function parseHeliusTransactionPage(response: unknown): HeliusRawTransaction[] {
+  if (!Array.isArray(response)) {
+    return [];
+  }
+  return response as HeliusRawTransaction[];
+}
+
 function acceptHeliusSnapshot(
-  response: unknown,
+  transactions: HeliusRawTransaction[],
   walletAddress: string,
   request: OnChainFlowSourceRequest
 ): OnChainFlowSourceSnapshot {
-  if (!Array.isArray(response)) {
-    throw new HttpRequestError("invalid_json", "Response is not an array", null, false);
-  }
-
-  const transactions = response as HeliusRawTransaction[];
   const whaleEvents: HeliusWhaleTransferEvent[] = [];
   const fromUnixMsSeconds = Math.floor(request.fromUnixMs / 1000);
   const toUnixMsSeconds = Math.floor(request.toUnixMs / 1000);

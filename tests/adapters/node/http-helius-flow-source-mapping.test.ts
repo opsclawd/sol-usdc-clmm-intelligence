@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { HttpClient } from "../../../src/ports/http.js";
+import { HttpRequestError } from "../../../src/ports/http.js";
 import { HttpHeliusFlowSource } from "../../../src/adapters/node/http-helius-flow-source.js";
+import type { OnChainFlowSourceError } from "../../../src/ports/on-chain-flow-source.js";
 import heliusTransactionsFixture from "../../fixtures/helius-address-transactions.json" with { type: "json" };
+import { FakeRetry } from "../../fakes/fake-retry.js";
 
 const WATCHED_WALLET = "Wallet123";
 const FROM_UNIX_MS = 1700000000000;
@@ -19,6 +22,37 @@ interface HeliusRawTransaction {
     mint: string;
     tokenAmount: number;
   }>;
+}
+
+function createMockHttpClient(behavior: {
+  shouldTimeout?: boolean;
+  networkError?: boolean;
+  httpStatus?: number;
+  body?: unknown;
+}): HttpClient {
+  return {
+    getJson: vi.fn().mockImplementation(async (): Promise<unknown> => {
+      if (behavior.networkError) {
+        throw new TypeError("network error");
+      }
+
+      if (behavior.shouldTimeout) {
+        throw new DOMException(`Aborted: https://api.helius.com`, "AbortError");
+      }
+
+      if (behavior.httpStatus !== undefined && behavior.httpStatus >= 400) {
+        throw new HttpRequestError(
+          "http_status",
+          `GET https://api.helius.com failed: ${behavior.httpStatus}`,
+          behavior.httpStatus,
+          behavior.httpStatus === 429 || behavior.httpStatus >= 500
+        );
+      }
+
+      return behavior.body;
+    }),
+    postJsonRaw: vi.fn().mockRejectedValue(new Error("Not implemented"))
+  } as unknown as HttpClient;
 }
 
 describe("HttpHeliusFlowSource mapping", () => {
@@ -199,13 +233,217 @@ describe("HttpHeliusFlowSource mapping", () => {
       expect(options.headers).not.toHaveProperty("Authorization");
     });
   });
-});
 
-function createMockHttpClient(behavior: { body?: unknown }): HttpClient {
-  return {
-    getJson: vi.fn().mockImplementation(async (): Promise<unknown> => {
-      return behavior.body;
-    }),
-    postJsonRaw: vi.fn().mockRejectedValue(new Error("Not implemented"))
-  } as unknown as HttpClient;
-}
+  describe("does not append api-key query parameter when apiKey is not provided", () => {
+    it("does not append api-key query parameter when apiKey is undefined", async () => {
+      const mockHttp = createMockHttpClient({
+        body: []
+      });
+
+      const source = new HttpHeliusFlowSource({
+        http: mockHttp,
+        url: "https://api.helius.com/v0/addresses/{address}/transactions"
+      });
+
+      await source.collect({
+        pair: "SOL/USDC",
+        walletAddress: WATCHED_WALLET,
+        fromUnixMs: FROM_UNIX_MS,
+        toUnixMs: TO_UNIX_MS
+      });
+
+      expect(mockHttp.getJson).toHaveBeenCalledTimes(1);
+      const mockFn = mockHttp.getJson as ReturnType<typeof vi.fn>;
+      const calls = mockFn.mock.calls;
+      const [url] = calls[0] as [string];
+
+      const parsedUrl = new URL(url);
+      expect(parsedUrl.searchParams.has("api-key")).toBe(false);
+    });
+  });
+
+  describe("retries retryable failures up to maxAttempts", () => {
+    it("retries timeout errors up to maxAttempts", async () => {
+      const mockHttp = createMockHttpClient({ shouldTimeout: true });
+      const fakeRetry = new FakeRetry([0, 0]);
+
+      const source = new HttpHeliusFlowSource({
+        http: mockHttp,
+        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        apiKey: "test-api-key",
+        maxAttempts: 3,
+        retryControl: fakeRetry
+      });
+
+      try {
+        await source.collect({
+          pair: "SOL/USDC",
+          walletAddress: WATCHED_WALLET,
+          fromUnixMs: FROM_UNIX_MS,
+          toUnixMs: TO_UNIX_MS
+        });
+        expect.fail("Should have thrown");
+      } catch (e) {
+        const error = e as OnChainFlowSourceError;
+        expect(error.kind).toBe("timeout");
+        expect(mockHttp.getJson).toHaveBeenCalledTimes(3);
+      }
+    });
+
+    it("retries 429 rate limit errors up to maxAttempts", async () => {
+      const mockHttp = createMockHttpClient({ httpStatus: 429 });
+      const fakeRetry = new FakeRetry([0, 0]);
+
+      const source = new HttpHeliusFlowSource({
+        http: mockHttp,
+        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        apiKey: "test-api-key",
+        maxAttempts: 3,
+        retryControl: fakeRetry
+      });
+
+      try {
+        await source.collect({
+          pair: "SOL/USDC",
+          walletAddress: WATCHED_WALLET,
+          fromUnixMs: FROM_UNIX_MS,
+          toUnixMs: TO_UNIX_MS
+        });
+        expect.fail("Should have thrown");
+      } catch (e) {
+        const error = e as OnChainFlowSourceError;
+        expect(error.kind).toBe("unavailable");
+        expect(mockHttp.getJson).toHaveBeenCalledTimes(3);
+      }
+    });
+
+    it("retries 5xx server errors up to maxAttempts", async () => {
+      const mockHttp = createMockHttpClient({ httpStatus: 500 });
+      const fakeRetry = new FakeRetry([0, 0]);
+
+      const source = new HttpHeliusFlowSource({
+        http: mockHttp,
+        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        apiKey: "test-api-key",
+        maxAttempts: 3,
+        retryControl: fakeRetry
+      });
+
+      try {
+        await source.collect({
+          pair: "SOL/USDC",
+          walletAddress: WATCHED_WALLET,
+          fromUnixMs: FROM_UNIX_MS,
+          toUnixMs: TO_UNIX_MS
+        });
+        expect.fail("Should have thrown");
+      } catch (e) {
+        const error = e as OnChainFlowSourceError;
+        expect(error.kind).toBe("unavailable");
+        expect(mockHttp.getJson).toHaveBeenCalledTimes(3);
+      }
+    });
+
+    it("does not retry non-retryable 4xx errors", async () => {
+      const mockHttp = createMockHttpClient({ httpStatus: 400 });
+
+      const source = new HttpHeliusFlowSource({
+        http: mockHttp,
+        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        apiKey: "test-api-key",
+        maxAttempts: 3
+      });
+
+      try {
+        await source.collect({
+          pair: "SOL/USDC",
+          walletAddress: WATCHED_WALLET,
+          fromUnixMs: FROM_UNIX_MS,
+          toUnixMs: TO_UNIX_MS
+        });
+        expect.fail("Should have thrown");
+      } catch (e) {
+        const error = e as OnChainFlowSourceError;
+        expect(error.kind).toBe("network");
+        expect(mockHttp.getJson).toHaveBeenCalledTimes(1);
+      }
+    });
+  });
+
+  describe("redacts configured API keys from diagnostics", () => {
+    it("redacts API key from timeout error diagnostic", async () => {
+      const secretKey = "helius-super-secret-key-12345";
+      const mockHttp = createMockHttpClient({ shouldTimeout: true });
+
+      const source = new HttpHeliusFlowSource({
+        http: mockHttp,
+        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        apiKey: secretKey
+      });
+
+      try {
+        await source.collect({
+          pair: "SOL/USDC",
+          walletAddress: WATCHED_WALLET,
+          fromUnixMs: FROM_UNIX_MS,
+          toUnixMs: TO_UNIX_MS
+        });
+        expect.fail("Should have thrown");
+      } catch (e) {
+        const error = e as OnChainFlowSourceError;
+        expect(error.kind).toBe("timeout");
+        expect(error.diagnostic).not.toContain(secretKey);
+      }
+    });
+
+    it("redacts API key from network error diagnostic", async () => {
+      const secretKey = "helius-super-secret-key-12345";
+      const mockHttp = createMockHttpClient({ networkError: true });
+
+      const source = new HttpHeliusFlowSource({
+        http: mockHttp,
+        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        apiKey: secretKey
+      });
+
+      try {
+        await source.collect({
+          pair: "SOL/USDC",
+          walletAddress: WATCHED_WALLET,
+          fromUnixMs: FROM_UNIX_MS,
+          toUnixMs: TO_UNIX_MS
+        });
+        expect.fail("Should have thrown");
+      } catch (e) {
+        const error = e as OnChainFlowSourceError;
+        expect(error.kind).toBe("network");
+        expect(error.diagnostic).not.toContain(secretKey);
+      }
+    });
+
+    it("redacts API key from 503 error diagnostic", async () => {
+      const secretKey = "helius-super-secret-key-12345";
+      const mockHttp = createMockHttpClient({ httpStatus: 503 });
+
+      const source = new HttpHeliusFlowSource({
+        http: mockHttp,
+        url: "https://api.helius.com/v0/addresses/{address}/transactions",
+        apiKey: secretKey
+      });
+
+      try {
+        await source.collect({
+          pair: "SOL/USDC",
+          walletAddress: WATCHED_WALLET,
+          fromUnixMs: FROM_UNIX_MS,
+          toUnixMs: TO_UNIX_MS
+        });
+        expect.fail("Should have thrown");
+      } catch (e) {
+        const error = e as OnChainFlowSourceError;
+        expect(error.kind).toBe("unavailable");
+        expect(error.diagnostic).not.toContain(secretKey);
+      }
+    });
+  });
+});
