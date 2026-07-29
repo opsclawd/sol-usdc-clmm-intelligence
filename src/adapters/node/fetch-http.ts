@@ -61,6 +61,14 @@ function classifyError(
   return { kind: "http_status", retryable: false };
 }
 
+function responseHeadersToRecord(headers: Headers): Record<string, string> {
+  const result: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    result[key] = value;
+  });
+  return result;
+}
+
 export class FetchHttpClient implements HttpClient {
   constructor(
     private readonly fetchFn: typeof fetch = fetch,
@@ -95,7 +103,8 @@ export class FetchHttpClient implements HttpClient {
             kind,
             `GET ${url} failed: ${response.status} ${response.statusText} ${redactedBody}`,
             response.status,
-            retryable
+            retryable,
+            { responseHeaders: responseHeadersToRecord(response.headers) }
           );
         }
 

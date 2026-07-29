@@ -6,16 +6,25 @@ export interface HttpRequestOptions {
 
 export type HttpFailureKind = "timeout" | "network" | "http_status" | "invalid_json";
 
+export interface HttpRequestErrorOptions extends ErrorOptions {
+  readonly responseHeaders?: Readonly<Record<string, string>>;
+}
+
 export class HttpRequestError extends Error {
+  readonly responseHeaders?: Readonly<Record<string, string>>;
+
   constructor(
     readonly kind: HttpFailureKind,
     message: string,
     readonly status: number | null,
     readonly retryable: boolean,
-    options?: ErrorOptions
+    options?: HttpRequestErrorOptions
   ) {
     super(message, options);
     this.name = "HttpRequestError";
+    if (options?.responseHeaders) {
+      this.responseHeaders = options.responseHeaders;
+    }
   }
 }
 
