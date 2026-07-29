@@ -1117,7 +1117,7 @@ A source outage is ambiguous: it may indicate genuine no-events or a service pro
 
 ## Perp & Liquidation Collection (`pnpm collect:perp-liquidation`)
 
-The `collect:perp-liquidation` command collects SOL perp market and liquidation-stress evidence from two providers: Binance Futures (`binance-fapi`) and Drift Protocol (`drift-api`). It runs both venues concurrently, persists raw and normalized observations, and derives four deterministic feature kinds per venue in the same run. Liquidation clusters and funding-rate spikes are market-stress evidence, not execution triggers; final synthesis belongs to regime-engine.
+The `collect:perp-liquidation` command collects SOL perp market and liquidation-stress evidence from two providers: Binance Futures (`binance-fapi`) and Velocity Exchange Data API (retaining `drift-api` as the canonical internal venue identifier). It runs both venues concurrently, persists raw and normalized observations, and derives four deterministic feature kinds per venue in the same run. Liquidation clusters and funding-rate spikes are market-stress evidence, not execution triggers; final synthesis belongs to regime-engine.
 
 ### Authority Boundary
 
@@ -1134,8 +1134,10 @@ Required environment variables:
 BINANCE_FAPI_BASE_URL=https://fapi.binance.com
 BINANCE_SOL_PERP_SYMBOL=SOLUSDT
 
-# Drift Protocol public API (funding rate, open interest, perp/spot basis, public liquidation stream)
-DRIFT_DATA_API_BASE_URL=https://mainnet-beta.api.drift.trade
+# Velocity Exchange Data API (funding rate, open interest, perp/spot basis, public liquidation stream)
+# Note: drift-api is retained as the canonical internal venue identifier.
+DRIFT_DATA_API_BASE_URL=https://data.velocity.exchange
+DRIFT_SOL_PERP_SYMBOL=SOL-PERP
 DRIFT_SOL_PERP_MARKET_INDEX=0
 
 # Drift numeric precision exponents (defaults shown; rarely need overriding)
@@ -1147,7 +1149,9 @@ DRIFT_QUOTE_PRECISION=1000000
 PERP_LIQUIDATION_LOOKBACK_MS=14400000
 ```
 
-`BINANCE_SOL_PERP_SYMBOL` and `DRIFT_SOL_PERP_MARKET_INDEX` have no default instrument — the collector fails closed with exit code 1 if either is unset or malformed, rather than guessing an instrument.
+`BINANCE_SOL_PERP_SYMBOL`, `DRIFT_SOL_PERP_SYMBOL`, and `DRIFT_SOL_PERP_MARKET_INDEX` have no default instrument — the collector fails closed with exit code 1 if any is unset or malformed, rather than guessing an instrument.
+
+`DRIFT_SOL_PERP_SYMBOL` routes funding rate and market statistics endpoints, while `DRIFT_SOL_PERP_MARKET_INDEX` filters global liquidation records. All three endpoints are unauthenticated, and liquidations are bounded locally to the collector lookback (`PERP_LIQUIDATION_LOOKBACK_MS`). Velocity Exchange is a provisional host; if its schema changes, malformed or unavailable coverage status is expected.
 
 ### Command and Statuses
 
@@ -1184,7 +1188,7 @@ All four calculations use `bigint`-backed exact rational arithmetic with ties-aw
 Binance's public futures REST API does not expose market-wide liquidation history without account-scoped (`USER_DATA`) authentication. Consequently:
 
 - `binance-fapi` supplies perp market state only: funding rate, open interest, perp/spot basis.
-- `drift-api` is the sole source of `liquidation_event` evidence, from Drift's public on-chain liquidation stream.
+- `drift-api` (sourced via Velocity Exchange Data API) is the sole source of `liquidation_event` evidence, from Velocity's public liquidation endpoint.
 - `liquidation_cluster_1h` is therefore always derived from Drift-venue observations; Binance never contributes to this feature.
 
 ### Coverage Gating
@@ -1195,7 +1199,7 @@ If a provider reports coverage for an observation kind as anything other than `a
 
 #### One venue always shows `UNAVAILABLE`
 
-Check the venue-specific base URL and instrument config (`BINANCE_SOL_PERP_SYMBOL` / `DRIFT_SOL_PERP_MARKET_INDEX`), then check rate limits and network connectivity for that venue's endpoint. A single-venue outage produces `PARTIAL` at the job level, not a hard failure.
+Check the venue-specific base URL and instrument config (`BINANCE_SOL_PERP_SYMBOL` / `DRIFT_SOL_PERP_SYMBOL` / `DRIFT_SOL_PERP_MARKET_INDEX`), then check rate limits and network connectivity for that venue's endpoint. A single-venue outage produces `PARTIAL` at the job level, not a hard failure.
 
 #### `liquidation_cluster_1h` is always `UNAVAILABLE`
 
@@ -1203,7 +1207,7 @@ This is expected if Drift is unavailable or has no recent open-interest sample �
 
 #### Collector fails closed at startup
 
-`BINANCE_SOL_PERP_SYMBOL`, `DRIFT_DATA_API_BASE_URL`, or `DRIFT_SOL_PERP_MARKET_INDEX` is unset, or `PERP_LIQUIDATION_LOOKBACK_MS` is below the 4-hour floor. Fix the env var; the collector will not fall back to a default instrument.
+`BINANCE_SOL_PERP_SYMBOL`, `DRIFT_DATA_API_BASE_URL`, `DRIFT_SOL_PERP_SYMBOL`, or `DRIFT_SOL_PERP_MARKET_INDEX` is unset, or `PERP_LIQUIDATION_LOOKBACK_MS` is below the 4-hour floor. Fix the env var; the collector will not fall back to a default instrument.
 
 ## Publish-attempt persistence
 
