@@ -177,7 +177,7 @@ export async function runOnChainFlowCollect(): Promise<void> {
 
   const heliusSource = new HttpHeliusFlowSource({
     http: runtime.http,
-    url: heliusUrl,
+    url: `${heliusUrl}/v0/addresses/{address}/transactions`,
     apiKey: heliusApiKey,
     retryControl: runtime.retryControl
   });
