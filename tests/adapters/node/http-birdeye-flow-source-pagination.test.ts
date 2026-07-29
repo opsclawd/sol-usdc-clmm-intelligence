@@ -506,4 +506,74 @@ describe("HttpBirdeyeFlowSource pagination and page-level recovery", () => {
       });
     }
   });
+
+  it("retries an explicit success false envelope at the same offset", async () => {
+    const fakeRetry = new FakeRetry([0]);
+    const getJsonMock = vi
+      .fn<HttpClient["getJson"]>()
+      .mockResolvedValueOnce({ success: false })
+      .mockResolvedValueOnce({
+        data: { items: [], hasNext: false },
+        success: true
+      });
+
+    const mockHttp = {
+      getJson: getJsonMock,
+      postJsonRaw: vi.fn()
+    } as unknown as HttpClient;
+
+    const source = new HttpBirdeyeFlowSource({
+      http: mockHttp,
+      url: "https://public-api.birdeye.so",
+      apiKey: DEFAULT_API_KEY,
+      poolAddress: DEFAULT_POOL,
+      whaleSwapMinUsdc: "500",
+      maxAttempts: 2,
+      retryControl: fakeRetry
+    });
+
+    await source.collect({
+      pair: "SOL/USDC",
+      fromUnixMs: 1785270000000,
+      toUnixMs: 1785280000000
+    });
+
+    expect(getJsonMock).toHaveBeenCalledTimes(2);
+    expect(new URL(getJsonMock.mock.calls[0]![0]).searchParams.get("offset")).toBe("0");
+    expect(new URL(getJsonMock.mock.calls[1]![0]).searchParams.get("offset")).toBe("0");
+    expect(fakeRetry.delays).toEqual([25]);
+  });
+
+  it("maps exhausted success false envelopes to network after maxAttempts", async () => {
+    const fakeRetry = new FakeRetry([0]);
+    const getJsonMock = vi.fn<HttpClient["getJson"]>().mockResolvedValue({ success: false });
+
+    const mockHttp = {
+      getJson: getJsonMock,
+      postJsonRaw: vi.fn()
+    } as unknown as HttpClient;
+
+    const source = new HttpBirdeyeFlowSource({
+      http: mockHttp,
+      url: "https://public-api.birdeye.so",
+      apiKey: DEFAULT_API_KEY,
+      poolAddress: DEFAULT_POOL,
+      whaleSwapMinUsdc: "500",
+      maxAttempts: 2,
+      retryControl: fakeRetry
+    });
+
+    const request = {
+      pair: "SOL/USDC" as const,
+      fromUnixMs: 1785270000000,
+      toUnixMs: 1785280000000
+    };
+
+    await expect(source.collect(request)).rejects.toMatchObject({
+      kind: "network",
+      diagnostic: "Response success is false"
+    });
+    expect(getJsonMock).toHaveBeenCalledTimes(2);
+    expect(fakeRetry.delays).toEqual([25]);
+  });
 });

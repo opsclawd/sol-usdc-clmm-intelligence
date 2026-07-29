@@ -697,10 +697,10 @@ describe("HttpBirdeyeFlowSource", () => {
       }
     });
 
-    it("throws malformed when success is not true", async () => {
+    it("does not retry an envelope with a malformed success field", async () => {
       const mockHttp = createMockHttpClient({
         data: { items: [], hasNext: false },
-        success: false
+        success: "not-a-boolean"
       });
 
       const source = new HttpBirdeyeFlowSource({
@@ -708,7 +708,8 @@ describe("HttpBirdeyeFlowSource", () => {
         url: "https://public-api.birdeye.so",
         apiKey: "birdeye-secret",
         poolAddress: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
-        whaleSwapMinUsdc: "500"
+        whaleSwapMinUsdc: "500",
+        maxAttempts: 3
       });
 
       try {
@@ -722,6 +723,7 @@ describe("HttpBirdeyeFlowSource", () => {
         const error = e as OnChainFlowSourceError;
         expect(error.kind).toBe("malformed");
       }
+      expect(mockHttp.getJson).toHaveBeenCalledTimes(1);
     });
 
     it("throws malformed when data.items is missing", async () => {

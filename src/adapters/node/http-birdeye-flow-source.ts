@@ -207,8 +207,17 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
 
     const res = response as Partial<BirdeyePairTradesResponse>;
 
-    if (typeof res.success !== "boolean" || res.success !== true) {
-      throw new HttpRequestError("invalid_json", "Response success is not true", null, false);
+    if (res.success === false) {
+      throw new HttpRequestError("network", "Response success is false", null, true);
+    }
+
+    if (typeof res.success !== "boolean") {
+      throw new HttpRequestError(
+        "invalid_json",
+        "Response success is missing or not a boolean",
+        null,
+        false
+      );
     }
 
     if (typeof res.data !== "object" || res.data === null) {
