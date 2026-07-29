@@ -103,7 +103,7 @@ describe("HttpDriftSource", () => {
     });
 
     for (const fact of snapshot.facts) {
-      const payload = fact.payload as Record<string, unknown>;
+      const payload = fact.payload as unknown as Record<string, unknown>;
       expect(payload).not.toHaveProperty("oraclePrice");
       expect(payload).not.toHaveProperty("markPrice");
       expect(payload).not.toHaveProperty("openInterest");
