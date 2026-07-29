@@ -201,14 +201,17 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
       const toSymbol = item.to.symbol;
       const usdcItem = item.to.symbol === "USDC" ? item.to : item.from;
       const usdcAmountRaw = parseDecimalStringForBigInt(String(usdcItem.uiAmount), USDC_SCALE);
-      const usdcUiAmount = usdcItem.uiAmount;
 
       if (fromSymbol === "SOL" && toSymbol === "USDC") {
         sellVolumeUsdc += usdcAmountRaw;
 
         if (usdcAmountRaw >= whaleMinRaw) {
           whaleEvents.push(
-            this.createWhaleSwapEvent(item, "outbound", formatDecimalString(usdcUiAmount))
+            this.createWhaleSwapEvent(
+              item,
+              "outbound",
+              formatDecimalStringFromBigInt(usdcAmountRaw, USDC_SCALE)
+            )
           );
         }
       } else if (fromSymbol === "USDC" && toSymbol === "SOL") {
@@ -216,7 +219,11 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
 
         if (usdcAmountRaw >= whaleMinRaw) {
           whaleEvents.push(
-            this.createWhaleSwapEvent(item, "inbound", formatDecimalString(usdcUiAmount))
+            this.createWhaleSwapEvent(
+              item,
+              "inbound",
+              formatDecimalStringFromBigInt(usdcAmountRaw, USDC_SCALE)
+            )
           );
         }
       }
@@ -339,9 +346,48 @@ function mapToOnChainFlowSourceError(e: HttpRequestError, apiKey?: string): OnCh
   }
 }
 
+function toPlainDecimalString(value: string): string {
+  if (!value.includes("e") && !value.includes("E")) {
+    return value;
+  }
+  const parts = value.split(/[eE]/);
+  const mantissa = parts[0];
+  const expStr = parts[1];
+  if (!mantissa || expStr === undefined) return value;
+
+  const exp = parseInt(expStr, 10);
+  if (Number.isNaN(exp)) return value;
+
+  const sign = mantissa.startsWith("-") ? "-" : "";
+  const absMantissa = sign ? mantissa.slice(1) : mantissa;
+  const [intPart = "", fracPart = ""] = absMantissa.split(".");
+
+  if (exp === 0) {
+    return sign + intPart + (fracPart ? "." + fracPart : "");
+  } else if (exp > 0) {
+    if (exp >= fracPart.length) {
+      return sign + intPart + fracPart + "0".repeat(exp - fracPart.length);
+    } else {
+      return sign + intPart + fracPart.slice(0, exp) + "." + fracPart.slice(exp);
+    }
+  } else {
+    const absExp = -exp;
+    if (absExp <= intPart.length) {
+      const splitIdx = intPart.length - absExp;
+      const newInt = intPart.slice(0, splitIdx) || "0";
+      const newFrac = intPart.slice(splitIdx) + fracPart;
+      return sign + newInt + "." + newFrac;
+    } else {
+      const zeros = "0".repeat(absExp - intPart.length);
+      return sign + "0." + zeros + intPart + fracPart;
+    }
+  }
+}
+
 function parseDecimalStringForBigInt(value: string, targetScale: number): bigint {
-  const isNegative = value.startsWith("-");
-  const absValue = isNegative ? value.slice(1) : value;
+  const plain = toPlainDecimalString(value);
+  const isNegative = plain.startsWith("-");
+  const absValue = isNegative ? plain.slice(1) : plain;
   const dotIndex = absValue.indexOf(".");
   let digits: string;
   let scale: number;
@@ -356,16 +402,20 @@ function parseDecimalStringForBigInt(value: string, targetScale: number): bigint
     scale = fracPart.length;
   }
 
-  const adjustedDigits = digits + "0".repeat(targetScale - scale);
+  let adjustedDigits: string;
+  if (scale > targetScale) {
+    const overflow = scale - targetScale;
+    adjustedDigits = digits.slice(0, digits.length - overflow);
+  } else {
+    adjustedDigits = digits + "0".repeat(targetScale - scale);
+  }
+
+  if (adjustedDigits === "" || adjustedDigits === "-") {
+    return BigInt(0);
+  }
+
   const result = BigInt(adjustedDigits);
   return isNegative ? -result : result;
-}
-
-function formatDecimalString(value: number): string {
-  if (value === 0) return "0";
-  const str = value.toString();
-  if (!str.includes(".")) return str;
-  return str.replace(/\.?0+$/, "");
 }
 
 function formatDecimalStringFromBigInt(value: bigint, scale: number): string {

@@ -1382,5 +1382,118 @@ describe("HttpBirdeyeFlowSource", () => {
         })
       );
     });
+
+    it("handles uiAmount with precision beyond targetScale by truncating without RangeError", async () => {
+      const mockHttp = createMockHttpClient({
+        data: {
+          items: [
+            {
+              txHash: "over-precision-tx",
+              source: "whirlpool",
+              blockUnixTime: 1785278800,
+              txType: "swap",
+              address: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
+              owner: "OverPrecisionWallet",
+              from: {
+                symbol: "SOL",
+                decimals: 9,
+                address: "So11111111111111111111111111111111111111112",
+                amount: 7990631926,
+                uiAmount: 7.990631926,
+                price: 73.809
+              },
+              to: {
+                symbol: "USDC",
+                decimals: 6,
+                address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                amount: 589920174,
+                uiAmount: 589.920174123456,
+                price: 0.99977
+              }
+            }
+          ],
+          hasNext: false
+        },
+        success: true
+      });
+
+      const source = new HttpBirdeyeFlowSource({
+        http: mockHttp,
+        url: "https://public-api.birdeye.so",
+        apiKey: "birdeye-secret",
+        poolAddress: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
+        whaleSwapMinUsdc: "500"
+      });
+
+      const result = await source.collect({
+        pair: "SOL/USDC",
+        fromUnixMs: 1785270000000,
+        toUnixMs: 1785280000000
+      });
+
+      const dexNetFlow = result.events.find((e) => e.eventKind === "dex_net_flow") as {
+        sellVolumeUsdc: string;
+      };
+      expect(dexNetFlow.sellVolumeUsdc).toBe("589.920174");
+
+      const whaleSwap = result.events.find((e) => e.eventKind === "whale_swap") as {
+        amountUsdc: string;
+      };
+      expect(whaleSwap.amountUsdc).toBe("589.920174");
+    });
+
+    it("formats whale swap amounts using normalized BigInt decimal arithmetic to prevent floating-point artifacts", async () => {
+      const mockHttp = createMockHttpClient({
+        data: {
+          items: [
+            {
+              txHash: "float-artifact-tx",
+              source: "whirlpool",
+              blockUnixTime: 1785278900,
+              txType: "swap",
+              address: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
+              owner: "FloatArtifactWallet",
+              from: {
+                symbol: "SOL",
+                decimals: 9,
+                address: "So11111111111111111111111111111111111111112",
+                amount: 7990631926,
+                uiAmount: 7.990631926,
+                price: 73.809
+              },
+              to: {
+                symbol: "USDC",
+                decimals: 6,
+                address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                amount: 589920174,
+                uiAmount: 589.9201740000001,
+                price: 0.99977
+              }
+            }
+          ],
+          hasNext: false
+        },
+        success: true
+      });
+
+      const source = new HttpBirdeyeFlowSource({
+        http: mockHttp,
+        url: "https://public-api.birdeye.so",
+        apiKey: "birdeye-secret",
+        poolAddress: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
+        whaleSwapMinUsdc: "500"
+      });
+
+      const result = await source.collect({
+        pair: "SOL/USDC",
+        fromUnixMs: 1785270000000,
+        toUnixMs: 1785280000000
+      });
+
+      const whaleSwap = result.events.find((e) => e.eventKind === "whale_swap") as {
+        amountUsdc: string;
+      };
+      expect(whaleSwap.amountUsdc).toBe("589.920174");
+    });
   });
 });
