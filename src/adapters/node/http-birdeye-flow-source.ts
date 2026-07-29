@@ -13,6 +13,8 @@ import { SystemRetryControl } from "./system-retry.js";
 
 const BASE_BACKOFF_MS = 25;
 const MAX_BACKOFF_MS = 400;
+const PAGE_LIMIT = 100;
+const MAX_PAGES = 100;
 
 function computeBackoffMs(attempt: number, retryControl: RetryControl): number {
   const base = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** attempt);
@@ -91,7 +93,51 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
       );
     }
 
+    const trades: BirdeyePairTradeItem[] = [];
+
+    for (let page = 0, offset = 0; page < MAX_PAGES; page++, offset += PAGE_LIMIT) {
+      const pageData = await this.fetchPageWithRetry(offset, request);
+      trades.push(...pageData.items);
+      if (!pageData.hasNext) {
+        try {
+          return this.acceptBirdeyeSnapshot(trades, request);
+        } catch (e) {
+          let httpError: HttpRequestError;
+          if (e instanceof HttpRequestError) {
+            httpError = e;
+          } else if (e instanceof DOMException && e.name === "AbortError") {
+            httpError = new HttpRequestError("timeout", e.message, null, true);
+          } else {
+            httpError = new HttpRequestError(
+              "network",
+              e instanceof Error ? e.message : String(e),
+              null,
+              true
+            );
+          }
+          throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
+        }
+      }
+    }
+
+    throw {
+      kind: "unavailable",
+      diagnostic: `Birdeye pagination exceeded ${MAX_PAGES} pages`
+    } satisfies OnChainFlowSourceError;
+  }
+
+  private async fetchPageWithRetry(
+    offset: number,
+    request: OnChainFlowSourceRequest
+  ): Promise<{ items: BirdeyePairTradeItem[]; hasNext: boolean }> {
     const baseUrl = new URL("/defi/txs/pair", this.options.url);
+    const url = new URL(baseUrl);
+    url.searchParams.set("address", this.poolAddress);
+    url.searchParams.set("tx_type", "swap");
+    url.searchParams.set("offset", String(offset));
+    url.searchParams.set("limit", String(PAGE_LIMIT));
+    url.searchParams.set("after_time", String(Math.floor(request.fromUnixMs / 1000)));
+    url.searchParams.set("before_time", String(Math.floor(request.toUnixMs / 1000)));
 
     const headers: Record<string, string> = {
       "x-chain": "solana"
@@ -100,74 +146,45 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
       headers["X-API-Key"] = this.options.apiKey;
     }
 
-    const allItems: BirdeyePairTradeItem[] = [];
-    let offset = 0;
-    const limit = 100;
-    let hasNext = true;
+    for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
+      try {
+        const response = await this.options.http.getJson<unknown>(url.toString(), {
+          headers,
+          timeoutMs: this.timeoutMs,
+          maxAttempts: 1
+        });
 
-    while (hasNext) {
-      for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
-        try {
-          const url = new URL(baseUrl);
-          url.searchParams.set("address", this.poolAddress);
-          url.searchParams.set("tx_type", "swap");
-          url.searchParams.set("offset", String(offset));
-          url.searchParams.set("limit", String(limit));
-          url.searchParams.set("after_time", String(Math.floor(request.fromUnixMs / 1000)));
-          url.searchParams.set("before_time", String(Math.floor(request.toUnixMs / 1000)));
+        this.validateResponseEnvelope(response);
 
-          const response = await this.options.http.getJson<unknown>(url.toString(), {
-            headers,
-            timeoutMs: this.timeoutMs,
-            maxAttempts: 1
-          });
+        return {
+          items: response.data.items,
+          hasNext: response.data.hasNext === true
+        };
+      } catch (e) {
+        const lastError = e instanceof Error ? e : new Error(String(e));
 
-          this.validateResponseEnvelope(response);
+        let httpError: HttpRequestError;
 
-          allItems.push(...response.data.items);
-          hasNext = response.data.hasNext === true;
-          offset += limit;
-          break;
-        } catch (e) {
-          const lastError = e instanceof Error ? e : new Error(String(e));
-
-          let httpError: HttpRequestError;
-
-          if (e instanceof DOMException && e.name === "AbortError") {
-            httpError = new HttpRequestError("timeout", lastError.message, null, true);
-          } else if (e instanceof HttpRequestError) {
-            httpError = e;
-          } else {
-            httpError = new HttpRequestError("network", lastError.message, null, true);
-          }
-
-          if (!httpError.retryable || attempt >= this.maxAttempts - 1) {
-            throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
-          }
-
-          await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
+        if (e instanceof DOMException && e.name === "AbortError") {
+          httpError = new HttpRequestError("timeout", lastError.message, null, true);
+        } else if (e instanceof HttpRequestError) {
+          httpError = e;
+        } else {
+          httpError = new HttpRequestError("network", lastError.message, null, true);
         }
+
+        if (!httpError.retryable || attempt >= this.maxAttempts - 1) {
+          throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
+        }
+
+        await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
       }
     }
 
-    try {
-      return this.acceptBirdeyeSnapshot(allItems, request);
-    } catch (e) {
-      let httpError: HttpRequestError;
-      if (e instanceof HttpRequestError) {
-        httpError = e;
-      } else if (e instanceof DOMException && e.name === "AbortError") {
-        httpError = new HttpRequestError("timeout", e.message, null, true);
-      } else {
-        httpError = new HttpRequestError(
-          "network",
-          e instanceof Error ? e.message : String(e),
-          null,
-          true
-        );
-      }
-      throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
-    }
+    throw {
+      kind: "unavailable",
+      diagnostic: "Exhausted retries"
+    } satisfies OnChainFlowSourceError;
   }
 
   private validateResponseEnvelope(
