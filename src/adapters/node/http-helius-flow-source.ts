@@ -13,6 +13,7 @@ import { SystemRetryControl } from "./system-retry.js";
 const BASE_BACKOFF_MS = 25;
 const MAX_BACKOFF_MS = 400;
 const LIMIT_PARAM = 100;
+const MAX_PAGES = 100;
 const CANONICAL_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 function computeBackoffMs(attempt: number, retryControl: RetryControl): number {
@@ -89,8 +90,9 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
     let allEvents: HeliusWhaleTransferEvent[] = [];
     let beforeCursor: string | undefined;
     let shouldContinuePagination = true;
+    let pages = 0;
 
-    while (shouldContinuePagination) {
+    while (shouldContinuePagination && pages < MAX_PAGES) {
       const paginatedUrl = new URL(url.toString());
       if (beforeCursor) {
         paginatedUrl.searchParams.set("before", beforeCursor);
@@ -173,6 +175,8 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
           this.options.apiKey
         );
       }
+
+      pages++;
     }
 
     const providerRunId = `helius-address-history:${walletAddress}:${request.fromUnixMs}:${request.toUnixMs}`;
@@ -191,7 +195,13 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
 
 function mapToOnChainFlowSourceError(e: HttpRequestError, apiKey?: string): OnChainFlowSourceError {
   const diagnostic = e.message;
-  const redactedDiagnostic = apiKey ? diagnostic.split(apiKey).join("[REDACTED]") : diagnostic;
+  let redactedDiagnostic = apiKey ? diagnostic.split(apiKey).join("[REDACTED]") : diagnostic;
+  if (apiKey) {
+    const encodedKey = encodeURIComponent(apiKey);
+    if (encodedKey !== apiKey) {
+      redactedDiagnostic = redactedDiagnostic.split(encodedKey).join("[REDACTED]");
+    }
+  }
 
   switch (e.kind) {
     case "timeout":
@@ -229,7 +239,7 @@ function isValidDecimalString(value: string): boolean {
 
 function parseHeliusTransactionPage(response: unknown): HeliusRawTransaction[] {
   if (!Array.isArray(response)) {
-    return [];
+    throw new HttpRequestError("invalid_json", "Response is not an array", null, false);
   }
   return response as HeliusRawTransaction[];
 }
