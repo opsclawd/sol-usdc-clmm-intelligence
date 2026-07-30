@@ -105,7 +105,7 @@ function parseEnvironment(raw: string): IntelligenceEnvironment {
 
 function validateGitCommit(raw: string): string {
   const trimmed = raw.trim();
-  if (!/^[0-9a-f]{40}$/.test(trimmed)) {
+  if (!/^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(trimmed)) {
     throw new Error("Invalid git commit in INTELLIGENCE_GIT_COMMIT");
   }
   return trimmed;
