@@ -81,3 +81,21 @@ Section 1's preflight gate no longer blocks this task, and Section 3's volatilit
 - **Task 4 Verification Completed:** Executed core evidence pipeline end-to-end (`npx tsx scripts/verify-task-4-live.ts`) against a locally provisioned Postgres database (`intelligence_test` schema migrated via `pnpm db:migrate`), carrying out collection, feature derivation, bundle assembly, brief generation, and bundle publication.
 - **Invariants Verified Live:** All eight Task 4 acceptance cases transitioned from `NOT RUN` to `PASS` backed by direct database verification in Postgres (`derived_features`, `evidence_bundles`, `research_briefs`, `publish_attempts`). 10 historical price ticks (5m intervals over 45m) were seeded prior to pipeline execution to ensure `warmed_volatility_is_usable` evaluated live as `AVAILABLE`, and a missing position state test was executed live within `verify-task-4-live.ts` to confirm `missing_position_state_prevents_only_matching_bundle`.
 - **Hermes Gateway Precondition Resolved:** Task 4 live execution requirements were fulfilled by running `runCoreEvidencePipelineScript` against a local Postgres schema and local service interfaces without requiring a running Hermes gateway process.
+
+## 5. Regime Engine receipt evidence
+
+Section 1's preflight gate no longer blocks this task, and Section 4's pipeline execution establishes local bundle persistence and publish attempt tracking. However, no documented downstream read method exists in Regime Engine for querying receipt records or confirming exact payloads inside Regime Engine. Per strict operational constraints, Task 5 acceptance cases are marked as BLOCKED rather than fabricating a mock GET route.
+
+| Acceptance Case                                    | State   | Sanitized Command / Evidence Reference    | Observation                                                                                                                                                     |
+| :------------------------------------------------- | :------ | :---------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `local_created_is_not_downstream_proof`            | BLOCKED | `Regime Engine documented contract audit` | Local HTTP 201 response was recorded in Task 4, but no documented downstream read method exists in Regime Engine to confirm receipt records; marked as BLOCKED. |
+| `downstream_receipt_matches_both_exact_identities` | BLOCKED | `Regime Engine documented contract audit` | Cannot confirm downstream ingested records or verify exact identity matching because no documented downstream read method exists in Regime Engine.              |
+| `downstream_scope_matches_local_scope`             | BLOCKED | `Regime Engine documented contract audit` | Cannot verify downstream payload scope because no documented downstream read method exists in Regime Engine.                                                    |
+| `downstream_check_is_read_only`                    | BLOCKED | `Regime Engine documented contract audit` | Read-only receipt query cannot be performed because no documented downstream read method exists in Regime Engine.                                               |
+| `unreachable_downstream_remains_blocked`           | BLOCKED | `Fail-closed policy audit`                | Verification fails closed with BLOCKED because no documented downstream read method exists to perform receipt verification.                                     |
+
+### Decision Log
+
+- **No Documented Downstream Read Method:** No documented downstream read method exists in Regime Engine to query receipt records or confirm ingested payloads.
+- **Fail-Closed Execution:** In accordance with strict operational constraints, rather than inventing or mocking a GET route, all Task 5 acceptance cases are marked as BLOCKED.
+- **Scope Confirmation:** Task 5 verification stops here. Live receipt verification can only proceed when a documented downstream read method is implemented in Regime Engine.
