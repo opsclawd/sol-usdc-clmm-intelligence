@@ -11,6 +11,7 @@ import type { RawObservationRepo } from "../../src/ports/observation-repo.js";
 import type { AssembleEvidenceBundleJobRequest } from "../../src/jobs/assemble-evidence-bundle-job.js";
 import type { RetryControl } from "../../src/ports/retry.js";
 import { makeClmmBundle, makePoolData, makePositionData } from "../fixtures/clmm-bundle.js";
+import { runAssembleEvidenceBundleScript } from "../../scripts/collectors/assemble-evidence-bundle.js";
 
 const originalProcessExitCode = process.exitCode;
 
@@ -63,7 +64,7 @@ function createMockFeatureRepo() {
   };
 }
 
-function createMockBundleRepo(): EvidenceBundleRepo {
+function createMockBundleRepo() {
   return {
     insertOrClassify: vi.fn(),
     findById: vi.fn(),
@@ -72,7 +73,7 @@ function createMockBundleRepo(): EvidenceBundleRepo {
   };
 }
 
-function createMockContract(): EvidenceBundleContract {
+function createMockContract() {
   return {
     validateCanonicalizeAndHash: vi.fn()
   };
@@ -1288,5 +1289,387 @@ describe("invalid input exits before database composition", () => {
 
     consoleErrorSpy.mockRestore();
     processExitSpy.mockRestore();
+  });
+});
+
+interface ScriptHarnessOptions {
+  featureCandidates?: DerivedFeatureRow[];
+  request?: AssembleEvidenceBundleJobRequest;
+}
+
+interface ScriptHarness {
+  runtime: NodeRuntime;
+  rawRepo: ReturnType<typeof createMockRawObservationRepo>;
+  normalizedRepo: ReturnType<typeof createMockNormalizedObservationRepo>;
+  featureRepo: ReturnType<typeof createMockFeatureRepo>;
+  bundleRepo: ReturnType<typeof createMockBundleRepo>;
+  contract: ReturnType<typeof createMockContract>;
+  clock: Clock;
+  connection: { close: Mock };
+  setRequest: (req: AssembleEvidenceBundleJobRequest) => void;
+}
+
+function createScriptHarness(options?: ScriptHarnessOptions): ScriptHarness {
+  const rawRepo = createMockRawObservationRepo();
+  const normalizedRepo = createMockNormalizedObservationRepo();
+  const featureRepo = createMockFeatureRepo();
+  const bundleRepo = createMockBundleRepo();
+  const contract = createMockContract();
+  const clock = createMockClock("2024-01-01T00:00:00.000Z");
+  const connection = { close: vi.fn().mockResolvedValue(undefined) };
+
+  const mockFeature: DerivedFeatureRow = {
+    id: 10,
+    featureKind: "range_location",
+    status: "AVAILABLE",
+    pair: "SOL/USDC",
+    poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
+    positionId: "Pos11111111111111111111111111111111111111111",
+    asOfUnixMs: 1700000000000,
+    receivedAtUnixMs: 1700000000000,
+    validUntilUnixMs: 1700007200000,
+    value: 500000,
+    confidence: {
+      components: {
+        sourceReliability: 10000,
+        dataCompleteness: 10000,
+        derivationConfidence: 10000,
+        llmConfidence: null
+      },
+      compositeScore: 10000,
+      level: "high",
+      weightingVersion: "v1",
+      reasons: []
+    },
+    calculatorVersion: "range-location/v1",
+    selectionVersion: "selection/v1",
+    derivationKey: "key-10",
+    inputObservationIds: [100],
+    rejectedObservationIds: [],
+    provenance: {
+      sourceRefs: [],
+      rawObservationRefs: [
+        {
+          refType: "normalized_observation",
+          id: 100,
+          source: "clmm-v2-bundle",
+          payloadHash: "norm-hash-200"
+        }
+      ],
+      derivedFromRefs: [],
+      processRef: {
+        collector: "test",
+        jobName: "test",
+        pipelineRunId: null,
+        codeVersion: null,
+        modelVersion: null
+      },
+      codeVersion: "1.0.0",
+      runId: null
+    },
+    signalClass: "deterministic",
+    evidenceFamily: "clmm_state",
+    unit: "PPM",
+    structuredPayload: {},
+    confidenceComposite: 10000,
+    confidenceLevel: "high",
+    isStale: false,
+    staleBehavior: null,
+    payloadHash: "feature-hash-10",
+    warnings: [],
+    reasons: []
+  };
+
+  featureRepo.listBundleCandidates = vi
+    .fn()
+    .mockResolvedValue(options?.featureCandidates ?? [mockFeature]);
+
+  normalizedRepo.findByIds = vi.fn().mockResolvedValue([
+    {
+      id: 100,
+      rawObservationId: 200,
+      source: "clmm-v2-bundle",
+      observationKind: "clmm_pool_snapshot",
+      sourceObservationKey: "key-200",
+      observedAtUnixMs: 1700000000000,
+      receivedAtUnixMs: 1700000000000,
+      validUntilUnixMs: 1700007200000,
+      isStale: false,
+      payload: {},
+      payloadHash: "norm-hash-200",
+      payloadCanonical: "{}",
+      idempotencyKey: "idem-200",
+      confidenceLevel: "high",
+      confidenceScore: 1,
+      provenance: {},
+      version: 1
+    }
+  ]);
+
+  rawRepo.findByIds = vi.fn().mockResolvedValue([
+    {
+      id: 200,
+      source: "clmm-v2-bundle",
+      sourceObservationKey: "key-200",
+      observedAtUnixMs: 1700000000000,
+      receivedAtUnixMs: 1700000000000,
+      payload: {
+        walletId: "Wallet1234567890abcdef",
+        positionId: "Pos11111111111111111111111111111111111111111",
+        poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
+      },
+      payloadHash: "raw-hash-200",
+      payloadCanonical: JSON.stringify(
+        makeClmmBundle({
+          pool: makePoolData({ poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE" }),
+          positions: [
+            makePositionData({
+              walletId: "Wallet1234567890abcdef",
+              positionId: "Pos11111111111111111111111111111111111111111",
+              poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
+            })
+          ],
+          alerts: []
+        })
+      ),
+      idempotencyKey: "idem-raw-200",
+      parseStatus: "parsed"
+    }
+  ]);
+
+  contract.validateCanonicalizeAndHash = vi.fn().mockImplementation(async (candidate) => ({
+    payload: candidate,
+    payloadCanonical: JSON.stringify(candidate),
+    payloadHash: "hash-abc",
+    idempotencyKey: "idem-abc",
+    schemaVersion: "evidence-bundle.v1"
+  }));
+
+  (bundleRepo.insertOrClassify as Mock).mockResolvedValue({
+    outcome: "inserted",
+    row: {
+      id: 99,
+      schemaVersion: "evidence-bundle.v1",
+      pair: "SOL/USDC",
+      asOfUnixMs: 1700000000000,
+      expiresAtUnixMs: 1700003600000,
+      payload: {},
+      payloadHash: "hash-abc",
+      payloadCanonical: '{"test":true}',
+      idempotencyKey: "idem-abc",
+      taxonomySummary: null,
+      dominantSignalClass: "deterministic",
+      confidence: {
+        components: {},
+        compositeScore: 5000,
+        level: "high",
+        weightingVersion: "v1",
+        reasons: []
+      },
+      confidenceComposite: 5000,
+      confidenceLevel: "high",
+      validUntilUnixMs: null,
+      isStale: false,
+      staleBehavior: null,
+      provenance: {},
+      version: 1,
+      receivedAtUnixMs: 1700000000000
+    }
+  });
+
+  const readJsonMock = vi.fn().mockResolvedValue(options?.request ?? VALID_REQUEST);
+
+  const runtime: NodeRuntime = {
+    http: { getJson: vi.fn() } as unknown as NodeRuntime["http"],
+    jsonStore: {
+      readJson: readJsonMock,
+      writeJson: vi.fn()
+    } as unknown as NodeRuntime["jsonStore"],
+    textReader: { readText: vi.fn() } as unknown as NodeRuntime["textReader"],
+    env: createMockEnvReader({
+      DATABASE_URL: "postgresql://test:test@localhost:5432/test"
+    }),
+    clock,
+    commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
+    runIdFactory: createMockRunIdFactory(),
+    retryControl: createMockRetryControl(),
+    getDb: vi.fn(),
+    getPersistence: vi.fn().mockResolvedValue({
+      connection,
+      rawObservationRepo: rawRepo as unknown as RawObservationRepo,
+      normalizedObservationRepo: normalizedRepo as unknown as NormalizedObservationRepo,
+      featureRepo: featureRepo as unknown as DerivedFeatureRepo,
+      bundleRepo: bundleRepo as unknown as EvidenceBundleRepo,
+      briefRepo: { insert: vi.fn(), findByBundleId: vi.fn(), findByHash: vi.fn() }
+    }),
+    getContract: vi.fn().mockResolvedValue(contract as unknown as EvidenceBundleContract)
+  };
+
+  return {
+    runtime,
+    rawRepo,
+    normalizedRepo,
+    featureRepo,
+    bundleRepo,
+    contract,
+    clock,
+    connection,
+    setRequest: (req: AssembleEvidenceBundleJobRequest) => {
+      readJsonMock.mockResolvedValue(req);
+    }
+  };
+}
+
+describe("CLI terminal outcomes set exit status", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    process.exitCode = undefined;
+  });
+
+  afterEach(() => {
+    process.exitCode = originalProcessExitCode;
+  });
+
+  it("no_bundle emits redacted JSON and sets process.exitCode to 1", async () => {
+    const { runtime } = createScriptHarness({
+      featureCandidates: []
+    });
+    const consoleLogSpy = vi.spyOn(console, "log").mockReturnValue(undefined);
+
+    const result = await runAssembleEvidenceBundleScript(runtime, "data/assembly-request.json");
+
+    expect(result).toEqual({ outcome: "no_bundle", warnings: [] });
+    expect(JSON.parse(consoleLogSpy.mock.lastCall![0] as string)).toEqual(result);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("conflict emits redacted JSON and sets process.exitCode to 1", async () => {
+    const harness = createScriptHarness();
+    (harness.bundleRepo.insertOrClassify as Mock).mockResolvedValue({
+      outcome: "conflict",
+      row: {
+        id: 99,
+        schemaVersion: "evidence-bundle.v1",
+        pair: "SOL/USDC",
+        asOfUnixMs: 1700000000000,
+        expiresAtUnixMs: 1700003600000,
+        payload: {},
+        payloadHash: "existing-hash",
+        payloadCanonical: "{}",
+        idempotencyKey: "idem-99",
+        taxonomySummary: null,
+        dominantSignalClass: "deterministic",
+        confidence: {
+          components: {},
+          compositeScore: 5000,
+          level: "high",
+          weightingVersion: "v1",
+          reasons: []
+        },
+        confidenceComposite: 5000,
+        confidenceLevel: "high",
+        validUntilUnixMs: null,
+        isStale: false,
+        staleBehavior: null,
+        provenance: {},
+        version: 1,
+        receivedAtUnixMs: 1700000000000
+      },
+      incomingPayloadHash: "incoming-hash"
+    });
+
+    const consoleLogSpy = vi.spyOn(console, "log").mockReturnValue(undefined);
+
+    const result = await runAssembleEvidenceBundleScript(
+      harness.runtime,
+      "data/assembly-request.json"
+    );
+
+    expect(result).toEqual({
+      outcome: "conflict",
+      rowId: 99,
+      incomingPayloadHash: "incoming-hash",
+      warnings: []
+    });
+    expect(JSON.parse(consoleLogSpy.mock.lastCall![0] as string)).toEqual(result);
+    expect(process.exitCode).toBe(1);
+  });
+
+  const structuredErrorCases = [
+    {
+      name: "structured validation errors emit the error code and set process.exitCode to 1",
+      configure: (harness: ScriptHarness) =>
+        harness.setRequest({
+          ...VALID_REQUEST,
+          acceptedCalculatorVersions:
+            {} as AssembleEvidenceBundleJobRequest["acceptedCalculatorVersions"]
+        }),
+      warning: "REQUEST_VALIDATION_ERROR"
+    },
+    {
+      name: "structured lineage errors emit the error code and set process.exitCode to 1",
+      configure: (harness: ScriptHarness) =>
+        harness.featureRepo.listBundleCandidates.mockRejectedValue(
+          new Error("candidate query failed")
+        ),
+      warning: "LINEAGE_ERROR"
+    },
+    {
+      name: "structured contract errors emit the error code and set process.exitCode to 1",
+      configure: (harness: ScriptHarness) =>
+        harness.contract.validateCanonicalizeAndHash.mockRejectedValue({
+          code: "VALIDATION_ERROR",
+          errors: ["invalid candidate"]
+        }),
+      warning: "CONTRACT_ERROR"
+    },
+    {
+      name: "structured persistence errors emit the error code and set process.exitCode to 1",
+      configure: (harness: ScriptHarness) =>
+        harness.bundleRepo.insertOrClassify.mockRejectedValue(new Error("insert failed")),
+      warning: "PERSISTENCE_ERROR"
+    }
+  ] as const;
+
+  for (const testCase of structuredErrorCases) {
+    it(testCase.name, async () => {
+      const harness = createScriptHarness();
+      testCase.configure(harness);
+      const consoleLogSpy = vi.spyOn(console, "log").mockReturnValue(undefined);
+
+      const result = await runAssembleEvidenceBundleScript(
+        harness.runtime,
+        "data/assembly-request.json"
+      );
+
+      expect(result).toEqual({ outcome: "error", warnings: [testCase.warning] });
+      expect(JSON.parse(consoleLogSpy.mock.lastCall![0] as string)).toEqual(result);
+      expect(process.exitCode).toBe(1);
+    });
+  }
+
+  it("thrown assembly errors return redacted diagnostics and set process.exitCode to 1", async () => {
+    const harness = createScriptHarness();
+    harness.clock.now = vi.fn(() => {
+      throw new Error("clock failed");
+    });
+
+    const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue(undefined);
+
+    const result = await runAssembleEvidenceBundleScript(
+      harness.runtime,
+      "data/assembly-request.json"
+    );
+
+    expect(result).toEqual({
+      outcome: "error",
+      warnings: ["Evidence bundle assembly failed: Error: clock failed"]
+    });
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "Evidence bundle assembly failed:",
+      expect.any(Error)
+    );
+    expect(harness.connection.close).toHaveBeenCalledOnce();
+    expect(process.exitCode).toBe(1);
   });
 });

@@ -155,7 +155,7 @@ export async function runAssembleEvidenceBundleScript(
 
   if ("code" in result!) {
     process.exitCode = 1;
-  } else if (result!.outcome === "conflict") {
+  } else if (result!.outcome === "conflict" || result!.outcome === "no_bundle") {
     process.exitCode = 1;
   }
 
