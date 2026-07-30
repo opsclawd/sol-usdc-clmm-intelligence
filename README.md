@@ -352,7 +352,7 @@ The pinned contract (`createEvidenceBundleContract()`) verifies all asset hashes
     "basis_spread_bps": "basis-spread-bps/v1"
   },
   "schemaVersion": "evidence-bundle.v1",
-  "assemblySelectionVersion": "selection/v1",
+  "assemblySelectionVersion": "mvp-evidence-bundle-selection/v1",
   "codeVersion": "1.0.0",
   "gitCommit": "abc123def456",
   "environment": "test"
@@ -548,6 +548,78 @@ Invocation requires an explicit positive safe integer argument for the evidence 
 - **`researchBriefState` Emission**: Outbound publication outcome emits `researchBriefState` (e.g. `attached`, `degraded`, `none`, `stale`) indicating brief composition status.
 - **Audit Identity**: Every publish attempt persists an audit record in `intelligence.publish_attempts`. Audit identity fields (idempotency key, request hash, payload hash) are written directly from the actual outbound canonical payload sent over the wire, ensuring audit precision.
 
+## Core Evidence Pipeline Execution (`pnpm run:core-evidence-pipeline`)
+
+The `pnpm run:core-evidence-pipeline` command executes the end-to-end evidence pipeline: preflight validation, single-flight lock acquisition, core observation collection, feature derivation, evidence bundle assembly, research brief generation, and bundle publication to Regime Engine.
+
+### Command and Environment
+
+```bash
+pnpm run:core-evidence-pipeline
+```
+
+Required environment variables:
+
+- `INTELLIGENCE_POSITION_IDS`: Position IDs to analyze (comma-separated e.g. `pos1,pos2` or JSON array e.g. `["pos1","pos2"]`).
+- `WHIRLPOOL_ADDRESS`: Solana Orca Whirlpool pool address.
+- `WALLET_PUBLIC_KEY`: Solana wallet public key.
+- `INTELLIGENCE_CODE_VERSION`: Intelligence pipeline code version string.
+- `INTELLIGENCE_GIT_COMMIT`: 40-character hex commit hash (`INTELLIGENCE_GIT_COMMIT`).
+- `INTELLIGENCE_ENVIRONMENT`: Target environment (`production`, `staging`, `development`, `test`).
+- `DATABASE_URL`: Postgres database connection string.
+- `CLMM_DATA_API_BASE`: HTTP/HTTPS base URL for CLMM BFF.
+- `CLMM_INSIGHTS_API_KEY`: API key for CLMM BFF insights endpoint.
+- `PYTH_HERMES_BASE_URL`: HTTP/HTTPS base URL for Pyth Hermes oracle.
+- `PYTH_SOL_USD_FEED_ID`: Feed ID for Pyth SOL/USD price feed.
+- `SOLANA_RPC_URL`: Solana RPC HTTP/HTTPS endpoint URL.
+- `LLM_BASE_URL`: Base HTTP/HTTPS URL for LLM provider.
+- `LLM_API_KEY`: API key for LLM provider.
+- `LLM_MODEL`: Target model identifier for research brief generation.
+- `REGIME_ENGINE_BASE_URL`: Base HTTP/HTTPS URL for Regime Engine.
+- `REGIME_ENGINE_AUTH_TOKEN`: Auth token for Regime Engine evidence endpoint.
+
+Optional environment variables:
+
+- `JUPITER_API_BASE`: Optional Jupiter API base URL.
+- `ORCA_API_BASE`: Optional Orca API base URL.
+
+### Normalized Position Syntax
+
+`INTELLIGENCE_POSITION_IDS` accepts either comma-separated position IDs (`pos1,pos2`) or a JSON array string (`["pos1","pos2"]`). Whitespace around position IDs is trimmed, and duplicate entries are deduplicated.
+
+### Shared Run and Evaluation Identity
+
+The pipeline generates a single `pipelineRunId` (UUID) at start. The collection start timestamp and post-collection evaluation timestamp (`evaluationTimeUnixMs`) are shared across all five application stages and all target positions within the run.
+
+### Single-Flight Lock and Exit-Status Mapping
+
+Single-flight execution is enforced using Postgres session-scoped advisory locks on key `core-evidence-pipeline:SOL/USDC`. If a pipeline run is already active, lock acquisition returns `already_running`, emitting a `skipped_already_running` result and exiting 0.
+
+| Aggregate Pipeline Status | Process Exit Code | Description                                                                                                                   |
+| ------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `complete`                | `0`               | Core collection succeeded completely and all positions succeeded through assembly, brief, and publish.                        |
+| `degraded`                | `0`               | Core collection was partial or a research brief was degraded, but all position evidence bundles were assembled and published. |
+| `skipped_already_running` | `0`               | Lock contention: another pipeline run is currently active.                                                                    |
+| `partial_failure`         | `1`               | At least one position failed during feature gate, assembly, brief, or publish while others succeeded.                         |
+| `failed`                  | `1`               | Preflight validation failure, lock failure, core collection failure, derivation failure, or resource cleanup failure.         |
+
+### Per-Position Processing Policies
+
+For each normalized position:
+
+1. **Position Feature Gate**: Evaluates whether required position features (`range_location`, `distance_to_lower`, `distance_to_upper`) are present and usable. If unusable, the position fails early.
+2. **Assembly**: Assembles a canonical evidence bundle for the position and persists it to Postgres.
+3. **Research Brief Generation**: Generates a schema-constrained LLM research brief over the assembled bundle.
+4. **Publication**: Publishes the evidence bundle to Regime Engine.
+
+### Volatility Warm-Up Caveat (#104)
+
+`realized_volatility_1h` is computed over a 1-hour lookback window of historical price observations. On fresh database deployments, volatility derivation may return missing/null or degraded values until sufficient historical price records have accumulated.
+
+### Boundary and Execution Safeguards
+
+Publication sends structured evidence bundles to Regime Engine's `/v1/evidence/sol-usdc` endpoint. The pipeline **never** synthesizes final `PolicyInsight` objects, makes policy decisions, or executes transactions/liquidity moves. Policy synthesis belongs exclusively to Regime Engine; live LP position state and transaction execution belong exclusively to `clmm-v2`.
+
 ## Minimal setup
 
 ```bash
@@ -586,6 +658,7 @@ pnpm derive:mvp           # derives the seven canonical MVP evidence features fr
 pnpm assemble:bundle      # assembles evidence bundle from derived features and observations
 pnpm generate:brief data/brief-request.json # generates schema-constrained research brief over bounded evidence bundle
 pnpm publish:evidence 42                    # publishes a persisted evidence bundle to regime-engine's evidence-ingest endpoint
+pnpm run:core-evidence-pipeline            # executes end-to-end evidence pipeline: collect -> derive -> assemble -> brief -> publish
 pnpm contract:evidence-bundle:check     # verifies the pinned evidence-bundle contract asset hashes
 pnpm contract:evidence-bundle:generate  # regenerates the evidence-bundle contract provenance manifest
 pnpm db:generate          # generates Drizzle migrations from schema changes

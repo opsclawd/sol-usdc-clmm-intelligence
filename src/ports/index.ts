@@ -88,3 +88,4 @@ export type {
   StructuredGenerationRequest,
   StructuredGeneration
 } from "./llm-provider.js";
+export type { PipelineRunLock } from "./pipeline-run-lock.js";

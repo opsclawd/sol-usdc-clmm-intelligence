@@ -89,18 +89,20 @@ function redactedOutcomeFromResult(result: PublishEvidenceBundleJobResult): Reda
 }
 
 export async function runPublishEvidenceBundleScript(
-  runtime: NodeRuntime
+  runtime: NodeRuntime,
+  evidenceBundleId: number
 ): Promise<RedactedOutcome> {
   const persistence = await runtime.getPersistence();
   const contract = await runtime.getContract();
 
-  const { connection, bundleRepo, publishAttemptRepo } = persistence;
+  const { connection, bundleRepo, publishAttemptRepo, briefRepo } = persistence;
 
   const job = publishEvidenceBundleJob({
     clock: runtime.clock,
     http: runtime.http,
     env: runtime.env,
     bundleRepo,
+    briefRepo,
     publishAttemptRepo,
     contract,
     retry: runtime.retryControl
@@ -110,7 +112,7 @@ export async function runPublishEvidenceBundleScript(
   let result: PublishEvidenceBundleJobResult | undefined;
 
   try {
-    result = await job();
+    result = await job({ evidenceBundleId });
   } catch (err) {
     publishError = err;
   } finally {
@@ -147,11 +149,29 @@ export async function runPublishEvidenceBundleScript(
   return redacted;
 }
 
+function parseAndValidateBundleId(raw: string): number {
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    console.error("Error: evidenceBundleId must be a positive safe integer");
+    process.exit(1);
+  }
+  return parsed;
+}
+
 async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  if (args.length === 0) {
+    console.error("Error: evidenceBundleId is required");
+    console.error("Usage: publish-evidence-bundle <evidenceBundleId>");
+    process.exitCode = 1;
+    return;
+  }
+
+  const evidenceBundleId = parseAndValidateBundleId(args[0]!);
   const runtime = createNodeRuntime();
 
   try {
-    await runPublishEvidenceBundleScript(runtime);
+    await runPublishEvidenceBundleScript(runtime, evidenceBundleId);
   } catch (error) {
     console.error("Evidence bundle publishing failed:", error);
     process.exitCode = 1;

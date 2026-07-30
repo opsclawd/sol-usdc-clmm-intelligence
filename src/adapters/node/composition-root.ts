@@ -23,6 +23,7 @@ import type { PublishAttemptRepo } from "../../ports/publish-attempt-repo.js";
 import type { RetryControl } from "../../ports/retry.js";
 import type { ConfiguredPerpLiquidationSource } from "../../ports/perp-liquidation-source.js";
 import type { LlmProvider } from "../../ports/llm-provider.js";
+import type { PipelineRunLock } from "../../ports/pipeline-run-lock.js";
 import { UuidRunIdFactory } from "./uuid-run-id-factory.js";
 
 export interface Persistence {
@@ -48,6 +49,7 @@ export interface NodeRuntime {
   getPersistence(): Promise<Persistence>;
   getContract(): Promise<EvidenceBundleContract>;
   getLlmProvider?(): Promise<LlmProvider>;
+  getPipelineRunLock?(): Promise<PipelineRunLock>;
   getPerpLiquidationSources?(options: {
     binanceBaseUrl: string;
     binanceSymbol: string;
@@ -154,6 +156,10 @@ export function createNodeRuntime(): NodeRuntime {
         );
       }
       return llmProviderPromise;
+    },
+    async getPipelineRunLock() {
+      const { PgPipelineRunLock } = await import("./pg-pipeline-run-lock.js");
+      return new PgPipelineRunLock(env);
     },
     async getPerpLiquidationSources(options) {
       const { HttpBinanceFapiSource } = await import("./http-binance-fapi-source.js");

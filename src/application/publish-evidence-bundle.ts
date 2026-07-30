@@ -11,6 +11,10 @@ import type { PersistedResearchBrief } from "../contracts/research-brief.js";
 import type { EvidenceBundleV1 } from "../contracts/generated/evidence-bundle-v1.js";
 import { mapPersistedBriefToCanonicalBundle } from "../domain/brief/map-to-evidence-bundle.js";
 
+export interface PublishEvidenceBundleRequest {
+  readonly evidenceBundleId: number;
+}
+
 export interface PublishEvidenceBundleDeps {
   readonly clock: Clock;
   readonly http: HttpClient;
@@ -223,6 +227,7 @@ export type PublishEvidenceBundleEvent =
 
 export async function publishEvidenceBundle(
   deps: PublishEvidenceBundleDeps,
+  request: PublishEvidenceBundleRequest,
   _config: PublishEvidenceBundleConfig = {}
 ): Promise<PublishEvidenceBundleResult> {
   const { clock, http, env, bundleRepo, publishAttemptRepo, contract } = deps;
@@ -258,19 +263,19 @@ export async function publishEvidenceBundle(
     };
   }
 
-  const latestBundle = await bundleRepo.findLatestByPair("SOL/USDC");
+  const targetBundle = await bundleRepo.findById(request.evidenceBundleId);
 
-  if (latestBundle === undefined) {
+  if (targetBundle === undefined) {
     return { outcome: "bundle_not_found" };
   }
 
-  if (latestBundle.schemaVersion !== SUPPORTED_SCHEMA_VERSION) {
+  if (targetBundle.schemaVersion !== SUPPORTED_SCHEMA_VERSION) {
     const insertResult = await insertValidationFailedAudit(
       deps,
       endpoint,
       receivedAtUnixMs,
-      latestBundle,
-      `Unsupported schema version: ${latestBundle.schemaVersion}`,
+      targetBundle,
+      `Unsupported schema version: ${targetBundle.schemaVersion}`,
       onEvent
     );
     if (insertResult !== undefined) {
@@ -281,13 +286,13 @@ export async function publishEvidenceBundle(
 
   let canonicalResult: Awaited<ReturnType<EvidenceBundleContract["validateCanonicalizeAndHash"]>>;
   try {
-    canonicalResult = await contract.validateCanonicalizeAndHash(latestBundle.payload);
+    canonicalResult = await contract.validateCanonicalizeAndHash(targetBundle.payload);
   } catch (err) {
     const insertResult = await insertValidationFailedAudit(
       deps,
       endpoint,
       receivedAtUnixMs,
-      latestBundle,
+      targetBundle,
       `Contract validation failed: ${err instanceof Error ? err.message : String(err)}`,
       onEvent
     );
@@ -301,15 +306,15 @@ export async function publishEvidenceBundle(
   }
 
   if (
-    canonicalResult.payloadCanonical !== latestBundle.payloadCanonical ||
-    canonicalResult.payloadHash !== latestBundle.payloadHash ||
-    canonicalResult.idempotencyKey !== latestBundle.idempotencyKey
+    canonicalResult.payloadCanonical !== targetBundle.payloadCanonical ||
+    canonicalResult.payloadHash !== targetBundle.payloadHash ||
+    canonicalResult.idempotencyKey !== targetBundle.idempotencyKey
   ) {
     const insertResult = await insertValidationFailedAudit(
       deps,
       endpoint,
       receivedAtUnixMs,
-      latestBundle,
+      targetBundle,
       "Contract validation mismatch: canonical/hash/idempotency key mismatch",
       onEvent
     );
@@ -322,22 +327,22 @@ export async function publishEvidenceBundle(
     };
   }
 
-  let payload = latestBundle.payload;
-  let payloadHash = latestBundle.payloadHash;
-  let idempotencyKey = latestBundle.idempotencyKey;
+  let payload = targetBundle.payload;
+  let payloadHash = targetBundle.payloadHash;
+  let idempotencyKey = targetBundle.idempotencyKey;
   let selectedResearchBriefId: number | null = null;
 
   if (deps.briefRepo) {
     try {
-      const briefRows = await deps.briefRepo.findByBundleId(latestBundle.id);
+      const briefRows = await deps.briefRepo.findByBundleId(targetBundle.id);
       const eligibleRows = briefRows
         .filter((r) => {
           if (!r.structuredOutput) return false;
           const artifact = r.structuredOutput as PersistedResearchBrief;
           if (artifact.generationStatus !== "complete") return false;
           if (
-            artifact.sourceBundleRef?.bundleId !== latestBundle.id ||
-            artifact.sourceBundleRef?.bundleHash !== latestBundle.payloadHash
+            artifact.sourceBundleRef?.bundleId !== targetBundle.id ||
+            artifact.sourceBundleRef?.bundleHash !== targetBundle.payloadHash
           ) {
             return false;
           }
@@ -358,7 +363,7 @@ export async function publishEvidenceBundle(
         const artifact = newestRow.structuredOutput as PersistedResearchBrief;
         try {
           const composedBundle = mapPersistedBriefToCanonicalBundle(
-            latestBundle.payload as EvidenceBundleV1,
+            targetBundle.payload as EvidenceBundleV1,
             artifact,
             artifact.briefId
           );
@@ -368,10 +373,9 @@ export async function publishEvidenceBundle(
           idempotencyKey = canonicalComposed.idempotencyKey;
           selectedResearchBriefId = newestRow.id;
         } catch {
-          // Fail closed to base bundle if mapping or validation fails
-          payload = latestBundle.payload;
-          payloadHash = latestBundle.payloadHash;
-          idempotencyKey = latestBundle.idempotencyKey;
+          payload = targetBundle.payload;
+          payloadHash = targetBundle.payloadHash;
+          idempotencyKey = targetBundle.idempotencyKey;
           selectedResearchBriefId = null;
         }
       }
@@ -386,7 +390,7 @@ export async function publishEvidenceBundle(
 
   onEvent?.({
     type: "publish_started",
-    bundleId: latestBundle.id,
+    bundleId: targetBundle.id,
     target
   });
 
@@ -416,11 +420,11 @@ export async function publishEvidenceBundle(
       const networkFailedAuditInsert: PublishAttemptInsert = {
         target,
         targetEndpoint: endpoint,
-        evidenceBundleId: latestBundle.id,
+        evidenceBundleId: targetBundle.id,
         researchBriefId: selectedResearchBriefId,
         idempotencyKey,
         requestHash,
-        payloadHash: latestBundle.payloadHash,
+        payloadHash: targetBundle.payloadHash,
         status: "network_failed",
         httpStatus: null,
         responseBody: null,
@@ -461,12 +465,12 @@ export async function publishEvidenceBundle(
       if (!isRetryableHttpError(err)) {
         onEvent?.({
           type: "permanent_http_failed",
-          bundleId: latestBundle.id,
+          bundleId: targetBundle.id,
           httpStatus: 0
         });
         return {
           outcome: "permanent_http_failed",
-          bundleId: latestBundle.id,
+          bundleId: targetBundle.id,
           httpStatus: 0
         };
       }
@@ -474,12 +478,12 @@ export async function publishEvidenceBundle(
       if (attemptNumber === MAX_RETRY_ATTEMPTS) {
         onEvent?.({
           type: "transient_failure_exhausted",
-          bundleId: latestBundle.id,
+          bundleId: targetBundle.id,
           httpStatus: 0
         });
         return {
           outcome: "transient_failure_exhausted",
-          bundleId: latestBundle.id,
+          bundleId: targetBundle.id,
           httpStatus: 0
         };
       }
@@ -493,7 +497,7 @@ export async function publishEvidenceBundle(
       const delayMs = calculateRetryDelay(attemptNumber, deps.retry, retryAfterMs);
       onEvent?.({
         type: "retry_scheduled",
-        bundleId: latestBundle.id,
+        bundleId: targetBundle.id,
         delayMs
       });
       await deps.retry.sleep(delayMs);
@@ -506,11 +510,11 @@ export async function publishEvidenceBundle(
       const auditInsert: PublishAttemptInsert = {
         target,
         targetEndpoint: endpoint,
-        evidenceBundleId: latestBundle.id,
+        evidenceBundleId: targetBundle.id,
         researchBriefId: selectedResearchBriefId,
         idempotencyKey,
         requestHash,
-        payloadHash: latestBundle.payloadHash,
+        payloadHash: targetBundle.payloadHash,
         status: auditStatus,
         httpStatus: lastResponse.status,
         responseBody: redactedResponseBody,
@@ -547,12 +551,12 @@ export async function publishEvidenceBundle(
       if (attemptNumber === MAX_RETRY_ATTEMPTS) {
         onEvent?.({
           type: "transient_failure_exhausted",
-          bundleId: latestBundle.id,
+          bundleId: targetBundle.id,
           httpStatus: lastResponse.status
         });
         return {
           outcome: "transient_failure_exhausted",
-          bundleId: latestBundle.id,
+          bundleId: targetBundle.id,
           httpStatus: lastResponse.status
         };
       }
@@ -566,7 +570,7 @@ export async function publishEvidenceBundle(
       const delayMs = calculateRetryDelay(attemptNumber, deps.retry, retryAfterMs);
       onEvent?.({
         type: "retry_scheduled",
-        bundleId: latestBundle.id,
+        bundleId: targetBundle.id,
         delayMs
       });
       await deps.retry.sleep(delayMs);
@@ -579,11 +583,11 @@ export async function publishEvidenceBundle(
     const auditInsert: PublishAttemptInsert = {
       target,
       targetEndpoint: endpoint,
-      evidenceBundleId: latestBundle.id,
+      evidenceBundleId: targetBundle.id,
       researchBriefId: selectedResearchBriefId,
       idempotencyKey,
       requestHash,
-      payloadHash: latestBundle.payloadHash,
+      payloadHash: targetBundle.payloadHash,
       status: auditStatus,
       httpStatus: lastResponse.status,
       responseBody: redactedResponseBody,
@@ -626,7 +630,7 @@ export async function publishEvidenceBundle(
         | "conflict"
         | "unknown_failed"
         | "permanent_http_failed",
-      latestBundle.id,
+      targetBundle.id,
       lastResponse.status,
       attemptNumber
     );
@@ -634,7 +638,7 @@ export async function publishEvidenceBundle(
 
   return {
     outcome: "transient_failure_exhausted",
-    bundleId: latestBundle.id,
+    bundleId: targetBundle.id,
     httpStatus: lastHttpStatus
   };
 }

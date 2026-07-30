@@ -5,10 +5,8 @@ import {
   DeriveMvpFeaturesDeps
 } from "../../src/application/derive-mvp-features.js";
 import type { NormalizedObservationRepo } from "../../src/ports/normalized-observation-repo.js";
-import type { Clock } from "../../src/ports/clock.js";
 import type { NormalizedObservationRow } from "../../src/contracts/index.js";
 import type { Source, ObservationKind } from "../../src/contracts/taxonomy.js";
-import { FakeClock } from "../fakes/fake-clock.js";
 import { FakeNormalizedObservationRepo } from "../fakes/fake-normalized-observation-repo.js";
 import { FakeFeatureRepo } from "../fakes/fake-feature-repo.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
@@ -168,7 +166,6 @@ function seedObservation(
 }
 
 describe("deriveMvpFeatures", () => {
-  let clock: FakeClock;
   let normalizedObservationRepo: FakeNormalizedObservationRepo;
   let featureRepo: FakeFeatureRepo;
   let deps: DeriveMvpFeaturesDeps;
@@ -177,11 +174,9 @@ describe("deriveMvpFeatures", () => {
   const POSITION_IDS = ["pos-1", "pos-2"];
 
   beforeEach(() => {
-    clock = new FakeClock(EPOCH);
     normalizedObservationRepo = new FakeNormalizedObservationRepo();
     featureRepo = new FakeFeatureRepo();
     deps = {
-      clock,
       normalizedObservationRepo,
       featureRepo
     };
@@ -193,6 +188,7 @@ describe("deriveMvpFeatures", () => {
       poolId: POOL_ID,
       positionIds: POSITION_IDS,
       pipelineRunId: "run-123",
+      evaluationTimeUnixMs: EVAL_MS,
       codeVersion: "1.0.0",
       ...overrides
     };
@@ -540,11 +536,7 @@ describe("deriveMvpFeatures", () => {
 
       const volatilityFeature = result.rows.find((r) => r.featureKind === "realized_volatility_1h");
       expect(volatilityFeature).toBeDefined();
-      const rawRefs = (
-        volatilityFeature!.provenance as {
-          rawObservationRefs: { id: number; payloadHash: string }[];
-        }
-      ).rawObservationRefs;
+      const rawRefs = volatilityFeature!.provenance.rawObservationRefs;
       const refForRejected = rawRefs.find((ref) => ref.id === REJECTED_ROW_ID);
       expect(refForRejected).toBeDefined();
       expect(refForRejected!.payloadHash).toBe("real-raw-payload-hash-9999");
@@ -555,20 +547,19 @@ describe("deriveMvpFeatures", () => {
   });
 
   describe("single evaluation time", () => {
-    it("uses one explicit evaluation time for all selection and expiry decisions", async () => {
-      let clockReads = 0;
-      const countingClock = {
-        now: () => {
-          clockReads++;
-          return clock.now();
-        }
-      };
-
+    it("uses the explicit evaluation timestamp for selection persistence and every returned row", async () => {
       seedObservation(
         normalizedObservationRepo,
         "clmm-v2-bundle",
         "position_state",
         makePositionPayload(POSITION_IDS[0]!, POOL_ID),
+        EVAL_MS - 60_000
+      );
+      seedObservation(
+        normalizedObservationRepo,
+        "clmm-v2-bundle",
+        "position_state",
+        makePositionPayload(POSITION_IDS[1]!, POOL_ID),
         EVAL_MS - 60_000
       );
       seedObservation(
@@ -593,28 +584,43 @@ describe("deriveMvpFeatures", () => {
         EVAL_MS - 60_000
       );
 
-      for (let i = 0; i < 10; i++) {
-        seedObservation(
-          normalizedObservationRepo,
-          "pyth-hermes",
-          "oracle_price",
-          {
-            ...makeOraclePayload(100 + i),
-            priceData: { ...makeOraclePayload().priceData, price: "150.00" }
-          },
-          EVAL_MS - 60_000 * (10 - i),
-          1000 + i
-        );
-      }
+      const customEvalMs = 1700000000000;
+      const request = makeRequest({ evaluationTimeUnixMs: customEvalMs });
 
-      const countingDeps = {
+      const result = await deriveMvpFeatures(deps, request);
+
+      expect(result.rows.length).toBeGreaterThan(0);
+      for (const row of result.rows) {
+        expect(row.asOfUnixMs).toBe(customEvalMs);
+        expect(row.receivedAtUnixMs).toBe(customEvalMs);
+      }
+    });
+
+    it("rejects an invalid evaluation timestamp before reading candidates", async () => {
+      let listCandidatesCalled = false;
+      const trackingRepo: FakeNormalizedObservationRepo = {
+        ...normalizedObservationRepo,
+        listCandidates: async () => {
+          listCandidatesCalled = true;
+          return normalizedObservationRepo.listCandidates({
+            sourceKinds: [],
+            receivedAtOrAfterUnixMs: 0
+          });
+        }
+      } as unknown as FakeNormalizedObservationRepo;
+
+      const trackingDeps = {
         ...deps,
-        clock: countingClock as unknown as Clock
+        normalizedObservationRepo: trackingRepo as unknown as NormalizedObservationRepo
       };
 
-      await deriveMvpFeatures(countingDeps, makeRequest());
+      const invalidValues = [-1, NaN, Infinity, 1.5, "invalid" as unknown as number];
+      for (const val of invalidValues) {
+        const req = makeRequest({ evaluationTimeUnixMs: val });
+        await expect(deriveMvpFeatures(trackingDeps, req)).rejects.toThrow();
+      }
 
-      expect(clockReads).toBe(1);
+      expect(listCandidatesCalled).toBe(false);
     });
   });
 

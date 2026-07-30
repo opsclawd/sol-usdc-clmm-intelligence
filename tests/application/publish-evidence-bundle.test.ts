@@ -335,6 +335,7 @@ describe("publishEvidenceBundle", () => {
     const events: PublishEvidenceBundleEvent[] = [];
     const result = await publishEvidenceBundle(
       { clock, http, env, bundleRepo, publishAttemptRepo, contract, retry },
+      { evidenceBundleId: 1 },
       { onEvent: (e) => events.push(e) }
     );
     return { result, events };
@@ -368,6 +369,15 @@ describe("publishEvidenceBundle", () => {
     });
 
     it("bundle_not_found is returned when no bundle exists", async () => {
+      const { result } = await publish();
+      expect(result.outcome).toBe("bundle_not_found");
+      expect(http.callLog).toHaveLength(0);
+    });
+
+    it("never falls back to latest-by-pair when the requested bundle is absent", async () => {
+      const existingBundle = makeBundleRow({ id: 2 });
+      bundleRepo.store.push(existingBundle);
+      bundleRepo.findById = async () => undefined;
       const { result } = await publish();
       expect(result.outcome).toBe("bundle_not_found");
       expect(http.callLog).toHaveLength(0);
@@ -445,6 +455,25 @@ describe("publishEvidenceBundle", () => {
       await publish();
       expect(publishAttemptRepo.store[0]!.requestHash).toBe("my-verified-hash");
       expect(publishAttemptRepo.store[0]!.payloadHash).toBe("my-verified-hash");
+    });
+
+    it("publishes the requested bundle when a newer bundle exists", async () => {
+      const olderBundle = makeBundleRow({ id: 1, idempotencyKey: "bundle-1-key" });
+      const newerBundle = makeBundleRow({ id: 2, idempotencyKey: "bundle-2-key" });
+      bundleRepo.store.push(olderBundle);
+      bundleRepo.store.push(newerBundle);
+      contract.overrideResult = {
+        payload: olderBundle.payload as EvidenceBundleV1,
+        payloadCanonical: olderBundle.payloadCanonical as string,
+        payloadHash: olderBundle.payloadHash,
+        idempotencyKey: "bundle-1-key",
+        schemaVersion: "evidence-bundle.v1"
+      };
+      http.nextResponse = { status: 201, ok: true, body: { id: "new-123" }, headers: {} };
+      const { result } = await publish();
+      expect(result.outcome).toBe("created");
+      expect("bundleId" in result && result.bundleId).toBe(1);
+      expect(http.callLog[0]!.options.headers?.["Idempotency-Key"]).toBe("bundle-1-key");
     });
   });
 
@@ -982,6 +1011,32 @@ describe("publishEvidenceBundle", () => {
       await publish();
       const hashes = publishAttemptRepo.store.map((r) => r.requestHash);
       expect(new Set(hashes).size).toBe(1);
+    });
+
+    it("keeps the requested bundle identity through every retry and audit row", async () => {
+      const bundle = makeBundleRow({ id: 5, idempotencyKey: "bundle-5-key" });
+      bundleRepo.store.push(bundle);
+      const canonical = buildCanonicalFromPayload(bundle.payload);
+      contract.overrideResult = { ...canonical, idempotencyKey: "bundle-5-key" };
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+      const { publishEvidenceBundle } =
+        await import("../../src/application/publish-evidence-bundle.js");
+      const events: PublishEvidenceBundleEvent[] = [];
+      await publishEvidenceBundle(
+        { clock, http, env, bundleRepo, publishAttemptRepo, contract, retry },
+        { evidenceBundleId: 5 },
+        { onEvent: (e) => events.push(e) }
+      );
+      expect(http.callLog.length).toBe(3);
+      for (const call of http.callLog) {
+        expect(call.options.headers?.["Idempotency-Key"]).toBe("bundle-5-key");
+        expect(call.body).toBe(bundle.payload);
+      }
+      for (const auditRow of publishAttemptRepo.store) {
+        expect(auditRow.evidenceBundleId).toBe(5);
+        expect(auditRow.idempotencyKey).toBe("bundle-5-key");
+        expect(auditRow.requestHash).toBe(auditRow.payloadHash);
+      }
     });
   });
 

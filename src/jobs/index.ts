@@ -50,3 +50,13 @@ export {
   type GenerateResearchBriefJobDeps,
   type GenerateResearchBriefJobResult
 } from "./generate-research-brief-job.js";
+export {
+  coreEvidencePipelineJob,
+  runCoreEvidencePipeline,
+  type RunCoreEvidencePipelineDeps,
+  type CoreEvidencePipelineResult,
+  type CoreEvidencePipelineServices,
+  type CoreEvidencePipelineResources,
+  type PositionPipelineResult,
+  type PipelineDiagnostic
+} from "./core-evidence-pipeline-job.js";

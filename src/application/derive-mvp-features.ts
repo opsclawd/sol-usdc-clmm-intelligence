@@ -1,18 +1,11 @@
-import type { Clock } from "../ports/clock.js";
 import type { NormalizedObservationRepo } from "../ports/normalized-observation-repo.js";
 import type {
   DerivedFeatureRepo,
   DerivedFeatureInsert,
-  DerivedFeatureRow as PortDerivedFeatureRow
+  DerivedFeatureRow
 } from "../ports/feature-repo.js";
 import type { NormalizedObservationRow } from "../contracts/index.js";
-import type {
-  FeatureKind,
-  Confidence,
-  SignalClass,
-  EvidenceFamily,
-  Provenance
-} from "../contracts/taxonomy.js";
+import type { FeatureKind, Confidence, Provenance } from "../contracts/taxonomy.js";
 import type { DerivedFeatureV1, FeatureStatus } from "../contracts/derived-feature.js";
 import type { PositionStatePayloadV1 } from "../contracts/normalized-clmm-observation.js";
 import type {
@@ -54,11 +47,11 @@ export interface DeriveMvpFeaturesRequest {
   readonly poolId: string;
   readonly positionIds: readonly string[];
   readonly pipelineRunId: string;
+  readonly evaluationTimeUnixMs: number;
   readonly codeVersion: string;
 }
 
 export interface DeriveMvpFeaturesDeps {
-  readonly clock: Clock;
   readonly normalizedObservationRepo: NormalizedObservationRepo;
   readonly featureRepo: DerivedFeatureRepo;
 }
@@ -69,41 +62,8 @@ export interface DeriveMvpFeaturesResult {
   readonly warnings: readonly string[];
 }
 
-interface DerivedFeatureRow {
-  id: number;
-  featureKind: FeatureKind;
-  signalClass: SignalClass;
-  evidenceFamily: EvidenceFamily;
-  value: number | null;
-  structuredPayload: unknown;
-  asOfUnixMs: number;
-  confidence: Confidence;
-  confidenceComposite: number | null;
-  confidenceLevel: string | null;
-  validUntilUnixMs: number | null;
-  isStale: boolean;
-  staleBehavior: string | null;
-  provenance: unknown;
-  payloadHash: string;
-  receivedAtUnixMs: number;
-  status: FeatureStatus;
-  unit: "BPS" | "PPM";
-  pair: string;
-  calculatorVersion: string;
-  selectionVersion: string;
-  inputObservationIds: number[];
-  rejectedObservationIds: number[];
-  derivationKey: string;
-  poolId: string | null;
-  positionId: string | null;
-}
-
 const PAIR = "SOL/USDC" as const;
 const WINDOW_SAFETY_MS = 300_000;
-
-function parseClock(clock: Clock): number {
-  return new Date(clock.now()).getTime();
-}
 
 function buildDefaultConfidence(): Confidence {
   return {
@@ -265,7 +225,7 @@ async function checkExistingFeature(
   featureRepo: DerivedFeatureRepo,
   featureKind: FeatureKind,
   derivationKey: string
-): Promise<PortDerivedFeatureRow | undefined> {
+): Promise<DerivedFeatureRow | undefined> {
   return featureRepo.findByDerivationKey(featureKind, derivationKey);
 }
 
@@ -1065,10 +1025,19 @@ export async function deriveMvpFeatures(
   deps: DeriveMvpFeaturesDeps,
   request: DeriveMvpFeaturesRequest
 ): Promise<DeriveMvpFeaturesResult> {
-  const { clock, normalizedObservationRepo, featureRepo } = deps;
-  const { poolId, positionIds, pipelineRunId, codeVersion } = request;
+  if (
+    typeof request.evaluationTimeUnixMs !== "number" ||
+    !Number.isFinite(request.evaluationTimeUnixMs) ||
+    !Number.isInteger(request.evaluationTimeUnixMs) ||
+    request.evaluationTimeUnixMs < 0
+  ) {
+    throw new Error(`Invalid evaluationTimeUnixMs: ${request.evaluationTimeUnixMs}`);
+  }
 
-  const evaluationAsOfUnixMs = parseClock(clock);
+  const { normalizedObservationRepo, featureRepo } = deps;
+  const { poolId, positionIds, pipelineRunId, codeVersion, evaluationTimeUnixMs } = request;
+
+  const evaluationAsOfUnixMs = evaluationTimeUnixMs;
 
   const windowStart = evaluationAsOfUnixMs - VOLATILITY_WINDOW_MS - WINDOW_SAFETY_MS;
 
