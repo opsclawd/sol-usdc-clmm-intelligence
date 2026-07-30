@@ -724,29 +724,29 @@ The `collect:context-events` command collects contextual evidence from two sourc
 - **Event direction is always unknown.** Contextual events describe what happened or what is scheduled; they do not indicate market direction or prescribe rebalancing.
 - **Only regime-engine can synthesize final policy.** This repo collects, normalizes, and publishes contextual evidence. Final PolicyInsight synthesis belongs to regime-engine.
 
-### Four Required Environment Variables
+### Context Event Source Configuration
 
 ```bash
-# Macro calendar API (scheduled events: token unlocks, upgrades, governance)
-MACRO_CALENDAR_API_URL=https://api.example.com/events
-MACRO_CALENDAR_API_KEY=<optional-api-key>
-
-# Solana status API (protocol incidents)
-SOLANA_STATUS_API_URL=https://api.example.com/incidents
+# Solana status API (protocol incidents - live, unauthenticated default)
+SOLANA_STATUS_API_URL=https://status.solana.com
 SOLANA_STATUS_API_KEY=<optional-api-key>
+
+# Macro calendar API (scheduled events - optional/deferred)
+MACRO_CALENDAR_API_URL=
+MACRO_CALENDAR_API_KEY=
 ```
 
-Both `MACRO_CALENDAR_API_KEY` and `SOLANA_STATUS_API_KEY` are optional. API credentials are redacted from all output, diagnostics, and persisted metadata.
+`SOLANA_STATUS_API_URL` defaults to `https://status.solana.com`. Both `SOLANA_STATUS_API_KEY` and `MACRO_CALENDAR_API_KEY` are optional. `MACRO_CALENDAR_API_URL` is optional and deferred pending a verified compatible provider. When `MACRO_CALENDAR_API_URL` is unset, scheduled event collection is deferred and a healthy incident-only run reports aggregate status `PARTIAL` with exit code 0. API credentials are redacted from all output, diagnostics, and persisted metadata.
 
 ### Retention and Licensing
 
-All bounded factual extracts carry `retentionMode: "bounded_factual_extract"` and a provider-supplied `license` string. Providers must supply:
+All bounded factual extracts carry `retentionMode: "bounded_factual_extract"` and a provider-supplied or adapter-declared `license` string (the Statuspage adapter declares fixed `MIT` license). Providers must supply:
 
 1. A non-empty `license` declaration
-2. Stable `sourceEventId` values (provider event ID, not synthesized)
+2. Stable `sourceEventId` values (provider incident ID, not synthesized)
 3. Original source timestamps (`sourceObservedAtUnixMs`)
 
-If a provider cannot legally permit bounded factual-extract retention or cannot supply a non-empty license/retention declaration, the collector aborts with `malformed` status.
+If a provider payload fails validation or cannot supply a non-empty license/retention declaration, the collector aborts with `malformed` status.
 
 ### Raw-First Append-Only Lifecycle
 
@@ -789,17 +789,18 @@ This prevents older ACTIVE rows from being incorrectly revived after cancellatio
 
 ### Exit Statuses
 
-| Status             | Exit Code | Meaning                                                        |
-| ------------------ | --------- | -------------------------------------------------------------- |
-| `accepted`         | 0         | Collection succeeded with no warnings                          |
-| `identical_replay` | 0         | Same snapshot detected; no new rows created                    |
-| `stale`            | 0         | Evidence expired but raw data retained for contextual purposes |
-| `degraded`         | 0         | Evidence has warnings; raw data retained but usable            |
-| `malformed`        | 1         | Provider payload failed validation or license/retention check  |
-| `timeout`          | 1         | Request timed out                                              |
-| `network`          | 1         | Network error occurred                                         |
-| `unavailable`      | 1         | Service unavailable (HTTP 404, 429, 5xx)                       |
-| `failed`           | 1         | Normalization or persistence failure with zero usable evidence |
+| Status             | Exit Code | Meaning                                                                                              |
+| ------------------ | --------- | ---------------------------------------------------------------------------------------------------- |
+| `accepted`         | 0         | Collection succeeded with no warnings for all active sources                                         |
+| `PARTIAL`          | 0         | Healthy incident-only run; scheduled macro coverage deferred                                         |
+| `identical_replay` | 0         | Same snapshot detected; no new rows created                                                          |
+| `stale`            | 0         | Evidence expired but raw data retained for contextual purposes                                       |
+| `degraded`         | 0         | Evidence has warnings; raw data retained but usable                                                  |
+| `malformed`        | 1         | Provider payload failed validation or Statuspage shape checks failed                                 |
+| `timeout`          | 1         | Request timed out                                                                                    |
+| `network`          | 1         | Network error occurred                                                                               |
+| `unavailable`      | 1         | Protocol incident coverage unavailable when scheduled coverage deferred (or all sources unavailable) |
+| `failed`           | 1         | Normalization or persistence failure with zero usable evidence                                       |
 
 ### Freshness Windows
 
@@ -818,9 +819,9 @@ Events are excluded from selection when:
 
 ### Source Unavailable Behavior
 
-When both macro-calendar and solana-status APIs are unavailable, the job returns `UNAVAILABLE` with exit code 1. This is a **diagnostic outcome**, not a "no events" fact. Operators should:
+When `scheduled_event` coverage is deferred (`MACRO_CALENDAR_API_URL` unset), an `UNAVAILABLE` outcome with exit code 1 means protocol incident coverage (`solana-status-api`) is also unavailable. When both macro-calendar and solana-status APIs are configured and both are unavailable, the job returns `UNAVAILABLE` with exit code 1. This is a **diagnostic outcome**, not a "no events" fact. Operators should:
 
-1. Check API endpoint status and rate limits
+1. Check `https://status.solana.com` API endpoint status and rate limits
 2. Verify network connectivity
 3. Confirm credentials are correct (if required)
 4. Inspect diagnostic message for specifics
@@ -837,9 +838,9 @@ Empty responses are valid (no scheduled events this period, no active incidents)
 
 Increase `timeoutMs` in the adapter or add `SOLANA_STATUS_API_KEY` if the provider rate-limits unauthenticated requests.
 
-#### License/retention validation failures
+#### Statuspage payload shape validation failures
 
-Providers must declare non-empty `license` and `retention: "bounded"`. If a provider cannot supply these, the collector cannot legally accept the data. Contact the provider to update their API contract or use a compliant provider.
+The Statuspage adapter expects a valid JSON response containing an `incidents` array where each incident has required fields (`id`, `name`, `impact`, `shortlink`). If the response is missing the `incidents` array or required incident fields, the collector rejects the payload as `malformed`. Verify `SOLANA_STATUS_API_URL` points to a valid Statuspage API endpoint (e.g., `https://status.solana.com`).
 
 #### Incident stays UNCONFIRMED forever
 

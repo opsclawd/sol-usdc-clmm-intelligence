@@ -145,7 +145,7 @@ Delivered by #9, #10, and #11.
 
 Research collector packs add:
 
-- **contextual events** (`macro-calendar-api`, `solana-status-api`): Collects scheduled macro events (token unlocks, protocol upgrades, governance votes) and Solana protocol incidents. Produces `scheduled_event` and `protocol_incident` observations with severity, status, and source quality metadata. Events follow a raw-first append-only lifecycle with exact replay detection. Selection uses latest-state grouping before eligibility filtering to prevent older-state revival. Severity/materiality is deterministic evidence metadata; missing feeds do not imply no risk; unconfirmed reports remain unconfirmed; event direction is always unknown; only regime-engine can synthesize final policy.
+- **contextual events** (`solana-status-api` live, `macro-calendar-api` deferred): Solana Statuspage protocol incidents are collected as the live source (`solana-status-api`), while scheduled macro events (`scheduled_event`) are deferred when `MACRO_CALENDAR_API_URL` is unset. Produces `scheduled_event` and `protocol_incident` observations with severity, status, and source quality metadata. Events follow a raw-first append-only lifecycle with exact replay detection. Selection uses latest-state grouping before eligibility filtering to prevent older-state revival. Severity/materiality is deterministic evidence metadata; missing feeds do not imply no risk; unconfirmed reports remain unconfirmed; event direction is always unknown; only regime-engine can synthesize final policy.
 
 - **support/resistance** (`technical-analysis-api`): Collects SOL/USDC support and resistance levels from a technical analysis API provider. Produces `support_resistance_level` observations with explicit numeric point/zone values in USDC_PER_SOL units. Raw-to-normalized flow validates bounded snapshots, normalizes claims, deduplicates equivalent claims within a provider run, and surfaces degraded warnings for missing/malformed levels. Expiry-gated levels never become execution authority.
 
@@ -538,9 +538,9 @@ Four jobs run against `cron/jobs.yaml`'s desired schedule, on Hermes:
 | `on-chain-flow`    | hourly (`0 * * * *`)        | `pnpm collect:on-chain-flow`    | Helius (whale_transfer), Birdeye (whale_swap, dex_net_flow) |
 | `perp-liquidation` | every 5 min (`*/5 * * * *`) | `pnpm collect:perp-liquidation` | Binance fAPI, Drift (Velocity Data API)                     |
 | `news-evidence`    | every 2h (`0 */2 * * *`)    | `pnpm collect:news-evidence`    | `crypto-news-api`, `regulatory-monitor-api`                 |
-| `context-events`   | every 4h (`0 */4 * * *`)    | `pnpm collect:context-events`   | `macro-calendar-api`, `solana-status-api`                   |
+| `context-events`   | every 4h (`0 */4 * * *`)    | `pnpm collect:context-events`   | `solana-status-api` (live), `macro-calendar-api` (deferred) |
 
-`context-events` requires `MACRO_CALENDAR_API_URL` and `SOLANA_STATUS_API_URL` to be configured — without them the collector exits before persistence init on every tick.
+`context-events` defaults `SOLANA_STATUS_API_URL` to `https://status.solana.com`. `scheduled_event` is deferred when `MACRO_CALENDAR_API_URL` is unset, so a healthy incident-only run reports `PARTIAL`; missing scheduled coverage does not mean no scheduled risk.
 
 ## Useful commands
 

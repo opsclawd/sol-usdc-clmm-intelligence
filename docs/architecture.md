@@ -155,16 +155,17 @@ Key Architectural Invariants:
 
 Contextual research collectors provide lower-confidence contextual evidence that supplements core telemetry. They follow the same raw-first persistence pattern as core collectors.
 
-### Contextual Events Collector (`macro-calendar-api`, `solana-status-api`)
+### Contextual Events Collector (`solana-status-api`, `macro-calendar-api`)
 
-The contextual events collector (`pnpm collect:context-events`) collects two event families:
+The contextual events collector (`pnpm collect:context-events`) supports two event families:
 
-- **Scheduled events** (`macro-calendar-api`): Token unlocks, protocol upgrades, governance votes, and other scheduled macro events. Query window is ±24 hours from collection time.
-- **Protocol incidents** (`solana-status-api`): Solana network incidents, service disruptions, and security events.
+- **Protocol incidents** (`solana-status-api` live): Solana network incidents, service disruptions, and security events. The Solana Statuspage HTTP adapter constructs the bounded internal envelope directly from vendor incident objects.
+- **Scheduled events** (`macro-calendar-api` deferred): Token unlocks, protocol upgrades, governance votes, and other scheduled macro events (deferred pending a verified compatible provider).
 
 **Key architectural invariants:**
 
-1. **Bounded factual extract retention:** All events carry `retentionMode: "bounded_factual_extract"` and a provider-supplied `license` string. Providers must supply stable `sourceEventId` values and original source timestamps.
+1. **Bounded factual extract retention:** All events carry `retentionMode: "bounded_factual_extract"` and a provider-supplied or adapter-declared `license` string. The Statuspage adapter constructs the bounded internal envelope with fixed MIT license declaration and stable `sourceEventId` values derived from vendor incident IDs.
+
 2. **Raw-first append-only lifecycle:** Raw observations are persisted before normalization. Lifecycle state transitions (SCHEDULED → ACTIVE → RESOLVED, or CANCELLED) are recorded as new rows, never mutations.
 3. **Exact replay detection:** Identity key derives from `${source}::${observationKind}::${sourceEventId}` plus `sourceObservedAtUnixMs` and `payloadHash`. Identical replays produce no new rows.
 4. **Latest-state selection:** Group by identity, pick latest per group, then apply eligibility filters. This prevents older ACTIVE rows from being revived after cancellation/expiry.
