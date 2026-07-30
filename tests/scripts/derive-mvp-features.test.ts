@@ -164,6 +164,38 @@ describe("deriveMvpFeaturesJob thin job", () => {
       expect(clock.now).toHaveBeenCalledTimes(1);
     });
 
+    it("reads clock exactly once and passes parsed Unix milliseconds into derivation", async () => {
+      const normalizedObservationRepo = createMockNormalizedObservationRepo();
+      const featureRepo = createMockFeatureRepo();
+      const isoTime = "2026-05-10T15:30:00.000Z";
+      const expectedUnixMs = new Date(isoTime).getTime();
+      const clock = createMockClock(isoTime);
+      const runIdFactory = createMockRunIdFactory();
+
+      const mockRows = [{ id: 1, status: "AVAILABLE" as const, asOfUnixMs: expectedUnixMs }];
+      (featureRepo.insertMany as Mock).mockResolvedValue(mockRows);
+      (normalizedObservationRepo.listCandidates as Mock).mockResolvedValue([]);
+
+      const { deriveMvpFeaturesJob } = await import("../../src/jobs/derive-mvp-features-job.js");
+
+      const job = deriveMvpFeaturesJob({
+        clock,
+        normalizedObservationRepo,
+        featureRepo,
+        runIdFactory
+      });
+
+      const result = await job({
+        poolId: "test-pool",
+        positionIds: ["pos1"]
+      });
+
+      expect(clock.now).toHaveBeenCalledTimes(1);
+      for (const row of result.rows) {
+        expect(row.asOfUnixMs).toBe(expectedUnixMs);
+      }
+    });
+
     it("should not call any HTTP, jsonStore, textReader, or commandRunner", async () => {
       const normalizedObservationRepo = createMockNormalizedObservationRepo();
       const featureRepo = createMockFeatureRepo();
