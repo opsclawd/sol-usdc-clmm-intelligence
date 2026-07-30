@@ -23,10 +23,16 @@ function projectJobs(jobs: CronJob[], names: string[]): Array<[string, string, s
 }
 
 describe("core evidence pipeline cron schedule regression", () => {
-  it("does not register core-evidence-pipeline in canonical cron/jobs.yaml pending #104", async () => {
+  it("registers core-evidence-pipeline in canonical cron/jobs.yaml at the thirty-minute cadence", async () => {
     const config = await loadCronConfig();
     const matches = config.jobs.filter((j) => j.name === "core-evidence-pipeline");
-    expect(matches).toHaveLength(0);
+    expect(matches).toEqual([
+      {
+        name: "core-evidence-pipeline",
+        cron: "*/30 * * * *",
+        messageFile: "cron/routines/core-evidence-pipeline.md"
+      }
+    ]);
   });
 
   it("declares the synthetic core evidence pipeline job configuration at the thirty-minute cadence", () => {
@@ -58,19 +64,14 @@ describe("core evidence pipeline cron schedule regression", () => {
     ]);
   });
 
-  it("renders the canonical five-minute sampler alongside the synthetic core pipeline", async () => {
+  it("renders the canonical five-minute sampler alongside the core pipeline", async () => {
     const rawYaml = await readFile("cron/jobs.yaml", "utf8");
-    const simulatedConfig = YAML.parse(rawYaml) as CronConfig;
-    simulatedConfig.jobs.push({
-      name: "core-evidence-pipeline",
-      cron: "*/30 * * * *",
-      messageFile: "cron/routines/core-evidence-pipeline.md"
-    });
+    const config = YAML.parse(rawYaml) as CronConfig;
 
     const fakeTextReader = new FakeTextReader();
-    fakeTextReader.seed("cron/jobs.synthetic.yaml", YAML.stringify(simulatedConfig));
+    fakeTextReader.seed("cron/jobs.yaml", rawYaml);
 
-    for (const job of simulatedConfig.jobs) {
+    for (const job of config.jobs) {
       const content = await readFile(job.messageFile, "utf8");
       fakeTextReader.seed(job.messageFile, content);
     }
@@ -78,8 +79,7 @@ describe("core evidence pipeline cron schedule regression", () => {
     const fakeEnv = new FakeEnv();
     const lines = await renderCronCommands({
       textReader: fakeTextReader,
-      env: fakeEnv,
-      configPath: "cron/jobs.synthetic.yaml"
+      env: fakeEnv
     });
 
     const coreLine = lines.find((line) => line.includes("--name 'core-evidence-pipeline'"));
@@ -93,7 +93,7 @@ describe("core evidence pipeline cron schedule regression", () => {
     expect(priceLine).toContain("hermes cron create '*/5 * * * *'");
     expect(priceLine).toContain("--name 'price-observations'");
     expect(priceLine).toContain("pnpm collect:price");
-    expect(lines).toHaveLength(new Set(simulatedConfig.jobs.map(({ name }) => name)).size);
+    expect(lines).toHaveLength(new Set(config.jobs.map(({ name }) => name)).size);
     expect(lines.every((line) => line.includes("Working directory for this task:"))).toBe(true);
   });
 });
