@@ -243,6 +243,7 @@ export function selectNewsEvidence(
     });
 
     const terminalCandidate = terminalVersions[0];
+    if (!terminalCandidate) continue;
 
     // Apply Freshness / Expiry / Future Checks on terminalCandidate
     const row = terminalCandidate.row;
@@ -296,13 +297,16 @@ export function selectNewsEvidence(
     const conflicting = items.filter((i) => i.payload.corroborationState === "conflicting");
 
     if (conflicting.length === 0) {
-      if (nonConflicting.length > 0) {
-        retainedItems.push(nonConflicting[0]);
+      const bestNC = nonConflicting[0];
+      if (bestNC) {
+        retainedItems.push(bestNC);
       }
     } else {
-      if (nonConflicting.length > 0) {
-        retainedItems.push(nonConflicting[0]);
-        retainedItems.push(conflicting[0]);
+      const bestNC = nonConflicting[0];
+      const bestC = conflicting[0];
+      if (bestNC && bestC) {
+        retainedItems.push(bestNC);
+        retainedItems.push(bestC);
       } else {
         retainedItems.push(...conflicting.slice(0, 2));
       }

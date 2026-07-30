@@ -169,7 +169,7 @@ describe("selectNewsEvidence", () => {
     });
 
     expect(results).toHaveLength(1);
-    expect(results[0].payload.sourceVersionId).toBe("v3");
+    expect(results[0]?.payload.sourceVersionId).toBe("v3");
 
     // If v3 is expired, entire article identity is suppressed (no revival of v1 or v2)
     const expiredV3Row = makeRow(3, v3Payload, { validUntilUnixMs: EVAL_TIME - 1000 });
@@ -219,7 +219,7 @@ describe("selectNewsEvidence", () => {
       maxItems: 10
     });
     expect(extResults).toHaveLength(1);
-    expect(extResults[0].payload.sourceVersionId).toBe("v2");
+    expect(extResults[0]?.payload.sourceVersionId).toBe("v2");
   });
 
   it("selects one representative for a non conflicting cluster", () => {
@@ -246,7 +246,7 @@ describe("selectNewsEvidence", () => {
 
     expect(results).toHaveLength(1);
     // Independently corroborated ranks higher
-    expect(results[0].row.id).toBe(2);
+    expect(results[0]?.row.id).toBe(2);
   });
 
   it("retains two stable representatives when a cluster contains conflicting evidence", () => {
@@ -312,8 +312,8 @@ describe("selectNewsEvidence", () => {
     });
 
     expect(results).toHaveLength(2);
-    expect(results[0].payload.articleId).toBe("art-sol");
-    expect(results[1].payload.articleId).toBe("art-btc");
+    expect(results[0]?.payload.articleId).toBe("art-sol");
+    expect(results[1]?.payload.articleId).toBe("art-btc");
   });
 
   it("preserves corroboration state warnings and bounded factual text", () => {
@@ -331,10 +331,10 @@ describe("selectNewsEvidence", () => {
     });
 
     expect(results).toHaveLength(1);
-    expect(results[0].payload.title).toBe("Preserved Title");
-    expect(results[0].payload.factualSummary).toBe("Preserved summary content.");
-    expect(results[0].payload.corroborationState).toBe(payload.corroborationState);
-    expect(results[0].payload.warnings).toEqual(payload.warnings);
+    expect(results[0]?.payload.title).toBe("Preserved Title");
+    expect(results[0]?.payload.factualSummary).toBe("Preserved summary content.");
+    expect(results[0]?.payload.corroborationState).toBe(payload.corroborationState);
+    expect(results[0]?.payload.warnings).toEqual(payload.warnings);
   });
 
   it("orders ties by confidence recency source article version hash and row id", () => {
@@ -358,8 +358,8 @@ describe("selectNewsEvidence", () => {
       maxItems: 10
     });
 
-    expect(results[0].row.id).toBe(2);
-    expect(results[1].row.id).toBe(1);
+    expect(results[0]?.row.id).toBe(2);
+    expect(results[1]?.row.id).toBe(1);
   });
 
   it("never returns more than the requested operational cap", () => {
