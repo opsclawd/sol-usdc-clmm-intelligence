@@ -4,6 +4,7 @@ import type { RunIdFactory } from "../../src/ports/run-id.js";
 import type { EnvReader } from "../../src/ports/env.js";
 import type { NodeRuntime } from "../../src/adapters/node/composition-root.js";
 import type { RetryControl } from "../../src/ports/retry.js";
+import type { DerivedFeatureInsert } from "../../src/ports/feature-repo.js";
 import { runDeriveMvpFeaturesScript } from "../../scripts/collectors/derive-mvp-features.js";
 
 function createMockRetryControl(): RetryControl {
@@ -172,8 +173,10 @@ describe("deriveMvpFeaturesJob thin job", () => {
       const clock = createMockClock(isoTime);
       const runIdFactory = createMockRunIdFactory();
 
-      const mockRows = [{ id: 1, status: "AVAILABLE" as const, asOfUnixMs: expectedUnixMs }];
-      (featureRepo.insertMany as Mock).mockResolvedValue(mockRows);
+      (featureRepo.insertMany as Mock).mockImplementation(
+        async (rows: readonly DerivedFeatureInsert[]) =>
+          rows.map((r, idx) => ({ ...r, id: idx + 1 }))
+      );
       (normalizedObservationRepo.listCandidates as Mock).mockResolvedValue([]);
 
       const { deriveMvpFeaturesJob } = await import("../../src/jobs/derive-mvp-features-job.js");
@@ -185,14 +188,60 @@ describe("deriveMvpFeaturesJob thin job", () => {
         runIdFactory
       });
 
-      const result = await job({
+      await job({
         poolId: "test-pool",
         positionIds: ["pos1"]
       });
 
       expect(clock.now).toHaveBeenCalledTimes(1);
-      for (const row of result.rows) {
+      expect(featureRepo.insertMany).toHaveBeenCalled();
+      const insertedRows = (featureRepo.insertMany as Mock).mock.calls[0]![0];
+      expect(insertedRows.length).toBeGreaterThan(0);
+      for (const row of insertedRows) {
         expect(row.asOfUnixMs).toBe(expectedUnixMs);
+        expect(row.receivedAtUnixMs).toBe(expectedUnixMs);
+      }
+    });
+
+    it("respects injected pipelineRunId and evaluationTimeUnixMs without calling factories when provided in request", async () => {
+      const normalizedObservationRepo = createMockNormalizedObservationRepo();
+      const featureRepo = createMockFeatureRepo();
+      const clock = createMockClock();
+      const runIdFactory = createMockRunIdFactory();
+
+      (featureRepo.insertMany as Mock).mockImplementation(
+        async (rows: readonly DerivedFeatureInsert[]) =>
+          rows.map((r, idx) => ({ ...r, id: idx + 1 }))
+      );
+      (normalizedObservationRepo.listCandidates as Mock).mockResolvedValue([]);
+
+      const { deriveMvpFeaturesJob } = await import("../../src/jobs/derive-mvp-features-job.js");
+
+      const job = deriveMvpFeaturesJob({
+        clock,
+        normalizedObservationRepo,
+        featureRepo,
+        runIdFactory
+      });
+
+      const injectedRunId = "shared-pipeline-run-id";
+      const injectedEvalMs = 1700000000000;
+
+      await job({
+        poolId: "test-pool",
+        positionIds: ["pos1"],
+        pipelineRunId: injectedRunId,
+        evaluationTimeUnixMs: injectedEvalMs
+      });
+
+      expect(runIdFactory.nextRunId).not.toHaveBeenCalled();
+      expect(clock.now).not.toHaveBeenCalled();
+      expect(featureRepo.insertMany).toHaveBeenCalled();
+      const insertedRows = (featureRepo.insertMany as Mock).mock.calls[0]![0];
+      expect(insertedRows.length).toBeGreaterThan(0);
+      for (const row of insertedRows) {
+        expect(row.asOfUnixMs).toBe(injectedEvalMs);
+        expect(row.receivedAtUnixMs).toBe(injectedEvalMs);
       }
     });
 
