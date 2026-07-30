@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, type Mock, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { Clock } from "../../src/ports/clock.js";
 import type { RunIdFactory } from "../../src/ports/run-id.js";
 import type { EnvReader } from "../../src/ports/env.js";
@@ -11,6 +11,8 @@ import type { RawObservationRepo } from "../../src/ports/observation-repo.js";
 import type { AssembleEvidenceBundleJobRequest } from "../../src/jobs/assemble-evidence-bundle-job.js";
 import type { RetryControl } from "../../src/ports/retry.js";
 import { makeClmmBundle, makePoolData, makePositionData } from "../fixtures/clmm-bundle.js";
+
+const originalProcessExitCode = process.exitCode;
 
 function createMockRetryControl(): RetryControl {
   return {
@@ -597,9 +599,14 @@ describe("job forwards an explicit immutable assembly request unchanged", () => 
 describe("script parses required inputs and prints a redacted outcome summary", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    process.exitCode = undefined;
   });
 
-  it("output contains outcome, row ID, payload hash, slot count, and warnings", async () => {
+  afterEach(() => {
+    process.exitCode = originalProcessExitCode;
+  });
+
+  it("persisted leaves process.exitCode unset while returning and printing the redacted success", async () => {
     const rawObservationRepo = createMockRawObservationRepo();
     const normalizedObservationRepo = createMockNormalizedObservationRepo();
     const featureRepo = createMockFeatureRepo();
@@ -792,25 +799,23 @@ describe("script parses required inputs and prints a redacted outcome summary", 
 
     (runtime.jsonStore.readJson as Mock).mockResolvedValue(VALID_REQUEST);
 
-    await runAssembleEvidenceBundleScript(runtime, "data/assembly-request.json");
+    const result = await runAssembleEvidenceBundleScript(runtime, "data/assembly-request.json");
 
     expect(consoleLogSpy).toHaveBeenCalled();
     const loggedOutput = JSON.parse(
       consoleLogSpy.mock.calls[consoleLogSpy.mock.calls.length - 1]![0] as string
     );
 
-    expect(loggedOutput.outcome).toBeDefined();
-    expect(loggedOutput.rowId).toBeDefined();
-    expect(loggedOutput.payloadHash).toBeDefined();
-    expect(loggedOutput.slotCount).toBeDefined();
-    expect(loggedOutput.warnings).toBeDefined();
-    expect(Array.isArray(loggedOutput.warnings)).toBe(true);
-
-    expect(loggedOutput.outcome).toBe("persisted");
-    expect(loggedOutput.rowId).toBe(99);
-    expect(loggedOutput.payloadHash).toBe("hash-abc");
-
-    expect(processExitSpy).not.toHaveBeenCalledWith(1);
+    expect(result).toEqual({
+      outcome: "persisted",
+      rowId: 99,
+      payloadHash: "hash-abc",
+      slotCount: 11,
+      warnings: expect.any(Array)
+    });
+    expect(loggedOutput).toEqual(result);
+    expect(process.exitCode).toBeUndefined();
+    expect(processExitSpy).not.toHaveBeenCalled();
 
     consoleLogSpy.mockRestore();
     processExitSpy.mockRestore();
@@ -910,9 +915,14 @@ describe("script parses required inputs and prints a redacted outcome summary", 
 describe("replaying the same input file preserves run and creation identity", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    process.exitCode = undefined;
   });
 
-  it("script sends the same request values for identical replay", async () => {
+  afterEach(() => {
+    process.exitCode = originalProcessExitCode;
+  });
+
+  it("identical_replay leaves process.exitCode unset while returning and printing the redacted replay", async () => {
     const rawObservationRepo = createMockRawObservationRepo();
     const normalizedObservationRepo = createMockNormalizedObservationRepo();
     const featureRepo = createMockFeatureRepo();
@@ -1108,13 +1118,14 @@ describe("replaying the same input file preserves run and creation identity", ()
     const result1 = await runAssembleEvidenceBundleScript(runtime, "data/assembly-request.json");
     const result2 = await runAssembleEvidenceBundleScript(runtime, "data/assembly-request.json");
 
-    expect(result1.outcome).toBe("identical_replay");
-    expect(result2.outcome).toBe("identical_replay");
-
-    if (result1.outcome === "identical_replay" && result2.outcome === "identical_replay") {
-      expect(result1.rowId).toBe(result2.rowId);
-      expect(result1.payloadHash).toBe(result2.payloadHash);
-    }
+    expect(result1).toEqual(result2);
+    expect(result1).toMatchObject({
+      outcome: "identical_replay",
+      rowId: 42,
+      payloadHash: "identical-hash"
+    });
+    expect(process.exitCode).toBeUndefined();
+    expect(processExitSpy).not.toHaveBeenCalled();
 
     consoleLogSpy.mockRestore();
     processExitSpy.mockRestore();
