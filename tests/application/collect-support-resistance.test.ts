@@ -503,4 +503,35 @@ describe("collectSupportResistance", () => {
       expect(meta).not.toHaveProperty("headers");
     });
   });
+
+  describe("persists normalized support resistance rows whose raw reference matches their parent", () => {
+    it("persists normalized support resistance rows whose raw reference matches their parent", async () => {
+      const { supportResistanceSource, rawObservationRepo, normalizedObservationRepo } = makeDeps();
+      supportResistanceSource.setResponse(VALID_SNAPSHOT);
+
+      const result = await collectSupportResistance(
+        { supportResistanceSource, rawObservationRepo, normalizedObservationRepo },
+        VALID_CONTEXT
+      );
+
+      expect(result.rawId).not.toBeNull();
+      const rawRow = await rawObservationRepo.findById(Number(result.rawId));
+      expect(rawRow).toBeDefined();
+
+      const normalizedRows = await normalizedObservationRepo.findBySource(
+        "technical-analysis-api",
+        "support_resistance_level",
+        0
+      );
+      expect(normalizedRows.length).toBeGreaterThan(0);
+      for (const row of normalizedRows) {
+        expect(row.provenance.rawObservationRefs[0]).toMatchObject({
+          refType: "raw_observation",
+          id: rawRow!.id,
+          source: "technical-analysis-api",
+          payloadHash: rawRow!.payloadHash
+        });
+      }
+    });
+  });
 });

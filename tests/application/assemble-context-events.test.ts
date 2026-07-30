@@ -584,7 +584,7 @@ describe("assembleEvidenceBundle with contextual events", () => {
 
       expect(normalizedRepo.lastListCandidatesQuery).not.toBeNull();
       const query = normalizedRepo.lastListCandidatesQuery!;
-      expect(query.sourceKinds).toHaveLength(8);
+      expect(query.sourceKinds).toHaveLength(11);
       expect(query.sourceKinds).toContainEqual({
         source: "macro-calendar-api",
         observationKind: "scheduled_event"
@@ -616,6 +616,18 @@ describe("assembleEvidenceBundle with contextual events", () => {
       expect(query.sourceKinds).toContainEqual({
         source: "birdeye-api",
         observationKind: "dex_net_flow"
+      });
+      expect(query.sourceKinds).toContainEqual({
+        source: "technical-analysis-api",
+        observationKind: "support_resistance_level"
+      });
+      expect(query.sourceKinds).toContainEqual({
+        source: "crypto-news-api",
+        observationKind: "ecosystem_news"
+      });
+      expect(query.sourceKinds).toContainEqual({
+        source: "regulatory-monitor-api",
+        observationKind: "regulatory_risk"
       });
     });
 

@@ -60,8 +60,12 @@ function makeQualityInput(
     asOf: overrides?.asOf ?? 5000000000000,
     freshUntil: overrides?.freshUntil ?? 50000003600000,
     expiresAt: overrides?.expiresAt ?? 50000864000000,
-    contextPresent: overrides?.contextPresent ?? false,
-    briefPresent: overrides?.briefPresent ?? false,
+    hasSupportResistance: overrides?.hasSupportResistance ?? false,
+    hasFlows: overrides?.hasFlows ?? false,
+    hasDerivatives: overrides?.hasDerivatives ?? false,
+    hasEvents: overrides?.hasEvents ?? false,
+    hasNewsRegulatory: overrides?.hasNewsRegulatory ?? false,
+    hasResearchBrief: overrides?.hasResearchBrief ?? false,
     allowNoUsableFeatures: overrides?.allowNoUsableFeatures ?? false
   };
 }
@@ -88,8 +92,12 @@ describe("classifyEvidenceBundleQuality", () => {
       it("seven fresh available slots = complete even when context and brief are present", () => {
         const slots = makeSlotsAllAvailable();
         const input = makeQualityInput(slots, {
-          contextPresent: true,
-          briefPresent: true
+          hasSupportResistance: true,
+          hasFlows: true,
+          hasDerivatives: true,
+          hasEvents: true,
+          hasNewsRegulatory: true,
+          hasResearchBrief: true
         });
 
         const result = classifyEvidenceBundleQuality(input);
@@ -102,8 +110,12 @@ describe("classifyEvidenceBundleQuality", () => {
     it("seven fresh available slots = complete even when context and brief are present", () => {
       const slots = makeSlotsAllAvailable();
       const input = makeQualityInput(slots, {
-        contextPresent: true,
-        briefPresent: true
+        hasSupportResistance: true,
+        hasFlows: true,
+        hasDerivatives: true,
+        hasEvents: true,
+        hasNewsRegulatory: true,
+        hasResearchBrief: true
       });
 
       const result = classifyEvidenceBundleQuality(input);
@@ -382,12 +394,64 @@ describe("classifyEvidenceBundleQuality", () => {
     });
   });
 
-  describe("maps deterministic-only context and brief absence exactly", () => {
-    it("context absent uses only schema-authorized null representation", () => {
+  describe("per contextual family coverage and warnings", () => {
+    it("reports only event coverage for an event only bundle", () => {
       const slots = makeSlotsAllAvailable();
       const input = makeQualityInput(slots, {
-        contextPresent: false,
-        briefPresent: false
+        hasEvents: true
+      });
+
+      const result = classifyEvidenceBundleQuality(input);
+
+      expect(result.coverage.events).toBe("partial");
+      expect(result.coverage.supportResistance).toBe("not_applicable");
+      expect(result.coverage.flows).toBe("not_applicable");
+      expect(result.coverage.derivatives).toBe("not_applicable");
+      expect(result.coverage.newsRegulatory).toBe("not_applicable");
+      expect(result.coverage.researchBrief).toBe("not_applicable");
+    });
+
+    it("reports only news coverage for a news only bundle", () => {
+      const slots = makeSlotsAllAvailable();
+      const input = makeQualityInput(slots, {
+        hasNewsRegulatory: true
+      });
+
+      const result = classifyEvidenceBundleQuality(input);
+
+      expect(result.coverage.newsRegulatory).toBe("partial");
+      expect(result.coverage.supportResistance).toBe("not_applicable");
+      expect(result.coverage.flows).toBe("not_applicable");
+      expect(result.coverage.derivatives).toBe("not_applicable");
+      expect(result.coverage.events).toBe("not_applicable");
+      expect(result.coverage.researchBrief).toBe("not_applicable");
+    });
+
+    it("reports only support resistance coverage for a levels only bundle", () => {
+      const slots = makeSlotsAllAvailable();
+      const input = makeQualityInput(slots, {
+        hasSupportResistance: true
+      });
+
+      const result = classifyEvidenceBundleQuality(input);
+
+      expect(result.coverage.supportResistance).toBe("partial");
+      expect(result.coverage.flows).toBe("not_applicable");
+      expect(result.coverage.derivatives).toBe("not_applicable");
+      expect(result.coverage.events).toBe("not_applicable");
+      expect(result.coverage.newsRegulatory).toBe("not_applicable");
+      expect(result.coverage.researchBrief).toBe("not_applicable");
+    });
+
+    it("keeps empty contextual families not applicable", () => {
+      const slots = makeSlotsAllAvailable();
+      const input = makeQualityInput(slots, {
+        hasSupportResistance: false,
+        hasFlows: false,
+        hasDerivatives: false,
+        hasEvents: false,
+        hasNewsRegulatory: false,
+        hasResearchBrief: false
       });
 
       const result = classifyEvidenceBundleQuality(input);
@@ -400,71 +464,90 @@ describe("classifyEvidenceBundleQuality", () => {
       expect(result.coverage.researchBrief).toBe("not_applicable");
     });
 
-    it("context present but no brief uses null for brief only", () => {
-      const slots = makeSlotsAllAvailable();
-      const input = makeQualityInput(slots, {
-        contextPresent: true,
-        briefPresent: false
-      });
-
-      const result = classifyEvidenceBundleQuality(input);
-
-      expect(result.coverage.supportResistance).toBe("partial");
-      expect(result.coverage.researchBrief).toBe("not_applicable");
-    });
-
-    it("emits required contract warnings when context and brief are absent", () => {
+    it("emits one unavailable warning for each missing contextual family", () => {
       const result = classifyEvidenceBundleQuality(
         makeQualityInput(makeSlotsAllAvailable(), {
-          contextPresent: false,
-          briefPresent: false
+          hasSupportResistance: false,
+          hasFlows: false,
+          hasDerivatives: false,
+          hasEvents: false,
+          hasNewsRegulatory: false,
+          hasResearchBrief: false
         })
       );
 
-      expect(result.warnings.map((warning) => warning.code)).toEqual([
-        "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
-        "RESEARCH_BRIEF_UNAVAILABLE"
-      ]);
-      expect(result.warnings).toContainEqual({
-        code: "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
-        message: "All contextual evidence families are unavailable",
-        affectedFamilies: ["supportResistance", "flows", "derivatives", "events", "newsRegulatory"]
+      const codes = result.warnings.map((warning) => warning.code);
+      expect(codes).toContain("SUPPORT_RESISTANCE_UNAVAILABLE");
+      expect(codes).toContain("FLOWS_UNAVAILABLE");
+      expect(codes).toContain("DERIVATIVES_UNAVAILABLE");
+      expect(codes).toContain("EVENTS_UNAVAILABLE");
+      expect(codes).toContain("NEWS_REGULATORY_UNAVAILABLE");
+      expect(codes).toContain("RESEARCH_BRIEF_UNAVAILABLE");
+
+      expect(result.warnings.find((w) => w.code === "SUPPORT_RESISTANCE_UNAVAILABLE")).toEqual({
+        code: "SUPPORT_RESISTANCE_UNAVAILABLE",
+        message: "Support/resistance evidence family is unavailable",
+        affectedFamilies: ["supportResistance"]
       });
-      expect(result.warnings).toContainEqual({
+      expect(result.warnings.find((w) => w.code === "FLOWS_UNAVAILABLE")).toEqual({
+        code: "FLOWS_UNAVAILABLE",
+        message: "On-chain flows evidence family is unavailable",
+        affectedFamilies: ["flows"]
+      });
+      expect(result.warnings.find((w) => w.code === "DERIVATIVES_UNAVAILABLE")).toEqual({
+        code: "DERIVATIVES_UNAVAILABLE",
+        message: "Derivatives evidence family is unavailable",
+        affectedFamilies: ["derivatives"]
+      });
+      expect(result.warnings.find((w) => w.code === "EVENTS_UNAVAILABLE")).toEqual({
+        code: "EVENTS_UNAVAILABLE",
+        message: "Contextual events evidence family is unavailable",
+        affectedFamilies: ["events"]
+      });
+      expect(result.warnings.find((w) => w.code === "NEWS_REGULATORY_UNAVAILABLE")).toEqual({
+        code: "NEWS_REGULATORY_UNAVAILABLE",
+        message: "News and regulatory evidence family is unavailable",
+        affectedFamilies: ["newsRegulatory"]
+      });
+      expect(result.warnings.find((w) => w.code === "RESEARCH_BRIEF_UNAVAILABLE")).toEqual({
         code: "RESEARCH_BRIEF_UNAVAILABLE",
-        message: "Research brief is null",
+        message: "Research brief is unavailable",
         affectedFamilies: ["researchBrief"]
       });
     });
 
-    it("omits required absence warnings when context and brief are present", () => {
+    it("does not emit an unavailable warning for a populated family", () => {
       const result = classifyEvidenceBundleQuality(
         makeQualityInput(makeSlotsAllAvailable(), {
-          contextPresent: true,
-          briefPresent: true
+          hasSupportResistance: true,
+          hasFlows: false,
+          hasDerivatives: false,
+          hasEvents: false,
+          hasNewsRegulatory: false,
+          hasResearchBrief: false
         })
       );
 
-      expect(
-        result.warnings.filter(
-          (warning) =>
-            warning.code === "CONTEXTUAL_EVIDENCE_UNAVAILABLE" ||
-            warning.code === "RESEARCH_BRIEF_UNAVAILABLE"
-        )
-      ).toEqual([]);
+      const codes = result.warnings.map((w) => w.code);
+      expect(codes).not.toContain("SUPPORT_RESISTANCE_UNAVAILABLE");
+      expect(codes).toContain("FLOWS_UNAVAILABLE");
     });
 
-    it("emits only the research brief warning when context exists without a brief", () => {
+    it("reports research brief coverage independently", () => {
       const result = classifyEvidenceBundleQuality(
         makeQualityInput(makeSlotsAllAvailable(), {
-          contextPresent: true,
-          briefPresent: false
+          hasSupportResistance: false,
+          hasFlows: false,
+          hasDerivatives: false,
+          hasEvents: false,
+          hasNewsRegulatory: false,
+          hasResearchBrief: true
         })
       );
 
-      expect(result.warnings.map((warning) => warning.code)).toEqual([
-        "RESEARCH_BRIEF_UNAVAILABLE"
-      ]);
+      expect(result.coverage.researchBrief).toBe("available");
+      expect(result.coverage.supportResistance).toBe("not_applicable");
+      expect(result.warnings.map((w) => w.code)).not.toContain("RESEARCH_BRIEF_UNAVAILABLE");
     });
   });
 

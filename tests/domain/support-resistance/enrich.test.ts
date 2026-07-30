@@ -37,6 +37,7 @@ describe("enrichSupportResistanceClaim", () => {
       codeVersion,
       runId,
       rawId,
+      rawPayloadHash: "raw-snapshot-hash",
       sourceValidUntilUnixMs: undefined
     };
 
@@ -49,6 +50,71 @@ describe("enrichSupportResistanceClaim", () => {
     expect(enriched.provenance.processRef.jobName).toBe("support-resistance-enrichment");
     expect(enriched.provenance.processRef.pipelineRunId).toBe(runId);
     expect(enriched.provenance.processRef.codeVersion).toBe(codeVersion);
+  });
+
+  it("stores the persisted raw payload hash in support resistance provenance", async () => {
+    const snapshot = makeSupportResistanceRawSnapshot({
+      providerId: "technical-analysis-api",
+      providerRunId: "run-001",
+      asOfUnixMs: 1705390000000,
+      sourceReferences: ["https://example.com/analysis"],
+      claims: [makeSupportResistancePointClaim(150.5, "RESISTANCE")]
+    });
+
+    const bounded = acceptSupportResistanceSnapshot(snapshot);
+    const normalized = await normalizeSupportResistanceClaims(bounded);
+
+    const input: SupportResistanceEnrichmentInput = {
+      payload: normalized.accepted[0] as SupportResistancePayloadV1,
+      nowMs,
+      codeVersion,
+      runId,
+      rawId,
+      rawPayloadHash: "raw-snapshot-hash",
+      sourceValidUntilUnixMs: undefined
+    };
+
+    const enriched = await enrichSupportResistanceClaim(input);
+
+    expect(enriched.provenance.rawObservationRefs[0]).toMatchObject({
+      refType: "raw_observation",
+      id: rawId,
+      source: "technical-analysis-api",
+      payloadHash: "raw-snapshot-hash"
+    });
+  });
+
+  it("keeps the normalized payload hash separate from the raw provenance hash", async () => {
+    const snapshot = makeSupportResistanceRawSnapshot({
+      providerId: "technical-analysis-api",
+      providerRunId: "run-001",
+      asOfUnixMs: 1705390000000,
+      sourceReferences: ["https://example.com/analysis"],
+      claims: [makeSupportResistancePointClaim(150.5, "RESISTANCE")]
+    });
+
+    const bounded = acceptSupportResistanceSnapshot(snapshot);
+    const normalized = await normalizeSupportResistanceClaims(bounded);
+
+    const input: SupportResistanceEnrichmentInput = {
+      payload: normalized.accepted[0] as SupportResistancePayloadV1,
+      nowMs,
+      codeVersion,
+      runId,
+      rawId,
+      rawPayloadHash: "raw-snapshot-hash",
+      sourceValidUntilUnixMs: undefined
+    };
+
+    const enriched = await enrichSupportResistanceClaim(input);
+
+    expect(enriched.provenance.rawObservationRefs[0]).toMatchObject({
+      refType: "raw_observation",
+      id: rawId,
+      source: "technical-analysis-api",
+      payloadHash: "raw-snapshot-hash"
+    });
+    expect(enriched.payloadHash).not.toBe("raw-snapshot-hash");
   });
 
   it("caps confidence at source quality and completeness", async () => {
@@ -70,6 +136,7 @@ describe("enrichSupportResistanceClaim", () => {
       codeVersion,
       runId,
       rawId,
+      rawPayloadHash: "raw-snapshot-hash",
       sourceValidUntilUnixMs: undefined
     };
 
@@ -97,6 +164,7 @@ describe("enrichSupportResistanceClaim", () => {
       codeVersion,
       runId,
       rawId,
+      rawPayloadHash: "raw-snapshot-hash",
       sourceValidUntilUnixMs: 1705350000000
     };
 
@@ -127,6 +195,7 @@ describe("enrichSupportResistanceClaim", () => {
       codeVersion,
       runId,
       rawId,
+      rawPayloadHash: "raw-snapshot-hash",
       sourceValidUntilUnixMs: sourceValidUntil
     };
 
@@ -153,6 +222,7 @@ describe("enrichSupportResistanceClaim", () => {
       codeVersion,
       runId,
       rawId,
+      rawPayloadHash: "raw-snapshot-hash",
       sourceValidUntilUnixMs: undefined
     };
 
@@ -180,6 +250,7 @@ describe("enrichSupportResistanceClaim", () => {
       codeVersion,
       runId,
       rawId,
+      rawPayloadHash: "raw-snapshot-hash",
       sourceValidUntilUnixMs: undefined
     };
 
@@ -209,6 +280,7 @@ describe("enrichSupportResistanceClaim", () => {
       codeVersion,
       runId,
       rawId,
+      rawPayloadHash: "raw-snapshot-hash",
       sourceValidUntilUnixMs: undefined
     };
 
@@ -238,6 +310,7 @@ describe("enrichSupportResistanceClaim", () => {
       codeVersion,
       runId,
       rawId,
+      rawPayloadHash: "raw-snapshot-hash",
       sourceValidUntilUnixMs: undefined
     };
 

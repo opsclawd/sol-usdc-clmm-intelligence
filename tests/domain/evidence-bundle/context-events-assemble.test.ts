@@ -181,7 +181,6 @@ function makeAssembleInput(
     asOf: overrides?.asOf ?? 5000000000000,
     freshUntil: overrides?.freshUntil ?? 50000003600000,
     expiresAt: overrides?.expiresAt ?? 50000864000000,
-    contextPresent: overrides?.contextPresent ?? false,
     briefPresent: overrides?.briefPresent ?? false,
     pipelineVersion: overrides?.pipelineVersion ?? "1.0.0",
     gitCommit: overrides?.gitCommit ?? "abc123def456",
@@ -251,7 +250,6 @@ describe("context-events assembly", () => {
 
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, lineage, {
-          contextPresent: true,
           contextualEvents: [contextEvent]
         })
       );
@@ -291,7 +289,6 @@ describe("context-events assembly", () => {
 
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, lineage, {
-          contextPresent: true,
           contextualEvents: [contextEvent]
         })
       );
@@ -331,7 +328,6 @@ describe("context-events assembly", () => {
 
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, lineage, {
-          contextPresent: true,
           contextualEvents: [contextEvent]
         })
       );
@@ -374,7 +370,6 @@ describe("context-events assembly", () => {
 
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, lineage, {
-          contextPresent: true,
           contextualEvents: [contextEvent]
         })
       );
@@ -416,7 +411,6 @@ describe("context-events assembly", () => {
 
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, lineage, {
-          contextPresent: true,
           contextualEvents: [contextEvent]
         })
       );
@@ -454,7 +448,6 @@ describe("context-events assembly", () => {
 
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, lineage, {
-          contextPresent: true,
           contextualEvents: [contextEvent]
         })
       );
@@ -490,7 +483,6 @@ describe("context-events assembly", () => {
 
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, lineage, {
-          contextPresent: true,
           contextualEvents: [contextEvent]
         })
       );
@@ -529,7 +521,6 @@ describe("context-events assembly", () => {
 
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, lineage, {
-          contextPresent: true,
           contextualEvents: [contextEvent]
         })
       );
@@ -562,7 +553,6 @@ describe("context-events assembly", () => {
 
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, lineage, {
-          contextPresent: true,
           contextualEvents: [contextEvent]
         })
       );
@@ -594,7 +584,6 @@ describe("context-events assembly", () => {
 
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, lineage, {
-          contextPresent: true,
           contextualEvents: [contextEvent]
         })
       );
@@ -626,7 +615,6 @@ describe("context-events assembly", () => {
 
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, lineage, {
-          contextPresent: true,
           contextualEvents: [contextEvent]
         })
       );
@@ -662,7 +650,6 @@ describe("context-events assembly", () => {
 
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, lineage, {
-          contextPresent: true,
           contextualEvents: [contextEvent]
         })
       );
@@ -706,7 +693,6 @@ describe("context-events assembly", () => {
 
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, lineage, {
-          contextPresent: true,
           contextualEvents: events
         })
       );
@@ -736,7 +722,6 @@ describe("context-events assembly", () => {
 
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, lineage, {
-          contextPresent: false,
           contextualEvents: []
         })
       );

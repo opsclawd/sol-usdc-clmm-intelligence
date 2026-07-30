@@ -24,3 +24,9 @@ export {
   type EnrichedSupportResistanceObservation,
   COMPLETENESS_WEIGHTING_VERSION
 } from "./enrich.js";
+
+export {
+  selectSupportResistanceClaims,
+  type SupportResistanceSelectionRequest,
+  type SelectedSupportResistance
+} from "./select.js";

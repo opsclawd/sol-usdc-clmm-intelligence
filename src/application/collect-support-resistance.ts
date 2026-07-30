@@ -251,6 +251,7 @@ export async function collectSupportResistance(
               codeVersion,
               runId: pipelineRunId,
               rawId: rawRow.id,
+              rawPayloadHash: rawRow.payloadHash,
               sourceValidUntilUnixMs: sourceValidUntil
             });
           })

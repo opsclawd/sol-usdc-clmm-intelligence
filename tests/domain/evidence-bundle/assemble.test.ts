@@ -193,7 +193,6 @@ function makeAssembleInput(
     asOf: overrides?.asOf ?? 5000000000000,
     freshUntil: overrides?.freshUntil ?? 50000003600000,
     expiresAt: overrides?.expiresAt ?? 50000864000000,
-    contextPresent: overrides?.contextPresent ?? false,
     briefPresent: overrides?.briefPresent ?? false,
     pipelineVersion: overrides?.pipelineVersion ?? "1.0.0",
     gitCommit: overrides?.gitCommit ?? "abc123def456",
@@ -346,7 +345,6 @@ describe("assembleEvidenceBundleCandidate", () => {
       const slots = makeSlotsAllAvailable([]);
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, makeQuality(), makeLineage(), {
-          contextPresent: false,
           briefPresent: false
         })
       );
@@ -363,7 +361,6 @@ describe("assembleEvidenceBundleCandidate", () => {
       const slots = makeSlotsAllAvailable([]);
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, makeQuality(), makeLineage(), {
-          contextPresent: false,
           briefPresent: false
         })
       );
@@ -677,7 +674,6 @@ describe("assembleEvidenceBundleCandidate", () => {
           asOf: asOfUnixMs,
           freshUntil: freshUntilUnixMs,
           expiresAt: expiresAtUnixMs,
-          contextPresent: false,
           briefPresent: false
         })
       );
@@ -746,7 +742,6 @@ describe("assembleEvidenceBundleCandidate", () => {
           asOf: asOfUnixMs,
           freshUntil: freshUntilUnixMs,
           expiresAt: expiresAtUnixMs,
-          contextPresent: false,
           briefPresent: false
         })
       );
@@ -815,7 +810,6 @@ describe("assembleEvidenceBundleCandidate", () => {
           asOf: asOfUnixMs,
           freshUntil: freshUntilUnixMs,
           expiresAt: expiresAtUnixMs,
-          contextPresent: false,
           briefPresent: false
         })
       );
@@ -863,7 +857,6 @@ describe("assembleEvidenceBundleCandidate", () => {
           asOf: asOfUnixMs,
           freshUntil: freshUntilUnixMs,
           expiresAt: expiresAtUnixMs,
-          contextPresent: false,
           briefPresent: false
         })
       );
@@ -894,7 +887,6 @@ describe("assembleEvidenceBundleCandidate", () => {
           asOf: asOfUnixMs,
           freshUntil: freshUntilUnixMs,
           expiresAt: expiresAtUnixMs,
-          contextPresent: false,
           briefPresent: false
         })
       );
@@ -960,8 +952,12 @@ describe("assembleEvidenceBundleCandidate", () => {
         asOf: asOfUnixMs,
         freshUntil: freshUntilUnixMs,
         expiresAt: expiresAtUnixMs,
-        contextPresent: false,
-        briefPresent: false
+        hasSupportResistance: false,
+        hasFlows: false,
+        hasDerivatives: false,
+        hasEvents: false,
+        hasNewsRegulatory: false,
+        hasResearchBrief: false
       });
       const candidate = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, quality, makeLineage(RAW_SOURCE_REFERENCES), {
@@ -971,7 +967,6 @@ describe("assembleEvidenceBundleCandidate", () => {
           asOf: asOfUnixMs,
           freshUntil: freshUntilUnixMs,
           expiresAt: expiresAtUnixMs,
-          contextPresent: false,
           briefPresent: false,
           gitCommit: "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234"
         })

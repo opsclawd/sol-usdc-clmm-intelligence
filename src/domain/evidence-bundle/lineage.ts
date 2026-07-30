@@ -269,6 +269,10 @@ function sourceToSourceType(source: Source): VerifiedLineageSourceRef["sourceTyp
     case "macro-calendar-api":
     case "solana-status-api":
     case "technical-analysis-api":
+    case "crypto-news-api":
+    case "regulatory-monitor-api":
+    case "helius-api":
+    case "birdeye-api":
       return "api";
     default:
       return "internal_bundle";
@@ -395,16 +399,26 @@ export function verifyEvidenceLineage(
     }
   }
 
+  const ALLOWED_CONTEXTUAL_KINDS: ReadonlySet<string> = new Set([
+    "scheduled_event",
+    "protocol_incident",
+    "whale_transfer",
+    "whale_swap",
+    "stablecoin_flow",
+    "cex_flow_proxy",
+    "dex_net_flow",
+    "support_resistance_level",
+    "ecosystem_news",
+    "regulatory_risk"
+  ]);
+
   for (const ctxRow of contextualObservations) {
-    if (
-      ctxRow.observationKind !== "scheduled_event" &&
-      ctxRow.observationKind !== "protocol_incident"
-    ) {
+    if (!ALLOWED_CONTEXTUAL_KINDS.has(ctxRow.observationKind)) {
       return {
         ok: false,
         error: {
           code: "UNSUPPORTED_CONTEXTUAL_KIND",
-          message: `Contextual observation kind '${ctxRow.observationKind}' is not supported. Only scheduled_event and protocol_incident are allowed.`
+          message: `Contextual observation kind '${ctxRow.observationKind}' is not supported.`
         }
       };
     }
@@ -433,9 +447,27 @@ export function verifyEvidenceLineage(
     const ref = ctxRow.provenance.rawObservationRefs.find(
       (r) => r.refType === "raw_observation" && r.id === rawRow.id
     );
-    const expectedHash = ref?.payloadHash ?? rawRow.payloadHash;
+    if (!ref) {
+      return {
+        ok: false,
+        error: {
+          code: "MISSING_RAW_PARENT",
+          message: `Raw observation reference ${rawRow.id} not found in provenance for normalized ${ctxRow.id}`
+        }
+      };
+    }
 
-    if (rawRow.payloadHash !== expectedHash) {
+    if (ref.source !== rawRow.source) {
+      return {
+        ok: false,
+        error: {
+          code: "PROVENANCE_SOURCE_MISMATCH",
+          message: `Contextual observation raw reference source mismatch: expected ${rawRow.source}, got ${ref.source}`
+        }
+      };
+    }
+
+    if (ref.payloadHash !== rawRow.payloadHash) {
       return {
         ok: false,
         error: {
@@ -486,6 +518,15 @@ export function verifyEvidenceLineage(
     }
   }
 
+  const uniqueSourceReferences: VerifiedLineageSourceRef[] = [];
+  const seenRefIds = new Set<string>();
+  for (const sr of sourceReferences) {
+    if (!seenRefIds.has(sr.referenceId)) {
+      seenRefIds.add(sr.referenceId);
+      uniqueSourceReferences.push(sr);
+    }
+  }
+
   const sortedRawIds = [...rawObservationIds].sort((a, b) => a - b);
   const sortedNormIds = [...normalizedObservationIds].sort((a, b) => a - b);
 
@@ -494,7 +535,7 @@ export function verifyEvidenceLineage(
     lineage: {
       rawObservationIds: sortedRawIds,
       normalizedObservationIds: sortedNormIds,
-      sourceReferences
+      sourceReferences: uniqueSourceReferences
     }
   };
 }

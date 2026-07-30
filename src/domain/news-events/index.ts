@@ -16,3 +16,9 @@ export {
 } from "./enrich.js";
 
 export { clusterNewsEvidence, type ClusterNewsEvidenceInput } from "./cluster.js";
+
+export {
+  selectNewsEvidence,
+  type NewsEvidenceSelectionRequest,
+  type SelectedNewsEvidence
+} from "./select.js";

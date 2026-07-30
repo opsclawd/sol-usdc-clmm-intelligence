@@ -23,3 +23,6 @@ jobs:
   - name: perp-liquidation
     cron: "*/5 * * * *"
     messageFile: cron/routines/perp-liquidation.md
+  - name: support-resistance
+    cron: "15 */4 * * *"
+    messageFile: cron/routines/support-resistance.md
