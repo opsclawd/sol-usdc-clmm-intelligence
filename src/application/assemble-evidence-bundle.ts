@@ -329,6 +329,7 @@ export async function assembleEvidenceBundle(
       { source: "solana-status-api", observationKind: "protocol_incident" },
       { source: "helius-api", observationKind: "whale_transfer" },
       { source: "helius-api", observationKind: "whale_swap" },
+      { source: "birdeye-api", observationKind: "whale_swap" },
       { source: "helius-api", observationKind: "stablecoin_flow" },
       { source: "helius-api", observationKind: "cex_flow_proxy" },
       { source: "birdeye-api", observationKind: "dex_net_flow" }
