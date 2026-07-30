@@ -54,7 +54,7 @@ export interface NodeRuntime {
     driftBaseUrl: string;
     driftSymbol: string;
     driftMarketIndex: number;
-    driftPrecisions: {
+    driftPrecisions?: {
       pricePrecisionExp: number;
       basePrecisionExp: number;
       quotePrecisionExp: number;
@@ -171,8 +171,7 @@ export function createNodeRuntime(): NodeRuntime {
         symbol: options.driftSymbol,
         marketIndex: options.driftMarketIndex,
         http: this.http,
-        retry: this.retryControl,
-        precisions: options.driftPrecisions
+        retry: this.retryControl
       });
 
       return [

@@ -3,7 +3,7 @@ import { HttpDriftSource } from "../../../src/adapters/node/http-drift-source.js
 import { FakeHttp, FakeRetry } from "../../fakes/index.js";
 
 describe("HttpDriftSource", () => {
-  it("unwraps Velocity funding-rate and market-stat envelopes into canonical facts", async () => {
+  it("unwraps Drift funding-rate and market-stat envelopes into canonical facts", async () => {
     const fakeHttp = new FakeHttp();
     const fakeRetry = new FakeRetry();
     const adapter = new HttpDriftSource({
@@ -300,7 +300,7 @@ describe("HttpDriftSource", () => {
     expect(snapshot2.facts.some((f) => f.kind === "leverage_proxy")).toBe(false);
   });
 
-  it("filters Velocity liquidation records by market index and requested time window", async () => {
+  it("filters Drift liquidation records by market index and requested time window", async () => {
     const fakeHttp = new FakeHttp();
     const fakeRetry = new FakeRetry();
     const adapter = new HttpDriftSource({
@@ -435,7 +435,7 @@ describe("HttpDriftSource", () => {
     expect(snapshot.facts.some((f) => f.kind === "liquidation_event")).toBe(false);
   });
 
-  it("preserves partial coverage when one Velocity endpoint fails", async () => {
+  it("preserves partial coverage when one Drift endpoint fails", async () => {
     const fakeHttp = new FakeHttp();
     const fakeRetry = new FakeRetry();
     const adapter = new HttpDriftSource({
@@ -480,7 +480,7 @@ describe("HttpDriftSource", () => {
     expect(snapshot.coverage.liquidation_event.status).toBe("available");
   });
 
-  it("retries only retryable Velocity request failures and redacts diagnostics", async () => {
+  it("retries only retryable Drift request failures and redacts diagnostics", async () => {
     const fakeHttp = new FakeHttp();
     const fakeRetry = new FakeRetry();
     const adapter = new HttpDriftSource({
@@ -511,5 +511,94 @@ describe("HttpDriftSource", () => {
     expect(snapshot.coverage.funding_rate.status).toBe("unavailable");
     expect(snapshot.coverage.funding_rate.diagnostic).toContain("[REDACTED]");
     expect(snapshot.coverage.funding_rate.diagnostic).not.toContain("secret12345");
+  });
+
+  it("filters Drift funding rate records by requested time window", async () => {
+    const fakeHttp = new FakeHttp();
+    const adapter = new HttpDriftSource({
+      baseUrl: "https://data.velocity.exchange",
+      symbol: "SOL-PERP",
+      marketIndex: 0,
+      http: fakeHttp,
+      retry: new FakeRetry()
+    });
+
+    fakeHttp.setResponse("https://data.velocity.exchange/market/SOL-PERP/fundingRates", {
+      body: {
+        records: [
+          { id: "f-before", ts: 1699998999999, fundingRate: "0.01" },
+          { id: "f-in-window", ts: 1699999500000, fundingRate: "0.02" },
+          { id: "f-after", ts: 1700000000001, fundingRate: "0.03" }
+        ]
+      }
+    });
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/markets", { body: { markets: [] } });
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/liquidations", {
+      body: { records: [] }
+    });
+
+    const snapshot = await adapter.collect({
+      pair: "SOL/USDC",
+      fromUnixMs: 1699999000000,
+      toUnixMs: 1700000000000
+    });
+
+    const fundingFacts = snapshot.facts.filter((f) => f.kind === "funding_rate");
+    expect(fundingFacts).toHaveLength(1);
+    expect(fundingFacts[0]?.payload).toMatchObject({
+      sourceEventId: "drift-funding-f-in-window",
+      fundingRate: "0.02",
+      observedAtUnixMs: 1699999500000
+    });
+  });
+
+  it("allows open interest of 0 and zero leverage proxy ratio", async () => {
+    const fakeHttp = new FakeHttp();
+    const adapter = new HttpDriftSource({
+      baseUrl: "https://data.velocity.exchange",
+      symbol: "SOL-PERP",
+      marketIndex: 0,
+      http: fakeHttp,
+      retry: new FakeRetry()
+    });
+
+    fakeHttp.setResponse("https://data.velocity.exchange/market/SOL-PERP/fundingRates", {
+      body: { records: [] }
+    });
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/liquidations", {
+      body: { records: [] }
+    });
+    fakeHttp.setResponse("https://data.velocity.exchange/stats/markets", {
+      body: {
+        markets: [
+          {
+            symbol: "SOL-PERP",
+            oraclePrice: "100.0",
+            markPrice: "100.0",
+            openInterest: { long: "0", short: "-50.0" }
+          }
+        ]
+      }
+    });
+
+    const snapshot = await adapter.collect({
+      pair: "SOL/USDC",
+      fromUnixMs: 1699999000000,
+      toUnixMs: 1700000000000
+    });
+
+    expect(snapshot.coverage.open_interest.status).toBe("available");
+    expect(snapshot.coverage.leverage_proxy.status).toBe("available");
+
+    const oiFact = snapshot.facts.find((f) => f.kind === "open_interest");
+    expect(oiFact?.payload).toMatchObject({
+      openInterestBase: "50",
+      openInterestUsdc: "5000"
+    });
+
+    const levFact = snapshot.facts.find((f) => f.kind === "leverage_proxy");
+    expect(levFact?.payload).toMatchObject({
+      longShortRatio: "0"
+    });
   });
 });
