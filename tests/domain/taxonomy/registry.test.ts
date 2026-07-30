@@ -611,9 +611,14 @@ describe("allows only the source providers that can emit each flow kind", () => 
     expect(entry.provenanceRequirements.allowedSourceRefs).toContain("helius-api");
   });
 
-  it("whale_swap allows helius-api as provenance source", () => {
+  it("whale_swap allows only birdeye-api as provenance source", () => {
     const entry = getObservationKindEntry("whale_swap");
-    expect(entry.provenanceRequirements.allowedSourceRefs).toContain("helius-api");
+    expect(entry.provenanceRequirements.allowedSourceRefs).toEqual(["birdeye-api"]);
+  });
+
+  it("whale_swap rejects helius-api as provenance source", () => {
+    const entry = getObservationKindEntry("whale_swap");
+    expect(entry.provenanceRequirements.allowedSourceRefs).not.toContain("helius-api");
   });
 
   it("stablecoin_flow allows helius-api as provenance source", () => {
