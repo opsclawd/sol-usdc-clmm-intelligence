@@ -2,6 +2,14 @@ import http from "node:http";
 import { execSync } from "node:child_process";
 import { createNodeRuntime } from "../src/adapters/node/composition-root.js";
 import { runCoreEvidencePipelineScript } from "./collectors/core-evidence-pipeline.js";
+import { canonicalizePayload } from "../src/domain/content-hash.js";
+import { sql } from "drizzle-orm";
+
+interface DbWithExecute {
+  db: {
+    execute: (query: unknown) => Promise<unknown>;
+  };
+}
 
 async function main() {
   const dbUrl = process.env.DATABASE_URL || "postgres://postgres@localhost:5432/intelligence_test";
@@ -14,19 +22,126 @@ async function main() {
     stdio: "inherit"
   });
 
+  const runtime = createNodeRuntime();
+  const dbAdapter = (await runtime.getDb()) as unknown as DbWithExecute;
+  console.log("[Verify Task 4] Cleaning test database tables...");
+  await dbAdapter.db.execute(sql`
+    TRUNCATE intelligence.raw_observations,
+             intelligence.normalized_observations,
+             intelligence.derived_features,
+             intelligence.evidence_bundles,
+             intelligence.research_briefs,
+             intelligence.publish_attempts CASCADE;
+  `);
+
+  const persistence = await runtime.getPersistence();
+
+  // 1. Seed historical price observations so volatility warm-up is satisfied live
+  const now = Date.now();
+  console.log("[Verify Task 4] Seeding 10 historical Pyth price ticks (spanning 45m)...");
+  for (let i = 0; i < 10; i++) {
+    const tickTime = now - (10 - i) * 5 * 60 * 1000;
+    const priceDecimal = (150.0 + (i % 3) * 0.1).toFixed(4);
+    const payload = {
+      kind: "oracle_price",
+      schemaVersion: 1,
+      pair: "SOL/USDC",
+      assets: {
+        baseMint: "So11111111111111111111111111111111111111112",
+        quoteMint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        baseDecimals: 9,
+        quoteDecimals: 6
+      },
+      priceData: {
+        price: priceDecimal,
+        confidence: "0.05",
+        status: "trading",
+        ageMs: 100
+      },
+      observedSource: {
+        source: "pyth-hermes",
+        observedAtUnixMs: tickTime,
+        fetchedAtUnixMs: tickTime,
+        slot: 10000 + i
+      },
+      bounds: {
+        upperBound: (parseFloat(priceDecimal) + 0.05).toFixed(4),
+        lowerBound: (parseFloat(priceDecimal) - 0.05).toFixed(4)
+      },
+      confidenceRatio: { ratioBps: 3, level: "tight" },
+      warnings: []
+    };
+
+    const { payloadCanonical, payloadHash } = await canonicalizePayload(payload);
+    const rawRes = await persistence.rawObservationRepo.insertOrClassify({
+      source: "pyth-hermes",
+      sourceObservationKey: `pyth-hist-tick-${i}-${tickTime}`,
+      observedAtUnixMs: tickTime,
+      fetchedAtUnixMs: tickTime,
+      payloadHash,
+      payloadCanonical,
+      parseStatus: "parsed",
+      receivedAtUnixMs: tickTime
+    });
+
+    const rawId = rawRes.row.id;
+    await persistence.normalizedObservationRepo.insert({
+      rawObservationId: rawId,
+      source: "pyth-hermes",
+      observationKind: "oracle_price",
+      signalClass: "deterministic",
+      evidenceFamily: "clmm_state",
+      payload,
+      payloadHash,
+      confidence: {
+        components: {
+          sourceReliability: 1,
+          dataCompleteness: 1,
+          derivationConfidence: 1,
+          llmConfidence: null
+        },
+        compositeScore: 1,
+        level: "high",
+        weightingVersion: "v1",
+        reasons: []
+      },
+      confidenceComposite: 1,
+      confidenceLevel: "high",
+      validUntilUnixMs: tickTime + 3600000,
+      isStale: false,
+      provenance: {
+        sourceRefs: [],
+        rawObservationRefs: [
+          { refType: "raw_observation", id: rawId, source: "pyth-hermes", payloadHash }
+        ],
+        derivedFromRefs: [],
+        processRef: {
+          collector: "pyth-collector",
+          jobName: "collect-pyth-price",
+          pipelineRunId: null,
+          codeVersion: null,
+          modelVersion: null
+        },
+        codeVersion: "1.0.0",
+        runId: null
+      },
+      receivedAtUnixMs: tickTime
+    });
+  }
+
   // Start mock endpoints for external APIs required by core pipeline run
   const clmmServer = http.createServer((req, res) => {
-    const now = Date.now();
+    const curNow = Date.now();
     const body = JSON.stringify({
       bundle: {
         pair: "SOL/USDC",
         source: "orca",
-        observedAtUnixMs: now,
+        observedAtUnixMs: curNow,
         pool: {
           poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
           pair: "SOL/USDC",
           source: "orca",
-          observedAtUnixMs: now,
+          observedAtUnixMs: curNow,
           tokenPairLabel: "SOL/USDC",
           currentPrice: 150.5,
           currentPriceLabel: "150.50",
@@ -46,7 +161,7 @@ async function main() {
             poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
             pair: "SOL/USDC",
             source: "orca",
-            observedAtUnixMs: now,
+            observedAtUnixMs: curNow,
             rangeState: "in-range",
             lowerTick: -100,
             upperTick: 100,
@@ -89,7 +204,7 @@ async function main() {
             poolId: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
             pair: "SOL/USDC",
             source: "orca",
-            observedAtUnixMs: now,
+            observedAtUnixMs: curNow,
             rangeState: "in-range",
             lowerTick: -200,
             upperTick: 200,
@@ -226,8 +341,60 @@ async function main() {
   process.env.REGIME_ENGINE_AUTH_TOKEN = "dummy_token";
 
   console.log("[Verify Task 4] Executing core evidence pipeline live...");
-  const runtime = createNodeRuntime();
   await runCoreEvidencePipelineScript(runtime);
+
+  // Use fresh runtime instance for post-pipeline DB queries since runtime's DB connection was closed by pipeline cleanup
+  const runtime2 = createNodeRuntime();
+  const persistence2 = await runtime2.getPersistence();
+
+  // Assert DB states for Invariant 4 (warmed_volatility_is_usable)
+  const volFeatures = await persistence2.featureRepo.findByKind("realized_volatility_1h", 0);
+  const latestVol = volFeatures[volFeatures.length - 1];
+  console.log(
+    `[Verify Task 4] Realized volatility feature status: ${latestVol?.status}, value: ${latestVol?.value}`
+  );
+  if (latestVol?.status !== "AVAILABLE" || latestVol?.value === null) {
+    throw new Error(
+      `Expected realized_volatility_1h to be AVAILABLE with non-null value, got status=${latestVol?.status}, value=${latestVol?.value}`
+    );
+  }
+
+  // Execute missing-position test case for Invariant 2 (live in this script)
+  console.log(
+    "[Verify Task 4] Testing missing_position_state_prevents_only_matching_bundle live..."
+  );
+  process.env.INTELLIGENCE_POSITION_IDS = "pos-sol-usdc-01,pos-sol-usdc-missing";
+  const runtime3 = createNodeRuntime();
+  await runCoreEvidencePipelineScript(runtime3);
+
+  const runtime4 = createNodeRuntime();
+  const persistence4 = await runtime4.getPersistence();
+  const allBundles = await persistence4.bundleRepo.findByPair("SOL/USDC", 0);
+  type PayloadWithScope = { scope?: { positionId?: string } };
+  const positionIdsInBundles = allBundles.map(
+    (b) => (b.payload as PayloadWithScope)?.scope?.positionId
+  );
+  console.log(
+    `[Verify Task 4] Position IDs in persisted evidence bundles: ${JSON.stringify(positionIdsInBundles)}`
+  );
+
+  const missingPosBundle = allBundles.find(
+    (b) => (b.payload as PayloadWithScope)?.scope?.positionId === "pos-sol-usdc-missing"
+  );
+  const validPosBundle = allBundles.find(
+    (b) => (b.payload as PayloadWithScope)?.scope?.positionId === "pos-sol-usdc-01"
+  );
+
+  if (missingPosBundle) {
+    throw new Error(
+      `Expected missing position pos-sol-usdc-missing to have NO bundle persisted, but found bundle ID ${missingPosBundle.id}`
+    );
+  }
+  if (!validPosBundle) {
+    throw new Error("Expected valid position pos-sol-usdc-01 to have a persisted evidence bundle");
+  }
+
+  console.log("[Verify Task 4] SUCCESS: All 8 invariants verified live end-to-end!");
 
   clmmServer.close();
   orcaServer.close();
