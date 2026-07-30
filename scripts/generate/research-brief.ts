@@ -110,6 +110,18 @@ export async function runGenerateResearchBriefScript(
     return { outcome: "error", reason: "invalid_evidence_bundle_id" };
   }
 
+  const evaluationTimeUnixMs = (parsedParams as { evaluationTimeUnixMs?: unknown })
+    ?.evaluationTimeUnixMs;
+  if (
+    typeof evaluationTimeUnixMs !== "number" ||
+    !Number.isSafeInteger(evaluationTimeUnixMs) ||
+    evaluationTimeUnixMs <= 0
+  ) {
+    console.error("Invalid request: evaluationTimeUnixMs must be a positive safe integer");
+    process.exitCode = 1;
+    return { outcome: "error", reason: "invalid_evaluation_time_unix_ms" };
+  }
+
   if (!parsedParams.pair || parsedParams.pair !== "SOL/USDC") {
     console.error("Invalid request: pair must be SOL/USDC");
     process.exitCode = 1;

@@ -131,4 +131,30 @@ describe("runGenerateResearchBriefScript", () => {
       expect(mockRuntime.getPersistence).not.toHaveBeenCalled();
     }
   );
+
+  it("rejects a missing evaluationTimeUnixMs before initializing brief dependencies", async () => {
+    const result = await runGenerateResearchBriefScript(mockRuntime, {
+      evidenceBundleId: 5,
+      pair: "SOL/USDC",
+      codeVersion: "1.0.0"
+    });
+    expect(result).toEqual({ outcome: "error", reason: "invalid_evaluation_time_unix_ms" });
+    expect(mockRuntime.getPersistence).not.toHaveBeenCalled();
+    expect(mockGenerateResearchBriefJob).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it.each([0, -1, 1.5, "1", Number.NaN])(
+    "rejects a malformed evaluationTimeUnixMs before initializing brief dependencies",
+    async (evaluationTimeUnixMs) => {
+      const result = await runGenerateResearchBriefScript(mockRuntime, {
+        evidenceBundleId: 5,
+        pair: "SOL/USDC",
+        evaluationTimeUnixMs,
+        codeVersion: "1.0.0"
+      });
+      expect(result.reason).toBe("invalid_evaluation_time_unix_ms");
+      expect(mockRuntime.getPersistence).not.toHaveBeenCalled();
+    }
+  );
 });
