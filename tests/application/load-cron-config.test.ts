@@ -5,6 +5,7 @@ import { FakeTextReader, FakeEnv } from "../fakes/index.js";
 const yaml = `
 timezone: America/Edmonton
 session: isolated
+workingDirectory: /opt/apps/sol-usdc-clmm-intelligence
 modelEnv: OPENCLAW_MODEL
 thinkingEnv: OPENCLAW_THINKING
 agentEnv: OPENCLAW_AGENT
@@ -37,6 +38,7 @@ describe("loadCronConfig", () => {
     expect(result.defaults).toEqual({
       timezone: "America/Edmonton",
       session: "isolated",
+      workingDirectory: "/opt/apps/sol-usdc-clmm-intelligence",
       defaultModel: "opus",
       defaultThinking: "high",
       agent: "claude",

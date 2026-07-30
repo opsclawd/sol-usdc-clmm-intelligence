@@ -6,27 +6,37 @@ Hermes owns the scheduled runtime today. This repo owns the desired logic (`cron
 
 This repo's cron-generation tooling (`pnpm cron:render`, `pnpm cron:sync -- --apply`, `src/application/cron-command.ts`) was originally built against the OpenClaw CLI. As deployed, the OpenClaw gateway has no working model provider configured and cannot execute scheduled jobs. The actual scheduled runtime on the deployment VPS is **Hermes** (`hermes-agent`), a separate agent CLI running as its own systemd gateway service (`hermes-gateway.service`), configured with its own model/provider (MiniMax) entirely outside this repo's `.env`.
 
-The `cron:render`/`cron:sync` tooling and `cron/jobs.yaml`'s field names (`modelEnv: OPENCLAW_MODEL`, etc.) still target OpenClaw's CLI syntax and are **not currently used** to register the real jobs. Jobs are registered directly against Hermes using its own CLI, with schedule/prompt content still sourced from `cron/jobs.yaml` and `cron/routines/*.md` by hand. There is no automated sync between this repo's desired-state files and the live Hermes job list — if you change a schedule or routine prompt here, you must manually re-apply it to Hermes (see below).
+`cron-command.ts` now generates `hermes cron create` commands instead of `openclaw cron add` commands. `pnpm cron:sync -- --apply` is the recommended way to register/refresh jobs from `cron/jobs.yaml`/`cron/routines/*.md` — see below.
+
+Hermes has no per-job model/thinking/agent override and no per-job timezone (it uses one gateway-wide model and the server's local timezone for all jobs), so `cron/jobs.yaml`'s `modelEnv`/`thinkingEnv`/`agentEnv`/`exactEnv`/`timezone`/`session` fields are still read (for schema continuity) but have no effect on the generated command. `delivery.channelEnv`/`delivery.toEnv` do have an effect — they're mapped into `--deliver <channel>:<to>`.
 
 ## Cron desired state
 
-`cron/jobs.yaml` is still the desired schedule and prompt-file mapping, read manually rather than via `cron:sync`.
+`cron/jobs.yaml` is the desired schedule and prompt-file mapping.
 
-## Registering / updating a job on Hermes
+## Registering / updating jobs
 
-From the Hermes install directory on the target host:
+```bash
+pnpm cron:render          # print the hermes cron create commands without running them
+pnpm cron:sync -- --apply # actually create the jobs against Hermes
+```
+
+This only _adds_ jobs — it has no diff/delete logic, so re-running it against an already-synced gateway creates duplicate jobs. Remove stale ones first:
 
 ```bash
 H="/root/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main"
+$H cron list
+$H cron rm <job-id>
+```
 
-# create
-$H cron create "<cron-expr>" "<prompt text>" --name <job-name> --deliver local
+For a one-off tweak to a single already-registered job without a full re-sync, edit it directly:
 
-# update an existing job's prompt/schedule
+```bash
+H="/root/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main"
 $H cron edit <job-id> --prompt "<new prompt text>" --schedule "<new cron-expr>"
 ```
 
-Prompt text should be the corresponding `cron/routines/<name>.md` content, prefixed with an explicit working-directory instruction (Hermes's terminal backend does not default into this repo's checkout):
+Every generated prompt is prefixed with an explicit working-directory instruction (`cron/jobs.yaml`'s `workingDirectory` field) — Hermes's terminal backend does not default into this repo's checkout:
 
 ```
 Working directory for this task: /opt/apps/sol-usdc-clmm-intelligence — run all shell commands from there (cd into it first).

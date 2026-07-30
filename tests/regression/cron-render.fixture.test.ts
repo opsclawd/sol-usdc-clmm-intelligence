@@ -31,8 +31,8 @@ describe("cron-render regression", () => {
       configPath: "tests/fixtures/cron/perp-liquidation-jobs.yaml"
     });
     expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("hermes cron create '*/5 * * * *'");
     expect(lines[0]).toContain("--name 'perp-liquidation'");
-    expect(lines[0]).toContain("--cron '*/5 * * * *'");
     expect(lines[0]).toContain("pnpm collect:perp-liquidation");
   });
 });

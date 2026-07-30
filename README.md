@@ -527,7 +527,7 @@ cp .env.example .env
 pnpm cron:render
 ```
 
-`pnpm cron:render` prints OpenClaw CLI commands from `cron/jobs.yaml` — this tooling predates the current deployment and is not what registers the real, running jobs. The actual scheduled runtime is **Hermes**; see `scheduling.md` for how jobs are registered and kept in sync with `cron/jobs.yaml`/`cron/routines/*.md` today.
+`pnpm cron:render` prints `hermes cron create` commands generated from `cron/jobs.yaml`. The actual scheduled runtime is **Hermes**; see `scheduling.md` for the full explanation and `pnpm cron:sync -- --apply` to actually register/update jobs against it.
 
 ### Scheduled cron jobs
 
@@ -563,8 +563,8 @@ pnpm db:generate          # generates Drizzle migrations from schema changes
 pnpm db:migrate           # runs Drizzle migrations against DATABASE_URL
 pnpm db:push              # pushes schema changes directly (dev only)
 pnpm db:provision-roles   # provisions least-privilege Postgres roles for the intelligence schema
-pnpm cron:render          # prints OpenClaw cron add commands (legacy tooling — see scheduling.md; not what registers the real Hermes-scheduled jobs)
-pnpm cron:sync -- --apply # creates OpenClaw cron jobs (legacy tooling — see scheduling.md)
+pnpm cron:render          # prints hermes cron create commands generated from cron/jobs.yaml (see scheduling.md)
+pnpm cron:sync -- --apply # creates the jobs against Hermes (does not diff/delete existing jobs — see scheduling.md)
 pnpm verify               # typecheck, lint, format, tests, boundaries
 ```
 
@@ -584,7 +584,7 @@ ORCA_API_BASE=https://api.orca.so/v2/solana
 ORCA_SOL_USDC_WHIRLPOOL=Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE
 ```
 
-For legacy OpenClaw cron delivery (`pnpm cron:sync -- --apply` path only — the current Hermes-based scheduling runtime does not read these; see `scheduling.md`):
+For `pnpm cron:sync -- --apply` (see `scheduling.md`), consumed only by that command — not by the Hermes gateway itself, which has its own separate config:
 
 ```bash
 OPENCLAW_DELIVERY_CHANNEL=telegram
@@ -592,6 +592,8 @@ OPENCLAW_DELIVERY_TO=<chat-id-or-channel-id>
 OPENCLAW_MODEL=opus
 OPENCLAW_THINKING=high
 ```
+
+`OPENCLAW_DELIVERY_CHANNEL`/`OPENCLAW_DELIVERY_TO` are used — mapped into each job's `--deliver <channel>:<to>`. `OPENCLAW_MODEL`/`OPENCLAW_THINKING` (and `OPENCLAW_AGENT`/`OPENCLAW_EXACT`) are read but currently have no effect: Hermes's `cron create` has no per-job model/thinking/agent/exact override, only a single gateway-wide default model configured separately on the Hermes side.
 
 For Support Resistance collection:
 

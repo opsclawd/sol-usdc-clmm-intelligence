@@ -1,6 +1,6 @@
 import type { TextReader } from "../ports/text-reader.js";
 import type { EnvReader } from "../ports/env.js";
-import { buildCronAddArgs } from "./cron-command.js";
+import { buildCronCreateArgs } from "./cron-command.js";
 import { loadCronConfig } from "./load-cron-config.js";
 
 export interface RenderCronCommandsDeps {
@@ -13,15 +13,18 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
+const FLAG_NAMES = new Set(["--name", "--deliver"]);
+
 export async function renderCronCommands(deps: RenderCronCommandsDeps): Promise<string[]> {
   const { defaults, preparedJobs } = await loadCronConfig(deps);
 
   return preparedJobs.map((prepared) => {
-    const { args } = buildCronAddArgs({
+    const { command, args } = buildCronCreateArgs({
       job: prepared.job,
       message: prepared.message,
       timezone: defaults.timezone,
       session: defaults.session,
+      workingDirectory: defaults.workingDirectory,
       exact: defaults.exact,
       ...(defaults.defaultModel ? { defaultModel: defaults.defaultModel } : {}),
       ...(defaults.defaultThinking ? { defaultThinking: defaults.defaultThinking } : {}),
@@ -29,21 +32,7 @@ export async function renderCronCommands(deps: RenderCronCommandsDeps): Promise<
       ...(defaults.delivery ? { delivery: defaults.delivery } : {})
     });
     const flagArgs = args.slice(2);
-    const FLAG_NAMES = new Set([
-      "--name",
-      "--cron",
-      "--tz",
-      "--session",
-      "--message",
-      "--model",
-      "--thinking",
-      "--agent",
-      "--exact",
-      "--announce",
-      "--channel",
-      "--to"
-    ]);
     const quoted = flagArgs.map((arg) => (FLAG_NAMES.has(arg) ? arg : shellQuote(arg)));
-    return ["openclaw", "cron", "add", ...quoted].join(" ");
+    return [command, "cron", "create", ...quoted].join(" ");
   });
 }

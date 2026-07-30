@@ -13,13 +13,14 @@ If `pnpm collect:core` fails, check the configuration or credentials of the fail
 
 ## Register scheduled jobs
 
-The scheduled runtime is **Hermes**, not OpenClaw — see `scheduling.md` for the full explanation and current registration procedure. `pnpm cron:render` / `pnpm cron:sync -- --apply` still target the OpenClaw CLI and are legacy/unused by the current deployment. In short, on the target host:
+The scheduled runtime is **Hermes**, not OpenClaw — see `scheduling.md` for the full explanation. `pnpm cron:render`/`pnpm cron:sync -- --apply` generate and (with `--apply`) run `hermes cron create` commands from `cron/jobs.yaml`/`cron/routines/*.md`:
 
 ```bash
-H="/root/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main"
-$H cron create "<cron-expr>" "<prompt from cron/routines/<name>.md, prefixed with a working-directory instruction>" --name <name> --deliver local
-$H cron list
+pnpm cron:render          # print the hermes cron create commands without running them
+pnpm cron:sync -- --apply # actually create/update the jobs against Hermes
 ```
+
+This only _adds_ jobs — it does not diff or delete existing ones, so re-running it after jobs are already registered creates duplicates. Remove stale jobs first with `hermes cron rm <job-id>` (see "Test a job" below for listing IDs).
 
 If migrating from an old OpenClaw-registered deployment, any legacy jobs live in OpenClaw's own job store and are unrelated to Hermes's — they do not need to be ported, since scheduling was rebuilt on Hermes from a clean slate.
 
@@ -139,7 +140,7 @@ If a job's `Next run` never advances and it silently flips to `[inactive]`/`comp
 
 ### Cron fired but no message arrived
 
-Check the job's `--deliver` target (`hermes cron list` shows it per job) rather than `OPENCLAW_DELIVERY_CHANNEL`/`OPENCLAW_DELIVERY_TO` — those env vars are consumed only by the legacy, unused `cron:sync` (OpenClaw) path.
+Check the job's `--deliver` target (`hermes cron list` shows it per job). `OPENCLAW_DELIVERY_CHANNEL`/`OPENCLAW_DELIVERY_TO` are consumed by `pnpm cron:sync` at registration time (mapped into `--deliver <channel>:<to>`) — they have no effect on an already-registered job; edit it directly with `hermes cron edit <job-id> --deliver <target>` instead.
 
 ### Missing data
 

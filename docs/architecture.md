@@ -30,7 +30,7 @@ Boundary rules are enforced by `dependency-cruiser` (`pnpm boundaries`) with `ts
 
 ## No-execution boundary
 
-This repo produces advisory artifacts. It does not sign, submit, rebalance, swap, or perform wallet execution. The only side effects scripts can produce are: writing JSON to `data/` and `outputs/`, and rendering cron commands (`pnpm cron:render`). The `pnpm cron:sync -- --apply` path invokes the `openclaw` CLI, but that tooling is legacy and unused by the current deployment — see `scheduling.md`. Cron jobs are actually registered directly against the Hermes CLI.
+This repo produces advisory artifacts. It does not sign, submit, rebalance, swap, or perform wallet execution. The only side effects scripts can produce are: writing JSON to `data/` and `outputs/`, rendering cron commands (`pnpm cron:render`), and (only via `pnpm cron:sync -- --apply`) invoking the `hermes` CLI to register cron jobs. See `scheduling.md`.
 
 ## Downstream split
 
