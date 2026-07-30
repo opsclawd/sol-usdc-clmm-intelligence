@@ -286,8 +286,12 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
     try {
       const url = `${this.baseUrl}/stats/markets`;
       const res = await this.fetchWithRetry<unknown>(url);
-      if (!Array.isArray(res)) {
-        const diag = "Expected array from stats/markets endpoint";
+      if (
+        typeof res !== "object" ||
+        res === null ||
+        !Array.isArray((res as Record<string, unknown>).markets)
+      ) {
+        const diag = "Expected object with markets array from stats/markets endpoint";
         return {
           oiCoverage: { kind: "open_interest", status: "malformed", diagnostic: diag },
           basisCoverage: { kind: "perp_basis", status: "malformed", diagnostic: diag },
@@ -296,7 +300,8 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
         };
       }
 
-      const marketRow = res.find(
+      const markets = (res as Record<string, unknown>).markets as unknown[];
+      const marketRow = markets.find(
         (item) =>
           typeof item === "object" &&
           item !== null &&
