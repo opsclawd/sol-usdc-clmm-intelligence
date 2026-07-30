@@ -156,7 +156,7 @@ export async function runAssembleEvidenceBundleScript(
   return redacted;
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const runtime = createNodeRuntime();
 
   const args = process.argv.slice(2);

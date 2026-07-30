@@ -1292,6 +1292,56 @@ describe("invalid input exits before database composition", () => {
 
     consoleErrorSpy.mockRestore();
   });
+
+  it("unsupported schema version produces non-zero exit without repository access", async () => {
+    const rawObservationRepo = createMockRawObservationRepo();
+    const normalizedObservationRepo = createMockNormalizedObservationRepo();
+    const featureRepo = createMockFeatureRepo();
+    const bundleRepo = createMockBundleRepo();
+    const contract = createMockContract();
+    const clock = createMockClock("2024-01-01T00:00:00.000Z");
+
+    const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue(undefined);
+
+    const runtime: NodeRuntime = {
+      http: { getJson: vi.fn() } as unknown as NodeRuntime["http"],
+      jsonStore: { readJson: vi.fn() } as unknown as NodeRuntime["jsonStore"],
+      textReader: { readText: vi.fn() } as unknown as NodeRuntime["textReader"],
+      env: createMockEnvReader({
+        DATABASE_URL: "postgresql://test:test@localhost:5432/test"
+      }),
+      clock,
+      commandRunner: { run: vi.fn() } as unknown as NodeRuntime["commandRunner"],
+      runIdFactory: createMockRunIdFactory(),
+      retryControl: createMockRetryControl(),
+      getDb: vi.fn(),
+      getPersistence: vi.fn().mockResolvedValue({
+        connection: { close: vi.fn().mockResolvedValue(undefined) },
+        rawObservationRepo: rawObservationRepo as unknown as RawObservationRepo,
+        normalizedObservationRepo:
+          normalizedObservationRepo as unknown as NormalizedObservationRepo,
+        featureRepo: featureRepo as unknown as DerivedFeatureRepo,
+        bundleRepo,
+        briefRepo: { insert: vi.fn(), findByBundleId: vi.fn(), findByHash: vi.fn() }
+      }),
+      getContract: vi.fn().mockResolvedValue(contract)
+    };
+
+    const { runAssembleEvidenceBundleScript } =
+      await import("../../scripts/collectors/assemble-evidence-bundle.js");
+
+    const unsupportedSchemaRequest = { ...VALID_REQUEST, schemaVersion: "evidence-bundle.v2" };
+
+    (runtime.jsonStore.readJson as Mock).mockResolvedValue(unsupportedSchemaRequest);
+
+    const result = await runAssembleEvidenceBundleScript(runtime, "data/unsupported-schema.json");
+
+    expect(result).toEqual({ outcome: "error", warnings: ["unsupported_schema_version"] });
+    expect(process.exitCode).toBe(1);
+    expect(runtime.getPersistence).not.toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
+  });
 });
 
 interface ScriptHarnessOptions {
@@ -1672,6 +1722,60 @@ describe("CLI terminal outcomes set exit status", () => {
       expect.any(Error)
     );
     expect(harness.connection.close).toHaveBeenCalledOnce();
+    expect(process.exitCode).toBe(1);
+  });
+});
+
+describe("main() entrypoint", () => {
+  const originalArgv = process.argv;
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    process.exitCode = undefined;
+  });
+
+  afterEach(() => {
+    process.exitCode = originalProcessExitCode;
+    process.argv = originalArgv;
+    vi.doUnmock("../../src/adapters/node/composition-root.js");
+    vi.resetModules();
+  });
+
+  it("missing arguments sets process.exitCode to 1 without invoking the script", async () => {
+    process.argv = ["node", "assemble-evidence-bundle.js"];
+    const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue(undefined);
+
+    const { main } = await import("../../scripts/collectors/assemble-evidence-bundle.js");
+
+    await main();
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "Usage: pnpm assemble:bundle <path-to-request-json>"
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("runAssembleEvidenceBundleScript throwing sets process.exitCode to 1", async () => {
+    process.argv = ["node", "assemble-evidence-bundle.js", "data/assembly-request.json"];
+    const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue(undefined);
+
+    vi.resetModules();
+    vi.doMock("../../src/adapters/node/composition-root.js", () => ({
+      createNodeRuntime: () => ({
+        jsonStore: { readJson: vi.fn().mockResolvedValue(VALID_REQUEST) },
+        getPersistence: vi.fn().mockRejectedValue(new Error("persistence unavailable")),
+        getContract: vi.fn().mockResolvedValue({ validateCanonicalizeAndHash: vi.fn() })
+      })
+    }));
+
+    const { main } = await import("../../scripts/collectors/assemble-evidence-bundle.js");
+
+    await main();
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "Evidence bundle assembly failed:",
+      expect.any(Error)
+    );
     expect(process.exitCode).toBe(1);
   });
 });
