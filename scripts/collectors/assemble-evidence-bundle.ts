@@ -58,6 +58,11 @@ function redactedOutcomeFromResult(result: AssembleEvidenceBundleJobResult): Red
   }
 }
 
+function emitAndReturn(outcome: RedactedOutcome): RedactedOutcome {
+  console.log(JSON.stringify(outcome, null, 2));
+  return outcome;
+}
+
 export async function runAssembleEvidenceBundleScript(
   runtime: NodeRuntime,
   requestPath: string
@@ -73,41 +78,37 @@ export async function runAssembleEvidenceBundleScript(
       err instanceof Error ? err.message : String(err)
     );
     process.exitCode = 1;
-    process.exit(1);
-    return {
+    return emitAndReturn({
       outcome: "error",
       warnings: ["request_parse_failed"]
-    };
+    });
   }
 
   if (!parsedRequest.pair || parsedRequest.pair !== "SOL/USDC") {
     console.error("Invalid request: pair must be SOL/USDC");
     process.exitCode = 1;
-    process.exit(1);
-    return {
+    return emitAndReturn({
       outcome: "error",
       warnings: ["wrong_pair"]
-    };
+    });
   }
 
   if (!parsedRequest.pipelineRunId || !parsedRequest.schemaVersion) {
     console.error("Invalid request: missing required identity or version fields");
     process.exitCode = 1;
-    process.exit(1);
-    return {
+    return emitAndReturn({
       outcome: "error",
       warnings: ["missing_required_fields"]
-    };
+    });
   }
 
   if (parsedRequest.schemaVersion !== "evidence-bundle.v1") {
     console.error("Invalid request: unsupported schema version");
     process.exitCode = 1;
-    process.exit(1);
-    return {
+    return emitAndReturn({
       outcome: "error",
       warnings: ["unsupported_schema_version"]
-    };
+    });
   }
 
   const persistence = await runtime.getPersistence();
@@ -143,26 +144,22 @@ export async function runAssembleEvidenceBundleScript(
   if (assemblyError !== undefined) {
     process.exitCode = 1;
     console.error("Evidence bundle assembly failed:", assemblyError);
-    return {
+    return emitAndReturn({
       outcome: "error",
       warnings: [assemblyError instanceof Error ? assemblyError.message : String(assemblyError)]
-    };
+    });
   }
 
   const redacted = redactedOutcomeFromResult(result!);
 
-  console.log(JSON.stringify(redacted, null, 2));
-
-  if ("code" in result!) {
-    process.exitCode = 1;
-  } else if (result!.outcome === "conflict") {
+  if (redacted.outcome !== "persisted" && redacted.outcome !== "identical_replay") {
     process.exitCode = 1;
   }
 
-  return redacted;
+  return emitAndReturn(redacted);
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const runtime = createNodeRuntime();
 
   const args = process.argv.slice(2);

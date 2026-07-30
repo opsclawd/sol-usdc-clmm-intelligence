@@ -470,6 +470,21 @@ pnpm assemble:bundle data/assembly-request.json
 }
 ```
 
+### No Bundle Response (Exit Code 1)
+
+When no usable features or valid CLMM lineage are available, the command emits the typed
+result to stdout and fails closed:
+
+```json
+{
+  "outcome": "no_bundle",
+  "warnings": []
+}
+```
+
+Callers that need to distinguish this condition from other failures must parse `outcome`;
+all failure classes intentionally use exit code `1`.
+
 ### Conflict Response (Exit Code 1)
 
 ```json
@@ -512,8 +527,16 @@ The assembler selects up to seven canonical feature slots:
 
 ### Exit Codes
 
-- **0:** Success (persisted or identical_replay)
-- **1:** Failure (conflict, validation error, malformed request, database error)
+| Outcome / failure class                                        | Exit code | Stdout contract                                                          | Operator meaning                                                           |
+| -------------------------------------------------------------- | --------: | ------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `persisted`                                                    |         0 | Redacted typed JSON                                                      | A new bundle was persisted.                                                |
+| `identical_replay`                                             |         0 | Redacted typed JSON                                                      | The identical bundle already exists; no new row was created.               |
+| `no_bundle`                                                    |         1 | `{"outcome":"no_bundle","warnings":[]}` (pretty-printed)                 | No eligible bundle was produced; stop downstream standalone commands.      |
+| `conflict`                                                     |         1 | Redacted typed JSON                                                      | The logical identity exists with different canonical content; fail closed. |
+| Structured validation, lineage, contract, or persistence error |         1 | `{"outcome":"error","warnings":["<CODE>"]}` (pretty-printed)             | Assembly failed before a usable new outcome was produced.                  |
+| Malformed request or uncaught runtime error                    |         1 | Diagnostic on stderr; structured return where the runner can provide one | Fix the request or infrastructure failure before retrying.                 |
+
+Deterministic orchestration must inspect the typed `assembleEvidenceBundle` result and must not use the CLI exit code as a substitute for outcome handling.
 
 ### Replay Behavior
 
