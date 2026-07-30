@@ -1152,6 +1152,7 @@ describe("invalid input exits before database composition", () => {
     const clock = createMockClock("2024-01-01T00:00:00.000Z");
 
     const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const consoleLogSpy = vi.spyOn(console, "log").mockReturnValue(undefined);
 
     const runtime: NodeRuntime = {
       http: { getJson: vi.fn() } as unknown as NodeRuntime["http"],
@@ -1188,10 +1189,12 @@ describe("invalid input exits before database composition", () => {
       outcome: "error",
       warnings: ["request_parse_failed"]
     });
+    expect(JSON.parse(consoleLogSpy.mock.lastCall![0] as string)).toEqual(result);
     expect(process.exitCode).toBe(1);
     expect(runtime.getPersistence).not.toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
+    consoleLogSpy.mockRestore();
   });
 
   it("missing identity fields return missing_required_fields and exit before persistence composition", async () => {
@@ -1203,6 +1206,7 @@ describe("invalid input exits before database composition", () => {
     const clock = createMockClock("2024-01-01T00:00:00.000Z");
 
     const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const consoleLogSpy = vi.spyOn(console, "log").mockReturnValue(undefined);
 
     const runtime: NodeRuntime = {
       http: { getJson: vi.fn() } as unknown as NodeRuntime["http"],
@@ -1246,10 +1250,12 @@ describe("invalid input exits before database composition", () => {
       outcome: "error",
       warnings: ["missing_required_fields"]
     });
+    expect(JSON.parse(consoleLogSpy.mock.lastCall![0] as string)).toEqual(missingFieldsResult);
     expect(process.exitCode).toBe(1);
     expect(runtime.getPersistence).not.toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
+    consoleLogSpy.mockRestore();
   });
 
   it("wrong pair returns wrong_pair and exits before persistence composition", async () => {
@@ -1261,6 +1267,7 @@ describe("invalid input exits before database composition", () => {
     const clock = createMockClock("2024-01-01T00:00:00.000Z");
 
     const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const consoleLogSpy = vi.spyOn(console, "log").mockReturnValue(undefined);
 
     const runtime: NodeRuntime = {
       http: { getJson: vi.fn() } as unknown as NodeRuntime["http"],
@@ -1299,10 +1306,12 @@ describe("invalid input exits before database composition", () => {
       outcome: "error",
       warnings: ["wrong_pair"]
     });
+    expect(JSON.parse(consoleLogSpy.mock.lastCall![0] as string)).toEqual(wrongPairResult);
     expect(process.exitCode).toBe(1);
     expect(runtime.getPersistence).not.toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
+    consoleLogSpy.mockRestore();
   });
 
   it("unsupported schema returns unsupported_schema_version and exits before persistence composition", async () => {
@@ -1314,6 +1323,7 @@ describe("invalid input exits before database composition", () => {
     const clock = createMockClock("2024-01-01T00:00:00.000Z");
 
     const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const consoleLogSpy = vi.spyOn(console, "log").mockReturnValue(undefined);
 
     const runtime: NodeRuntime = {
       http: { getJson: vi.fn() } as unknown as NodeRuntime["http"],
@@ -1355,10 +1365,12 @@ describe("invalid input exits before database composition", () => {
       outcome: "error",
       warnings: ["unsupported_schema_version"]
     });
+    expect(JSON.parse(consoleLogSpy.mock.lastCall![0] as string)).toEqual(result);
     expect(process.exitCode).toBe(1);
     expect(runtime.getPersistence).not.toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
+    consoleLogSpy.mockRestore();
   });
 });
 
@@ -1725,6 +1737,7 @@ describe("CLI terminal outcomes set exit status", () => {
     });
 
     const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue(undefined);
+    const consoleLogSpy = vi.spyOn(console, "log").mockReturnValue(undefined);
 
     const result = await runAssembleEvidenceBundleScript(
       harness.runtime,
@@ -1735,12 +1748,16 @@ describe("CLI terminal outcomes set exit status", () => {
       outcome: "error",
       warnings: ["Evidence bundle assembly failed: Error: clock failed"]
     });
+    expect(JSON.parse(consoleLogSpy.mock.lastCall![0] as string)).toEqual(result);
     expect(consoleErrorSpy).toHaveBeenCalledWith(
       "Evidence bundle assembly failed:",
       expect.any(Error)
     );
     expect(harness.connection.close).toHaveBeenCalledOnce();
     expect(process.exitCode).toBe(1);
+
+    consoleErrorSpy.mockRestore();
+    consoleLogSpy.mockRestore();
   });
 });
 
