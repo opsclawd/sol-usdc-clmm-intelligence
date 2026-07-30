@@ -1136,6 +1136,11 @@ describe("replaying the same input file preserves run and creation identity", ()
 describe("invalid input exits before database composition", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    process.exitCode = undefined;
+  });
+
+  afterEach(() => {
+    process.exitCode = originalProcessExitCode;
   });
 
   it("malformed JSON produces non-zero exit without repository access", async () => {
@@ -1147,7 +1152,6 @@ describe("invalid input exits before database composition", () => {
     const clock = createMockClock("2024-01-01T00:00:00.000Z");
 
     const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue(undefined);
-    const processExitSpy = vi.spyOn(process, "exit").mockImplementation((() => {}) as () => never);
 
     const runtime: NodeRuntime = {
       http: { getJson: vi.fn() } as unknown as NodeRuntime["http"],
@@ -1178,13 +1182,13 @@ describe("invalid input exits before database composition", () => {
     const { runAssembleEvidenceBundleScript } =
       await import("../../scripts/collectors/assemble-evidence-bundle.js");
 
-    await runAssembleEvidenceBundleScript(runtime, "data/malformed.json");
+    const result = await runAssembleEvidenceBundleScript(runtime, "data/malformed.json");
 
-    expect(processExitSpy).toHaveBeenCalledWith(1);
+    expect(result).toEqual({ outcome: "error", warnings: ["request_parse_failed"] });
+    expect(process.exitCode).toBe(1);
     expect(runtime.getPersistence).not.toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
-    processExitSpy.mockRestore();
   });
 
   it("missing required identity/version fields produces non-zero exit", async () => {
@@ -1196,7 +1200,6 @@ describe("invalid input exits before database composition", () => {
     const clock = createMockClock("2024-01-01T00:00:00.000Z");
 
     const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue(undefined);
-    const processExitSpy = vi.spyOn(process, "exit").mockImplementation((() => {}) as () => never);
 
     const runtime: NodeRuntime = {
       http: { getJson: vi.fn() } as unknown as NodeRuntime["http"],
@@ -1231,13 +1234,13 @@ describe("invalid input exits before database composition", () => {
 
     (runtime.jsonStore.readJson as Mock).mockResolvedValue(invalidRequest);
 
-    await runAssembleEvidenceBundleScript(runtime, "data/invalid-request.json");
+    const result = await runAssembleEvidenceBundleScript(runtime, "data/invalid-request.json");
 
-    expect(processExitSpy).toHaveBeenCalledWith(1);
+    expect(result).toEqual({ outcome: "error", warnings: ["missing_required_fields"] });
+    expect(process.exitCode).toBe(1);
     expect(runtime.getPersistence).not.toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
-    processExitSpy.mockRestore();
   });
 
   it("wrong pair produces non-zero exit without repository access", async () => {
@@ -1249,7 +1252,6 @@ describe("invalid input exits before database composition", () => {
     const clock = createMockClock("2024-01-01T00:00:00.000Z");
 
     const consoleErrorSpy = vi.spyOn(console, "error").mockReturnValue(undefined);
-    const processExitSpy = vi.spyOn(process, "exit").mockImplementation((() => {}) as () => never);
 
     const runtime: NodeRuntime = {
       http: { getJson: vi.fn() } as unknown as NodeRuntime["http"],
@@ -1282,13 +1284,13 @@ describe("invalid input exits before database composition", () => {
 
     (runtime.jsonStore.readJson as Mock).mockResolvedValue(wrongPairRequest);
 
-    await runAssembleEvidenceBundleScript(runtime, "data/wrong-pair.json");
+    const result = await runAssembleEvidenceBundleScript(runtime, "data/wrong-pair.json");
 
-    expect(processExitSpy).toHaveBeenCalledWith(1);
+    expect(result).toEqual({ outcome: "error", warnings: ["wrong_pair"] });
+    expect(process.exitCode).toBe(1);
     expect(runtime.getPersistence).not.toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
-    processExitSpy.mockRestore();
   });
 });
 
