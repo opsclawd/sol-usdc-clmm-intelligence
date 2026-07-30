@@ -6,6 +6,7 @@ import type {
   ProtocolIncidentSourceError
 } from "../../../src/ports/protocol-incident-source.js";
 import { HttpProtocolIncidentSource } from "../../../src/adapters/node/http-protocol-incident-source.js";
+import { FakeClock, FakeRunIdFactory } from "../../fakes/index.js";
 
 function makeStatuspageResponse(
   incidents: readonly Record<string, unknown>[] = [
@@ -66,56 +67,116 @@ function createMockHttpClient(behavior: {
 describe("HttpProtocolIncidentSource", () => {
   describe("solana-statuspage-mapping", () => {
     it("builds the full-history endpoint and maps a real Statuspage incident", async () => {
-      const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(1707232164842);
-      try {
-        const mockHttp = createMockHttpClient({
-          body: makeStatuspageResponse()
-        });
+      const mockHttp = createMockHttpClient({
+        body: makeStatuspageResponse()
+      });
 
-        const source = new HttpProtocolIncidentSource({
-          http: mockHttp,
-          url: "https://api.example.com/incidents/",
-          apiKey: "secret-key-12345",
+      const source = new HttpProtocolIncidentSource({
+        http: mockHttp,
+        url: "https://api.example.com/incidents/",
+        apiKey: "secret-key-12345",
+        timeoutMs: 5000,
+        maxAttempts: 2
+      });
+
+      const result = await source.collect({ network: "solana-mainnet" });
+
+      expect(result).toEqual({
+        providerId: "solana-status-api",
+        providerRunId: expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        ),
+        sourceId: "solana-status-incidents",
+        network: "solana-mainnet",
+        asOfUnixMs: 1707232164842,
+        license: "MIT",
+        retention: "bounded",
+        confirmationLevel: "explicit",
+        incidents: [
+          {
+            incidentId: "n5kcgs8dl9pj",
+            incidentType: "mb-020624",
+            severity: "CRITICAL",
+            sourceReferences: ["https://stspg.io/g277l7fp0gw3"]
+          }
+        ]
+      });
+
+      expect(mockHttp.getJson).toHaveBeenCalledWith(
+        "https://api.example.com/incidents/api/v2/incidents.json",
+        expect.objectContaining({
           timeoutMs: 5000,
-          maxAttempts: 2
-        });
-
-        const result = await source.collect({ network: "solana-mainnet" });
-
-        expect(result).toEqual({
-          providerId: "solana-status-api",
-          providerRunId: expect.stringMatching(
-            /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-          ),
-          sourceId: "solana-status-incidents",
-          network: "solana-mainnet",
-          asOfUnixMs: 1707232164842,
-          license: "MIT",
-          retention: "bounded",
-          confirmationLevel: "explicit",
-          incidents: [
-            {
-              incidentId: "n5kcgs8dl9pj",
-              incidentType: "mb-020624",
-              severity: "CRITICAL",
-              sourceReferences: ["https://stspg.io/g277l7fp0gw3"]
-            }
-          ]
-        });
-
-        expect(mockHttp.getJson).toHaveBeenCalledWith(
-          "https://api.example.com/incidents/api/v2/incidents.json",
-          expect.objectContaining({
-            timeoutMs: 5000,
-            maxAttempts: 1,
-            headers: expect.objectContaining({
-              Authorization: "Bearer secret-key-12345"
-            })
+          maxAttempts: 1,
+          headers: expect.objectContaining({
+            Authorization: "Bearer secret-key-12345"
           })
-        );
-      } finally {
-        dateNowSpy.mockRestore();
-      }
+        })
+      );
+    });
+
+    it("uses injected clock and runIdFactory ports", async () => {
+      const mockHttp = createMockHttpClient({
+        body: { incidents: [] }
+      });
+      const clock = new FakeClock("2024-05-01T12:00:00.000Z");
+      const runIdFactory = new FakeRunIdFactory(["custom-run-id-123"]);
+
+      const source = new HttpProtocolIncidentSource({
+        http: mockHttp,
+        url: "https://status.solana.com",
+        clock,
+        runIdFactory
+      });
+
+      const result = await source.collect({ network: "solana-mainnet" });
+
+      expect(result.providerRunId).toBe("custom-run-id-123");
+      expect(result.asOfUnixMs).toBe(Date.parse("2024-05-01T12:00:00.000Z"));
+    });
+
+    it("derives asOfUnixMs deterministically from payload timestamps across multiple calls", async () => {
+      const mockHttp = createMockHttpClient({
+        body: makeStatuspageResponse([
+          {
+            id: "inc-1",
+            name: "Degraded Performance",
+            impact: "minor",
+            started_at: "2024-03-15T08:00:00.000Z",
+            updated_at: "2024-03-15T09:30:00.000Z",
+            shortlink: "https://stspg.io/inc-1"
+          }
+        ])
+      });
+
+      const source = new HttpProtocolIncidentSource({
+        http: mockHttp,
+        url: "https://status.solana.com"
+      });
+
+      const res1 = await source.collect({ network: "solana-mainnet" });
+      const res2 = await source.collect({ network: "solana-mainnet" });
+
+      expect(res1.asOfUnixMs).toBe(Date.parse("2024-03-15T09:30:00.000Z"));
+      expect(res2.asOfUnixMs).toBe(Date.parse("2024-03-15T09:30:00.000Z"));
+      expect(res1.asOfUnixMs).toBe(res2.asOfUnixMs);
+    });
+
+    it("does not duplicate path if url already ends with /api/v2/incidents.json", async () => {
+      const mockHttp = createMockHttpClient({
+        body: makeStatuspageResponse([])
+      });
+
+      const source = new HttpProtocolIncidentSource({
+        http: mockHttp,
+        url: "https://status.solana.com/api/v2/incidents.json"
+      });
+
+      await source.collect({ network: "solana-mainnet" });
+
+      expect(mockHttp.getJson).toHaveBeenCalledWith(
+        "https://status.solana.com/api/v2/incidents.json",
+        expect.anything()
+      );
     });
 
     it("normalizes every supported Statuspage impact to the internal severity enum", async () => {

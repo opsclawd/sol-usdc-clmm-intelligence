@@ -41,7 +41,9 @@ export async function runContextEventsCollect(): Promise<void> {
   const protocolIncidentSource = new HttpProtocolIncidentSource({
     http: runtime.http,
     url: solanaStatusUrl,
-    ...(solanaStatusApiKey && { apiKey: solanaStatusApiKey })
+    ...(solanaStatusApiKey && { apiKey: solanaStatusApiKey }),
+    clock: runtime.clock,
+    runIdFactory: runtime.runIdFactory
   });
 
   let result;

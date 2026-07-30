@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import type {
   ProtocolIncidentSourcePort,
   ProtocolIncidentSourceRequest,
@@ -9,7 +8,11 @@ import type {
 import { HttpRequestError } from "../../ports/http.js";
 import type { HttpClient } from "../../ports/http.js";
 import type { RetryControl } from "../../ports/retry.js";
+import type { Clock } from "../../ports/clock.js";
+import type { RunIdFactory } from "../../ports/run-id.js";
 import { SystemRetryControl } from "./system-retry.js";
+import { SystemClock } from "./system-clock.js";
+import { UuidRunIdFactory } from "./uuid-run-id-factory.js";
 
 const STATUSPAGE_INCIDENTS_PATH = "/api/v2/incidents.json";
 const PROVIDER_ID = "solana-status-api";
@@ -25,7 +28,11 @@ function computeBackoffMs(attempt: number, retryControl: RetryControl): number {
 }
 
 function buildIncidentsUrl(baseUrl: string): string {
-  return `${baseUrl.replace(/\/+$/, "")}${STATUSPAGE_INCIDENTS_PATH}`;
+  const cleanUrl = baseUrl.replace(/\/+$/, "");
+  if (cleanUrl.endsWith(STATUSPAGE_INCIDENTS_PATH) || cleanUrl.endsWith("/incidents.json")) {
+    return cleanUrl;
+  }
+  return `${cleanUrl}${STATUSPAGE_INCIDENTS_PATH}`;
 }
 
 function mapImpact(impact: unknown): ProtocolIncidentSourceClaim["severity"] {
@@ -56,17 +63,23 @@ export interface HttpProtocolIncidentSourceOptions {
   readonly timeoutMs?: number;
   readonly maxAttempts?: number;
   readonly retryControl?: RetryControl;
+  readonly clock?: Clock;
+  readonly runIdFactory?: RunIdFactory;
 }
 
 export class HttpProtocolIncidentSource implements ProtocolIncidentSourcePort {
   private readonly timeoutMs: number;
   private readonly maxAttempts: number;
   private readonly retryControl: RetryControl;
+  private readonly clock: Clock;
+  private readonly runIdFactory: RunIdFactory;
 
   constructor(private readonly options: HttpProtocolIncidentSourceOptions) {
     this.timeoutMs = options.timeoutMs ?? 5000;
     this.maxAttempts = options.maxAttempts ?? 2;
     this.retryControl = options.retryControl ?? new SystemRetryControl();
+    this.clock = options.clock ?? new SystemClock();
+    this.runIdFactory = options.runIdFactory ?? new UuidRunIdFactory();
   }
 
   async collect(request: ProtocolIncidentSourceRequest): Promise<ProtocolIncidentSourceSnapshot> {
@@ -101,7 +114,7 @@ export class HttpProtocolIncidentSource implements ProtocolIncidentSourcePort {
           maxAttempts: 1
         });
 
-        return acceptStatuspageResponse(response);
+        return acceptStatuspageResponse(response, this.clock, this.runIdFactory);
       } catch (e) {
         lastError = e instanceof Error ? e : new Error(String(e));
 
@@ -160,7 +173,67 @@ function mapToProtocolIncidentSourceError(
   }
 }
 
-function acceptStatuspageResponse(response: unknown): ProtocolIncidentSourceSnapshot {
+function extractTimestampMs(val: unknown): number | null {
+  if (typeof val === "string" && val.length > 0) {
+    const ms = Date.parse(val);
+    if (!isNaN(ms)) {
+      return ms;
+    }
+  }
+  return null;
+}
+
+function extractAsOfUnixMs(obj: Record<string, unknown>, clock: Clock): number {
+  const timestamps: number[] = [];
+
+  if (typeof obj.page === "object" && obj.page !== null) {
+    const page = obj.page as Record<string, unknown>;
+    const pageTs = extractTimestampMs(page.updated_at);
+    if (pageTs !== null) {
+      timestamps.push(pageTs);
+    }
+  }
+
+  if (Array.isArray(obj.incidents)) {
+    for (const incident of obj.incidents) {
+      if (typeof incident === "object" && incident !== null) {
+        const inc = incident as Record<string, unknown>;
+        for (const key of ["updated_at", "resolved_at", "created_at", "started_at"]) {
+          const ts = extractTimestampMs(inc[key]);
+          if (ts !== null) {
+            timestamps.push(ts);
+          }
+        }
+        if (Array.isArray(inc.incident_updates)) {
+          for (const update of inc.incident_updates) {
+            if (typeof update === "object" && update !== null) {
+              const upd = update as Record<string, unknown>;
+              for (const key of ["created_at", "updated_at", "display_at"]) {
+                const ts = extractTimestampMs(upd[key]);
+                if (ts !== null) {
+                  timestamps.push(ts);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (timestamps.length > 0) {
+    return Math.max(...timestamps);
+  }
+
+  const clockNowMs = Date.parse(clock.now());
+  return isNaN(clockNowMs) ? Date.now() : clockNowMs;
+}
+
+function acceptStatuspageResponse(
+  response: unknown,
+  clock: Clock,
+  runIdFactory: RunIdFactory
+): ProtocolIncidentSourceSnapshot {
   if (typeof response !== "object" || response === null) {
     throw new HttpRequestError("invalid_json", "Response is not an object", null, false);
   }
@@ -218,10 +291,10 @@ function acceptStatuspageResponse(response: unknown): ProtocolIncidentSourceSnap
 
   return Object.freeze({
     providerId: PROVIDER_ID,
-    providerRunId: randomUUID(),
+    providerRunId: runIdFactory.nextRunId(),
     sourceId: SOURCE_ID,
     network: "solana-mainnet" as const,
-    asOfUnixMs: Date.now(),
+    asOfUnixMs: extractAsOfUnixMs(obj, clock),
     license: LICENSE,
     retention: "bounded" as const,
     confirmationLevel: "explicit" as const,
