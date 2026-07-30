@@ -594,7 +594,7 @@ describe("assembleEvidenceBundle with contextual events", () => {
         observationKind: "whale_transfer"
       });
       expect(query.sourceKinds).toContainEqual({
-        source: "helius-api",
+        source: "birdeye-api",
         observationKind: "whale_swap"
       });
       expect(query.sourceKinds).toContainEqual({
