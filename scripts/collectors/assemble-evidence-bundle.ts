@@ -72,7 +72,6 @@ export async function runAssembleEvidenceBundleScript(
       "Failed to parse request JSON:",
       err instanceof Error ? err.message : String(err)
     );
-    process.exitCode = 1;
     process.exit(1);
     return {
       outcome: "error",
@@ -82,7 +81,6 @@ export async function runAssembleEvidenceBundleScript(
 
   if (!parsedRequest.pair || parsedRequest.pair !== "SOL/USDC") {
     console.error("Invalid request: pair must be SOL/USDC");
-    process.exitCode = 1;
     process.exit(1);
     return {
       outcome: "error",
@@ -92,7 +90,6 @@ export async function runAssembleEvidenceBundleScript(
 
   if (!parsedRequest.pipelineRunId || !parsedRequest.schemaVersion) {
     console.error("Invalid request: missing required identity or version fields");
-    process.exitCode = 1;
     process.exit(1);
     return {
       outcome: "error",
@@ -102,7 +99,6 @@ export async function runAssembleEvidenceBundleScript(
 
   if (parsedRequest.schemaVersion !== "evidence-bundle.v1") {
     console.error("Invalid request: unsupported schema version");
-    process.exitCode = 1;
     process.exit(1);
     return {
       outcome: "error",
@@ -153,9 +149,7 @@ export async function runAssembleEvidenceBundleScript(
 
   console.log(JSON.stringify(redacted, null, 2));
 
-  if ("code" in result!) {
-    process.exitCode = 1;
-  } else if (result!.outcome === "conflict" || result!.outcome === "no_bundle") {
+  if (redacted.outcome !== "persisted" && redacted.outcome !== "identical_replay") {
     process.exitCode = 1;
   }
 
