@@ -95,6 +95,8 @@ export async function collectProtocolIncidents(
 
   const snapshot = collectedSnapshot;
 
+  const retrievedAtUnixMs = Math.max(context.startedAtUnixMs, snapshot.asOfUnixMs);
+
   const boundedSnapshotsWithoutHash = snapshot.incidents.map((incident) => ({
     providerId: snapshot.providerId,
     providerSourceEventId: incident.incidentId,
@@ -119,7 +121,7 @@ export async function collectProtocolIncidents(
       sourceObservedAtUnixMs: snapshot.asOfUnixMs
     },
     sourceObservedAtUnixMs: snapshot.asOfUnixMs,
-    retrievedAtUnixMs: context.startedAtUnixMs
+    retrievedAtUnixMs
   }));
 
   const boundedSnapshots: BoundedProtocolIncidentSnapshot[] = await Promise.all(
@@ -145,7 +147,7 @@ export async function collectProtocolIncidents(
       source: SOURCE,
       sourceObservationKey,
       observedAtUnixMs: snapshot.asOfUnixMs,
-      fetchedAtUnixMs: context.startedAtUnixMs,
+      fetchedAtUnixMs: retrievedAtUnixMs,
       payloadCanonical,
       payloadHash,
       validatePayload: (canonical) => {

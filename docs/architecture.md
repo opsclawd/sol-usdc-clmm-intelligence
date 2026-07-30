@@ -155,16 +155,17 @@ Key Architectural Invariants:
 
 Contextual research collectors provide lower-confidence contextual evidence that supplements core telemetry. They follow the same raw-first persistence pattern as core collectors.
 
-### Contextual Events Collector (`macro-calendar-api`, `solana-status-api`)
+### Contextual Events Collector (`solana-status-api`, `macro-calendar-api`)
 
-The contextual events collector (`pnpm collect:context-events`) collects two event families:
+The contextual events collector (`pnpm collect:context-events`) supports two event families:
 
-- **Scheduled events** (`macro-calendar-api`): Token unlocks, protocol upgrades, governance votes, and other scheduled macro events. Query window is ±24 hours from collection time.
-- **Protocol incidents** (`solana-status-api`): Solana network incidents, service disruptions, and security events.
+- **Protocol incidents** (`solana-status-api` live): Solana network incidents, service disruptions, and security events. The Solana Statuspage HTTP adapter constructs the bounded internal envelope directly from vendor incident objects.
+- **Scheduled events** (`macro-calendar-api` deferred): Token unlocks, protocol upgrades, governance votes, and other scheduled macro events (deferred pending a verified compatible provider).
 
 **Key architectural invariants:**
 
-1. **Bounded factual extract retention:** All events carry `retentionMode: "bounded_factual_extract"` and a provider-supplied `license` string. Providers must supply stable `sourceEventId` values and original source timestamps.
+1. **Bounded factual extract retention:** All events carry `retentionMode: "bounded_factual_extract"` and a provider-supplied or adapter-declared `license` string. The Statuspage adapter constructs the bounded internal envelope with fixed MIT license declaration and stable `sourceEventId` values derived from vendor incident IDs.
+
 2. **Raw-first append-only lifecycle:** Raw observations are persisted before normalization. Lifecycle state transitions (SCHEDULED → ACTIVE → RESOLVED, or CANCELLED) are recorded as new rows, never mutations.
 3. **Exact replay detection:** Identity key derives from `${source}::${observationKind}::${sourceEventId}` plus `sourceObservedAtUnixMs` and `payloadHash`. Identical replays produce no new rows.
 4. **Latest-state selection:** Group by identity, pick latest per group, then apply eligibility filters. This prevents older ACTIVE rows from being revived after cancellation/expiry.
@@ -252,20 +253,20 @@ Helius API / Birdeye API provider
   raw_observations
          |
          v (normalized, validated, bounded)
-  normalized_observations (whale_transfer | whale_swap | stablecoin_flow | dex_net_flow | cex_flow_proxy)
+  normalized_observations (whale_transfer | whale_swap | dex_net_flow)
 ```
 
 **Key invariants**:
 
-1. **Factual-vs-motive authority boundary**: On-chain flow data describes what happened on-chain, not why. The collector captures transaction flows, DEX net flows, stablecoin flows, and CEX proxy attributions as factual evidence. No output claims motive, intent, or policy. Final synthesis belongs to regime-engine.
+1. **Factual-vs-motive authority boundary**: On-chain flow data describes what happened on-chain, not why. The collector captures transaction flows (`whale_transfer`, `whale_swap`) and DEX net flows (`dex_net_flow`) as factual evidence (`stablecoin_flow` and `cex_flow_proxy` are deferred). No output claims motive, intent, or policy. Final synthesis belongs to regime-engine.
 2. **Per-event raw-first flow**: Each qualifying event is persisted as a raw observation before normalization. Replays with identical payloads produce no new rows (identical_replay). Changed payloads under the same chain identity create conflicts.
 3. **Stable identities**: Each event carries a stable `sourceEventId` from the provider (transaction signature + event index for Helius; provider-assigned ID for Birdeye). Identity combines `${source}::${sourceEventId}` with `asOfUnixMs` and `payloadHash`.
-4. **Threshold defaults and exact decimal semantics**: All thresholds are decimal strings parsed with exact arithmetic (no JavaScript `number` conversion). Default thresholds: `1000000` for whale transfer/swap/stablecoin/CEX flows, `5000000` for DEX net flow, `0.8` attribution confidence, `900000` lookback ms.
-5. **CEX proxy confidence/noise behavior**: CEX flow attributions are probabilistic proxies. Events with `attributionConfidence < cexMinAttributionConfidence` are filtered. The explicit confidence cap and quality gate are an authority boundary, not presentation metadata.
-6. **DEX pressure sourced from Birdeye**: DEX buy/sell pressure and net flow are denominated in USDC and reconciled exactly to the signed net value via Birdeye. Helius does not provide DEX net flow data.
-7. **Transaction flows sourced from Helius**: Whale transfers, whale swaps, stablecoin flows, and CEX proxy attributions are sourced from Helius. Birdeye does not provide transaction-level flow data.
+4. **Threshold defaults and exact decimal semantics**: All thresholds are decimal strings parsed with exact arithmetic (no JavaScript `number` conversion). Default thresholds: `1000000` for whale transfer/swap flows, `5000000` for DEX net flow, `900000` lookback ms (`stablecoin_flow` and `cex_flow_proxy` carry no threshold env vars because they are deferred and not implemented in this phase).
+5. **Deferred stablecoin and CEX proxy flows**: `stablecoin_flow` is deferred pending Circle address verification. `cex_flow_proxy` is deferred indefinitely (paid identity API required; self-maintained address book rejected as ongoing burden). Neither flow kind is implemented in this phase.
+6. **DEX pressure sourced from Birdeye**: DEX buy/sell pressure and net flow (`dex_net_flow`) are denominated in USDC and reconciled exactly to the signed net value via Birdeye. Helius does not provide DEX net flow data.
+7. **Transaction flows sourced from Helius**: Whale transfers (`whale_transfer`) and whale swaps (`whale_swap`) are sourced from Helius. Birdeye does not provide transaction-level flow data.
 8. **Bounded extract retention**: All events carry `retention: "bounded"` and a provider-supplied `license` string. Providers must supply stable `providerRunId` values and non-empty source references.
-9. **Five flow kinds required**: The collector requires both Helius (4 flow kinds) and Birdeye (1 flow kind) to be configured. Missing or failing sources reduce status to PARTIAL or UNAVAILABLE.
+9. **Three flow kinds captured**: The collector captures two transaction flow kinds from Helius (`whale_transfer`, `whale_swap`) and one DEX net flow kind from Birdeye (`dex_net_flow`), while `stablecoin_flow` and `cex_flow_proxy` remain deferred. Both Helius and Birdeye are required; missing or failing sources reduce status to PARTIAL or UNAVAILABLE.
 10. **No pagination/backfill**: This plan covers one bounded time window per run. API pagination/backfill for extended historical collection is out of scope.
 
 ## Perp & Liquidation Collector (`binance-fapi`, `drift-api`)

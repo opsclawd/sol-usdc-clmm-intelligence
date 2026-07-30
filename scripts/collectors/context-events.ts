@@ -1,8 +1,13 @@
 import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
 import { HttpScheduledEventSource } from "../../src/adapters/node/http-scheduled-event-source.js";
+import { UnavailableScheduledEventSource } from "../../src/adapters/node/unavailable-scheduled-event-source.js";
 import { HttpProtocolIncidentSource } from "../../src/adapters/node/http-protocol-incident-source.js";
 import { runContextEventsJob } from "../../src/jobs/context-events-job.js";
 import { redactSecretMentions, secretRedactingReplacer } from "../../src/domain/redact-secrets.js";
+
+const DEFAULT_SOLANA_STATUS_API_URL = "https://status.solana.com";
+const SCHEDULED_EVENT_DEFERRED_DIAGNOSTIC =
+  "scheduled_event collection is deferred pending source verification";
 
 export async function runContextEventsCollect(): Promise<void> {
   const runtime = createNodeRuntime();
@@ -15,45 +20,30 @@ export async function runContextEventsCollect(): Promise<void> {
     return;
   }
 
-  const macroCalendarUrl = runtime.env.getOptional("MACRO_CALENDAR_API_URL");
-  const macroCalendarApiKey = runtime.env.getOptional("MACRO_CALENDAR_API_KEY");
-  const solanaStatusUrl = runtime.env.getOptional("SOLANA_STATUS_API_URL");
-  const solanaStatusApiKey = runtime.env.getOptional("SOLANA_STATUS_API_KEY");
+  const macroCalendarUrl = runtime.env.getOptional("MACRO_CALENDAR_API_URL")?.trim();
+  const macroCalendarApiKey = runtime.env.getOptional("MACRO_CALENDAR_API_KEY")?.trim();
+  const solanaStatusUrl =
+    runtime.env.getOptional("SOLANA_STATUS_API_URL")?.trim() || DEFAULT_SOLANA_STATUS_API_URL;
+  const solanaStatusApiKey = runtime.env.getOptional("SOLANA_STATUS_API_KEY")?.trim();
+
+  const scheduledEventSource = macroCalendarUrl
+    ? new HttpScheduledEventSource({
+        http: runtime.http,
+        url: macroCalendarUrl,
+        ...(macroCalendarApiKey && { apiKey: macroCalendarApiKey })
+      })
+    : new UnavailableScheduledEventSource(SCHEDULED_EVENT_DEFERRED_DIAGNOSTIC);
 
   if (!macroCalendarUrl) {
-    console.error("Missing required environment variable: MACRO_CALENDAR_API_URL");
-    process.exitCode = 1;
-    try {
-      await persistence.connection.close();
-    } catch (closeErr) {
-      const errMsg = closeErr instanceof Error ? closeErr.message : String(closeErr);
-      console.error("Failed to close database connection:", redactSecretMentions(errMsg));
-    }
-    return;
+    console.warn(SCHEDULED_EVENT_DEFERRED_DIAGNOSTIC);
   }
-
-  if (!solanaStatusUrl) {
-    console.error("Missing required environment variable: SOLANA_STATUS_API_URL");
-    process.exitCode = 1;
-    try {
-      await persistence.connection.close();
-    } catch (closeErr) {
-      const errMsg = closeErr instanceof Error ? closeErr.message : String(closeErr);
-      console.error("Failed to close database connection:", redactSecretMentions(errMsg));
-    }
-    return;
-  }
-
-  const scheduledEventSource = new HttpScheduledEventSource({
-    http: runtime.http,
-    url: macroCalendarUrl,
-    ...(macroCalendarApiKey && { apiKey: macroCalendarApiKey })
-  });
 
   const protocolIncidentSource = new HttpProtocolIncidentSource({
     http: runtime.http,
     url: solanaStatusUrl,
-    ...(solanaStatusApiKey && { apiKey: solanaStatusApiKey })
+    ...(solanaStatusApiKey && { apiKey: solanaStatusApiKey }),
+    clock: runtime.clock,
+    runIdFactory: runtime.runIdFactory
   });
 
   let result;
