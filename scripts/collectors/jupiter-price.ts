@@ -1,47 +1,40 @@
 import { createNodeRuntime } from "../../src/adapters/node/composition-root.js";
 import { runPriceObservationsJob } from "../../src/jobs/price-observations-job.js";
-
-const SECRET_KEY_PATTERN = /(api[_-]?key|bearer|token|auth|secret)/i;
-
-function redactSecretMentions(text: string): string {
-  return text
-    .replace(/api[_-]?key/gi, "[REDACTED]")
-    .replace(/bearer/gi, "[REDACTED]")
-    .replace(/token/gi, "[REDACTED]")
-    .replace(/auth/gi, "[REDACTED]")
-    .replace(/secret/gi, "[REDACTED]");
-}
-
-function secretRedactingReplacer(key: string, value: unknown): unknown {
-  if (SECRET_KEY_PATTERN.test(key)) {
-    return "[REDACTED]";
-  }
-  if (typeof value === "string") {
-    return redactSecretMentions(value);
-  }
-  return value;
-}
+import { redactSecretMentions, secretRedactingReplacer } from "../../src/domain/redact-secrets.js";
 
 export async function runCollector(): Promise<void> {
-  const runtime = createNodeRuntime();
-  const persistence = await runtime.getPersistence();
-  const result = await runPriceObservationsJob({
-    http: runtime.http,
-    jsonStore: runtime.jsonStore,
-    env: runtime.env,
-    clock: runtime.clock,
-    rawObservationRepo: persistence.rawObservationRepo,
-    normalizedObservationRepo: persistence.normalizedObservationRepo,
-    runIdFactory: runtime.runIdFactory
-  });
+  let connection: { close(): Promise<void> } | undefined;
+  try {
+    const runtime = createNodeRuntime();
+    const persistence = await runtime.getPersistence();
+    connection = persistence.connection;
 
-  // Prints the structured result (JSON) safely without leaking secrets
-  console.log(JSON.stringify(result, secretRedactingReplacer, 2));
+    const result = await runPriceObservationsJob({
+      http: runtime.http,
+      jsonStore: runtime.jsonStore,
+      env: runtime.env,
+      clock: runtime.clock,
+      rawObservationRepo: persistence.rawObservationRepo,
+      normalizedObservationRepo: persistence.normalizedObservationRepo,
+      runIdFactory: runtime.runIdFactory
+    });
 
-  if (result.shouldFailCommand) {
+    console.log(JSON.stringify(result, secretRedactingReplacer, 2));
+    process.exitCode = result.shouldFailCommand ? 1 : 0;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Price observation collection failed:", redactSecretMentions(message));
     process.exitCode = 1;
-  } else {
-    process.exitCode = 0;
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("Failed to close database connection:", redactSecretMentions(message));
+        process.exitCode = 1;
+      }
+    }
   }
 }
 
@@ -51,7 +44,8 @@ if (
   process.argv[1]?.endsWith("jupiter-price")
 ) {
   runCollector().catch((error) => {
-    console.error(error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Unhandled error in price collector runner:", redactSecretMentions(message));
     process.exitCode = 1;
   });
 }
