@@ -203,7 +203,7 @@ describe("registering deterministic on-chain transaction facts and probabilistic
 });
 
 describe("allowing only the source providers that can emit each flow kind", () => {
-  it("transaction kinds (whale_transfer, whale_swap, stablecoin_flow) allow helius-api", () => {
+  it("transaction kinds (whale_transfer, stablecoin_flow) allow helius-api", () => {
     const txPayload = {
       ...BASE_COMMON_FIELDS,
       sourceQuality: {
@@ -225,6 +225,19 @@ describe("allowing only the source providers that can emit each flow kind", () =
       caveats: [] as readonly string[]
     };
     expect(cexPayload.attributionProvider).toBe("helius-api");
+  });
+
+  it("whale_swap allows birdeye-api as source provider", () => {
+    const swapPayload = {
+      ...BASE_COMMON_FIELDS,
+      eventType: "whale_swap" as const,
+      sourceQuality: {
+        provider: "birdeye-api",
+        freshness: "windowed",
+        completeness: "full"
+      } as OnChainFlowSourceQuality
+    };
+    expect(swapPayload.sourceQuality.provider).toBe("birdeye-api");
   });
 
   it("dex_net_flow allows birdeye-api as source provider", () => {

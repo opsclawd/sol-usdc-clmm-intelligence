@@ -328,6 +328,7 @@ export async function assembleEvidenceBundle(
       { source: "macro-calendar-api", observationKind: "scheduled_event" },
       { source: "solana-status-api", observationKind: "protocol_incident" },
       { source: "helius-api", observationKind: "whale_transfer" },
+      { source: "helius-api", observationKind: "whale_swap" },
       { source: "birdeye-api", observationKind: "whale_swap" },
       { source: "helius-api", observationKind: "stablecoin_flow" },
       { source: "helius-api", observationKind: "cex_flow_proxy" },
