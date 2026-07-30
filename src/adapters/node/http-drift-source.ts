@@ -25,12 +25,6 @@ import {
   type Rational
 } from "../../domain/derived-feature/decimal.js";
 
-export interface DriftPrecisions {
-  readonly basePrecisionExp?: number;
-  readonly quotePrecisionExp?: number;
-  readonly pricePrecisionExp?: number;
-}
-
 export interface HttpDriftSourceConfig {
   readonly baseUrl: string;
   readonly symbol: string;
@@ -38,7 +32,6 @@ export interface HttpDriftSourceConfig {
   readonly http: HttpClient;
   readonly retry?: RetryControl;
   readonly maxAttempts?: number;
-  readonly precisions?: DriftPrecisions;
 }
 
 const BASE_BACKOFF_MS = 25;
@@ -65,6 +58,11 @@ function isValidDecimalString(val: unknown): val is string {
 function isPositiveDecimalString(val: unknown): val is string {
   if (!isValidDecimalString(val)) return false;
   return Number(val) > 0;
+}
+
+function isNonNegativeDecimalString(val: unknown): val is string {
+  if (!isValidDecimalString(val)) return false;
+  return Number(val) >= 0;
 }
 
 function normalizeTimestamp(ts: unknown): number | null {
@@ -224,7 +222,11 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
             const tsMs = normalizeTimestamp(row.ts ?? row.timestamp ?? row.observedAtUnixMs);
             const fundingRateStr = row.fundingRate ?? row.rate;
 
-            if (idStr !== "" && tsMs !== null && isValidDecimalString(fundingRateStr)) {
+            if (tsMs === null || tsMs < request.fromUnixMs || tsMs > request.toUnixMs) {
+              continue;
+            }
+
+            if (idStr !== "" && isValidDecimalString(fundingRateStr)) {
               const payload: FundingRatePayloadV1 = {
                 schemaVersion: 1,
                 evidenceFamily: "perp_liquidation",
@@ -286,8 +288,12 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
     try {
       const url = `${this.baseUrl}/stats/markets`;
       const res = await this.fetchWithRetry<unknown>(url);
-      if (!Array.isArray(res)) {
-        const diag = "Expected array from stats/markets endpoint";
+      if (
+        typeof res !== "object" ||
+        res === null ||
+        !Array.isArray((res as Record<string, unknown>).markets)
+      ) {
+        const diag = "Expected object with markets array from stats/markets endpoint";
         return {
           oiCoverage: { kind: "open_interest", status: "malformed", diagnostic: diag },
           basisCoverage: { kind: "perp_basis", status: "malformed", diagnostic: diag },
@@ -296,7 +302,8 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
         };
       }
 
-      const marketRow = res.find(
+      const markets = (res as Record<string, unknown>).markets as unknown[];
+      const marketRow = markets.find(
         (item) =>
           typeof item === "object" &&
           item !== null &&
@@ -346,8 +353,8 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
       if (
         openInterestBase &&
         openInterestUsdc &&
-        isPositiveDecimalString(openInterestBase) &&
-        isPositiveDecimalString(openInterestUsdc)
+        isNonNegativeDecimalString(openInterestBase) &&
+        isNonNegativeDecimalString(openInterestUsdc)
       ) {
         const oiPayload: OpenInterestPayloadV1 = {
           schemaVersion: 1,
@@ -395,7 +402,7 @@ export class HttpDriftSource implements PerpLiquidationSourcePort {
         };
       } else {
         const ratio = divideDecimals(absLong, absShort);
-        if (ratio && isPositiveDecimalString(ratio)) {
+        if (ratio && isNonNegativeDecimalString(ratio)) {
           const leveragePayload: LeverageProxyPayloadV1 = {
             schemaVersion: 1,
             evidenceFamily: "perp_liquidation",
