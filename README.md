@@ -632,14 +632,18 @@ pnpm cron:render
 
 ### Scheduled cron jobs
 
-Four jobs run against `cron/jobs.yaml`'s desired schedule, on Hermes:
+The scheduled jobs defined in `cron/jobs.yaml` run on Hermes according to the desired schedule:
 
-| Job                | Schedule                    | Collector                       | Sources                                                     |
-| ------------------ | --------------------------- | ------------------------------- | ----------------------------------------------------------- |
-| `on-chain-flow`    | hourly (`0 * * * *`)        | `pnpm collect:on-chain-flow`    | Helius (whale_transfer), Birdeye (whale_swap, dex_net_flow) |
-| `perp-liquidation` | every 5 min (`*/5 * * * *`) | `pnpm collect:perp-liquidation` | Binance fAPI, Drift (Velocity Data API)                     |
-| `news-evidence`    | every 2h (`0 */2 * * *`)    | `pnpm collect:news-evidence`    | `crypto-news-api`, `regulatory-monitor-api`                 |
-| `context-events`   | every 4h (`0 */4 * * *`)    | `pnpm collect:context-events`   | `solana-status-api` (live), `macro-calendar-api` (deferred) |
+| Job                      | Schedule                    | Collector                         | Sources                                                     |
+| ------------------------ | --------------------------- | --------------------------------- | ----------------------------------------------------------- |
+| `on-chain-flow`          | hourly (`0 * * * *`)        | `pnpm collect:on-chain-flow`      | Helius (whale_transfer), Birdeye (whale_swap, dex_net_flow) |
+| `perp-liquidation`       | every 5 min (`*/5 * * * *`) | `pnpm collect:perp-liquidation`   | Binance fAPI, Drift (Velocity Data API)                     |
+| `news-evidence`          | every 2h (`0 */2 * * *`)    | `pnpm collect:news-evidence`      | `crypto-news-api`, `regulatory-monitor-api`                 |
+| `context-events`         | every 4h (`0 */4 * * *`)    | `pnpm collect:context-events`     | `solana-status-api` (live), `macro-calendar-api` (deferred) |
+| `support-resistance`     | every 4h (`15 */4 * * *`)   | `pnpm collect:support-resistance` | `technical-analysis-api`                                    |
+| `core-evidence-pipeline` | every 30m (`*/30 * * * *`)  | `pnpm run:core-evidence-pipeline` | collect → derive → assemble → brief → exact publish         |
+
+Note: #104's five-minute `price-observations` schedule is separate and required for volatility history but is not created by this change. See [scheduling.md](scheduling.md) for detailed cadence and cost rationale.
 
 `context-events` defaults `SOLANA_STATUS_API_URL` to `https://status.solana.com`. `scheduled_event` is deferred when `MACRO_CALENDAR_API_URL` is unset, so a healthy incident-only run reports `PARTIAL`; missing scheduled coverage does not mean no scheduled risk.
 

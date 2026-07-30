@@ -20,7 +20,16 @@ pnpm cron:render          # print the hermes cron create commands without runnin
 pnpm cron:sync -- --apply # actually create/update the jobs against Hermes
 ```
 
-This only _adds_ jobs — it does not diff or delete existing ones, so re-running it after jobs are already registered creates duplicates. Remove stale jobs first with `hermes cron rm <job-id>` (see "Test a job" below for listing IDs).
+This only _adds_ jobs — it does not diff or delete existing ones, so re-running it after jobs are already registered creates duplicates. Inspect active/running jobs before registration and avoid creating duplicates; remove stale jobs first with `hermes cron rm <job-id>` (see "Test a job" below for listing IDs).
+
+Before registering scheduled jobs:
+
+- Confirm `pnpm run:core-evidence-pipeline` is present before registration.
+- Deploy both the five-minute #104 telemetry schedule (`price-observations`) and the 30-minute synthesis schedule (`core-evidence-pipeline`) before declaring the seven-feature pipeline scheduling-complete.
+- Calculate the brief-attempt ceiling with `48 × configured position count` (e.g. two positions produce up to 96 daily attempts) and verify deployed model, provider rate-limit, and budget assumptions.
+- Treat a synthesis duration approaching 30 minutes as an overlap/capacity warning, without adding scheduler retry or concurrency policy.
+
+Use `pnpm cron:render` to inspect and verify job generation without creating jobs on Hermes.
 
 If migrating from an old OpenClaw-registered deployment, any legacy jobs live in OpenClaw's own job store and are unrelated to Hermes's — they do not need to be ported, since scheduling was rebuilt on Hermes from a clean slate.
 

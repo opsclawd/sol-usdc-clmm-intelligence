@@ -14,6 +14,19 @@ Hermes has no per-job model/thinking/agent override and no per-job timezone (it 
 
 `cron/jobs.yaml` is the desired schedule and prompt-file mapping.
 
+### Core evidence cadences
+
+| Job                         | Cadence          | Responsibility                                                                                                |
+| --------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------- |
+| `price-observations` (#104) | Every 5 minutes  | Build historical price density for `realized_volatility_1h`.                                                  |
+| `core-evidence-pipeline`    | Every 30 minutes | Collect core observations, derive features, assemble evidence, generate briefs, and publish the exact bundle. |
+
+The synthesis cadence is shorter than the one-hour core-feature validity boundary so scheduler drift, collection latency, bounded retries, and brief generation do not consume the entire freshness window. The five-minute sampler remains a separate job because historical telemetry density and expensive synthesis have different cadence and cost requirements.
+
+At the ungated MVP cadence, maximum brief attempts are `48 runs/day × configured position count`; two positions can therefore produce up to 96 attempts per day. Confirm the deployed LLM model, provider rate limits, and budget can sustain the configured position count before registration. Material-change gating and a slower brief-only cadence remain future work.
+
+Note that #104 is a prerequisite for complete seven-feature scheduled coverage. This change does not register either job with Hermes.
+
 ## Registering / updating jobs
 
 ```bash
