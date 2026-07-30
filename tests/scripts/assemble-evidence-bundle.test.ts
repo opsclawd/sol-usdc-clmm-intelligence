@@ -1143,7 +1143,7 @@ describe("invalid input exits before database composition", () => {
     process.exitCode = originalProcessExitCode;
   });
 
-  it("malformed JSON produces non-zero exit without repository access", async () => {
+  it("malformed JSON returns request_parse_failed and exits before persistence composition", async () => {
     const rawObservationRepo = createMockRawObservationRepo();
     const normalizedObservationRepo = createMockNormalizedObservationRepo();
     const featureRepo = createMockFeatureRepo();
@@ -1182,16 +1182,19 @@ describe("invalid input exits before database composition", () => {
     const { runAssembleEvidenceBundleScript } =
       await import("../../scripts/collectors/assemble-evidence-bundle.js");
 
-    const result = await runAssembleEvidenceBundleScript(runtime, "data/malformed.json");
+    const result = await runAssembleEvidenceBundleScript(runtime, "data/malformed-request.json");
 
-    expect(result).toEqual({ outcome: "error", warnings: ["request_parse_failed"] });
+    expect(result).toEqual({
+      outcome: "error",
+      warnings: ["request_parse_failed"]
+    });
     expect(process.exitCode).toBe(1);
     expect(runtime.getPersistence).not.toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it("missing required identity/version fields produces non-zero exit", async () => {
+  it("missing identity fields return missing_required_fields and exit before persistence composition", async () => {
     const rawObservationRepo = createMockRawObservationRepo();
     const normalizedObservationRepo = createMockNormalizedObservationRepo();
     const featureRepo = createMockFeatureRepo();
@@ -1234,16 +1237,22 @@ describe("invalid input exits before database composition", () => {
 
     (runtime.jsonStore.readJson as Mock).mockResolvedValue(invalidRequest);
 
-    const result = await runAssembleEvidenceBundleScript(runtime, "data/invalid-request.json");
+    const missingFieldsResult = await runAssembleEvidenceBundleScript(
+      runtime,
+      "data/invalid-request.json"
+    );
 
-    expect(result).toEqual({ outcome: "error", warnings: ["missing_required_fields"] });
+    expect(missingFieldsResult).toEqual({
+      outcome: "error",
+      warnings: ["missing_required_fields"]
+    });
     expect(process.exitCode).toBe(1);
     expect(runtime.getPersistence).not.toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it("wrong pair produces non-zero exit without repository access", async () => {
+  it("wrong pair returns wrong_pair and exits before persistence composition", async () => {
     const rawObservationRepo = createMockRawObservationRepo();
     const normalizedObservationRepo = createMockNormalizedObservationRepo();
     const featureRepo = createMockFeatureRepo();
@@ -1284,16 +1293,19 @@ describe("invalid input exits before database composition", () => {
 
     (runtime.jsonStore.readJson as Mock).mockResolvedValue(wrongPairRequest);
 
-    const result = await runAssembleEvidenceBundleScript(runtime, "data/wrong-pair.json");
+    const wrongPairResult = await runAssembleEvidenceBundleScript(runtime, "data/wrong-pair.json");
 
-    expect(result).toEqual({ outcome: "error", warnings: ["wrong_pair"] });
+    expect(wrongPairResult).toEqual({
+      outcome: "error",
+      warnings: ["wrong_pair"]
+    });
     expect(process.exitCode).toBe(1);
     expect(runtime.getPersistence).not.toHaveBeenCalled();
 
     consoleErrorSpy.mockRestore();
   });
 
-  it("unsupported schema version produces non-zero exit without repository access", async () => {
+  it("unsupported schema returns unsupported_schema_version and exits before persistence composition", async () => {
     const rawObservationRepo = createMockRawObservationRepo();
     const normalizedObservationRepo = createMockNormalizedObservationRepo();
     const featureRepo = createMockFeatureRepo();
@@ -1330,13 +1342,19 @@ describe("invalid input exits before database composition", () => {
     const { runAssembleEvidenceBundleScript } =
       await import("../../scripts/collectors/assemble-evidence-bundle.js");
 
-    const unsupportedSchemaRequest = { ...VALID_REQUEST, schemaVersion: "evidence-bundle.v2" };
+    const unsupportedSchemaRequest = {
+      ...VALID_REQUEST,
+      schemaVersion: "evidence-bundle.v2"
+    };
 
     (runtime.jsonStore.readJson as Mock).mockResolvedValue(unsupportedSchemaRequest);
 
     const result = await runAssembleEvidenceBundleScript(runtime, "data/unsupported-schema.json");
 
-    expect(result).toEqual({ outcome: "error", warnings: ["unsupported_schema_version"] });
+    expect(result).toEqual({
+      outcome: "error",
+      warnings: ["unsupported_schema_version"]
+    });
     expect(process.exitCode).toBe(1);
     expect(runtime.getPersistence).not.toHaveBeenCalled();
 
