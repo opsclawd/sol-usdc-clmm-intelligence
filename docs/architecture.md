@@ -3,13 +3,15 @@
 ## Core pattern
 
 ```text
-OpenClaw cron wakes an isolated agent
+Hermes cron wakes an isolated agent
   -> agent reads repo policy/routine/memory
   -> agent calls deterministic collectors/backend
   -> scripts write JSON output
   -> agent interprets output and updates durable memory
-  -> OpenClaw delivers summary
+  -> Hermes delivers summary
 ```
+
+See `scheduling.md` for why Hermes, not OpenClaw, is the actual scheduled runtime, and how jobs are registered.
 
 ## Layered modular monolith
 
@@ -28,7 +30,7 @@ Boundary rules are enforced by `dependency-cruiser` (`pnpm boundaries`) with `ts
 
 ## No-execution boundary
 
-This repo produces advisory artifacts. It does not sign, submit, rebalance, swap, or perform wallet execution. The only side effects scripts can produce are: writing JSON to `data/` and `outputs/`, rendering cron commands, and (only via `pnpm cron:sync -- --apply`) invoking the `openclaw` CLI to register cron jobs.
+This repo produces advisory artifacts. It does not sign, submit, rebalance, swap, or perform wallet execution. The only side effects scripts can produce are: writing JSON to `data/` and `outputs/`, and rendering cron commands (`pnpm cron:render`). The `pnpm cron:sync -- --apply` path invokes the `openclaw` CLI, but that tooling is legacy and unused by the current deployment — see `scheduling.md`. Cron jobs are actually registered directly against the Hermes CLI.
 
 ## Downstream split
 
@@ -89,7 +91,7 @@ clmm-v2 /insights/sol-usdc/bundle/:walletId
         data/latest-clmm-bundle.json
                |
                v
-     OpenClaw routine + durable memory
+     scheduled agent routine + durable memory
                |
                v
      advisory output / operator review
