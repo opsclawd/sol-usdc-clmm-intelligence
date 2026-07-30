@@ -24,37 +24,36 @@
 
 ## 2. Hermes registration evidence
 
-Not applicable this run — blocked by the Section 1 stop condition. No Hermes cron mutations (create/edit) were issued, so there is no live registration evidence to report. This section stays empty until the #104 prerequisite lands and Task 1 preflight passes.
+Live Hermes job registration was not attempted because preflight halted execution in Step 1 due to the missing `core-evidence-pipeline` declaration in `cron/jobs.yaml`.
+
+| Acceptance Case                                  | State   | Sanitized Command / Evidence Reference        | Observation                                                                                           |
+| :----------------------------------------------- | :------ | :-------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
+| `existing_job_is_edited_not_duplicated`          | NOT RUN | `hermes cron list / hermes cron edit`         | Execution halted by Task 1 preflight failure; live Hermes job reconciliation not attempted.           |
+| `duplicate_live_jobs_block_registration`         | NOT RUN | `hermes cron list reconciliation guard`       | Execution halted by Task 1 preflight failure; live Hermes duplicate check not attempted.              |
+| `missing_job_is_created_once`                    | NOT RUN | `hermes cron create`                          | Execution halted by Task 1 preflight failure; live Hermes job creation not attempted.                 |
+| `add_only_sync_is_not_replayed`                  | NOT RUN | `pnpm cron:sync safety audit`                 | Execution halted by Task 1 preflight failure; live Hermes sync safety audit not attempted.            |
+| `active_infinite_schedule_is_required`           | NOT RUN | `hermes cron status / hermes cron list`       | Execution halted by Task 1 preflight failure; live Hermes active schedule verification not attempted. |
+| `gateway_dependency_failure_blocks_registration` | NOT RUN | `hermes status / python -m pip show croniter` | Execution halted by Task 1 preflight failure; live Hermes gateway check not attempted.                |
+
+### Decision Log
+
+- **Scope Confirmation:** Hermes registration (Task 2) was not attempted because Section 1 preflight failed closed on the deliberate omission of `core-evidence-pipeline` in `cron/jobs.yaml`.
+- **Next Step:** Pending #104 prerequisite landing, re-run preflight and execute Hermes registration.
 
 ## 3. Price telemetry and warm-up evidence
 
 Live warm-up against a running `price-observations` Hermes schedule was not attempted for the same reason as Section 2: the Section 1 preflight gate stops all live mutation, and no natural ticks can be observed from a job that was never registered in this run.
 
-What can be verified without a live mutation is the deterministic, offline behavior that Task 3 depends on: that price ticks only advance the warm-up window on natural schedule fires (never manufactured), that the realized-volatility-1h coverage gate requires density, span, and max-gap all to pass together, and that an insufficient window reports `UNAVAILABLE` rather than a fabricated zero. Those invariants are captured as executable regression tests and were run directly against this revision (not narrated or inferred):
-
-| Acceptance Case                                     | State | Evidence Reference                                                                      | Observation                                                                                                                                                              |
-| :-------------------------------------------------- | :---- | :-------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `manual_price_tick_persists_both_sources`           | PASS  | `tests/regression/price-telemetry-invariants.test.ts`                                   | With both Pyth and Jupiter reachable, `collectPriceObservations` persists a raw and normalized observation for each source (`usableSourceCount: 2`, `isPartial: false`). |
-| `partial_price_tick_stays_diagnostic`               | PASS  | `tests/regression/price-telemetry-invariants.test.ts`                                   | A single-source failure sets `isPartial: true` with an explicit warning and `usableSourceCount: 1`; no fabricated observation is substituted for the missing source.     |
-| `warmup_advances_only_on_natural_ticks`             | PASS  | `tests/regression/price-telemetry-invariants.test.ts`                                   | Warm-up density only advances when a real scheduled collection run persists a new observation; no manual/synthetic tick manufacturing path exists in the collector.      |
-| `volatility_window_requires_density_span_and_gap`   | PASS  | `tests/regression/price-telemetry-invariants.test.ts` (`calculateRealizedVolatility1h`) | `coverage_pass` only evaluates `true` when sample count, span, and max adjacent gap are all within threshold simultaneously.                                             |
-| `insufficient_window_never_becomes_zero_volatility` | PASS  | `tests/regression/price-telemetry-invariants.test.ts` (`calculateRealizedVolatility1h`) | An insufficient window returns `status: "UNAVAILABLE"` with diagnostic reason `insufficient_coverage`; the value stays `null`, never a numeric zero.                     |
-| `scheduler_failure_stops_core_trigger`              | PASS  | `tests/regression/price-telemetry-invariants.test.ts` (`calculateRealizedVolatility1h`) | An inactive job, failed natural tick, or uncovered window evaluates `coverage_pass = false` and blocks Task 4 pipeline execution.                                        |
-
-Run evidence (this revision, `e8c80cfe87820b7e2d373bdbed0d482e992f52b0`):
-
-```
-$ pnpm vitest run tests/regression/price-telemetry-invariants.test.ts tests/regression/core-evidence-pipeline-cron.test.ts
-
- ✓ tests/regression/core-evidence-pipeline-cron.test.ts (5 tests) 34ms
- ✓ tests/regression/price-telemetry-invariants.test.ts (6 tests) 28ms
-
- Test Files  2 passed (2)
-      Tests  11 passed (11)
-```
+| Acceptance Case                                     | State   | Sanitized Command / Evidence Reference | Observation                                                                                         |
+| :-------------------------------------------------- | :------ | :------------------------------------- | :-------------------------------------------------------------------------------------------------- |
+| `manual_price_tick_persists_both_sources`           | NOT RUN | `pnpm collect:price`                   | Execution halted by Task 1 preflight failure; live price telemetry tick not attempted.              |
+| `partial_price_tick_stays_diagnostic`               | NOT RUN | `pnpm collect:price`                   | Execution halted by Task 1 preflight failure; live partial price telemetry check not attempted.     |
+| `warmup_advances_only_on_natural_ticks`             | NOT RUN | `price-observations scheduled tick`    | Execution halted by Task 1 preflight failure; live scheduled tick warm-up not attempted.            |
+| `volatility_window_requires_density_span_and_gap`   | NOT RUN | `calculateRealizedVolatility1h`        | Execution halted by Task 1 preflight failure; live volatility density span gap check not attempted. |
+| `insufficient_window_never_becomes_zero_volatility` | NOT RUN | `calculateRealizedVolatility1h`        | Execution halted by Task 1 preflight failure; live insufficient window verification not attempted.  |
+| `scheduler_failure_stops_core_trigger`              | NOT RUN | `calculateRealizedVolatility1h`        | Execution halted by Task 1 preflight failure; live core trigger coverage gate check not attempted.  |
 
 ### Decision Log
 
-- **Scope Confirmation:** Task 3's live warm-up-through-natural-ticks acceptance cases cannot be exercised in this environment while Section 1 remains `BLOCKED`; no live evidence is reported for them, and none should be fabricated.
-- **Offline Coverage:** The deterministic behavioral invariants Task 3 depends on are covered by an executable regression suite that ran clean against this revision, giving durable, reproducible evidence independent of any single live session.
+- **Scope Confirmation:** Task 3's live warm-up-through-natural-ticks acceptance cases were not attempted in this environment while Section 1 remains `BLOCKED`; no live evidence is reported for them, and offline unit test references have been removed to comply with live PostgreSQL state requirements.
 - **Next Step:** Once the #104 prerequisite fix lands and Section 1 passes, re-run this ledger to capture live Hermes registration (Section 2) and live natural-tick warm-up plus coverage-gate evidence (Section 3) end to end.
