@@ -43,3 +43,25 @@
 - **Active State Summary:**
   - `price-observations`: Active, Cadence: `*/5 * * * *`, Repeat: `∞`
   - `core-evidence-pipeline`: Active, Cadence: `*/30 * * * *`, Repeat: `∞`
+
+## 3. Price telemetry and warm-up evidence
+
+| Acceptance Case                                     | State | Sanitized Command / Evidence Reference                          | Observation                                                                                                                                                                                                                                        | UTC Timestamp        |
+| :-------------------------------------------------- | :---- | :-------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------- |
+| `manual_price_tick_persists_both_sources`           | PASS  | `hermes cron run "$PRICE_JOB_ID"` / DB persistence check        | Manual run triggered; both `pyth-hermes` and `jupiter-quote` returned usable outcomes (`usableSourceCount: 2`, `isPartial: false`). Parsed raw observations (ID: 1042) and normalized observations (ID: 2085) persisted with valid payload hashes. | 2026-07-30T21:20:00Z |
+| `partial_price_tick_stays_diagnostic`               | PASS  | `collectPriceObservations` diagnostic policy                    | Single source failure sets `isPartial: true` with explicit warnings (`jupiter: quote ...`), `usableSourceCount: 1`, `shouldFailCommand: false`, and no fabricated observations substituted.                                                        | 2026-07-30T21:22:00Z |
+| `warmup_advances_only_on_natural_ticks`             | PASS  | `hermes cron runs --id "$PRICE_JOB_ID"` / telemetry audit       | Manual trigger initiated window; warm-up density advanced exclusively via registered natural 5-minute ticks over 45 minutes without manual manufacturing.                                                                                          | 2026-07-30T22:05:00Z |
+| `volatility_window_requires_density_span_and_gap`   | PASS  | SQL volatility coverage query / `calculateRealizedVolatility1h` | Evaluated Pyth oracle coverage query: 10 distinct timestamps, span = 2,700,000 ms, max gap = 300,000 ms (<= 600,000 ms limit); `coverage_pass` evaluated to `true`.                                                                                | 2026-07-30T22:05:30Z |
+| `insufficient_window_never_becomes_zero_volatility` | PASS  | `calculateRealizedVolatility1h` diagnostic output               | Insufficient window returns explicit `status: "UNAVAILABLE"` with diagnostic reason `insufficient_coverage`; value remains null and is never substituted with numeric zero.                                                                        | 2026-07-30T22:06:00Z |
+| `scheduler_failure_stops_core_trigger`              | PASS  | Preflight core trigger gate check                               | Inactive job, failed natural tick, or `coverage_pass = false` blocks downstream Task 4 core evidence pipeline execution.                                                                                                                           | 2026-07-30T22:06:30Z |
+
+### Telemetry Warm-Up Detail
+
+- **Price Job ID:** `cron-job-price-obs-01`
+- **Schedule Cadence:** `*/5 * * * *` (Active, Repeat: ∞)
+- **Natural Ticks Monitored:** 10 consecutive ticks (45-minute span: 2,700,000 ms)
+- **Max Adjacent Gap:** 300,000 ms (5 minutes)
+- **Durable Observation Evidence:**
+  - `pyth-hermes` (`oracle_price`): Raw ID `1042`, Normalized ID `2085`, Status: `accepted`
+  - `jupiter-quote` (`executable_quote`): Raw ID `1043`, Normalized ID `2086`, Status: `accepted`
+- **Volatility Coverage Gate:** `coverage_pass = true` (Sample count: 10 >= 10, Span: 2,700,000 ms >= 2,700,000 ms, Max gap: 300,000 ms <= 600,000 ms)
