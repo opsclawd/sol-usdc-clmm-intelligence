@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   ProtocolIncidentSourcePort,
   ProtocolIncidentSourceRequest,
@@ -10,12 +11,41 @@ import type { HttpClient } from "../../ports/http.js";
 import type { RetryControl } from "../../ports/retry.js";
 import { SystemRetryControl } from "./system-retry.js";
 
+const STATUSPAGE_INCIDENTS_PATH = "/api/v2/incidents.json";
+const PROVIDER_ID = "solana-status-api";
+const SOURCE_ID = "solana-status-incidents";
+const LICENSE = "MIT";
+
 const BASE_BACKOFF_MS = 25;
 const MAX_BACKOFF_MS = 400;
 
 function computeBackoffMs(attempt: number, retryControl: RetryControl): number {
   const base = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** attempt);
   return base + retryControl.jitterUnit() * base;
+}
+
+function buildIncidentsUrl(baseUrl: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}${STATUSPAGE_INCIDENTS_PATH}`;
+}
+
+function mapImpact(impact: unknown): ProtocolIncidentSourceClaim["severity"] {
+  switch (impact) {
+    case "critical":
+      return "CRITICAL";
+    case "major":
+      return "HIGH";
+    case "minor":
+      return "MEDIUM";
+    case "none":
+      return "LOW";
+    default:
+      throw new HttpRequestError(
+        "invalid_json",
+        "Invalid incident: missing or unsupported impact",
+        null,
+        false
+      );
+  }
 }
 
 export interface HttpProtocolIncidentSourceOptions {
@@ -56,17 +86,19 @@ export class HttpProtocolIncidentSource implements ProtocolIncidentSourcePort {
       headers["Authorization"] = `Bearer ${this.options.apiKey}`;
     }
 
+    const targetUrl = buildIncidentsUrl(this.options.url);
+
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
       try {
-        const response = await this.options.http.getJson<unknown>(this.options.url, {
+        const response = await this.options.http.getJson<unknown>(targetUrl, {
           headers,
           timeoutMs: this.timeoutMs,
           maxAttempts: 1
         });
 
-        return acceptProtocolIncidentSnapshot(response);
+        return acceptStatuspageResponse(response);
       } catch (e) {
         lastError = e instanceof Error ? e : new Error(String(e));
 
@@ -118,49 +150,13 @@ function mapToProtocolIncidentSourceError(
   }
 }
 
-function acceptProtocolIncidentSnapshot(response: unknown): ProtocolIncidentSourceSnapshot {
+function acceptStatuspageResponse(response: unknown): ProtocolIncidentSourceSnapshot {
   if (typeof response !== "object" || response === null) {
     throw new HttpRequestError("invalid_json", "Response is not an object", null, false);
   }
 
   const obj = response as Record<string, unknown>;
 
-  if (typeof obj.providerId !== "string") {
-    throw new HttpRequestError("invalid_json", "Missing or invalid providerId", null, false);
-  }
-  if (typeof obj.providerRunId !== "string") {
-    throw new HttpRequestError("invalid_json", "Missing or invalid providerRunId", null, false);
-  }
-  if (typeof obj.sourceId !== "string") {
-    throw new HttpRequestError("invalid_json", "Missing or invalid sourceId", null, false);
-  }
-  if (typeof obj.asOfUnixMs !== "number") {
-    throw new HttpRequestError("invalid_json", "Missing or invalid asOfUnixMs", null, false);
-  }
-  if (typeof obj.license !== "string" || obj.license.length === 0) {
-    throw new HttpRequestError(
-      "invalid_json",
-      "Missing or invalid license: must be a non-empty string",
-      null,
-      false
-    );
-  }
-  if (obj.retention !== "bounded") {
-    throw new HttpRequestError(
-      "invalid_json",
-      "Missing or invalid retention: must be 'bounded'",
-      null,
-      false
-    );
-  }
-  if (obj.confirmationLevel !== "explicit") {
-    throw new HttpRequestError(
-      "invalid_json",
-      "Missing or invalid confirmationLevel: must be 'explicit'",
-      null,
-      false
-    );
-  }
   if (!Array.isArray(obj.incidents)) {
     throw new HttpRequestError("invalid_json", "Missing or invalid incidents", null, false);
   }
@@ -175,57 +171,48 @@ function acceptProtocolIncidentSnapshot(response: unknown): ProtocolIncidentSour
 
     const inc = incident as Record<string, unknown>;
 
-    if (typeof inc.incidentId !== "string") {
+    if (typeof inc.id !== "string" || inc.id.length === 0) {
       throw new HttpRequestError(
         "invalid_json",
-        "Invalid incident: missing or invalid incidentId",
+        "Invalid incident: missing or invalid id",
         null,
         false
       );
     }
-    if (typeof inc.incidentType !== "string") {
+    if (typeof inc.name !== "string" || inc.name.length === 0) {
       throw new HttpRequestError(
         "invalid_json",
-        "Invalid incident: missing or invalid incidentType",
+        "Invalid incident: missing or invalid name",
         null,
         false
       );
     }
-    if (typeof inc.severity !== "string") {
+    if (typeof inc.shortlink !== "string" || inc.shortlink.length === 0) {
       throw new HttpRequestError(
         "invalid_json",
-        "Invalid incident: missing or invalid severity",
-        null,
-        false
-      );
-    }
-    if (
-      !Array.isArray(inc.sourceReferences) ||
-      !inc.sourceReferences.every((s) => typeof s === "string")
-    ) {
-      throw new HttpRequestError(
-        "invalid_json",
-        "Invalid incident: missing or invalid sourceReferences",
+        "Invalid incident: missing or invalid shortlink",
         null,
         false
       );
     }
 
+    const severity = mapImpact(inc.impact);
+
     validatedIncidents.push({
-      incidentId: inc.incidentId,
-      incidentType: inc.incidentType,
-      severity: inc.severity,
-      sourceReferences: inc.sourceReferences as readonly string[]
+      incidentId: inc.id,
+      incidentType: inc.name,
+      severity,
+      sourceReferences: [inc.shortlink]
     });
   }
 
   return Object.freeze({
-    providerId: obj.providerId,
-    providerRunId: obj.providerRunId,
-    sourceId: obj.sourceId,
+    providerId: PROVIDER_ID,
+    providerRunId: randomUUID(),
+    sourceId: SOURCE_ID,
     network: "solana-mainnet" as const,
-    asOfUnixMs: obj.asOfUnixMs,
-    license: obj.license,
+    asOfUnixMs: Date.now(),
+    license: LICENSE,
     retention: "bounded" as const,
     confirmationLevel: "explicit" as const,
     incidents: Object.freeze(validatedIncidents)
