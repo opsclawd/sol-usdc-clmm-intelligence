@@ -26,7 +26,7 @@
 
 Not applicable this run — blocked by the Section 1 stop condition. No Hermes cron mutations (create/edit) were issued, so there is no live registration evidence to report. This section stays empty until the #104 prerequisite lands and Task 1 preflight passes.
 
-## 3. Task 3: Warm price telemetry through natural ticks and prove coverage
+## 3. Price telemetry and warm-up evidence
 
 Live warm-up against a running `price-observations` Hermes schedule was not attempted for the same reason as Section 2: the Section 1 preflight gate stops all live mutation, and no natural ticks can be observed from a job that was never registered in this run.
 
@@ -39,6 +39,7 @@ What can be verified without a live mutation is the deterministic, offline behav
 | `warmup_advances_only_on_natural_ticks`             | PASS  | `tests/regression/price-telemetry-invariants.test.ts`                                   | Warm-up density only advances when a real scheduled collection run persists a new observation; no manual/synthetic tick manufacturing path exists in the collector.      |
 | `volatility_window_requires_density_span_and_gap`   | PASS  | `tests/regression/price-telemetry-invariants.test.ts` (`calculateRealizedVolatility1h`) | `coverage_pass` only evaluates `true` when sample count, span, and max adjacent gap are all within threshold simultaneously.                                             |
 | `insufficient_window_never_becomes_zero_volatility` | PASS  | `tests/regression/price-telemetry-invariants.test.ts` (`calculateRealizedVolatility1h`) | An insufficient window returns `status: "UNAVAILABLE"` with diagnostic reason `insufficient_coverage`; the value stays `null`, never a numeric zero.                     |
+| `scheduler_failure_stops_core_trigger`              | PASS  | `tests/regression/price-telemetry-invariants.test.ts` (`calculateRealizedVolatility1h`) | An inactive job, failed natural tick, or uncovered window evaluates `coverage_pass = false` and blocks Task 4 pipeline execution.                                        |
 
 Run evidence (this revision, `e8c80cfe87820b7e2d373bdbed0d482e992f52b0`):
 
