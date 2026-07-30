@@ -1,7 +1,14 @@
-import type { CronJob } from "../contracts/cron-config.js";
+export interface CronJobInput {
+  name: string;
+  cron: string;
+  messageFile?: string;
+  model?: string;
+  thinking?: string;
+  description?: string;
+}
 
 export interface BuildCronCreateArgsInputs {
-  job: CronJob;
+  job: CronJobInput;
   message: string;
   timezone: string;
   session: string;

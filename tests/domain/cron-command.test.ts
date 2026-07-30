@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCronCreateArgs, buildCronEditArgs } from "../../src/application/cron-command.js";
+import { buildCronCreateArgs, buildCronEditArgs } from "../../src/domain/cron-command.js";
 
 const WORKING_DIRECTORY = "/opt/apps/sol-usdc-clmm-intelligence";
 
