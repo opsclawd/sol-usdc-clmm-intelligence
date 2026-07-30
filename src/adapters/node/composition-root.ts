@@ -72,7 +72,6 @@ export function createNodeRuntime(): NodeRuntime {
   let persistencePromise: Promise<Persistence> | undefined;
   let contractPromise: Promise<EvidenceBundleContract> | undefined;
   let llmProviderPromise: Promise<LlmProvider> | undefined;
-  let lockPromise: Promise<PipelineRunLock> | undefined;
 
   return {
     http: new FetchHttpClient(),
@@ -159,11 +158,8 @@ export function createNodeRuntime(): NodeRuntime {
       return llmProviderPromise;
     },
     async getPipelineRunLock() {
-      if (!lockPromise) {
-        const { PgPipelineRunLock } = await import("./pg-pipeline-run-lock.js");
-        lockPromise = Promise.resolve(new PgPipelineRunLock(env));
-      }
-      return lockPromise;
+      const { PgPipelineRunLock } = await import("./pg-pipeline-run-lock.js");
+      return new PgPipelineRunLock(env);
     },
     async getPerpLiquidationSources(options) {
       const { HttpBinanceFapiSource } = await import("./http-binance-fapi-source.js");

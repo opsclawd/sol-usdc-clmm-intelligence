@@ -21,9 +21,11 @@ export class PgPipelineRunLock implements PipelineRunLock {
     }
 
     const connectionString = this.env.get("DATABASE_URL");
-    const parsed = parseInt(process.env.PG_MAX_CONNECTIONS ?? "", 10);
+    const pgMaxConnections = this.env.getOptional("PG_MAX_CONNECTIONS");
+    const parsed = parseInt(pgMaxConnections ?? "", 10);
     const max = Number.isFinite(parsed) && parsed > 0 ? parsed : 10;
-    const ssl = process.env.PG_SSL === "false" ? false : { rejectUnauthorized: false };
+    const pgSsl = this.env.getOptional("PG_SSL");
+    const ssl = pgSsl === "false" ? false : { rejectUnauthorized: false };
 
     const client = postgres(connectionString, {
       connection: {
