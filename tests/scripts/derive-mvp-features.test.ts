@@ -161,6 +161,7 @@ describe("deriveMvpFeaturesJob thin job", () => {
       expect(result.counts).toBeDefined();
       expect(result.rows).toHaveLength(2);
       expect(runIdFactory.nextRunId).toHaveBeenCalled();
+      expect(clock.now).toHaveBeenCalledTimes(1);
     });
 
     it("should not call any HTTP, jsonStore, textReader, or commandRunner", async () => {

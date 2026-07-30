@@ -19,7 +19,7 @@ import {
   mapSolanaNetworkStatusOutcome,
   mapSourceError
 } from "../application/source-outcome.js";
-import type { CoreCollectionResult } from "../contracts/collection-run.js";
+import type { CoreCollectionResult, CollectionRunContext } from "../contracts/collection-run.js";
 
 export interface CoreCollectionJobDeps {
   http: HttpClient;
@@ -34,20 +34,23 @@ export interface CoreCollectionJobDeps {
 
 export function coreCollectionJob(
   deps: CoreCollectionJobDeps
-): () => Promise<CoreCollectionResult> {
-  return async () => {
-    return runCoreCollectionJob(deps);
+): (context?: CollectionRunContext) => Promise<CoreCollectionResult> {
+  return async (context?: CollectionRunContext) => {
+    return runCoreCollectionJob(deps, context);
   };
 }
 
 export async function runCoreCollectionJob(
-  deps: CoreCollectionJobDeps
+  deps: CoreCollectionJobDeps,
+  context?: CollectionRunContext
 ): Promise<CoreCollectionResult> {
-  const context = createCollectionRunContext({
-    env: deps.env,
-    clock: deps.clock,
-    runIdFactory: deps.runIdFactory
-  });
+  const effectiveContext =
+    context ??
+    createCollectionRunContext({
+      env: deps.env,
+      clock: deps.clock,
+      runIdFactory: deps.runIdFactory
+    });
 
   return collectCore(
     {
@@ -91,6 +94,6 @@ export async function runCoreCollectionJob(
         }
       }
     },
-    context
+    effectiveContext
   );
 }

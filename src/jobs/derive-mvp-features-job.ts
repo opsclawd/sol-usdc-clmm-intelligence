@@ -5,8 +5,10 @@ import {
   type DeriveMvpFeaturesResult
 } from "../application/derive-mvp-features.js";
 import type { RunIdFactory } from "../ports/run-id.js";
+import type { Clock } from "../ports/clock.js";
 
 export interface DeriveMvpFeaturesJobDeps extends DeriveMvpFeaturesDeps {
+  readonly clock: Clock;
   readonly runIdFactory: RunIdFactory;
 }
 
@@ -27,12 +29,14 @@ export function deriveMvpFeaturesJob(
 ): (request: DeriveMvpFeaturesJobRequest) => Promise<DeriveMvpFeaturesJobResult> {
   return async (request) => {
     const pipelineRunId = deps.runIdFactory.nextRunId();
+    const evaluationTimeUnixMs = new Date(deps.clock.now()).getTime();
     try {
       const deriveRequest: DeriveMvpFeaturesRequest = {
         pair: "SOL/USDC",
         poolId: request.poolId,
         positionIds: request.positionIds,
         pipelineRunId,
+        evaluationTimeUnixMs,
         codeVersion: request.codeVersion ?? "development"
       };
       const result = await deriveMvpFeatures(deps, deriveRequest);

@@ -1,4 +1,3 @@
-import type { Clock } from "../ports/clock.js";
 import type { NormalizedObservationRepo } from "../ports/normalized-observation-repo.js";
 import type {
   DerivedFeatureRepo,
@@ -54,11 +53,11 @@ export interface DeriveMvpFeaturesRequest {
   readonly poolId: string;
   readonly positionIds: readonly string[];
   readonly pipelineRunId: string;
+  readonly evaluationTimeUnixMs: number;
   readonly codeVersion: string;
 }
 
 export interface DeriveMvpFeaturesDeps {
-  readonly clock: Clock;
   readonly normalizedObservationRepo: NormalizedObservationRepo;
   readonly featureRepo: DerivedFeatureRepo;
 }
@@ -100,10 +99,6 @@ interface DerivedFeatureRow {
 
 const PAIR = "SOL/USDC" as const;
 const WINDOW_SAFETY_MS = 300_000;
-
-function parseClock(clock: Clock): number {
-  return new Date(clock.now()).getTime();
-}
 
 function buildDefaultConfidence(): Confidence {
   return {
@@ -1065,10 +1060,19 @@ export async function deriveMvpFeatures(
   deps: DeriveMvpFeaturesDeps,
   request: DeriveMvpFeaturesRequest
 ): Promise<DeriveMvpFeaturesResult> {
-  const { clock, normalizedObservationRepo, featureRepo } = deps;
-  const { poolId, positionIds, pipelineRunId, codeVersion } = request;
+  if (
+    typeof request.evaluationTimeUnixMs !== "number" ||
+    !Number.isFinite(request.evaluationTimeUnixMs) ||
+    !Number.isInteger(request.evaluationTimeUnixMs) ||
+    request.evaluationTimeUnixMs < 0
+  ) {
+    throw new Error(`Invalid evaluationTimeUnixMs: ${request.evaluationTimeUnixMs}`);
+  }
 
-  const evaluationAsOfUnixMs = parseClock(clock);
+  const { normalizedObservationRepo, featureRepo } = deps;
+  const { poolId, positionIds, pipelineRunId, codeVersion, evaluationTimeUnixMs } = request;
+
+  const evaluationAsOfUnixMs = evaluationTimeUnixMs;
 
   const windowStart = evaluationAsOfUnixMs - VOLATILITY_WINDOW_MS - WINDOW_SAFETY_MS;
 
