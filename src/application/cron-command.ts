@@ -13,12 +13,26 @@ export interface BuildCronCreateArgsInputs {
   delivery?: { channel: string; to: string };
 }
 
+export interface BuildCronEditArgsInputs extends BuildCronCreateArgsInputs {
+  jobId: string;
+}
+
 export interface CronCommand {
   command: "hermes";
   args: string[];
 }
 
 const HERMES_CLI_PATH = ["cron", "create"] as const;
+
+function buildDeliverTarget(delivery?: { channel: string; to: string }): string {
+  return delivery && delivery.channel && delivery.to
+    ? `${delivery.channel}:${delivery.to}`
+    : "local";
+}
+
+function buildPrompt(message: string, workingDirectory: string): string {
+  return `Working directory for this task: ${workingDirectory} — run all shell commands from there (cd into it first).\n\n${message}`;
+}
 
 /**
  * Hermes's `cron create` has no equivalent to OpenClaw's `--tz`, `--session`,
@@ -31,20 +45,34 @@ const HERMES_CLI_PATH = ["cron", "create"] as const;
 export function buildCronCreateArgs(inputs: BuildCronCreateArgsInputs): CronCommand {
   const { job, message, delivery, workingDirectory } = inputs;
 
-  const deliverTarget =
-    delivery && delivery.channel && delivery.to ? `${delivery.channel}:${delivery.to}` : "local";
-
-  const promptWithCwd = `Working directory for this task: ${workingDirectory} — run all shell commands from there (cd into it first).\n\n${message}`;
-
   const args: string[] = [
     ...HERMES_CLI_PATH,
     job.cron,
-    promptWithCwd,
+    buildPrompt(message, workingDirectory),
     "--name",
     job.name,
     "--deliver",
-    deliverTarget
+    buildDeliverTarget(delivery)
   ];
 
   return { command: "hermes", args };
+}
+
+export function buildCronEditArgs(inputs: BuildCronEditArgsInputs): CronCommand {
+  const { jobId, job, message, delivery, workingDirectory } = inputs;
+
+  return {
+    command: "hermes",
+    args: [
+      "cron",
+      "edit",
+      jobId,
+      "--prompt",
+      buildPrompt(message, workingDirectory),
+      "--schedule",
+      job.cron,
+      "--deliver",
+      buildDeliverTarget(delivery)
+    ]
+  };
 }

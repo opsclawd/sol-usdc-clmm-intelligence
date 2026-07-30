@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCronCreateArgs } from "../../src/application/cron-command.js";
+import { buildCronCreateArgs, buildCronEditArgs } from "../../src/application/cron-command.js";
 
 const WORKING_DIRECTORY = "/opt/apps/sol-usdc-clmm-intelligence";
 
@@ -113,5 +113,49 @@ describe("buildCronCreateArgs", () => {
       exact: false
     });
     expect(result.args).toEqual(expect.arrayContaining(["--deliver", "local"]));
+  });
+});
+
+describe("buildCronEditArgs", () => {
+  it("builds an edit command for the persisted id and desired mutable fields", () => {
+    const result = buildCronEditArgs({
+      jobId: "job-123",
+      job: { name: "clmm-daily", cron: "0 7 * * *", messageFile: "r.md" },
+      message: "hello",
+      timezone: "America/Edmonton",
+      session: "isolated",
+      workingDirectory: WORKING_DIRECTORY,
+      exact: false,
+      delivery: { channel: "telegram", to: "12345" }
+    });
+
+    expect(result).toEqual({
+      command: "hermes",
+      args: [
+        "cron",
+        "edit",
+        "job-123",
+        "--prompt",
+        `Working directory for this task: ${WORKING_DIRECTORY} — run all shell commands from there (cd into it first).\n\nhello`,
+        "--schedule",
+        "0 7 * * *",
+        "--deliver",
+        "telegram:12345"
+      ]
+    });
+  });
+
+  it("uses local delivery when an edited job has no configured delivery", () => {
+    const result = buildCronEditArgs({
+      jobId: "job-123",
+      job: { name: "a", cron: "* * * * *", messageFile: "r.md" },
+      message: "m",
+      timezone: "UTC",
+      session: "isolated",
+      workingDirectory: WORKING_DIRECTORY,
+      exact: false
+    });
+
+    expect(result.args.slice(-2)).toEqual(["--deliver", "local"]);
   });
 });
