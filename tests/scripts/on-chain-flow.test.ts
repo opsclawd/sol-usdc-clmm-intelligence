@@ -49,12 +49,11 @@ function createMockRuntime() {
       get: vi.fn((name: string) => {
         if (name === "BIRDEYE_FLOW_API_URL") return "https://public-api.birdeye.so";
         if (name === "BIRDEYE_API_KEY") return "birdeye-secret-key-456";
-        if (name === "ORCA_SOL_USDC_WHIRLPOOL")
-          return "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
+        if (name === "WHIRLPOOL_ADDRESS") return "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
         if (name === "WALLET_PUBLIC_KEY") return "Wallet123";
         throw new Error(`Unexpected env var: ${name}`);
       }),
-      getOptional: vi.fn((name: string) => {
+      getOptional: vi.fn((name: string): string | undefined => {
         switch (name) {
           case "BIRDEYE_FLOW_API_URL":
             return "https://public-api.birdeye.so";
@@ -64,7 +63,7 @@ function createMockRuntime() {
             return "https://api.helius.xyz";
           case "HELIUS_API_KEY":
             return "helius-secret-key-123";
-          case "ORCA_SOL_USDC_WHIRLPOOL":
+          case "WHIRLPOOL_ADDRESS":
             return "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
           case "WALLET_PUBLIC_KEY":
             return "Wallet123";
@@ -293,8 +292,7 @@ describe("on-chain-flow collector script", () => {
           get: vi.fn((name: string) => {
             if (name === "BIRDEYE_FLOW_API_URL") return "https://public-api.birdeye.so";
             if (name === "BIRDEYE_API_KEY") return "birdeye-secret-key-456";
-            if (name === "ORCA_SOL_USDC_WHIRLPOOL")
-              return "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
+            if (name === "WHIRLPOOL_ADDRESS") return "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
             if (name === "HELIUS_FLOW_API_URL")
               throw new Error("Missing required environment variable: HELIUS_FLOW_API_URL");
             if (name === "HELIUS_API_KEY") return "helius-secret-key-123";
@@ -324,8 +322,7 @@ describe("on-chain-flow collector script", () => {
           get: vi.fn((name: string) => {
             if (name === "BIRDEYE_FLOW_API_URL") return "https://public-api.birdeye.so";
             if (name === "BIRDEYE_API_KEY") return "birdeye-secret-key-456";
-            if (name === "ORCA_SOL_USDC_WHIRLPOOL")
-              return "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
+            if (name === "WHIRLPOOL_ADDRESS") return "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
             if (name === "HELIUS_FLOW_API_URL") return "https://api.helius.xyz";
             if (name === "HELIUS_API_KEY")
               throw new Error("Missing required environment variable: HELIUS_API_KEY");
@@ -347,30 +344,51 @@ describe("on-chain-flow collector script", () => {
       expect(mockRunOnChainFlowJob).not.toHaveBeenCalled();
     });
 
-    it("fails when the Orca pool address is missing", async () => {
-      mockCreateNodeRuntime.mockReturnValue({
-        ...createMockRuntime(),
-        env: {
-          ...createMockRuntime().env,
-          get: vi.fn((name: string) => {
-            if (name === "BIRDEYE_FLOW_API_URL") return "https://public-api.birdeye.so";
-            if (name === "BIRDEYE_API_KEY") return "birdeye-secret-key-456";
-            if (name === "ORCA_SOL_USDC_WHIRLPOOL")
-              throw new Error("Missing required environment variable: ORCA_SOL_USDC_WHIRLPOOL");
-            if (name === "WALLET_PUBLIC_KEY") return "Wallet123";
-            throw new Error(`Unexpected env var: ${name}`);
-          }),
-          getOptional: vi.fn((name: string) => {
-            if (name === "ORCA_SOL_USDC_WHIRLPOOL") return undefined;
-            if (name === "WALLET_PUBLIC_KEY") return "Wallet123";
-            return createMockRuntime().env.getOptional(name);
-          })
-        }
+    it("fails before adapters, persistence, and collection when WHIRLPOOL_ADDRESS is missing", async () => {
+      const runtime = createMockRuntime();
+      runtime.env.getOptional.mockImplementation((name: string) => {
+        if (name === "WHIRLPOOL_ADDRESS") return undefined;
+        return createMockRuntime().env.getOptional(name);
       });
+      mockCreateNodeRuntime.mockReturnValue(runtime);
 
       await runOnChainFlowCollect();
 
       expect(process.exitCode).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(
+        JSON.stringify({
+          status: "failed",
+          diagnostic: "WHIRLPOOL_ADDRESS is not configured"
+        })
+      );
+      expect(mockHeliusConstructor).not.toHaveBeenCalled();
+      expect(mockBirdeyeConstructor).not.toHaveBeenCalled();
+      expect(mockGetPersistence).not.toHaveBeenCalled();
+      expect(mockRunOnChainFlowJob).not.toHaveBeenCalled();
+      expect(mockClose).not.toHaveBeenCalled();
+    });
+
+    it("fails before adapters, persistence, and collection when WHIRLPOOL_ADDRESS is blank", async () => {
+      const runtime = createMockRuntime();
+      runtime.env.getOptional.mockImplementation((name: string) => {
+        if (name === "WHIRLPOOL_ADDRESS") return "   ";
+        return createMockRuntime().env.getOptional(name);
+      });
+      mockCreateNodeRuntime.mockReturnValue(runtime);
+
+      await runOnChainFlowCollect();
+
+      expect(process.exitCode).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(
+        JSON.stringify({
+          status: "failed",
+          diagnostic: "WHIRLPOOL_ADDRESS is not configured"
+        })
+      );
+      expect(mockHeliusConstructor).not.toHaveBeenCalled();
+      expect(mockBirdeyeConstructor).not.toHaveBeenCalled();
+      expect(mockGetPersistence).not.toHaveBeenCalled();
+      expect(mockRunOnChainFlowJob).not.toHaveBeenCalled();
       expect(mockClose).not.toHaveBeenCalled();
     });
 
@@ -398,26 +416,20 @@ describe("on-chain-flow collector script", () => {
       expect(mockRunOnChainFlowJob).not.toHaveBeenCalled();
     });
 
-    it("passes the pool and whale threshold to the Birdeye adapter", async () => {
+    it("uses WHIRLPOOL_ADDRESS for the Birdeye pool", async () => {
+      const runtime = createMockRuntime();
+      mockCreateNodeRuntime.mockReturnValue(runtime);
       mockRunOnChainFlowJob.mockResolvedValue(COMPLETE_RESULT);
 
       await runOnChainFlowCollect();
 
-      const { HttpBirdeyeFlowSource } =
-        await import("../../src/adapters/node/http-birdeye-flow-source.js");
-      expect(HttpBirdeyeFlowSource).toHaveBeenCalledWith(
-        expect.objectContaining({
-          url: "https://public-api.birdeye.so",
-          poolAddress: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
-          whaleSwapMinUsdc: "1000000"
-        })
+      expect(runtime.env.getOptional).toHaveBeenCalledWith("WHIRLPOOL_ADDRESS");
+      expect(runtime.env.getOptional).not.toHaveBeenCalledWith(
+        ["ORCA", "SOL", "USDC", "WHIRLPOOL"].join("_")
       );
-      expect(mockRunOnChainFlowJob).toHaveBeenCalledWith(
+      expect(mockBirdeyeConstructor).toHaveBeenCalledWith(
         expect.objectContaining({
-          sources: [
-            expect.objectContaining({ source: "helius-api" }),
-            expect.objectContaining({ source: "birdeye-api" })
-          ]
+          poolAddress: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
         })
       );
     });

@@ -610,7 +610,7 @@ WALLET_PUBLIC_KEY=<your-solana-wallet-address>
 SOL_MINT=So11111111111111111111111111111111111111112
 USDC_MINT=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
 ORCA_API_BASE=https://api.orca.so/v2/solana
-ORCA_SOL_USDC_WHIRLPOOL=Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE
+WHIRLPOOL_ADDRESS=Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE
 ```
 
 For `pnpm cron:sync -- --apply` (see `scheduling.md`), consumed only by that command — not by the Hermes gateway itself, which has its own separate config:

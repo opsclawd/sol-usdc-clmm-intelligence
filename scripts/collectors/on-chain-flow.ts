@@ -54,7 +54,7 @@ export async function runOnChainFlowCollect(): Promise<void> {
 
   const birdeyeUrl = runtime.env.getOptional("BIRDEYE_FLOW_API_URL")?.trim();
   const birdeyeApiKey = runtime.env.getOptional("BIRDEYE_API_KEY")?.trim();
-  const orcaPoolAddress = runtime.env.getOptional("ORCA_SOL_USDC_WHIRLPOOL")?.trim();
+  const orcaPoolAddress = runtime.env.getOptional("WHIRLPOOL_ADDRESS")?.trim();
   const heliusUrl = runtime.env.getOptional("HELIUS_FLOW_API_URL")?.trim();
   const heliusApiKey = runtime.env.getOptional("HELIUS_API_KEY")?.trim();
 
@@ -84,7 +84,7 @@ export async function runOnChainFlowCollect(): Promise<void> {
     console.error(
       JSON.stringify({
         status: "failed",
-        diagnostic: "ORCA_SOL_USDC_WHIRLPOOL is not configured"
+        diagnostic: "WHIRLPOOL_ADDRESS is not configured"
       })
     );
     process.exitCode = 1;
