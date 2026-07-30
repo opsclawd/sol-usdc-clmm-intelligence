@@ -144,6 +144,15 @@ export class DrizzleBundleRepo implements EvidenceBundleRepo {
     };
   }
 
+  async findById(id: number): Promise<EvidenceBundleRow | undefined> {
+    const [result] = await this.db
+      .select()
+      .from(evidenceBundles)
+      .where(eq(evidenceBundles.id, id))
+      .limit(1);
+    return result ? toPortRow(result) : undefined;
+  }
+
   async findByPair(pair: string, sinceUnixMs: number): Promise<EvidenceBundleRow[]> {
     const rows = await this.db
       .select()

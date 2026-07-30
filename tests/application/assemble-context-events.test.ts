@@ -438,6 +438,10 @@ class FakeBundleRepo implements EvidenceBundleRepo {
     return { outcome: "inserted", row: newRow };
   }
 
+  async findById(id: number): Promise<EvidenceBundleRow | undefined> {
+    return this.store.find((row) => row.id === id);
+  }
+
   async findByPair(pair: string, sinceUnixMs: number): Promise<EvidenceBundleRow[]> {
     return this.store.filter((r) => r.pair === pair && r.asOfUnixMs >= sinceUnixMs);
   }
