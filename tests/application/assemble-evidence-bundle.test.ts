@@ -16,7 +16,8 @@ import type {
   EvidenceBundleInsert,
   DerivedFeatureInsert,
   NormalizedObservationInsert,
-  RawObservationInsert
+  RawObservationInsert,
+  NormalizedObservationCandidateQuery
 } from "../../src/ports/index.js";
 import type { RawInsertOutcome } from "../../src/ports/observation-repo.js";
 import type { EvidenceBundleInsertOutcome } from "../../src/ports/bundle-repo.js";
@@ -253,6 +254,7 @@ class FakeFeatureRepo implements DerivedFeatureRepo {
 class FakeNormalizedRepo implements NormalizedObservationRepo {
   store: NormalizedObservationRow[] = [];
   lastFindByIdsArg: number[] = [];
+  lastListCandidatesArg: NormalizedObservationCandidateQuery | null = null;
 
   constructor(private executionLog: string[]) {}
 
@@ -311,8 +313,11 @@ class FakeNormalizedRepo implements NormalizedObservationRepo {
     );
   }
 
-  async listCandidates(): Promise<NormalizedObservationRow[]> {
+  async listCandidates(
+    query: NormalizedObservationCandidateQuery
+  ): Promise<NormalizedObservationRow[]> {
     this.executionLog.push("normalized.listCandidates");
+    this.lastListCandidatesArg = query;
     return this.store;
   }
 
@@ -584,6 +589,43 @@ describe("assembleEvidenceBundle", () => {
       );
 
       expect(executionLog.filter((c) => c === "bundle.insertOrClassify").length).toBe(1);
+    });
+  });
+
+  describe("queries the configured contextual source matrix", () => {
+    it("queries Birdeye whale swaps and preserves the contextual source matrix", async () => {
+      const { assembleEvidenceBundle } =
+        await import("../../src/application/assemble-evidence-bundle.js");
+
+      seedRaw([makeRawRow({ id: 1 })]);
+      seedFeature([
+        makeDerivedFeatureRow({
+          id: 1,
+          featureKind: "range_location",
+          positionId: "pos-1",
+          poolId: "pool-abc",
+          inputObservationIds: [1],
+          rawRefs: [makeRawRef(1, "clmm-v2-bundle", "raw-hash-1")]
+        })
+      ]);
+
+      await assembleEvidenceBundle(
+        { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+        makeRequest()
+      );
+
+      expect(normalizedRepo.lastListCandidatesArg).toEqual({
+        sourceKinds: [
+          { source: "macro-calendar-api", observationKind: "scheduled_event" },
+          { source: "solana-status-api", observationKind: "protocol_incident" },
+          { source: "helius-api", observationKind: "whale_transfer" },
+          { source: "birdeye-api", observationKind: "whale_swap" },
+          { source: "helius-api", observationKind: "stablecoin_flow" },
+          { source: "helius-api", observationKind: "cex_flow_proxy" },
+          { source: "birdeye-api", observationKind: "dex_net_flow" }
+        ],
+        receivedAtOrAfterUnixMs: EVAL_MS - 7 * 24 * 60 * 60 * 1000
+      });
     });
   });
 
