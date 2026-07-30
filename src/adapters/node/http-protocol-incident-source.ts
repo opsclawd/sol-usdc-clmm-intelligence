@@ -37,6 +37,7 @@ function mapImpact(impact: unknown): ProtocolIncidentSourceClaim["severity"] {
     case "minor":
       return "MEDIUM";
     case "none":
+    case "maintenance":
       return "LOW";
     default:
       throw new HttpRequestError(
@@ -81,7 +82,9 @@ export class HttpProtocolIncidentSource implements ProtocolIncidentSourcePort {
       );
     }
 
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = {
+      "User-Agent": "solana-clmm-intelligence/1.0"
+    };
     if (this.options.apiKey) {
       headers["Authorization"] = `Bearer ${this.options.apiKey}`;
     }
@@ -112,7 +115,14 @@ export class HttpProtocolIncidentSource implements ProtocolIncidentSourcePort {
           httpError = new HttpRequestError("network", lastError.message, null, true);
         }
 
-        if (!httpError.retryable || attempt >= this.maxAttempts - 1) {
+        const isRetryable =
+          httpError.retryable ||
+          httpError.kind === "network" ||
+          httpError.kind === "timeout" ||
+          (httpError.status !== null &&
+            (httpError.status === 408 || httpError.status === 429 || httpError.status >= 500));
+
+        if (!isRetryable || attempt >= this.maxAttempts - 1) {
           throw mapToProtocolIncidentSourceError(httpError, this.options.apiKey);
         }
 
