@@ -39,6 +39,7 @@ describe("generateResearchBriefJob", () => {
     };
 
     const params: GenerateResearchBriefParams = {
+      evidenceBundleId: 1,
       pair: "SOL/USDC",
       evaluationTimeUnixMs: 1700000000000,
       codeVersion: "1.0.0"
@@ -67,6 +68,7 @@ describe("generateResearchBriefJob", () => {
     };
 
     const params: GenerateResearchBriefParams = {
+      evidenceBundleId: 1,
       pair: "SOL/USDC",
       evaluationTimeUnixMs: 1700000000000,
       codeVersion: "1.0.0"

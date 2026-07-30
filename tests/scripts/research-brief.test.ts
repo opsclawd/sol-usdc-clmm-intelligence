@@ -45,6 +45,7 @@ describe("runGenerateResearchBriefScript", () => {
     mockGenerateResearchBriefJob.mockResolvedValueOnce(mockOutcome);
 
     const result = await runGenerateResearchBriefScript(mockRuntime, {
+      evidenceBundleId: 5,
       pair: "SOL/USDC",
       evaluationTimeUnixMs: 1700000000000,
       codeVersion: "1.0.0"
@@ -69,6 +70,7 @@ describe("runGenerateResearchBriefScript", () => {
     mockGenerateResearchBriefJob.mockResolvedValueOnce(mockOutcome);
 
     const result = await runGenerateResearchBriefScript(mockRuntime, {
+      evidenceBundleId: 5,
       pair: "SOL/USDC",
       evaluationTimeUnixMs: 1700000000000,
       codeVersion: "1.0.0"
@@ -83,6 +85,7 @@ describe("runGenerateResearchBriefScript", () => {
 
   it("returns error outcome on wrong pair input", async () => {
     const result = await runGenerateResearchBriefScript(mockRuntime, {
+      evidenceBundleId: 5,
       pair: "BTC/USDC",
       evaluationTimeUnixMs: 1700000000000,
       codeVersion: "1.0.0"
@@ -94,4 +97,38 @@ describe("runGenerateResearchBriefScript", () => {
     });
     expect(process.exitCode).toBe(1);
   });
+
+  it("rejects an absent request before initializing brief dependencies", async () => {
+    const result = await runGenerateResearchBriefScript(mockRuntime, undefined);
+    expect(result).toEqual({ outcome: "error", reason: "request_required" });
+    expect(mockRuntime.getPersistence).not.toHaveBeenCalled();
+    expect(mockGenerateResearchBriefJob).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("rejects a missing evidenceBundleId before initializing brief dependencies", async () => {
+    const result = await runGenerateResearchBriefScript(mockRuntime, {
+      pair: "SOL/USDC",
+      evaluationTimeUnixMs: 1700000000000,
+      codeVersion: "1.0.0"
+    });
+    expect(result).toEqual({ outcome: "error", reason: "invalid_evidence_bundle_id" });
+    expect(mockRuntime.getPersistence).not.toHaveBeenCalled();
+    expect(mockGenerateResearchBriefJob).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it.each([0, -1, 1.5, "1", Number.NaN])(
+    "rejects a malformed evidenceBundleId before initializing brief dependencies",
+    async (evidenceBundleId) => {
+      const result = await runGenerateResearchBriefScript(mockRuntime, {
+        evidenceBundleId,
+        pair: "SOL/USDC",
+        evaluationTimeUnixMs: 1700000000000,
+        codeVersion: "1.0.0"
+      });
+      expect(result.reason).toBe("invalid_evidence_bundle_id");
+      expect(mockRuntime.getPersistence).not.toHaveBeenCalled();
+    }
+  );
 });

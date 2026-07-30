@@ -53,12 +53,23 @@ export async function runGenerateResearchBriefScript(
   runtime: NodeRuntime,
   requestInput?: string | unknown
 ): Promise<RedactedBriefOutcome> {
+  if (requestInput === undefined || requestInput === null) {
+    console.error("Invalid request: request input is required");
+    process.exitCode = 1;
+    return { outcome: "error", reason: "request_required" };
+  }
+
   let parsedParams: GenerateResearchBriefParams;
 
-  if (typeof requestInput === "object" && requestInput !== null) {
+  if (typeof requestInput === "object") {
     parsedParams = requestInput as GenerateResearchBriefParams;
   } else if (typeof requestInput === "string") {
     const raw = requestInput.trim();
+    if (raw === "") {
+      console.error("Invalid request: request input is required");
+      process.exitCode = 1;
+      return { outcome: "error", reason: "request_required" };
+    }
     if (raw.startsWith("{")) {
       try {
         parsedParams = JSON.parse(raw);
@@ -83,13 +94,20 @@ export async function runGenerateResearchBriefScript(
       }
     }
   } else {
-    const clockNow = runtime.clock.now();
-    const evalTime = typeof clockNow === "number" ? clockNow : new Date(clockNow).getTime();
-    parsedParams = {
-      pair: "SOL/USDC",
-      evaluationTimeUnixMs: Number.isNaN(evalTime) ? Date.now() : evalTime,
-      codeVersion: "1.0.0"
-    };
+    console.error("Invalid request: request input is required");
+    process.exitCode = 1;
+    return { outcome: "error", reason: "request_required" };
+  }
+
+  const evidenceBundleId = (parsedParams as { evidenceBundleId?: unknown })?.evidenceBundleId;
+  if (
+    typeof evidenceBundleId !== "number" ||
+    !Number.isSafeInteger(evidenceBundleId) ||
+    evidenceBundleId <= 0
+  ) {
+    console.error("Invalid request: evidenceBundleId must be a positive safe integer");
+    process.exitCode = 1;
+    return { outcome: "error", reason: "invalid_evidence_bundle_id" };
   }
 
   if (!parsedParams.pair || parsedParams.pair !== "SOL/USDC") {
