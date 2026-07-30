@@ -26,6 +26,3 @@ jobs:
   - name: support-resistance
     cron: "15 */4 * * *"
     messageFile: cron/routines/support-resistance.md
-  - name: core-evidence-pipeline
-    cron: "*/30 * * * *"
-    messageFile: cron/routines/core-evidence-pipeline.md
