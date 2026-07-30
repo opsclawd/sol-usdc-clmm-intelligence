@@ -55,3 +55,5 @@ export {
   VOLATILITY_MAX_GAP_MS,
   type PriceObservation
 } from "./volatility.js";
+
+export { MVP_ACCEPTED_CALCULATOR_VERSIONS } from "./constants.js";
