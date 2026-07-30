@@ -98,6 +98,7 @@ vi.mock("../../src/adapters/node/composition-root.js", () => {
             },
             bundleRepo: {
               insertOrClassify: vi.fn(),
+              findById: vi.fn(),
               findByPair: vi.fn(),
               findLatestByPair: vi.fn()
             },

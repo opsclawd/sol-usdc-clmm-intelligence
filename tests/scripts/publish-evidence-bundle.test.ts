@@ -24,6 +24,7 @@ function createMockClock(now?: string): Clock {
 function createMockBundleRepo(): EvidenceBundleRepo {
   return {
     insertOrClassify: vi.fn(),
+    findById: vi.fn(),
     findByPair: vi.fn(),
     findLatestByPair: vi.fn()
   };

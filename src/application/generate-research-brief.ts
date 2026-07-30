@@ -41,6 +41,7 @@ export interface GenerateResearchBriefDeps {
 }
 
 export interface GenerateResearchBriefParams {
+  readonly evidenceBundleId: number;
   readonly pair: "SOL/USDC";
   readonly evaluationTimeUnixMs: number;
   readonly codeVersion: string;
@@ -73,16 +74,16 @@ export async function generateResearchBrief(
   deps: GenerateResearchBriefDeps,
   params: GenerateResearchBriefParams
 ): Promise<GenerateResearchBriefOutcome> {
-  const latestBundleRow = await deps.bundleRepo.findLatestByPair(params.pair);
-  if (!latestBundleRow) {
+  const targetBundleRow = await deps.bundleRepo.findById(params.evidenceBundleId);
+  if (!targetBundleRow || targetBundleRow.pair !== params.pair) {
     return { outcome: "no_brief", reason: "no_bundle" };
   }
 
-  if (latestBundleRow.isStale) {
+  if (targetBundleRow.isStale) {
     return { outcome: "no_brief", reason: "stale_source" };
   }
 
-  if (latestBundleRow.expiresAtUnixMs <= params.evaluationTimeUnixMs) {
+  if (targetBundleRow.expiresAtUnixMs <= params.evaluationTimeUnixMs) {
     return { outcome: "no_brief", reason: "expired_source" };
   }
 
@@ -91,8 +92,13 @@ export async function generateResearchBrief(
   const recentBundles = await deps.bundleRepo.findByPair(params.pair, sevenDaysAgoMs);
 
   const candidateBundles = recentBundles
-    .filter((b) => b.id !== latestBundleRow.id)
-    .sort((a, b) => b.asOfUnixMs - a.asOfUnixMs)
+    .filter(
+      (candidate) =>
+        candidate.pair === targetBundleRow.pair &&
+        candidate.id !== targetBundleRow.id &&
+        candidate.asOfUnixMs < targetBundleRow.asOfUnixMs
+    )
+    .sort((a, b) => b.asOfUnixMs - a.asOfUnixMs || b.id - a.id)
     .slice(0, 10);
 
   let priorBrief: PersistedResearchBrief | null = null;
@@ -109,7 +115,7 @@ export async function generateResearchBrief(
     for (const cand of candidateBundles) {
       const briefsForCand = candidateBriefRows
         .filter((b) => b.evidenceBundleId === cand.id)
-        .sort((a, b) => b.receivedAtUnixMs - a.receivedAtUnixMs);
+        .sort((a, b) => b.receivedAtUnixMs - a.receivedAtUnixMs || b.id - a.id);
 
       for (const bRow of briefsForCand) {
         const artifact = bRow.structuredOutput as PersistedResearchBrief;
@@ -129,7 +135,7 @@ export async function generateResearchBrief(
 
   try {
     const projectParams: ProjectContextParams = {
-      bundle: latestBundleRow.payload as EvidenceBundleV1,
+      bundle: targetBundleRow.payload as EvidenceBundleV1,
       priorBrief,
       ...(params.currentRegimeEvidence
         ? { currentRegimeEvidence: params.currentRegimeEvidence }
@@ -152,7 +158,7 @@ export async function generateResearchBrief(
     : await canonicalHash({ pair: params.pair, warnings: initialWarnings });
 
   // Early idempotency check: reuse existing COMPLETE brief for the same bundle and context hash
-  const existingBriefs = await deps.briefRepo.findByBundleId(latestBundleRow.id);
+  const existingBriefs = await deps.briefRepo.findByBundleId(targetBundleRow.id);
   const existingMatch = existingBriefs.find((r) => {
     const artifact = r.structuredOutput as PersistedResearchBrief;
     return (
@@ -251,13 +257,13 @@ export async function generateResearchBrief(
           degradationReason: degradationReason ?? "model_error"
         };
 
-  const briefId = `brief:${latestBundleRow.id}:${inputContextHash.slice(0, 12)}`;
+  const briefId = `brief:${targetBundleRow.id}:${inputContextHash.slice(0, 12)}`;
 
   const bundleRef: ProvenanceRef = {
     refType: "evidence_bundle",
-    id: latestBundleRow.id,
+    id: targetBundleRow.id,
     source: "clmm-v2-bundle",
-    payloadHash: latestBundleRow.payloadHash
+    payloadHash: targetBundleRow.payloadHash
   };
 
   const sourceRefs: ProvenanceRef[] = [bundleRef];
@@ -282,8 +288,8 @@ export async function generateResearchBrief(
     sourceRefs,
     providerMetadata,
     sourceBundleRef: {
-      bundleId: latestBundleRow.id,
-      bundleHash: latestBundleRow.payloadHash
+      bundleId: targetBundleRow.id,
+      bundleHash: targetBundleRow.payloadHash
     },
     inputContextHash,
     priorBriefRef:
@@ -318,7 +324,7 @@ export async function generateResearchBrief(
   };
 
   const insertData: ResearchBriefInsert = {
-    evidenceBundleId: latestBundleRow.id,
+    evidenceBundleId: targetBundleRow.id,
     promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
     modelProvider: providerMetadata.provider,
     structuredOutput: persistedBrief,
@@ -331,7 +337,7 @@ export async function generateResearchBrief(
     confidence,
     confidenceComposite: confidenceScore,
     confidenceLevel: confidenceLevel,
-    validUntilUnixMs: latestBundleRow.expiresAtUnixMs,
+    validUntilUnixMs: targetBundleRow.expiresAtUnixMs,
     isStale: false,
     staleBehavior: null,
     provenance: {

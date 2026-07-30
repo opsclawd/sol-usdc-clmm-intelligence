@@ -62,6 +62,7 @@ export interface EvidenceBundleInsert {
 
 export interface EvidenceBundleRepo {
   insertOrClassify(row: EvidenceBundleInsert): Promise<EvidenceBundleInsertOutcome>;
+  findById(id: number): Promise<EvidenceBundleRow | undefined>;
   findByPair(pair: string, sinceUnixMs: number): Promise<EvidenceBundleRow[]>;
   findLatestByPair(pair: string): Promise<EvidenceBundleRow | undefined>;
 }

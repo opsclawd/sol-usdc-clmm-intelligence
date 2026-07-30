@@ -230,6 +230,28 @@ describe("DrizzleBundleRepo integration", () => {
     });
   });
 
+  describe("findById exact primary-key lookup", () => {
+    it("findById returns only the row with the requested primary key", async () => {
+      const first = await repo.insertOrClassify(
+        makeBundle({ idempotencyKey: "by-id-1", receivedAtUnixMs: 1001 })
+      );
+      const second = await repo.insertOrClassify(
+        makeBundle({ idempotencyKey: "by-id-2", receivedAtUnixMs: 2001 })
+      );
+      expect(first.outcome).toBe("inserted");
+      expect(second.outcome).toBe("inserted");
+      if (first.outcome !== "inserted" || second.outcome !== "inserted") return;
+
+      const found = await repo.findById(first.row.id);
+      expect(found?.id).toBe(first.row.id);
+      expect(found?.id).not.toBe(second.row.id);
+    });
+
+    it("findById returns undefined for an unknown primary key", async () => {
+      await expect(repo.findById(999_999)).resolves.toBeUndefined();
+    });
+  });
+
   describe("findByPair and findLatestByPair retain existing behavior", () => {
     it("finds bundles by pair and time", async () => {
       await repo.insertOrClassify(makeBundle({ asOfUnixMs: 1000, idempotencyKey: "k1" }));

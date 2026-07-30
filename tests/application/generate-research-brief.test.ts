@@ -44,12 +44,15 @@ describe("generateResearchBrief", () => {
     llmProvider = new FakeLlmProvider();
   });
 
+  let bundleCounter = 0;
   async function insertTestBundle(
     bundle: EvidenceBundleV1 = calmFixture,
     asOfMs = evalTimeMs,
     expMs = expiresAtMs,
-    isStale = false
+    isStale = false,
+    idempotencyKey?: string
   ) {
+    bundleCounter++;
     const payloadCanonical = JSON.stringify(bundle);
     const payloadHash = await canonicalHash(bundle);
     const outcome = await bundleRepo.insertOrClassify({
@@ -60,7 +63,7 @@ describe("generateResearchBrief", () => {
       payload: bundle,
       payloadHash,
       payloadCanonical,
-      idempotencyKey: `bundle-${asOfMs}`,
+      idempotencyKey: idempotencyKey ?? `bundle-${asOfMs}-${bundleCounter}`,
       confidence: DEFAULT_CONFIDENCE,
       isStale,
       provenance: DEFAULT_PROVENANCE,
@@ -73,13 +76,237 @@ describe("generateResearchBrief", () => {
   }
 
   // Required named invariant tests
+  it("targets requested bundle by ID when same-pair bundles coexist", async () => {
+    const target = await insertTestBundle(calmFixture, evalTimeMs - 1_000, expiresAtMs);
+    const newer = await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs);
+    llmProvider.enqueueResult({ output: validLlmOutput, provider: "openai", model: "gpt-4o" });
+
+    const result = await generateResearchBrief(
+      { bundleRepo, briefRepo, llmProvider },
+      {
+        evidenceBundleId: target.id,
+        pair: "SOL/USDC",
+        evaluationTimeUnixMs: evalTimeMs,
+        codeVersion: "1.0.0"
+      }
+    );
+
+    expect(result.outcome).toBe("generated_complete");
+    if (result.outcome !== "generated_complete") return;
+    expect(result.row.evidenceBundleId).toBe(target.id);
+    expect(result.row.evidenceBundleId).not.toBe(newer.id);
+  });
+
+  it("returns no_brief without falling back when requested bundle ID does not exist", async () => {
+    const bundleRow = await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs);
+    const nonExistentId = bundleRow.id + 999;
+
+    const result = await generateResearchBrief(
+      { bundleRepo, briefRepo, llmProvider },
+      {
+        evidenceBundleId: nonExistentId,
+        pair: "SOL/USDC",
+        evaluationTimeUnixMs: evalTimeMs,
+        codeVersion: "1.0.0"
+      }
+    );
+
+    expect(result).toEqual({ outcome: "no_brief", reason: "no_bundle" });
+    expect(llmProvider.capturedRequests().length).toBe(0);
+    const briefs = await briefRepo.findByBundleId(nonExistentId);
+    expect(briefs.length).toBe(0);
+  });
+
+  it("excludes newer and same-time bundles from prior brief context", async () => {
+    const baseTime = evalTimeMs - 100000;
+
+    const olderBundleRow = await insertTestBundle(calmFixture, baseTime - 10000, expiresAtMs);
+    const olderPersisted: PersistedResearchBrief = {
+      briefId: `brief-${olderBundleRow.id}`,
+      pair: "SOL/USDC",
+      generationStatus: "complete",
+      llmOutput: validLlmOutput,
+      sourceRefs: [],
+      providerMetadata: { provider: "openai", model: "gpt-4o" },
+      sourceBundleRef: { bundleId: olderBundleRow.id, bundleHash: olderBundleRow.payloadHash },
+      inputContextHash: "hash-older",
+      priorBriefRef: null,
+      generatedAt: new Date(baseTime - 10000).toISOString(),
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+    };
+    const olderRow = await briefRepo.insert({
+      evidenceBundleId: olderBundleRow.id,
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+      modelProvider: "openai",
+      structuredOutput: olderPersisted,
+      signalClass: "contextual",
+      confidence: DEFAULT_CONFIDENCE,
+      payloadHash: await canonicalHash(olderPersisted),
+      provenance: DEFAULT_PROVENANCE,
+      receivedAtUnixMs: baseTime - 10000
+    });
+
+    const targetBundleRow = await insertTestBundle(calmFixture, baseTime, expiresAtMs);
+
+    const sameTimeBundleRow = await insertTestBundle(calmFixture, baseTime, expiresAtMs);
+    const sameTimePersisted: PersistedResearchBrief = {
+      briefId: `brief-${sameTimeBundleRow.id}`,
+      pair: "SOL/USDC",
+      generationStatus: "complete",
+      llmOutput: validLlmOutput,
+      sourceRefs: [],
+      providerMetadata: { provider: "openai", model: "gpt-4o" },
+      sourceBundleRef: {
+        bundleId: sameTimeBundleRow.id,
+        bundleHash: sameTimeBundleRow.payloadHash
+      },
+      inputContextHash: "hash-sametime",
+      priorBriefRef: null,
+      generatedAt: new Date(baseTime).toISOString(),
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+    };
+    await briefRepo.insert({
+      evidenceBundleId: sameTimeBundleRow.id,
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+      modelProvider: "openai",
+      structuredOutput: sameTimePersisted,
+      signalClass: "contextual",
+      confidence: DEFAULT_CONFIDENCE,
+      payloadHash: await canonicalHash(sameTimePersisted),
+      provenance: DEFAULT_PROVENANCE,
+      receivedAtUnixMs: baseTime
+    });
+
+    const newerBundleRow = await insertTestBundle(calmFixture, baseTime + 10000, expiresAtMs);
+    const newerPersisted: PersistedResearchBrief = {
+      briefId: `brief-${newerBundleRow.id}`,
+      pair: "SOL/USDC",
+      generationStatus: "complete",
+      llmOutput: validLlmOutput,
+      sourceRefs: [],
+      providerMetadata: { provider: "openai", model: "gpt-4o" },
+      sourceBundleRef: { bundleId: newerBundleRow.id, bundleHash: newerBundleRow.payloadHash },
+      inputContextHash: "hash-newer",
+      priorBriefRef: null,
+      generatedAt: new Date(baseTime + 10000).toISOString(),
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+    };
+    await briefRepo.insert({
+      evidenceBundleId: newerBundleRow.id,
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+      modelProvider: "openai",
+      structuredOutput: newerPersisted,
+      signalClass: "contextual",
+      confidence: DEFAULT_CONFIDENCE,
+      payloadHash: await canonicalHash(newerPersisted),
+      provenance: DEFAULT_PROVENANCE,
+      receivedAtUnixMs: baseTime + 10000
+    });
+
+    llmProvider.enqueueResult({ output: validLlmOutput, provider: "openai", model: "gpt-4o" });
+
+    const result = await generateResearchBrief(
+      { bundleRepo, briefRepo, llmProvider },
+      {
+        evidenceBundleId: targetBundleRow.id,
+        pair: "SOL/USDC",
+        evaluationTimeUnixMs: evalTimeMs,
+        codeVersion: "1.0.0"
+      }
+    );
+
+    expect(result.outcome).toBe("generated_complete");
+    if (result.outcome !== "generated_complete") return;
+
+    expect(result.brief.priorBriefRef).not.toBeNull();
+    expect(result.brief.priorBriefRef?.briefId).toBe(olderPersisted.briefId);
+    expect(result.row.provenance.derivedFromRefs.some((ref) => ref.id === olderRow.id)).toBe(true);
+  });
+
+  it("selects prior context deterministically by bundle and brief tie-breakers", async () => {
+    const olderTime = evalTimeMs - 50000;
+
+    await insertTestBundle(calmFixture, olderTime, expiresAtMs);
+    const bundleB = await insertTestBundle(calmFixture, olderTime, expiresAtMs);
+
+    const briefB1Persisted: PersistedResearchBrief = {
+      briefId: `brief-${bundleB.id}-1`,
+      pair: "SOL/USDC",
+      generationStatus: "complete",
+      llmOutput: validLlmOutput,
+      sourceRefs: [],
+      providerMetadata: { provider: "openai", model: "gpt-4o" },
+      sourceBundleRef: { bundleId: bundleB.id, bundleHash: bundleB.payloadHash },
+      inputContextHash: "hash-b1",
+      priorBriefRef: null,
+      generatedAt: new Date(olderTime).toISOString(),
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+    };
+    const briefB1 = await briefRepo.insert({
+      evidenceBundleId: bundleB.id,
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+      modelProvider: "openai",
+      structuredOutput: briefB1Persisted,
+      signalClass: "contextual",
+      confidence: DEFAULT_CONFIDENCE,
+      payloadHash: await canonicalHash(briefB1Persisted),
+      provenance: DEFAULT_PROVENANCE,
+      receivedAtUnixMs: olderTime
+    });
+
+    const briefB2Persisted: PersistedResearchBrief = {
+      briefId: `brief-${bundleB.id}-2`,
+      pair: "SOL/USDC",
+      generationStatus: "complete",
+      llmOutput: validLlmOutput,
+      sourceRefs: [],
+      providerMetadata: { provider: "openai", model: "gpt-4o" },
+      sourceBundleRef: { bundleId: bundleB.id, bundleHash: bundleB.payloadHash },
+      inputContextHash: "hash-b2",
+      priorBriefRef: null,
+      generatedAt: new Date(olderTime).toISOString(),
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+    };
+    const briefB2 = await briefRepo.insert({
+      evidenceBundleId: bundleB.id,
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+      modelProvider: "openai",
+      structuredOutput: briefB2Persisted,
+      signalClass: "contextual",
+      confidence: DEFAULT_CONFIDENCE,
+      payloadHash: await canonicalHash(briefB2Persisted),
+      provenance: DEFAULT_PROVENANCE,
+      receivedAtUnixMs: olderTime
+    });
+
+    const higherBrief = briefB2.id > briefB1.id ? briefB2Persisted : briefB1Persisted;
+
+    const targetBundleRow = await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs);
+
+    llmProvider.enqueueResult({ output: validLlmOutput, provider: "openai", model: "gpt-4o" });
+    const result1 = await generateResearchBrief(
+      { bundleRepo, briefRepo, llmProvider },
+      {
+        evidenceBundleId: targetBundleRow.id,
+        pair: "SOL/USDC",
+        evaluationTimeUnixMs: evalTimeMs,
+        codeVersion: "1.0.0"
+      }
+    );
+
+    expect(result1.outcome).toBe("generated_complete");
+    if (result1.outcome !== "generated_complete") return;
+    expect(result1.brief.priorBriefRef?.briefId).toBe(higherBrief.briefId);
+  });
+
   it("provider-failure-persists-degraded", async () => {
-    await insertTestBundle();
+    const bundleRow = await insertTestBundle();
     llmProvider.enqueueError(new Error("LLM API Timeout"));
 
     const result = await generateResearchBrief(
       { bundleRepo, briefRepo, llmProvider },
       {
+        evidenceBundleId: bundleRow.id,
         pair: "SOL/USDC",
         evaluationTimeUnixMs: evalTimeMs,
         codeVersion: "1.0.0",
@@ -111,6 +338,7 @@ describe("generateResearchBrief", () => {
     const result = await generateResearchBrief(
       { bundleRepo, briefRepo, llmProvider },
       {
+        evidenceBundleId: bundleRow.id,
         pair: "SOL/USDC",
         evaluationTimeUnixMs: evalTimeMs,
         codeVersion: "1.0.0",
@@ -143,7 +371,7 @@ describe("generateResearchBrief", () => {
   });
 
   it("generation-replay-is-idempotent", async () => {
-    await insertTestBundle();
+    const bundleRow = await insertTestBundle();
     llmProvider.enqueueResult({
       output: validLlmOutput,
       provider: "openai",
@@ -153,6 +381,7 @@ describe("generateResearchBrief", () => {
     const first = await generateResearchBrief(
       { bundleRepo, briefRepo, llmProvider },
       {
+        evidenceBundleId: bundleRow.id,
         pair: "SOL/USDC",
         evaluationTimeUnixMs: evalTimeMs,
         codeVersion: "1.0.0"
@@ -164,6 +393,7 @@ describe("generateResearchBrief", () => {
     const second = await generateResearchBrief(
       { bundleRepo, briefRepo, llmProvider },
       {
+        evidenceBundleId: bundleRow.id,
         pair: "SOL/USDC",
         evaluationTimeUnixMs: evalTimeMs,
         codeVersion: "1.0.0"
@@ -212,7 +442,7 @@ describe("generateResearchBrief", () => {
     });
 
     // Now insert current bundle
-    await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs);
+    const currentBundleRow = await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs);
 
     llmProvider.enqueueResult({
       output: validLlmOutput,
@@ -223,6 +453,7 @@ describe("generateResearchBrief", () => {
     const result = await generateResearchBrief(
       { bundleRepo, briefRepo, llmProvider },
       {
+        evidenceBundleId: currentBundleRow.id,
         pair: "SOL/USDC",
         evaluationTimeUnixMs: evalTimeMs,
         codeVersion: "1.0.0"
@@ -238,11 +469,16 @@ describe("generateResearchBrief", () => {
 
   it("expired-source-is-not-generated", async () => {
     // Insert an expired bundle
-    await insertTestBundle(calmFixture, evalTimeMs - 7200000, evalTimeMs - 3600000);
+    const expiredBundleRow = await insertTestBundle(
+      calmFixture,
+      evalTimeMs - 7200000,
+      evalTimeMs - 3600000
+    );
 
     const result = await generateResearchBrief(
       { bundleRepo, briefRepo, llmProvider },
       {
+        evidenceBundleId: expiredBundleRow.id,
         pair: "SOL/USDC",
         evaluationTimeUnixMs: evalTimeMs,
         codeVersion: "1.0.0"
@@ -261,6 +497,7 @@ describe("generateResearchBrief", () => {
     const result = await generateResearchBrief(
       { bundleRepo, briefRepo, llmProvider },
       {
+        evidenceBundleId: 999,
         pair: "SOL/USDC",
         evaluationTimeUnixMs: evalTimeMs,
         codeVersion: "1.0.0"
@@ -274,11 +511,12 @@ describe("generateResearchBrief", () => {
   });
 
   it("returns no_brief when bundle is stale", async () => {
-    await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs, true);
+    const staleBundleRow = await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs, true);
 
     const result = await generateResearchBrief(
       { bundleRepo, briefRepo, llmProvider },
       {
+        evidenceBundleId: staleBundleRow.id,
         pair: "SOL/USDC",
         evaluationTimeUnixMs: evalTimeMs,
         codeVersion: "1.0.0"
@@ -292,7 +530,7 @@ describe("generateResearchBrief", () => {
   });
 
   it("projects current-regime evidence when supplied", async () => {
-    await insertTestBundle();
+    const bundleRow = await insertTestBundle();
     llmProvider.enqueueResult({
       output: validLlmOutput,
       provider: "openai",
@@ -302,6 +540,7 @@ describe("generateResearchBrief", () => {
     const result = await generateResearchBrief(
       { bundleRepo, briefRepo, llmProvider },
       {
+        evidenceBundleId: bundleRow.id,
         pair: "SOL/USDC",
         evaluationTimeUnixMs: evalTimeMs,
         codeVersion: "1.0.0",
@@ -321,7 +560,7 @@ describe("generateResearchBrief", () => {
   });
 
   it("persists degraded brief on ungrounded evidence reference in LLM output", async () => {
-    await insertTestBundle();
+    const bundleRow = await insertTestBundle();
     const ungroundedOutput: LlmResearchBriefOutput = {
       ...validLlmOutput,
       sourceEvidenceIds: ["non-existent-feature-id"]
@@ -335,6 +574,7 @@ describe("generateResearchBrief", () => {
     const result = await generateResearchBrief(
       { bundleRepo, briefRepo, llmProvider },
       {
+        evidenceBundleId: bundleRow.id,
         pair: "SOL/USDC",
         evaluationTimeUnixMs: evalTimeMs,
         codeVersion: "1.0.0"
@@ -348,12 +588,13 @@ describe("generateResearchBrief", () => {
   });
 
   it("does-not-reuse-degraded-briefs-on-retry", async () => {
-    await insertTestBundle();
+    const bundleRow = await insertTestBundle();
     llmProvider.enqueueError(new Error("LLM API Timeout"));
 
     const first = await generateResearchBrief(
       { bundleRepo, briefRepo, llmProvider },
       {
+        evidenceBundleId: bundleRow.id,
         pair: "SOL/USDC",
         evaluationTimeUnixMs: evalTimeMs,
         codeVersion: "1.0.0"
@@ -371,6 +612,7 @@ describe("generateResearchBrief", () => {
     const second = await generateResearchBrief(
       { bundleRepo, briefRepo, llmProvider },
       {
+        evidenceBundleId: bundleRow.id,
         pair: "SOL/USDC",
         evaluationTimeUnixMs: evalTimeMs,
         codeVersion: "1.0.0"
@@ -422,7 +664,7 @@ describe("generateResearchBrief", () => {
       receivedAtUnixMs: olderTime
     });
 
-    await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs);
+    const currentBundleRow = await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs);
     llmProvider.enqueueResult({
       output: validLlmOutput,
       provider: "openai",
@@ -432,6 +674,7 @@ describe("generateResearchBrief", () => {
     const result = await generateResearchBrief(
       { bundleRepo, briefRepo, llmProvider },
       {
+        evidenceBundleId: currentBundleRow.id,
         pair: "SOL/USDC",
         evaluationTimeUnixMs: evalTimeMs,
         codeVersion: "1.0.0"
@@ -450,7 +693,7 @@ describe("generateResearchBrief", () => {
   });
 
   it("propagates repository write failure without catching as degraded", async () => {
-    await insertTestBundle();
+    const bundleRow = await insertTestBundle();
     llmProvider.enqueueResult({
       output: validLlmOutput,
       provider: "openai",
@@ -465,6 +708,7 @@ describe("generateResearchBrief", () => {
       generateResearchBrief(
         { bundleRepo, briefRepo, llmProvider },
         {
+          evidenceBundleId: bundleRow.id,
           pair: "SOL/USDC",
           evaluationTimeUnixMs: evalTimeMs,
           codeVersion: "1.0.0"
