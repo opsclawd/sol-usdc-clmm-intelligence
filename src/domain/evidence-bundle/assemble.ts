@@ -5,6 +5,8 @@ import type {
   ContextualEvidence,
   EventClaim,
   FlowClaim,
+  SupportResistanceClaim,
+  NewsRegulatoryClaim,
   Identifier128
 } from "../../contracts/generated/evidence-bundle-v1.js";
 import type { SelectedFeatureSlot } from "./select.js";
@@ -18,6 +20,8 @@ import type {
   ProtocolIncidentPayloadV1
 } from "../../contracts/context-events.js";
 import type { OnChainFlowPayloadV1 } from "../../contracts/on-chain-flow.js";
+import type { SelectedSupportResistance } from "../support-resistance/select.js";
+import type { SelectedNewsEvidence } from "../news-events/select.js";
 import { toCanonicalTimestamp } from "./timestamp.js";
 
 const FEATURE_UNAVAILABLE_REFERENCE_ID = "feature_unavailable" as Identifier128;
@@ -43,6 +47,8 @@ export interface AssembleEvidenceBundleInput {
   readonly gitCommit: string;
   readonly environment: "production" | "staging" | "development" | "test";
   readonly contextualEvents: readonly SelectedContextEvent[];
+  readonly selectedSupportResistance?: readonly SelectedSupportResistance[];
+  readonly selectedNewsEvidence?: readonly SelectedNewsEvidence[];
 }
 
 type FeatureFamily =
@@ -240,8 +246,94 @@ function buildDeterministicFeature(
   return result as unknown as DeterministicFeature;
 }
 
+function buildSupportResistanceClaims(
+  selectedSR: readonly SelectedSupportResistance[]
+): SupportResistanceClaim[] {
+  const claims: SupportResistanceClaim[] = [];
+  for (const item of selectedSR.slice(0, 16)) {
+    const { row, payload } = item;
+    const kind: "support_zone" | "resistance_zone" =
+      payload.evidenceSide === "SUPPORT" ? "support_zone" : "resistance_zone";
+
+    let baseClaim: string;
+    if (payload.levelType === "point") {
+      const sideText = payload.evidenceSide === "SUPPORT" ? "Support at" : "Resistance at";
+      baseClaim = `${sideText} ${payload.levelUsdcPerSol} USDC/SOL (${payload.timeframe})`;
+    } else {
+      const sideText = payload.evidenceSide === "SUPPORT" ? "Support zone" : "Resistance zone";
+      baseClaim = `${sideText} ${payload.zoneLowerUsdcPerSol}-${payload.zoneUpperUsdcPerSol} USDC/SOL (${payload.timeframe})`;
+    }
+
+    if (payload.thesisCodes && payload.thesisCodes.length > 0) {
+      baseClaim += `; thesis: ${payload.thesisCodes.join(", ")}`;
+    }
+    if (payload.invalidationConditions && payload.invalidationConditions.length > 0) {
+      baseClaim += `; invalidation: ${payload.invalidationConditions.join(", ")}`;
+    }
+
+    const claim = baseClaim.length > 512 ? baseClaim.slice(0, 512) : baseClaim;
+    const confidenceBps = Math.max(
+      0,
+      Math.min(10_000, Math.round(row.confidence.compositeScore * 10_000))
+    );
+
+    claims.push({
+      evidenceId: `normalized-${row.id}` as Identifier128,
+      kind,
+      claim,
+      direction: "unknown",
+      confidenceBps,
+      observedAt: toCanonicalTimestamp(payload.asOfUnixMs),
+      expiresAt: toCanonicalTimestamp(payload.expiresAtUnixMs),
+      sourceReferenceIds: [`raw-${row.rawObservationId}`] as [Identifier128, ...Identifier128[]],
+      provenanceMethod: "collected"
+    });
+  }
+  return claims;
+}
+
+function buildNewsRegulatoryClaims(
+  selectedNews: readonly SelectedNewsEvidence[]
+): NewsRegulatoryClaim[] {
+  const claims: NewsRegulatoryClaim[] = [];
+  for (const item of selectedNews.slice(0, 16)) {
+    const { row, payload } = item;
+    const kind: "ecosystem_news" | "regulatory_update" =
+      payload.evidenceKind === "ecosystem_news" ? "ecosystem_news" : "regulatory_update";
+
+    let baseClaim = `${payload.title}: ${payload.factualSummary}`;
+    if (payload.corroborationState) {
+      baseClaim += `; corroboration: ${payload.corroborationState}`;
+    }
+    if (payload.warnings && payload.warnings.length > 0) {
+      baseClaim += `; warnings: ${payload.warnings.join(", ")}`;
+    }
+
+    const claim = baseClaim.length > 512 ? baseClaim.slice(0, 512) : baseClaim;
+    const confidenceBps = Math.max(
+      0,
+      Math.min(10_000, Math.round(row.confidence.compositeScore * 10_000))
+    );
+
+    claims.push({
+      evidenceId: `normalized-${row.id}` as Identifier128,
+      kind,
+      claim,
+      direction: "unknown",
+      confidenceBps,
+      observedAt: toCanonicalTimestamp(payload.asOfUnixMs),
+      expiresAt: toCanonicalTimestamp(payload.expiresAtUnixMs),
+      sourceReferenceIds: [`raw-${row.rawObservationId}`] as [Identifier128, ...Identifier128[]],
+      provenanceMethod: "collected"
+    });
+  }
+  return claims;
+}
+
 function buildContextualEvidence(
-  contextualEvents: readonly SelectedContextEvent[]
+  contextualEvents: readonly SelectedContextEvent[],
+  selectedSupportResistance: readonly SelectedSupportResistance[] = [],
+  selectedNewsEvidence: readonly SelectedNewsEvidence[] = []
 ): ContextualEvidence {
   const events: EventClaim[] = [];
   const flows: FlowClaim[] = [];
@@ -322,12 +414,15 @@ function buildContextualEvidence(
     }
   }
 
+  const supportResistance = buildSupportResistanceClaims(selectedSupportResistance);
+  const newsRegulatory = buildNewsRegulatoryClaims(selectedNewsEvidence);
+
   return {
-    supportResistance: [],
+    supportResistance,
     flows,
     derivatives: [],
     events,
-    newsRegulatory: []
+    newsRegulatory
   };
 }
 
@@ -403,7 +498,9 @@ export function assembleEvidenceBundleCandidate(
     asOf,
     freshUntil,
     expiresAt,
-    contextualEvents
+    contextualEvents,
+    selectedSupportResistance = [],
+    selectedNewsEvidence = []
   } = input;
 
   const sourceReferences = buildSourceReferences(lineage);
@@ -452,7 +549,11 @@ export function assembleEvidenceBundleCandidate(
       "1.0.0" as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128
   };
 
-  const contextualEvidence = buildContextualEvidence(contextualEvents);
+  const contextualEvidence = buildContextualEvidence(
+    contextualEvents,
+    selectedSupportResistance,
+    selectedNewsEvidence
+  );
 
   const researchBrief = input.briefPresent ? null : null;
 
