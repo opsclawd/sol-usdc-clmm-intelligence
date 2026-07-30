@@ -536,11 +536,7 @@ describe("deriveMvpFeatures", () => {
 
       const volatilityFeature = result.rows.find((r) => r.featureKind === "realized_volatility_1h");
       expect(volatilityFeature).toBeDefined();
-      const rawRefs = (
-        volatilityFeature!.provenance as {
-          rawObservationRefs: { id: number; payloadHash: string }[];
-        }
-      ).rawObservationRefs;
+      const rawRefs = volatilityFeature!.provenance.rawObservationRefs;
       const refForRejected = rawRefs.find((ref) => ref.id === REJECTED_ROW_ID);
       expect(refForRejected).toBeDefined();
       expect(refForRejected!.payloadHash).toBe("real-raw-payload-hash-9999");

@@ -95,13 +95,14 @@ export async function runPublishEvidenceBundleScript(
   const persistence = await runtime.getPersistence();
   const contract = await runtime.getContract();
 
-  const { connection, bundleRepo, publishAttemptRepo } = persistence;
+  const { connection, bundleRepo, publishAttemptRepo, briefRepo } = persistence;
 
   const job = publishEvidenceBundleJob({
     clock: runtime.clock,
     http: runtime.http,
     env: runtime.env,
     bundleRepo,
+    briefRepo,
     publishAttemptRepo,
     contract,
     retry: runtime.retryControl

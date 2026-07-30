@@ -2,16 +2,10 @@ import type { NormalizedObservationRepo } from "../ports/normalized-observation-
 import type {
   DerivedFeatureRepo,
   DerivedFeatureInsert,
-  DerivedFeatureRow as PortDerivedFeatureRow
+  DerivedFeatureRow
 } from "../ports/feature-repo.js";
 import type { NormalizedObservationRow } from "../contracts/index.js";
-import type {
-  FeatureKind,
-  Confidence,
-  SignalClass,
-  EvidenceFamily,
-  Provenance
-} from "../contracts/taxonomy.js";
+import type { FeatureKind, Confidence, Provenance } from "../contracts/taxonomy.js";
 import type { DerivedFeatureV1, FeatureStatus } from "../contracts/derived-feature.js";
 import type { PositionStatePayloadV1 } from "../contracts/normalized-clmm-observation.js";
 import type {
@@ -66,35 +60,6 @@ export interface DeriveMvpFeaturesResult {
   readonly rows: readonly DerivedFeatureRow[];
   readonly counts: Readonly<Record<FeatureStatus, number>>;
   readonly warnings: readonly string[];
-}
-
-interface DerivedFeatureRow {
-  id: number;
-  featureKind: FeatureKind;
-  signalClass: SignalClass;
-  evidenceFamily: EvidenceFamily;
-  value: number | null;
-  structuredPayload: unknown;
-  asOfUnixMs: number;
-  confidence: Confidence;
-  confidenceComposite: number | null;
-  confidenceLevel: string | null;
-  validUntilUnixMs: number | null;
-  isStale: boolean;
-  staleBehavior: string | null;
-  provenance: unknown;
-  payloadHash: string;
-  receivedAtUnixMs: number;
-  status: FeatureStatus;
-  unit: "BPS" | "PPM";
-  pair: string;
-  calculatorVersion: string;
-  selectionVersion: string;
-  inputObservationIds: number[];
-  rejectedObservationIds: number[];
-  derivationKey: string;
-  poolId: string | null;
-  positionId: string | null;
 }
 
 const PAIR = "SOL/USDC" as const;
@@ -260,7 +225,7 @@ async function checkExistingFeature(
   featureRepo: DerivedFeatureRepo,
   featureKind: FeatureKind,
   derivationKey: string
-): Promise<PortDerivedFeatureRow | undefined> {
+): Promise<DerivedFeatureRow | undefined> {
   return featureRepo.findByDerivationKey(featureKind, derivationKey);
 }
 

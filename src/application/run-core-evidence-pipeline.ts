@@ -21,7 +21,6 @@ import type { Clock } from "../ports/clock.js";
 import type { RunIdFactory } from "../ports/run-id.js";
 import type { PipelineRunLock } from "../ports/pipeline-run-lock.js";
 import type { DbConnection } from "../ports/db.js";
-import type { DerivedFeatureRow } from "../ports/feature-repo.js";
 import { redactSecretMentions } from "../domain/redact-secrets.js";
 import { MVP_ACCEPTED_CALCULATOR_VERSIONS } from "../domain/derived-feature/constants.js";
 import { EVIDENCE_BUNDLE_SELECTION_VERSION } from "../domain/evidence-bundle/select.js";
@@ -216,7 +215,7 @@ export async function runCoreEvidencePipeline(
               sharedWarnings.push(redactSecretMentions(w));
             }
 
-            const derivedRows = deriveResult.rows as unknown as readonly DerivedFeatureRow[];
+            const derivedRows = deriveResult.rows;
 
             for (const positionId of config.positionIds) {
               const correlationId = buildPositionCorrelationId(pipelineRunId, positionId);
