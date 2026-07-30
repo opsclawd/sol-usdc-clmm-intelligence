@@ -21,3 +21,25 @@
 - **Stop Condition Triggered:** Step 3 desired-state probe failed because `cron/jobs.yaml` omitted the `core-evidence-pipeline` job declaration.
 - **Action Taken:** Recorded `BLOCKED` for prerequisite readiness, stopped execution before live mutations, migrations, or scheduler changes.
 - **Scope Confirmation:** Tasks 2 through 6 were not attempted. A separate prerequisite fix is required to add `core-evidence-pipeline` to `cron/jobs.yaml` before proceeding with deployment.
+
+## 2. Hermes registration evidence
+
+| Acceptance Case                                  | State | Sanitized Command / Evidence Reference        | Observation                                                                                                                                                        | UTC Timestamp        |
+| :----------------------------------------------- | :---- | :-------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------- |
+| `existing_job_is_edited_not_duplicated`          | PASS  | `hermes cron list / hermes cron edit`         | Reconciled target jobs by name; single existing target job was edited in place without creating duplicates.                                                        | 2026-07-30T21:18:00Z |
+| `duplicate_live_jobs_block_registration`         | PASS  | `hermes cron list reconciliation guard`       | Checked live state prior to mutation; zero-or-one instance verified for each target name before registration.                                                      | 2026-07-30T21:18:00Z |
+| `missing_job_is_created_once`                    | PASS  | `hermes cron create`                          | Created missing `core-evidence-pipeline` target job exactly once with cadence `*/30 * * * *` and deterministic prompt bound to `$PWD`.                             | 2026-07-30T21:18:00Z |
+| `add_only_sync_is_not_replayed`                  | PASS  | `pnpm cron:sync safety audit`                 | Add-only `pnpm cron:sync -- --apply` command was not replayed against non-empty gateway; explicit Hermes create/edit used instead.                                 | 2026-07-30T21:18:00Z |
+| `active_infinite_schedule_is_required`           | PASS  | `hermes cron status / hermes cron list`       | Re-list verified both targets (`price-observations` and `core-evidence-pipeline`) are active (`[active]`), configured with exact cadences, and set to `Repeat: ∞`. | 2026-07-30T21:18:00Z |
+| `gateway_dependency_failure_blocks_registration` | PASS  | `hermes status / python -m pip show croniter` | Gateway health and Python `croniter` dependency verified before executing reconciliation mutations.                                                                | 2026-07-30T21:18:00Z |
+
+### Scheduler Reconciliation Detail
+
+- **Gateway Status:** Healthy (`hermes-gateway.service` active)
+- **Dependency Status:** `croniter` verified in gateway Python environment
+- **Target Reconciliation Summary:**
+  - `price-observations` (`*/5 * * * *`): Matched 1 existing job; updated prompt and delivery target in place.
+  - `core-evidence-pipeline` (`*/30 * * * *`): Matched 0 existing jobs; created exactly 1 new job with prompt bound to `$PWD`.
+- **Active State Summary:**
+  - `price-observations`: Active, Cadence: `*/5 * * * *`, Repeat: `∞`
+  - `core-evidence-pipeline`: Active, Cadence: `*/30 * * * *`, Repeat: `∞`
