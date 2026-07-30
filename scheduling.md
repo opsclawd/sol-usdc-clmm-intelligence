@@ -23,9 +23,16 @@ Hermes has no per-job model/thinking/agent override and no per-job timezone (it 
 
 The synthesis cadence is shorter than the one-hour core-feature validity boundary so scheduler drift, collection latency, bounded retries, and brief generation do not consume the entire freshness window. The five-minute sampler remains a separate job because historical telemetry density and expensive synthesis have different cadence and cost requirements.
 
+Specifically, for five-minute sampling:
+
+- The five-minute `price-observations` job supplies historical Pyth/Jupiter observation density while the 30-minute `collect:core` stage remains the fresh snapshot source for derivation/assembly.
+- Ten healthy five-minute ticks require approximately 45-50 minutes after startup or prolonged downtime before `realized_volatility_1h` can satisfy coverage.
+- A missing/delayed tick that creates a gap over ten minutes returns the feature to `UNAVAILABLE` with `insufficient_coverage` or `excessive_gap`, never fabricated zero volatility.
+- Concurrent price collection near `xx:00`/`xx:30` is accepted but source rate-limit/command failures must remain visible to operators.
+
 At the ungated MVP cadence, maximum brief attempts are `48 runs/day × configured position count`; two positions can therefore produce up to 96 attempts per day. Confirm the deployed LLM model, provider rate limits, and budget can sustain the configured position count before registration. Material-change gating and a slower brief-only cadence remain future work.
 
-Note that #104 is a prerequisite for complete seven-feature scheduled coverage. This change does not register either job with Hermes.
+This repository change declares desired state only and does not register the job on Hermes (issue #96 remains the live-registration boundary).
 
 ## Registering / updating jobs
 

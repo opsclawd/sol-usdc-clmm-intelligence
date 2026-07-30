@@ -58,32 +58,21 @@ describe("core evidence pipeline cron schedule regression", () => {
     ]);
   });
 
-  it("renders alongside a five-minute price observations job synthetically", async () => {
+  it("renders the canonical five-minute sampler alongside the synthetic core pipeline", async () => {
     const rawYaml = await readFile("cron/jobs.yaml", "utf8");
     const simulatedConfig = YAML.parse(rawYaml) as CronConfig;
-    simulatedConfig.jobs.push(
-      {
-        name: "core-evidence-pipeline",
-        cron: "*/30 * * * *",
-        messageFile: "cron/routines/core-evidence-pipeline.md"
-      },
-      {
-        name: "price-observations",
-        cron: "*/5 * * * *",
-        messageFile: "cron/routines/price-observations.md"
-      }
-    );
+    simulatedConfig.jobs.push({
+      name: "core-evidence-pipeline",
+      cron: "*/30 * * * *",
+      messageFile: "cron/routines/core-evidence-pipeline.md"
+    });
 
     const fakeTextReader = new FakeTextReader();
     fakeTextReader.seed("cron/jobs.synthetic.yaml", YAML.stringify(simulatedConfig));
 
     for (const job of simulatedConfig.jobs) {
-      if (job.name === "price-observations") {
-        fakeTextReader.seed(job.messageFile, "Run `pnpm collect:price-observations`.");
-      } else {
-        const content = await readFile(job.messageFile, "utf8");
-        fakeTextReader.seed(job.messageFile, content);
-      }
+      const content = await readFile(job.messageFile, "utf8");
+      fakeTextReader.seed(job.messageFile, content);
     }
 
     const fakeEnv = new FakeEnv();
@@ -103,6 +92,7 @@ describe("core evidence pipeline cron schedule regression", () => {
     expect(coreLine).toContain("pnpm run:core-evidence-pipeline");
     expect(priceLine).toContain("hermes cron create '*/5 * * * *'");
     expect(priceLine).toContain("--name 'price-observations'");
+    expect(priceLine).toContain("pnpm collect:price");
     expect(lines).toHaveLength(new Set(simulatedConfig.jobs.map(({ name }) => name)).size);
     expect(lines.every((line) => line.includes("Working directory for this task:"))).toBe(true);
   });

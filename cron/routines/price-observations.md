@@ -1,0 +1,1 @@
+Run `pnpm collect:price`.

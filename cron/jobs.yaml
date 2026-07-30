@@ -23,6 +23,9 @@ jobs:
   - name: perp-liquidation
     cron: "*/5 * * * *"
     messageFile: cron/routines/perp-liquidation.md
+  - name: price-observations
+    cron: "*/5 * * * *"
+    messageFile: cron/routines/price-observations.md
   - name: support-resistance
     cron: "15 */4 * * *"
     messageFile: cron/routines/support-resistance.md
