@@ -18,6 +18,7 @@ export interface SupportResistanceEnrichmentInput {
   readonly codeVersion: string;
   readonly runId: string | null;
   readonly rawId: number;
+  readonly rawPayloadHash: string;
   readonly sourceValidUntilUnixMs?: number | undefined;
 }
 
@@ -54,15 +55,12 @@ function computeDataCompleteness(payload: SupportResistancePayloadV1): number {
   return presentCount / totalCount;
 }
 
-function buildDirectProvenance(
-  input: SupportResistanceEnrichmentInput,
-  payloadHash: string
-): Provenance {
+function buildDirectProvenance(input: SupportResistanceEnrichmentInput): Provenance {
   const rawRef: ProvenanceRef = {
     refType: "raw_observation",
     id: input.rawId,
     source: "technical-analysis-api",
-    payloadHash
+    payloadHash: input.rawPayloadHash
   };
 
   const processRef: ProcessRef = {
@@ -152,7 +150,7 @@ export async function enrichSupportResistanceClaim(
 
   const { payloadHash } = await canonicalizePayload(enrichedPayload);
 
-  const provenance = buildDirectProvenance(input, payloadHash);
+  const provenance = buildDirectProvenance(input);
 
   const provenanceResult = validateProvenance(
     provenance,
