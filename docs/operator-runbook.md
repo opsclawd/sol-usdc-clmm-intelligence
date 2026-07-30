@@ -46,7 +46,7 @@ Durable core telemetry collection requires the following credentials and environ
 - `JUPITER_API_BASE`: Base URL for Jupiter's quote API (defaults to `https://lite-api.jup.ag/swap/v1`). Existing deployments must update their local environment value; `.env.example` does not rewrite an existing `.env`.
 - `JUPITER_API_KEY`: Optional Jupiter API Key for high-frequency or production rate-limit environments.
 - `ORCA_API_BASE`: Base URL for Orca's public statistics API (defaults to `https://api.orca.so/v2/solana`).
-- `ORCA_SOL_USDC_WHIRLPOOL` / `WHIRLPOOL_ADDRESS`: The Orca whirlpool pool address (e.g. `Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE`). Existing deployments must update their local pool variables; changes to `.env.example` does not rewrite an existing `.env`.
+- `WHIRLPOOL_ADDRESS`: The authoritative Orca SOL/USDC Whirlpool address used by pool statistics, MVP derivation, and on-chain flow (for example, `Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE`). Existing deployments must add this value to the Hermes on-chain-flow job before or concurrently with rollout; `.env.example` does not rewrite an existing environment.
 - `SOLANA_RPC_URL`: Base URL for Solana RPC endpoint (defaults to `https://api.mainnet-beta.solana.com`).
 - `SOLANA_RPC_API_KEY`: Optional API Key or auth query parameter for hosted Solana RPC endpoints.
 - `BINANCE_FAPI_BASE_URL`: Base URL for Binance Futures public API (defaults to `https://fapi.binance.com`).
@@ -58,6 +58,9 @@ Durable core telemetry collection requires the following credentials and environ
 - `DRIFT_BASE_PRECISION`: Drift base precision scaling exponent factor (defaults to `1000000000` / 10^9).
 - `DRIFT_QUOTE_PRECISION`: Drift quote precision scaling exponent factor (defaults to `1000000` / 10^6).
 - `PERP_LIQUIDATION_LOOKBACK_MS`: Lookback window in milliseconds for perp and liquidation collection (defaults to `14400000` / 4 hours minimum). Must be an integer >= 14,400,000 to cover the `oi_trend_4h` window; collector fails closed if less than 14,400,000.
+
+> [!WARNING]
+> This release removes the on-chain-flow fallback name. Confirm the live Hermes job exposes `WHIRLPOOL_ADDRESS` before deploying the updated collector; otherwise the command intentionally exits before external collection or persistence.
 
 Ensure no actual credentials, keys, or authorization tokens are logged. The CLI automatically redacts headers, URL credentials, and API keys. Note that `SOLANA_RPC_URL` measures only the configured RPC endpoint's health and slot rather than global Solana consensus.
 

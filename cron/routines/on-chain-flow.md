@@ -27,7 +27,7 @@ This routine collects on-chain flow events from two providers: Helius (whale_tra
 
 - `BIRDEYE_FLOW_API_URL`: Base URL (`https://public-api.birdeye.so`)
 - `BIRDEYE_API_KEY`: Birdeye API key
-- `ORCA_SOL_USDC_WHIRLPOOL`: Orca whirlpool address (`Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE`)
+- `WHIRLPOOL_ADDRESS`: Authoritative Orca SOL/USDC Whirlpool address (`Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE`)
 - `ON_CHAIN_WHALE_SWAP_MIN_USDC`: Minimum swap amount (default: 1,000,000 USDC)
 - `ON_CHAIN_DEX_NET_FLOW_MIN_USDC`: Minimum DEX net flow amount (default: 5,000,000 USDC)
 
