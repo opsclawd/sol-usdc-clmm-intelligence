@@ -1,9 +1,22 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import YAML from "yaml";
 import { renderCronCommands } from "../../src/application/render-cron-commands.js";
 import { FakeTextReader, FakeEnv } from "../fakes/index.js";
 
 describe("cron-render regression", () => {
+  it("keeps deferred context-events out of the production cron schedule", async () => {
+    const config = YAML.parse(await readFile("cron/jobs.yaml", "utf8")) as {
+      jobs: Array<{ name: string }>;
+    };
+    const jobNames = config.jobs.map((job) => job.name);
+
+    expect(jobNames).not.toContain("context-events");
+    expect(jobNames).toEqual(
+      expect.arrayContaining(["news-evidence", "on-chain-flow", "perp-liquidation"])
+    );
+  });
+
   it("matches the captured render output", async () => {
     const yaml = await readFile("tests/fixtures/cron/jobs.yaml", "utf8");
     const routine = await readFile("tests/fixtures/cron/routines/daily.md", "utf8");

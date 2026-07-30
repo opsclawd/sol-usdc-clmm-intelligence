@@ -19,6 +19,16 @@ pnpm cron:sync -- --apply
 openclaw cron list
 ```
 
+> [!IMPORTANT]
+> `pnpm cron:sync -- --apply` only adds jobs; it does not remove jobs that disappeared from `cron/jobs.yaml`. Deployments that previously registered the deferred `context-events` job must remove it once:
+>
+> ```bash
+> openclaw cron remove --name context-events
+> openclaw cron list
+> ```
+>
+> Verify that `context-events` is absent. Do not run `pnpm collect:context-events` on a schedule until both required provider URLs described below are configured.
+
 ### Migrating from legacy collector (first time only)
 
 If you had the old `cron/jobs.yaml` registered, four legacy jobs may still be active:
@@ -729,6 +739,12 @@ ORDER BY rb.id DESC;
 
 The `collect:context-events` command collects contextual evidence from two sources: scheduled macro events (token unlocks, protocol upgrades, governance votes) and Solana protocol incidents. Contextual evidence supplements core telemetry but is explicitly **lower-confidence** and **never becomes execution authority**.
 
+### Scheduling Status
+
+Scheduled contextual-event collection is **deferred** because no clean, reliable source is configured for either required feed. `context-events` is intentionally absent from `cron/jobs.yaml`; this avoids a guaranteed exit-code-1 run every four hours and does not represent a clean “no events” observation.
+
+The collector, routine, schemas, and tests remain available for manual validation and future reactivation. Restore the cron entry only after operators have selected and configured real values for both `MACRO_CALENDAR_API_URL` and `SOLANA_STATUS_API_URL`, validated provider licensing and stable source IDs, and completed one successful manual `pnpm collect:context-events` run. The corresponding API keys remain optional.
+
 ### Authority Boundary
 
 - **Severity and materiality are deterministic evidence metadata.** Severity ranks (CRITICAL > HIGH > MEDIUM > LOW) are provider-supplied facts, not LLM determinations.
@@ -737,7 +753,9 @@ The `collect:context-events` command collects contextual evidence from two sourc
 - **Event direction is always unknown.** Contextual events describe what happened or what is scheduled; they do not indicate market direction or prescribe rebalancing.
 - **Only regime-engine can synthesize final policy.** This repo collects, normalizes, and publishes contextual evidence. Final PolicyInsight synthesis belongs to regime-engine.
 
-### Four Required Environment Variables
+### Provider Environment Variables (Manual Use or Reactivation)
+
+The two URL variables (`MACRO_CALENDAR_API_URL` and `SOLANA_STATUS_API_URL`) are required when running contextual-event collection, while `MACRO_CALENDAR_API_KEY` and `SOLANA_STATUS_API_KEY` are optional.
 
 ```bash
 # Macro calendar API (scheduled events: token unlocks, upgrades, governance)
