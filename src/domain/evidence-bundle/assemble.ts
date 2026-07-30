@@ -41,7 +41,6 @@ export interface AssembleEvidenceBundleInput {
   readonly asOf: number;
   readonly freshUntil: number;
   readonly expiresAt: number;
-  readonly contextPresent: boolean;
   readonly briefPresent: boolean;
   readonly pipelineVersion: string;
   readonly gitCommit: string;

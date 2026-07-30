@@ -52,8 +52,12 @@ export interface EvidenceQualityInput {
   readonly asOf: number;
   readonly freshUntil: number;
   readonly expiresAt: number;
-  readonly contextPresent: boolean;
-  readonly briefPresent: boolean;
+  readonly hasSupportResistance: boolean;
+  readonly hasFlows: boolean;
+  readonly hasDerivatives: boolean;
+  readonly hasEvents: boolean;
+  readonly hasNewsRegulatory: boolean;
+  readonly hasResearchBrief: boolean;
   readonly allowNoUsableFeatures?: boolean;
 }
 
@@ -132,8 +136,7 @@ function computeQualityLevel(
 
 function buildWarnings(
   summaries: readonly SlotQualitySummary[],
-  contextPresent: boolean,
-  briefPresent: boolean,
+  input: EvidenceQualityInput,
   noUsableFeatures: boolean
 ): BundleWarning[] {
   const warnings: BundleWarning[] = [];
@@ -191,18 +194,50 @@ function buildWarnings(
     });
   }
 
-  if (!contextPresent) {
+  if (!input.hasSupportResistance) {
     warnings.push({
-      code: "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
-      message: "All contextual evidence families are unavailable",
-      affectedFamilies: ["supportResistance", "flows", "derivatives", "events", "newsRegulatory"]
+      code: "SUPPORT_RESISTANCE_UNAVAILABLE",
+      message: "Support/resistance evidence family is unavailable",
+      affectedFamilies: ["supportResistance"]
     });
   }
 
-  if (!briefPresent) {
+  if (!input.hasFlows) {
+    warnings.push({
+      code: "FLOWS_UNAVAILABLE",
+      message: "On-chain flows evidence family is unavailable",
+      affectedFamilies: ["flows"]
+    });
+  }
+
+  if (!input.hasDerivatives) {
+    warnings.push({
+      code: "DERIVATIVES_UNAVAILABLE",
+      message: "Derivatives evidence family is unavailable",
+      affectedFamilies: ["derivatives"]
+    });
+  }
+
+  if (!input.hasEvents) {
+    warnings.push({
+      code: "EVENTS_UNAVAILABLE",
+      message: "Contextual events evidence family is unavailable",
+      affectedFamilies: ["events"]
+    });
+  }
+
+  if (!input.hasNewsRegulatory) {
+    warnings.push({
+      code: "NEWS_REGULATORY_UNAVAILABLE",
+      message: "News and regulatory evidence family is unavailable",
+      affectedFamilies: ["newsRegulatory"]
+    });
+  }
+
+  if (!input.hasResearchBrief) {
     warnings.push({
       code: "RESEARCH_BRIEF_UNAVAILABLE",
-      message: "Research brief is null",
+      message: "Research brief is unavailable",
       affectedFamilies: ["researchBrief"]
     });
   }
@@ -211,16 +246,7 @@ function buildWarnings(
 }
 
 export function classifyEvidenceBundleQuality(input: EvidenceQualityInput): EvidenceBundleQuality {
-  const {
-    slots,
-    createdAt,
-    asOf,
-    freshUntil,
-    expiresAt,
-    contextPresent,
-    briefPresent,
-    allowNoUsableFeatures = false
-  } = input;
+  const { slots, createdAt, asOf, freshUntil, expiresAt, allowNoUsableFeatures = false } = input;
 
   const slotQualitySummaries: SlotQualitySummary[] = MVP_FEATURE_KINDS.map((featureKind, index) => {
     const slot = slots[index];
@@ -252,12 +278,7 @@ export function classifyEvidenceBundleQuality(input: EvidenceQualityInput): Evid
 
   const quality = computeQualityLevel(slotQualitySummaries, allowNoUsableFeatures);
   const overallConfidenceBps = computeOverallConfidence(slotQualitySummaries);
-  const warnings = buildWarnings(
-    slotQualitySummaries,
-    contextPresent,
-    briefPresent,
-    noUsableFeatures
-  );
+  const warnings = buildWarnings(slotQualitySummaries, input, noUsableFeatures);
 
   let deterministicCoverage: CoverageStatus = "available";
   const hasPartial = slotQualitySummaries.some((s) => s.status === "partial");
@@ -283,12 +304,12 @@ export function classifyEvidenceBundleQuality(input: EvidenceQualityInput): Evid
 
   const coverage: FamilyCoverage = {
     deterministic: deterministicCoverage,
-    supportResistance: contextPresent ? "partial" : "not_applicable",
-    flows: contextPresent ? "partial" : "not_applicable",
-    derivatives: contextPresent ? "partial" : "not_applicable",
-    events: contextPresent ? "partial" : "not_applicable",
-    newsRegulatory: contextPresent ? "partial" : "not_applicable",
-    researchBrief: briefPresent ? "available" : "not_applicable"
+    supportResistance: input.hasSupportResistance ? "partial" : "not_applicable",
+    flows: input.hasFlows ? "partial" : "not_applicable",
+    derivatives: input.hasDerivatives ? "partial" : "not_applicable",
+    events: input.hasEvents ? "partial" : "not_applicable",
+    newsRegulatory: input.hasNewsRegulatory ? "partial" : "not_applicable",
+    researchBrief: input.hasResearchBrief ? "available" : "not_applicable"
   };
 
   return {

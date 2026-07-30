@@ -43,6 +43,11 @@ import {
   selectCurrentContextEvents,
   type SelectedContextEvent
 } from "../domain/context-events/select.js";
+import {
+  selectSupportResistanceClaims,
+  type SelectedSupportResistance
+} from "../domain/support-resistance/select.js";
+import { selectNewsEvidence, type SelectedNewsEvidence } from "../domain/news-events/select.js";
 
 export interface AssembleEvidenceBundleRequest {
   readonly pair: "SOL/USDC";
@@ -332,13 +337,18 @@ export async function assembleEvidenceBundle(
       { source: "birdeye-api", observationKind: "whale_swap" },
       { source: "helius-api", observationKind: "stablecoin_flow" },
       { source: "helius-api", observationKind: "cex_flow_proxy" },
-      { source: "birdeye-api", observationKind: "dex_net_flow" }
+      { source: "birdeye-api", observationKind: "dex_net_flow" },
+      { source: "technical-analysis-api", observationKind: "support_resistance_level" },
+      { source: "crypto-news-api", observationKind: "ecosystem_news" },
+      { source: "regulatory-monitor-api", observationKind: "regulatory_risk" }
     ],
     receivedAtOrAfterUnixMs: evaluationTimeUnixMs - 7 * 24 * 60 * 60 * 1000
   };
 
   let contextualCandidates: NormalizedObservationRow[] = [];
   let selectedContextEvents: readonly SelectedContextEvent[] = [];
+  let selectedSupportResistance: readonly SelectedSupportResistance[] = [];
+  let selectedNewsEvidence: readonly SelectedNewsEvidence[] = [];
 
   try {
     contextualCandidates = await normalizedRepo.listCandidates(contextualCandidateQuery);
@@ -347,13 +357,31 @@ export async function assembleEvidenceBundle(
       candidates: contextualCandidates,
       maxItems: 64
     });
+    selectedSupportResistance = selectSupportResistanceClaims({
+      evaluationTimeUnixMs,
+      candidates: contextualCandidates,
+      maxItems: 16
+    });
+    selectedNewsEvidence = selectNewsEvidence({
+      evaluationTimeUnixMs,
+      candidates: contextualCandidates,
+      maxItems: 16
+    });
   } catch (err) {
     selectedContextEvents = [];
+    selectedSupportResistance = [];
+    selectedNewsEvidence = [];
   }
 
-  for (const selectedEvent of selectedContextEvents) {
-    normalizedObservationIds.add(selectedEvent.row.id);
-    rawObservationIds.add(selectedEvent.row.rawObservationId);
+  const selectedContextualRows: NormalizedObservationRow[] = [
+    ...selectedContextEvents.map((e) => e.row),
+    ...selectedSupportResistance.map((sr) => sr.row),
+    ...selectedNewsEvidence.map((ne) => ne.row)
+  ];
+
+  for (const row of selectedContextualRows) {
+    normalizedObservationIds.add(row.id);
+    rawObservationIds.add(row.rawObservationId);
   }
 
   const normalizedIdArray = [...normalizedObservationIds];
@@ -419,7 +447,7 @@ export async function assembleEvidenceBundle(
     walletId,
     positionId,
     poolId,
-    contextualObservations: selectedContextEvents.map((e) => e.row)
+    contextualObservations: selectedContextualRows
   };
 
   const lineageResult = verifyEvidenceLineage(lineageInput);
@@ -429,7 +457,12 @@ export async function assembleEvidenceBundle(
 
   const freshUntil = evaluationTimeUnixMs + 3600000;
   const expiresAt = evaluationTimeUnixMs + 7200000;
-  const contextPresent = selectedContextEvents.length > 0;
+  const hasSupportResistance = selectedSupportResistance.length > 0;
+  const hasFlows = selectedContextEvents.some((item) => item.eventFamily === "on_chain_flow");
+  const hasDerivatives = false;
+  const hasEvents = selectedContextEvents.some((item) => item.eventFamily !== "on_chain_flow");
+  const hasNewsRegulatory = selectedNewsEvidence.length > 0;
+  const hasResearchBrief = false;
 
   const qualityInput = {
     slots,
@@ -439,8 +472,12 @@ export async function assembleEvidenceBundle(
     asOf: evaluationTimeUnixMs,
     freshUntil,
     expiresAt,
-    contextPresent,
-    briefPresent: false,
+    hasSupportResistance,
+    hasFlows,
+    hasDerivatives,
+    hasEvents,
+    hasNewsRegulatory,
+    hasResearchBrief,
     allowNoUsableFeatures: false
   };
 
@@ -459,12 +496,13 @@ export async function assembleEvidenceBundle(
     asOf: evaluationTimeUnixMs,
     freshUntil,
     expiresAt,
-    contextPresent,
     briefPresent: false,
     pipelineVersion: codeVersion,
     gitCommit,
     environment,
-    contextualEvents: selectedContextEvents
+    contextualEvents: selectedContextEvents,
+    selectedSupportResistance,
+    selectedNewsEvidence
   };
 
   const assembledCandidate = assembleEvidenceBundleCandidate(assembleInput);

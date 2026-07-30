@@ -45,6 +45,29 @@ describe("EvidenceBundleV1 Contract", () => {
       expect(result.schemaVersion).toBe("evidence-bundle.v1");
       expect(result.payload).toBeDefined();
     });
+
+    it("should accept contextual evidence with 'partial' coverage status", async () => {
+      const fixture = (await loadValidFixture("contextual")) as EvidenceBundleV1;
+      const modifiedFixture = JSON.parse(JSON.stringify(fixture)) as EvidenceBundleV1;
+      modifiedFixture.assessment.coverage.supportResistance = "partial";
+      modifiedFixture.assessment.coverage.flows = "partial";
+      const result = await contract.validateCanonicalizeAndHash(modifiedFixture);
+      expect(result.schemaVersion).toBe("evidence-bundle.v1");
+    });
+
+    it("should reject populated contextual evidence with 'unavailable' coverage status", async () => {
+      const fixture = (await loadValidFixture("contextual")) as EvidenceBundleV1;
+      const modifiedFixture = JSON.parse(JSON.stringify(fixture)) as EvidenceBundleV1;
+      modifiedFixture.assessment.coverage.supportResistance = "unavailable";
+      await expect(contract.validateCanonicalizeAndHash(modifiedFixture)).rejects.toThrow();
+    });
+
+    it("should reject empty contextual evidence with 'partial' coverage status", async () => {
+      const fixture = (await loadValidFixture("deterministic-only")) as EvidenceBundleV1;
+      const modifiedFixture = JSON.parse(JSON.stringify(fixture)) as EvidenceBundleV1;
+      modifiedFixture.assessment.coverage.supportResistance = "partial";
+      await expect(contract.validateCanonicalizeAndHash(modifiedFixture)).rejects.toThrow();
+    });
   });
 
   describe("rejects every pinned canonical invalid fixture", () => {

@@ -128,8 +128,12 @@ function makeQuality(): EvidenceBundleQuality {
     asOf: 5000000000000,
     freshUntil: 50000003600000,
     expiresAt: 50000864000000,
-    contextPresent: true,
-    briefPresent: false
+    hasSupportResistance: true,
+    hasFlows: false,
+    hasDerivatives: false,
+    hasEvents: false,
+    hasNewsRegulatory: true,
+    hasResearchBrief: false
   });
   return {
     ...base,
@@ -174,7 +178,6 @@ function makeAssembleInput(
     asOf: 5000000000000,
     freshUntil: 50000003600000,
     expiresAt: 50000864000000,
-    contextPresent: false,
     briefPresent: false,
     pipelineVersion: "1.0.0",
     gitCommit: "abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",

@@ -239,8 +239,10 @@ export function createEvidenceBundleContract(): EvidenceBundleContract {
         }
       }
 
-      // 4. Empty context warning check
+      // 4. Family unavailable warning check
       const families = payload.contextualEvidence;
+      const warningCodes = new Set(payload.assessment.warnings.map((w) => w.code));
+
       const isContextEmpty =
         (!families.supportResistance || families.supportResistance.length === 0) &&
         (!families.flows || families.flows.length === 0) &&
@@ -248,15 +250,51 @@ export function createEvidenceBundleContract(): EvidenceBundleContract {
         (!families.events || families.events.length === 0) &&
         (!families.newsRegulatory || families.newsRegulatory.length === 0);
 
-      const warningCodes = new Set(payload.assessment.warnings.map((w) => w.code));
-      if (isContextEmpty) {
-        if (!warningCodes.has("CONTEXTUAL_EVIDENCE_UNAVAILABLE")) {
-          errors.push({
-            message: "Missing CONTEXTUAL_EVIDENCE_UNAVAILABLE warning",
-            instancePath: "/assessment/warnings"
-          });
+      if (isContextEmpty && warningCodes.has("CONTEXTUAL_EVIDENCE_UNAVAILABLE")) {
+        // Legacy aggregate warning satisfies empty context check
+      } else {
+        if (!families.supportResistance || families.supportResistance.length === 0) {
+          if (!warningCodes.has("SUPPORT_RESISTANCE_UNAVAILABLE")) {
+            errors.push({
+              message: "Missing SUPPORT_RESISTANCE_UNAVAILABLE warning",
+              instancePath: "/assessment/warnings"
+            });
+          }
+        }
+        if (!families.flows || families.flows.length === 0) {
+          if (!warningCodes.has("FLOWS_UNAVAILABLE")) {
+            errors.push({
+              message: "Missing FLOWS_UNAVAILABLE warning",
+              instancePath: "/assessment/warnings"
+            });
+          }
+        }
+        if (!families.derivatives || families.derivatives.length === 0) {
+          if (!warningCodes.has("DERIVATIVES_UNAVAILABLE")) {
+            errors.push({
+              message: "Missing DERIVATIVES_UNAVAILABLE warning",
+              instancePath: "/assessment/warnings"
+            });
+          }
+        }
+        if (!families.events || families.events.length === 0) {
+          if (!warningCodes.has("EVENTS_UNAVAILABLE")) {
+            errors.push({
+              message: "Missing EVENTS_UNAVAILABLE warning",
+              instancePath: "/assessment/warnings"
+            });
+          }
+        }
+        if (!families.newsRegulatory || families.newsRegulatory.length === 0) {
+          if (!warningCodes.has("NEWS_REGULATORY_UNAVAILABLE")) {
+            errors.push({
+              message: "Missing NEWS_REGULATORY_UNAVAILABLE warning",
+              instancePath: "/assessment/warnings"
+            });
+          }
         }
       }
+
       if (payload.researchBrief === null) {
         if (!warningCodes.has("RESEARCH_BRIEF_UNAVAILABLE")) {
           errors.push({
@@ -323,13 +361,14 @@ export function createEvidenceBundleContract(): EvidenceBundleContract {
       ) => {
         const hasItems = arr && arr.length > 0;
         const coverageVal = payload.assessment.coverage[key];
-        if (hasItems && coverageVal !== "available") {
+        const isPresentCoverage = coverageVal === "available" || coverageVal === "partial";
+        if (hasItems && !isPresentCoverage) {
           errors.push({
             message: `${key} coverage mismatch`,
             instancePath: `/assessment/coverage/${key}`
           });
         }
-        if (!hasItems && coverageVal === "available") {
+        if (!hasItems && isPresentCoverage) {
           errors.push({
             message: `${key} coverage mismatch`,
             instancePath: `/assessment/coverage/${key}`
