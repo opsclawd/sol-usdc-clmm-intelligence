@@ -1,5 +1,6 @@
 timezone: America/Edmonton
 session: isolated
+workingDirectory: /opt/apps/sol-usdc-clmm-intelligence
 modelEnv: OPENCLAW_MODEL
 jobs:
   - name: perp-liquidation

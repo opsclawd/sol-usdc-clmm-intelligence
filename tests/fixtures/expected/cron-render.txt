@@ -1,1 +1,3 @@
-openclaw cron add --name 'clmm-daily' --cron '0 7 * * *' --tz 'America/Edmonton' --session 'isolated' --message 'Daily routine.' --model 'opus'
+hermes cron create '0 7 * * *' 'Working directory for this task: /opt/apps/sol-usdc-clmm-intelligence — run all shell commands from there (cd into it first).
+
+Daily routine.' --name 'clmm-daily' --deliver 'local'

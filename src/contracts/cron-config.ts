@@ -10,6 +10,7 @@ export interface CronJob {
 export interface CronConfig {
   timezone: string;
   session: string;
+  workingDirectory: string;
   modelEnv?: string;
   thinkingEnv?: string;
   agentEnv?: string;
@@ -24,6 +25,7 @@ export interface CronConfig {
 export interface ResolvedCronDefaults {
   timezone: string;
   session: string;
+  workingDirectory: string;
   defaultModel?: string;
   defaultThinking?: string;
   agent?: string;

@@ -1,34 +1,33 @@
 import { describe, expect, it } from "vitest";
-import { buildCronAddArgs } from "../../src/application/cron-command.js";
+import { buildCronCreateArgs } from "../../src/application/cron-command.js";
 
-describe("buildCronAddArgs", () => {
-  it("builds the minimal argv set when no defaults or delivery are present", () => {
-    const result = buildCronAddArgs({
+const WORKING_DIRECTORY = "/opt/apps/sol-usdc-clmm-intelligence";
+
+describe("buildCronCreateArgs", () => {
+  it("builds the minimal argv set when no delivery is present", () => {
+    const result = buildCronCreateArgs({
       job: { name: "clmm-daily", cron: "0 7 * * *", messageFile: "r.md" },
       message: "hello",
       timezone: "America/Edmonton",
       session: "isolated",
+      workingDirectory: WORKING_DIRECTORY,
       exact: false
     });
-    expect(result.command).toBe("openclaw");
+    expect(result.command).toBe("hermes");
     expect(result.args).toEqual([
       "cron",
-      "add",
+      "create",
+      "0 7 * * *",
+      `Working directory for this task: ${WORKING_DIRECTORY} — run all shell commands from there (cd into it first).\n\nhello`,
       "--name",
       "clmm-daily",
-      "--cron",
-      "0 7 * * *",
-      "--tz",
-      "America/Edmonton",
-      "--session",
-      "isolated",
-      "--message",
-      "hello"
+      "--deliver",
+      "local"
     ]);
   });
 
-  it("appends model and thinking when set on job", () => {
-    const result = buildCronAddArgs({
+  it("ignores job-level model/thinking — Hermes has no per-job model override", () => {
+    const result = buildCronCreateArgs({
       job: {
         name: "a",
         cron: "* * * * *",
@@ -39,67 +38,80 @@ describe("buildCronAddArgs", () => {
       message: "m",
       timezone: "UTC",
       session: "isolated",
+      workingDirectory: WORKING_DIRECTORY,
       exact: false
     });
-    expect(result.args).toContain("--model");
-    expect(result.args).toContain("opus");
-    expect(result.args).toContain("--thinking");
-    expect(result.args).toContain("high");
+    expect(result.args).not.toContain("--model");
+    expect(result.args).not.toContain("--thinking");
   });
 
-  it("falls back to default model and thinking when job lacks them", () => {
-    const result = buildCronAddArgs({
+  it("ignores defaultModel/defaultThinking/agent/exact — no Hermes equivalent", () => {
+    const result = buildCronCreateArgs({
       job: { name: "a", cron: "* * * * *", messageFile: "r.md" },
       message: "m",
       timezone: "UTC",
       session: "isolated",
-      exact: false,
-      defaultModel: "sonnet",
-      defaultThinking: "medium"
-    });
-    expect(result.args).toContain("--model");
-    expect(result.args).toContain("sonnet");
-    expect(result.args).toContain("--thinking");
-    expect(result.args).toContain("medium");
-  });
-
-  it("appends agent and exact flags when present", () => {
-    const result = buildCronAddArgs({
-      job: { name: "a", cron: "* * * * *", messageFile: "r.md" },
-      message: "m",
-      timezone: "UTC",
-      session: "isolated",
+      workingDirectory: WORKING_DIRECTORY,
       exact: true,
+      defaultModel: "sonnet",
+      defaultThinking: "medium",
       agent: "claude"
     });
-    expect(result.args).toContain("--agent");
-    expect(result.args).toContain("claude");
-    expect(result.args).toContain("--exact");
+    expect(result.args).not.toContain("--model");
+    expect(result.args).not.toContain("--thinking");
+    expect(result.args).not.toContain("--agent");
+    expect(result.args).not.toContain("--exact");
   });
 
-  it("appends announce/channel/to when both delivery values are present", () => {
-    const result = buildCronAddArgs({
+  it("prefixes the prompt with a working-directory instruction", () => {
+    const result = buildCronCreateArgs({
+      job: { name: "a", cron: "* * * * *", messageFile: "r.md" },
+      message: "do the thing",
+      timezone: "UTC",
+      session: "isolated",
+      workingDirectory: "/opt/apps/example",
+      exact: false
+    });
+    const prompt = result.args[3]!;
+    expect(prompt.startsWith("Working directory for this task: /opt/apps/example")).toBe(true);
+    expect(prompt.endsWith("do the thing")).toBe(true);
+  });
+
+  it("formats delivery as channel:to when both delivery values are present", () => {
+    const result = buildCronCreateArgs({
       job: { name: "a", cron: "* * * * *", messageFile: "r.md" },
       message: "m",
       timezone: "UTC",
       session: "isolated",
+      workingDirectory: WORKING_DIRECTORY,
       exact: false,
       delivery: { channel: "telegram", to: "12345" }
     });
-    expect(result.args).toEqual(
-      expect.arrayContaining(["--announce", "--channel", "telegram", "--to", "12345"])
-    );
+    expect(result.args).toEqual(expect.arrayContaining(["--deliver", "telegram:12345"]));
   });
 
-  it("does not append delivery flags when partial delivery is provided", () => {
-    const result = buildCronAddArgs({
+  it("falls back to --deliver local when partial delivery is provided", () => {
+    const result = buildCronCreateArgs({
       job: { name: "a", cron: "* * * * *", messageFile: "r.md" },
       message: "m",
       timezone: "UTC",
       session: "isolated",
+      workingDirectory: WORKING_DIRECTORY,
       exact: false,
       delivery: { channel: "telegram", to: "" }
     });
-    expect(result.args).not.toContain("--announce");
+    expect(result.args).toEqual(expect.arrayContaining(["--deliver", "local"]));
+  });
+
+  it("falls back to --deliver local when no delivery is configured", () => {
+    const result = buildCronCreateArgs({
+      job: { name: "a", cron: "* * * * *", messageFile: "r.md" },
+      message: "m",
+      timezone: "UTC",
+      session: "isolated",
+      workingDirectory: WORKING_DIRECTORY,
+      exact: false
+    });
+    expect(result.args).toEqual(expect.arrayContaining(["--deliver", "local"]));
   });
 });

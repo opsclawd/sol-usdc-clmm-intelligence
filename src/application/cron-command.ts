@@ -1,10 +1,11 @@
 import type { CronJob } from "../contracts/cron-config.js";
 
-export interface BuildCronAddArgsInputs {
+export interface BuildCronCreateArgsInputs {
   job: CronJob;
   message: string;
   timezone: string;
   session: string;
+  workingDirectory: string;
   exact: boolean;
   defaultModel?: string;
   defaultThinking?: string;
@@ -13,37 +14,37 @@ export interface BuildCronAddArgsInputs {
 }
 
 export interface CronCommand {
-  command: "openclaw";
+  command: "hermes";
   args: string[];
 }
 
-export function buildCronAddArgs(inputs: BuildCronAddArgsInputs): CronCommand {
-  const { job, message, timezone, session, exact, defaultModel, defaultThinking, agent, delivery } =
-    inputs;
+const HERMES_CLI_PATH = ["cron", "create"] as const;
+
+/**
+ * Hermes's `cron create` has no equivalent to OpenClaw's `--tz`, `--session`,
+ * `--exact`, `--model`, `--thinking`, or `--agent` flags — Hermes uses a
+ * single server-local timezone and a single globally-configured model for
+ * all jobs. `timezone`, `session`, `exact`, `defaultModel`/`defaultThinking`,
+ * and `agent` are accepted here (and still declared in `cron/jobs.yaml`) for
+ * schema/documentation continuity, but intentionally produce no CLI args.
+ */
+export function buildCronCreateArgs(inputs: BuildCronCreateArgsInputs): CronCommand {
+  const { job, message, delivery, workingDirectory } = inputs;
+
+  const deliverTarget =
+    delivery && delivery.channel && delivery.to ? `${delivery.channel}:${delivery.to}` : "local";
+
+  const promptWithCwd = `Working directory for this task: ${workingDirectory} — run all shell commands from there (cd into it first).\n\n${message}`;
+
   const args: string[] = [
-    "cron",
-    "add",
+    ...HERMES_CLI_PATH,
+    job.cron,
+    promptWithCwd,
     "--name",
     job.name,
-    "--cron",
-    job.cron,
-    "--tz",
-    timezone,
-    "--session",
-    session,
-    "--message",
-    message
+    "--deliver",
+    deliverTarget
   ];
 
-  const model = job.model ?? defaultModel;
-  const thinking = job.thinking ?? defaultThinking;
-  if (model) args.push("--model", model);
-  if (thinking) args.push("--thinking", thinking);
-  if (agent) args.push("--agent", agent);
-  if (exact) args.push("--exact");
-  if (delivery && delivery.channel && delivery.to) {
-    args.push("--announce", "--channel", delivery.channel, "--to", delivery.to);
-  }
-
-  return { command: "openclaw", args };
+  return { command: "hermes", args };
 }

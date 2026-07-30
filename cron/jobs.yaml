@@ -1,5 +1,8 @@
 timezone: America/Edmonton
 session: isolated
+# Hermes's terminal backend does not default into this repo's checkout — every
+# job's prompt is prefixed with an explicit `cd` instruction targeting this path.
+workingDirectory: /opt/apps/sol-usdc-clmm-intelligence
 modelEnv: OPENCLAW_MODEL
 thinkingEnv: OPENCLAW_THINKING
 agentEnv: OPENCLAW_AGENT

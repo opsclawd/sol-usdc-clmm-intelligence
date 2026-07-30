@@ -1,7 +1,7 @@
 import type { TextReader } from "../ports/text-reader.js";
 import type { EnvReader } from "../ports/env.js";
 import type { CommandRunner } from "../ports/command-runner.js";
-import { buildCronAddArgs, type CronCommand } from "./cron-command.js";
+import { buildCronCreateArgs, type CronCommand } from "./cron-command.js";
 import { loadCronConfig } from "./load-cron-config.js";
 
 export interface SyncCronDeps {
@@ -26,11 +26,12 @@ export async function syncCron(deps: SyncCronDeps): Promise<SyncCronResult> {
   });
 
   const commands = preparedJobs.map((prepared) =>
-    buildCronAddArgs({
+    buildCronCreateArgs({
       job: prepared.job,
       message: prepared.message,
       timezone: defaults.timezone,
       session: defaults.session,
+      workingDirectory: defaults.workingDirectory,
       exact: defaults.exact,
       ...(defaults.defaultModel ? { defaultModel: defaults.defaultModel } : {}),
       ...(defaults.defaultThinking ? { defaultThinking: defaults.defaultThinking } : {}),

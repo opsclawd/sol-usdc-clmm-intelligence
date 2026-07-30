@@ -38,6 +38,7 @@ export async function loadCronConfig(deps: LoadCronConfigDeps): Promise<LoadedCr
   const defaults: ResolvedCronDefaults = {
     timezone: config.timezone,
     session: config.session,
+    workingDirectory: config.workingDirectory,
     ...(defaultModel ? { defaultModel } : {}),
     ...(defaultThinking ? { defaultThinking } : {}),
     ...(agent ? { agent } : {}),

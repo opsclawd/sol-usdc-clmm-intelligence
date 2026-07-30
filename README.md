@@ -2,7 +2,7 @@
 
 This repo is the advisory/evidence pipeline for the SOL/USDC CLMM Autopilot system.
 
-It stores prompts, policies, schemas, OpenClaw routines, source definitions, durable memory, local snapshots, deterministic collector code, and evidence-pipeline infrastructure used to research a user-managed Orca SOL/USDC Whirlpool LP position.
+It stores prompts, policies, schemas, scheduled agent routines, source definitions, durable memory, local snapshots, deterministic collector code, and evidence-pipeline infrastructure used to research a user-managed Orca SOL/USDC Whirlpool LP position.
 
 It is not the execution product. It does not own the mobile app, wallet connection, transaction preparation, signing flow, Solana RPC fan-out, or CLMM worker jobs. Those belong to `clmm-v2`.
 
@@ -10,7 +10,7 @@ It is not the execution product. It does not own the mobile app, wallet connecti
 
 This repo currently provides:
 
-- OpenClaw cron/routine definitions for scheduled SOL/USDC analysis;
+- cron/routine definitions for scheduled SOL/USDC analysis, executed via Hermes (see `scheduling.md`);
 - durable policy, prompt, routine, memory, resource, and schema assets;
 - a layered TypeScript monolith under `src/` with contracts, domain logic, ports, application use cases, jobs, adapters, and DB schema;
 - deterministic collectors for Jupiter price snapshots and CLMM bundles from the `clmm-v2` BFF;
@@ -41,14 +41,14 @@ Wallet + App  <---- BFF/API + Worker ----> Orca / Jupiter / Solana RPC
                                 | read-only bundle API
                                 v
               sol-usdc-clmm-intelligence
-       OpenClaw routines, evidence memory, advisory outputs
+       scheduled agent routines, evidence memory, advisory outputs
 ```
 
 Today:
 
 - `clmm-v2` is the operational product. It owns wallet connection, monitored positions, alerts, preview approval, signing handoff, transaction submission, reconciliation, and history.
 - `regime-engine` is the deterministic analytics and ledger service. It stores candles, computes current regime, stores S/R/current insight blocks, and records CLMM execution-result events.
-- `sol-usdc-clmm-intelligence` is the advisory/evidence pipeline. It pulls CLMM bundles from `clmm-v2`, combines them with price/source/research context, runs OpenClaw routines, and maintains durable memory.
+- `sol-usdc-clmm-intelligence` is the advisory/evidence pipeline. It pulls CLMM bundles from `clmm-v2`, combines them with price/source/research context, runs scheduled agent routines (via Hermes cron — see `scheduling.md`), and maintains durable memory.
 
 ## Evidence-pipeline roadmap (delivered)
 
@@ -95,7 +95,7 @@ The system derives exactly seven canonical numeric features from normalized sour
 
 Delivered by #2.
 
-The roadmap refactors this repo from a script-first OpenClaw artifact pipeline into a durable evidence pipeline that gathers, normalizes, stores, derives, summarizes, and publishes structured research evidence for Regime Engine.
+The roadmap refactors this repo from a script-first agent artifact pipeline into a durable evidence pipeline that gathers, normalizes, stores, derives, summarizes, and publishes structured research evidence for Regime Engine.
 
 In scope:
 
@@ -214,7 +214,7 @@ In the mature product, a minimal Anchor receipt/claim program may record one exe
 
 ```text
 Git repo                     = prompts, policies, schemas, routines, durable memory, collector code
-OpenClaw Gateway cron         = scheduled isolated agent runs
+Hermes Gateway cron           = scheduled isolated agent runs
 Postgres / backend database   = raw observations, normalized records, features, evidence bundles, briefs, publish attempts
 clmm-v2 BFF                   = source of truth for live CLMM pool, position, alert, and bundle reads
 regime-engine                 = source of truth for market regime, evidence ingest, policy synthesis, and result ledger
@@ -245,7 +245,7 @@ clmm-v2 /insights/sol-usdc/bundle/:walletId
         data/latest-clmm-bundle.json
                |
                v
-     OpenClaw routine + durable memory
+     scheduled agent routine + durable memory
                |
                v
      advisory output / operator review
@@ -527,7 +527,20 @@ cp .env.example .env
 pnpm cron:render
 ```
 
-The render step prints the OpenClaw commands needed to register cron jobs defined in `cron/jobs.yaml`.
+`pnpm cron:render` prints `hermes cron create` commands generated from `cron/jobs.yaml`. The actual scheduled runtime is **Hermes**; see `scheduling.md` for the full explanation and `pnpm cron:sync -- --apply` to actually register/update jobs against it.
+
+### Scheduled cron jobs
+
+Four jobs run against `cron/jobs.yaml`'s desired schedule, on Hermes:
+
+| Job                | Schedule                    | Collector                       | Sources                                                     |
+| ------------------ | --------------------------- | ------------------------------- | ----------------------------------------------------------- |
+| `on-chain-flow`    | hourly (`0 * * * *`)        | `pnpm collect:on-chain-flow`    | Helius (whale_transfer), Birdeye (whale_swap, dex_net_flow) |
+| `perp-liquidation` | every 5 min (`*/5 * * * *`) | `pnpm collect:perp-liquidation` | Binance fAPI, Drift (Velocity Data API)                     |
+| `news-evidence`    | every 2h (`0 */2 * * *`)    | `pnpm collect:news-evidence`    | `crypto-news-api`, `regulatory-monitor-api`                 |
+| `context-events`   | every 4h (`0 */4 * * *`)    | `pnpm collect:context-events`   | `macro-calendar-api`, `solana-status-api`                   |
+
+`context-events` requires `MACRO_CALENDAR_API_URL` and `SOLANA_STATUS_API_URL` to be configured — without them the collector exits before persistence init on every tick.
 
 ## Useful commands
 
@@ -550,8 +563,8 @@ pnpm db:generate          # generates Drizzle migrations from schema changes
 pnpm db:migrate           # runs Drizzle migrations against DATABASE_URL
 pnpm db:push              # pushes schema changes directly (dev only)
 pnpm db:provision-roles   # provisions least-privilege Postgres roles for the intelligence schema
-pnpm cron:render          # prints OpenClaw cron add commands
-pnpm cron:sync -- --apply # creates OpenClaw cron jobs
+pnpm cron:render          # prints hermes cron create commands generated from cron/jobs.yaml (see scheduling.md)
+pnpm cron:sync -- --apply # creates the jobs against Hermes (does not diff/delete existing jobs — see scheduling.md)
 pnpm verify               # typecheck, lint, format, tests, boundaries
 ```
 
@@ -571,7 +584,7 @@ ORCA_API_BASE=https://api.orca.so/v2/solana
 ORCA_SOL_USDC_WHIRLPOOL=Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE
 ```
 
-For OpenClaw delivery:
+For `pnpm cron:sync -- --apply` (see `scheduling.md`), consumed only by that command — not by the Hermes gateway itself, which has its own separate config:
 
 ```bash
 OPENCLAW_DELIVERY_CHANNEL=telegram
@@ -579,6 +592,8 @@ OPENCLAW_DELIVERY_TO=<chat-id-or-channel-id>
 OPENCLAW_MODEL=opus
 OPENCLAW_THINKING=high
 ```
+
+`OPENCLAW_DELIVERY_CHANNEL`/`OPENCLAW_DELIVERY_TO` are used — mapped into each job's `--deliver <channel>:<to>`. `OPENCLAW_MODEL`/`OPENCLAW_THINKING` (and `OPENCLAW_AGENT`/`OPENCLAW_EXACT`) are read but currently have no effect: Hermes's `cron create` has no per-job model/thinking/agent/exact override, only a single gateway-wide default model configured separately on the Hermes side.
 
 For Support Resistance collection:
 
@@ -602,7 +617,8 @@ For Perp & Liquidation collection (Binance fAPI, Drift):
 ```bash
 BINANCE_FAPI_BASE_URL=https://fapi.binance.com
 BINANCE_SOL_PERP_SYMBOL=SOLUSDT
-DRIFT_DATA_API_BASE_URL=https://mainnet-beta.api.drift.trade
+DRIFT_DATA_API_BASE_URL=https://data.velocity.exchange
+DRIFT_SOL_PERP_SYMBOL=SOL-PERP
 DRIFT_SOL_PERP_MARKET_INDEX=0
 ```
 
@@ -661,14 +677,14 @@ Full architecture notes live in `docs/architecture.md`.
 ```text
 AGENTS.md                         Agent operating contract
 CLAUDE.md                         Claude/OpenClaw project instructions
-openclaw.md                       Operator notes for OpenClaw cron
+scheduling.md                     Operator notes for scheduled cron (Hermes is the runtime; see file for why)
 cron/jobs.yaml                    Desired cron schedule
+cron/routines/                    Scheduled agent routine prompts
 policies/                         Risk, range, rebalance, and execution boundaries
 resources/                        Fundamental and market data source definitions
 schemas/                          JSON contracts for outputs and snapshots
-routines/                         OpenClaw routine prompts
 prompts/                          Reusable analysis prompts
-scripts/                          Deterministic collectors/generators/OpenClaw helpers
+scripts/                          Deterministic collectors/generators/cron helpers
 src/                              Layered TypeScript pipeline code
 tests/                            Vitest unit, application, and fixture regression tests
 drizzle/                          Drizzle migrations
@@ -683,7 +699,7 @@ docs/                             Architecture, runbooks, specs, and plans
 - This repo is not the source of truth for high-frequency market data.
 - This repo is not the source of truth for live position execution state.
 - Raw price ticks, pool snapshots, and every fee accrual update belong in Postgres or the backend owner service, not Git.
-- OpenClaw output is advisory evidence unless and until a downstream deterministic service accepts it through an explicit contract.
+- Agent output is advisory evidence unless and until a downstream deterministic service accepts it through an explicit contract.
 - Any future publish path to `regime-engine` must be schema-validated, authenticated, idempotent, and observable.
 - The outbound payload should be evidence, not final policy conclusions.
 - Recommendations must preserve the no-execution boundary.

@@ -11,37 +11,26 @@ pnpm collect:core
 
 If `pnpm collect:core` fails, check the configuration or credentials of the failing core sources. Legacy standalone commands (`pnpm collect:price` and `pnpm collect:clmm-bundle`) remain supported.
 
-## Register OpenClaw jobs
+## Register scheduled jobs
+
+The scheduled runtime is **Hermes**, not OpenClaw — see `scheduling.md` for the full explanation. `pnpm cron:render`/`pnpm cron:sync -- --apply` generate and (with `--apply`) run `hermes cron create` commands from `cron/jobs.yaml`/`cron/routines/*.md`:
 
 ```bash
-pnpm cron:render
-pnpm cron:sync -- --apply
-openclaw cron list
+pnpm cron:render          # print the hermes cron create commands without running them
+pnpm cron:sync -- --apply # actually create/update the jobs against Hermes
 ```
 
-### Migrating from legacy collector (first time only)
+This only _adds_ jobs — it does not diff or delete existing ones, so re-running it after jobs are already registered creates duplicates. Remove stale jobs first with `hermes cron rm <job-id>` (see "Test a job" below for listing IDs).
 
-If you had the old `cron/jobs.yaml` registered, four legacy jobs may still be active:
-
-```bash
-openclaw cron remove --name clmm-daily-sol-usdc-insight
-openclaw cron remove --name clmm-range-review
-openclaw cron remove --name clmm-emergency-volatility-check
-openclaw cron remove --name clmm-weekly-performance-review
-```
-
-These jobs reference deleted scripts (`pnpm collect:backend`, `pnpm insight:daily`, `pnpm review:range`) and will fail harmlessly but noisily until removed. Verify cleanup:
-
-```bash
-openclaw cron list
-```
+If migrating from an old OpenClaw-registered deployment, any legacy jobs live in OpenClaw's own job store and are unrelated to Hermes's — they do not need to be ported, since scheduling was rebuilt on Hermes from a clean slate.
 
 ## Test a job
 
 ```bash
-openclaw cron list
-openclaw cron run <jobId>
-openclaw cron runs --id <jobId> --limit 20
+H="/root/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main"
+$H cron list
+$H cron run <job-id>
+$H cron runs --id <job-id> --limit 20
 ```
 
 ## Configuration & Credentials
@@ -138,22 +127,20 @@ WHERE observation_kind = 'price_quote';
 
 ### Cron not firing
 
-Check:
+Check the Hermes gateway and cron scheduler (not OpenClaw — see `scheduling.md`):
 
 ```bash
-openclaw gateway status
-openclaw cron status
-openclaw cron list
+systemctl --user status hermes-gateway.service
+H="/root/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main"
+$H cron status
+$H cron list
 ```
+
+If a job's `Next run` never advances and it silently flips to `[inactive]`/`completed` after firing once, the gateway process likely started before `croniter` was installed in its venv — see `scheduling.md`'s note on this and restart the gateway service after installing it.
 
 ### Cron fired but no message arrived
 
-Check delivery config:
-
-```bash
-OPENCLAW_DELIVERY_CHANNEL
-OPENCLAW_DELIVERY_TO
-```
+Check the job's `--deliver` target (`hermes cron list` shows it per job). `OPENCLAW_DELIVERY_CHANNEL`/`OPENCLAW_DELIVERY_TO` are consumed by `pnpm cron:sync` at registration time (mapped into `--deliver <channel>:<to>`) — they have no effect on an already-registered job; edit it directly with `hermes cron edit <job-id> --deliver <target>` instead.
 
 ### Missing data
 
@@ -585,7 +572,7 @@ The publisher retries transient failures up to **3 attempts** with an exponentia
 
 ### Notification behavior
 
-A **nonzero exit code** plus a structured **terminal event** (e.g., `created`, `idempotent_replay`, `transient_failure_exhausted`) is the repository's operator-visible failure mechanism. Scheduled OpenClaw delivery should alert on nonzero exit.
+A **nonzero exit code** plus a structured **terminal event** (e.g., `created`, `idempotent_replay`, `transient_failure_exhausted`) is the repository's operator-visible failure mechanism. Scheduled Hermes cron delivery should alert on nonzero exit.
 
 > [!SECRET]
 > Logs and audit rows must never contain `REGIME_ENGINE_AUTH_TOKEN`. Authorization headers are redacted before persistence.
