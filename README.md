@@ -564,7 +564,7 @@ Required environment variables:
 - `WHIRLPOOL_ADDRESS`: Solana Orca Whirlpool pool address.
 - `WALLET_PUBLIC_KEY`: Solana wallet public key.
 - `INTELLIGENCE_CODE_VERSION`: Intelligence pipeline code version string.
-- `INTELLIGENCE_GIT_COMMIT`: 40-character hex commit hash (`INTELLIGENCE_GIT_COMMIT`).
+- `INTELLIGENCE_GIT_COMMIT`: Exactly 64 lowercase hexadecimal characters, deterministically derived as the SHA-256 digest of the true deployed Git commit.
 - `INTELLIGENCE_ENVIRONMENT`: Target environment (`production`, `staging`, `development`, `test`).
 - `DATABASE_URL`: Postgres database connection string.
 - `CLMM_DATA_API_BASE`: HTTP/HTTPS base URL for CLMM BFF.
@@ -577,6 +577,14 @@ Required environment variables:
 - `LLM_MODEL`: Target model identifier for research brief generation.
 - `REGIME_ENGINE_BASE_URL`: Base HTTP/HTTPS URL for Regime Engine.
 - `REGIME_ENGINE_AUTH_TOKEN`: Auth token for Regime Engine evidence endpoint.
+
+Derive the provenance value from the checked-out commit without hashing a trailing newline:
+
+```bash
+printf '%s' "$(git rev-parse HEAD)" | sha256sum | cut -d ' ' -f1
+```
+
+Set the command's 64-character output as `INTELLIGENCE_GIT_COMMIT`. The pipeline validates the supplied digest but does not derive or rewrite it at runtime.
 
 Optional environment variables:
 

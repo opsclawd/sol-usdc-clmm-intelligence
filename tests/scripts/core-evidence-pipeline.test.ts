@@ -24,7 +24,7 @@ const VALID_ENV_MAP: Record<string, string> = {
   WHIRLPOOL_ADDRESS: "HJPjoWUDeepFiyXxDxppBwMV2LPr5KFrkJuCpFuVjFu5",
   WALLET_PUBLIC_KEY: "4vM8vJEiAdKGhDd634vM8vJEiAdKGhDd634vM8vJEiAd",
   INTELLIGENCE_CODE_VERSION: "1.0.0",
-  INTELLIGENCE_GIT_COMMIT: "f621b5a4269c8905479f48b670321639bd67a2c5",
+  INTELLIGENCE_GIT_COMMIT: "f621b5a4269c8905479f48b670321639bd67a2c5f621b5a4269c8905479f48b6",
   INTELLIGENCE_ENVIRONMENT: "production",
   DATABASE_URL: "postgres://user:pass@localhost:5432/intelligence",
   CLMM_DATA_API_BASE: "https://clmm.example.com",
@@ -224,10 +224,14 @@ describe("core-evidence-pipeline CLI script", () => {
     logSpy.mockRestore();
   });
 
-  it("fails preflight before creating lock persistence contract LLM or HTTP resources", async () => {
-    // Missing required env var
+  it("rejects a 40-character git SHA before creating lock persistence contract LLM or HTTP resources", async () => {
     const { runtime, getLockSpy, getPersistenceSpy, getContractSpy, getLlmProviderSpy, httpSpy } =
-      createMockRuntime({ envMap: {} });
+      createMockRuntime({
+        envMap: {
+          ...VALID_ENV_MAP,
+          INTELLIGENCE_GIT_COMMIT: "f621b5a4269c8905479f48b670321639bd67a2c5"
+        }
+      });
 
     await runCoreEvidencePipelineScript(runtime);
 
@@ -256,7 +260,7 @@ describe("core-evidence-pipeline CLI script", () => {
         {
           stage: "preflight",
           code: "CONFIG_INVALID",
-          message: expect.stringContaining("Missing")
+          message: "Invalid git commit in INTELLIGENCE_GIT_COMMIT"
         }
       ],
       cleanupErrors: []
