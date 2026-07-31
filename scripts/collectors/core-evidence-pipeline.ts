@@ -67,65 +67,71 @@ export async function runCoreEvidencePipelineScript(runtime: NodeRuntime): Promi
     lock,
     openResources: async () => {
       const persistence = await runtime.getPersistence();
-      const contract = await runtime.getContract();
-      const llmProvider = runtime.getLlmProvider ? await runtime.getLlmProvider() : undefined;
 
-      if (!llmProvider) {
-        throw new Error("LLM provider unavailable from NodeRuntime");
-      }
+      try {
+        const contract = await runtime.getContract();
+        const llmProvider = runtime.getLlmProvider ? await runtime.getLlmProvider() : undefined;
 
-      const coreDeps: CoreCollectionJobDeps = {
-        http: runtime.http,
-        retryControl: runtime.retryControl,
-        jsonStore: runtime.jsonStore,
-        env: runtime.env,
-        clock: runtime.clock,
-        rawObservationRepo: persistence.rawObservationRepo,
-        normalizedObservationRepo: persistence.normalizedObservationRepo,
-        runIdFactory: runtime.runIdFactory
-      };
-
-      const deriveDeps: DeriveMvpFeaturesDeps = {
-        normalizedObservationRepo: persistence.normalizedObservationRepo,
-        featureRepo: persistence.featureRepo
-      };
-
-      const assembleDeps: AssembleEvidenceBundleDeps = {
-        clock: runtime.clock,
-        featureRepo: persistence.featureRepo,
-        normalizedRepo: persistence.normalizedObservationRepo,
-        rawRepo: persistence.rawObservationRepo,
-        bundleRepo: persistence.bundleRepo,
-        contract
-      };
-
-      const briefDeps: GenerateResearchBriefDeps = {
-        bundleRepo: persistence.bundleRepo,
-        briefRepo: persistence.briefRepo,
-        llmProvider
-      };
-
-      const publishDeps: PublishEvidenceBundleDeps = {
-        clock: runtime.clock,
-        http: runtime.http,
-        env: runtime.env,
-        bundleRepo: persistence.bundleRepo,
-        briefRepo: persistence.briefRepo,
-        publishAttemptRepo: persistence.publishAttemptRepo,
-        contract,
-        retry: runtime.retryControl
-      };
-
-      return {
-        connection: persistence.connection,
-        services: {
-          collect: (context) => runCoreCollectionJob(coreDeps, context),
-          derive: (request) => deriveMvpFeatures(deriveDeps, request),
-          assemble: (request) => assembleEvidenceBundle(assembleDeps, request),
-          generateBrief: (request) => generateResearchBrief(briefDeps, request),
-          publish: (request) => publishEvidenceBundle(publishDeps, request)
+        if (!llmProvider) {
+          throw new Error("LLM provider unavailable from NodeRuntime");
         }
-      };
+
+        const coreDeps: CoreCollectionJobDeps = {
+          http: runtime.http,
+          retryControl: runtime.retryControl,
+          jsonStore: runtime.jsonStore,
+          env: runtime.env,
+          clock: runtime.clock,
+          rawObservationRepo: persistence.rawObservationRepo,
+          normalizedObservationRepo: persistence.normalizedObservationRepo,
+          runIdFactory: runtime.runIdFactory
+        };
+
+        const deriveDeps: DeriveMvpFeaturesDeps = {
+          normalizedObservationRepo: persistence.normalizedObservationRepo,
+          featureRepo: persistence.featureRepo
+        };
+
+        const assembleDeps: AssembleEvidenceBundleDeps = {
+          clock: runtime.clock,
+          featureRepo: persistence.featureRepo,
+          normalizedRepo: persistence.normalizedObservationRepo,
+          rawRepo: persistence.rawObservationRepo,
+          bundleRepo: persistence.bundleRepo,
+          contract
+        };
+
+        const briefDeps: GenerateResearchBriefDeps = {
+          bundleRepo: persistence.bundleRepo,
+          briefRepo: persistence.briefRepo,
+          llmProvider
+        };
+
+        const publishDeps: PublishEvidenceBundleDeps = {
+          clock: runtime.clock,
+          http: runtime.http,
+          env: runtime.env,
+          bundleRepo: persistence.bundleRepo,
+          briefRepo: persistence.briefRepo,
+          publishAttemptRepo: persistence.publishAttemptRepo,
+          contract,
+          retry: runtime.retryControl
+        };
+
+        return {
+          connection: persistence.connection,
+          services: {
+            collect: (context) => runCoreCollectionJob(coreDeps, context),
+            derive: (request) => deriveMvpFeatures(deriveDeps, request),
+            assemble: (request) => assembleEvidenceBundle(assembleDeps, request),
+            generateBrief: (request) => generateResearchBrief(briefDeps, request),
+            publish: (request) => publishEvidenceBundle(publishDeps, request)
+          }
+        };
+      } catch (error) {
+        await persistence.connection.close();
+        throw error;
+      }
     }
   });
 

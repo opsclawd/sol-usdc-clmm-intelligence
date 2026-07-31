@@ -263,9 +263,10 @@ describe("core-evidence-pipeline CLI script", () => {
     });
   });
 
-  it("binds one persistence instance directly to all five application stages", async () => {
+  it("binds one persistence instance to all five stages and closes it once after success", async () => {
+    const persistence = createMockPersistence();
     const { runtime, getPersistenceSpy, getContractSpy, getLlmProviderSpy, getLockSpy } =
-      createMockRuntime();
+      createMockRuntime({ persistence });
 
     await runCoreEvidencePipelineScript(runtime);
 
@@ -273,6 +274,73 @@ describe("core-evidence-pipeline CLI script", () => {
     expect(getPersistenceSpy).toHaveBeenCalledTimes(1);
     expect(getContractSpy).toHaveBeenCalledTimes(1);
     expect(getLlmProviderSpy).toHaveBeenCalledTimes(1);
+    expect(persistence.connection.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes persistence once when contract initialization fails", async () => {
+    const persistence = createMockPersistence();
+    const { runtime, getContractSpy, getLlmProviderSpy, lock } = createMockRuntime({
+      persistence
+    });
+    getContractSpy.mockRejectedValueOnce(new Error("contract initialization failed"));
+
+    await runCoreEvidencePipelineScript(runtime);
+
+    expect(persistence.connection.close).toHaveBeenCalledTimes(1);
+    expect(getLlmProviderSpy).not.toHaveBeenCalled();
+    expect(lock.release).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
+      status: "failed",
+      diagnostics: [
+        {
+          stage: "open_resources",
+          code: "RESOURCE_OPEN_FAILED",
+          message: "contract initialization failed"
+        }
+      ]
+    });
+  });
+
+  it("closes persistence once when LLM initialization rejects", async () => {
+    const persistence = createMockPersistence();
+    const { runtime, getLlmProviderSpy, lock } = createMockRuntime({ persistence });
+    getLlmProviderSpy.mockRejectedValueOnce(new Error("LLM initialization failed"));
+
+    await runCoreEvidencePipelineScript(runtime);
+
+    expect(persistence.connection.close).toHaveBeenCalledTimes(1);
+    expect(lock.release).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
+      status: "failed",
+      diagnostics: [
+        {
+          stage: "open_resources",
+          code: "RESOURCE_OPEN_FAILED",
+          message: "LLM initialization failed"
+        }
+      ]
+    });
+  });
+
+  it("closes persistence once when the LLM provider is unavailable", async () => {
+    const persistence = createMockPersistence();
+    const { runtime, getLlmProviderSpy, lock } = createMockRuntime({ persistence });
+    getLlmProviderSpy.mockResolvedValueOnce(undefined);
+
+    await runCoreEvidencePipelineScript(runtime);
+
+    expect(persistence.connection.close).toHaveBeenCalledTimes(1);
+    expect(lock.release).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toMatchObject({
+      status: "failed",
+      diagnostics: [
+        {
+          stage: "open_resources",
+          code: "RESOURCE_OPEN_FAILED",
+          message: "LLM provider unavailable from NodeRuntime"
+        }
+      ]
+    });
   });
 
   it("emits exactly one redacted JSON document", async () => {
