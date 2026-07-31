@@ -5,9 +5,12 @@ async function main(): Promise<void> {
   const apply = process.argv.includes("--apply");
   if (!apply) {
     console.log(
-      "Dry run. Pass --apply to create jobs. This script only adds jobs; it does not diff/delete existing jobs."
+      "Dry run. Pass --apply to create missing jobs and edit existing jobs. Jobs absent from cron/jobs.yaml are not deleted."
     );
   }
+  console.log(
+    "WARNING: Jobs absent from cron/jobs.yaml (including old names when renaming jobs) are not automatically deleted — delete old jobs manually via Hermes CLI (`hermes cron delete <id>`) to avoid duplicate executions."
+  );
 
   const runtime = createNodeRuntime();
   const result = await cronSyncJob({
@@ -19,8 +22,12 @@ async function main(): Promise<void> {
 
   for (let index = 0; index < result.commands.length; index += 1) {
     const cmd = result.commands[index]!;
-    const name = cmd.args[cmd.args.indexOf("--name") + 1] ?? "(unknown)";
-    console.log(`\n# ${name}`);
+    const action = cmd.args[1];
+    const label =
+      action === "create"
+        ? (cmd.args[cmd.args.indexOf("--name") + 1] ?? "(unknown)")
+        : `job ${cmd.args[2] ?? "(unknown id)"}`;
+    console.log(`\n# ${action} ${label}`);
     console.log(`${cmd.command} ${cmd.args.map((arg) => JSON.stringify(arg)).join(" ")}`);
   }
 }

@@ -4,7 +4,7 @@ Hermes owns the scheduled runtime today. This repo owns the desired logic (`cron
 
 ## Why Hermes, not OpenClaw
 
-This repo's cron-generation tooling (`pnpm cron:render`, `pnpm cron:sync -- --apply`, `src/application/cron-command.ts`) was originally built against the OpenClaw CLI. As deployed, the OpenClaw gateway has no working model provider configured and cannot execute scheduled jobs. The actual scheduled runtime on the deployment VPS is **Hermes** (`hermes-agent`), a separate agent CLI running as its own systemd gateway service (`hermes-gateway.service`), configured with its own model/provider (MiniMax) entirely outside this repo's `.env`.
+This repo's cron-generation tooling (`pnpm cron:render`, `pnpm cron:sync -- --apply`, `src/domain/cron-command.ts`) was originally built against the OpenClaw CLI. As deployed, the OpenClaw gateway has no working model provider configured and cannot execute scheduled jobs. The actual scheduled runtime on the deployment VPS is **Hermes** (`hermes-agent`), a separate agent CLI running as its own systemd gateway service (`hermes-gateway.service`), configured with its own model/provider (MiniMax) entirely outside this repo's `.env`.
 
 `cron-command.ts` now generates `hermes cron create` commands instead of `openclaw cron add` commands. `pnpm cron:sync -- --apply` is the recommended way to register/refresh jobs from `cron/jobs.yaml`/`cron/routines/*.md` — see below.
 
@@ -37,22 +37,27 @@ This repository change declares desired state only and does not register the job
 ## Registering / updating jobs
 
 ```bash
-pnpm cron:render          # print the hermes cron create commands without running them
-pnpm cron:sync -- --apply # actually create the jobs against Hermes
+pnpm cron:render          # print create-command rendering without inspecting Hermes state
+pnpm cron:sync -- --apply # reconcile jobs against host Hermes store (create or edit)
 ```
 
-This only _adds_ jobs — it has no diff/delete logic, so re-running it against an already-synced gateway creates duplicate jobs. Remove stale ones first:
+`pnpm cron:render` displays create-command rendering for inspection without inspecting live Hermes state.
+
+`pnpm cron:sync -- --apply` performs job-store-backed create-or-edit reconciliation against the host Hermes store:
+
+1. `cron:sync` reads and validates the full host-local job store from `HERMES_JOBS_FILE_PATH` (or `$HOME/.hermes/cron/jobs.json` if unset; relative paths and `~` are not expanded).
+2. A unique exact name match becomes `hermes cron edit <id> --prompt ... --schedule ... --deliver ...`.
+3. A missing job name becomes `hermes cron create ...`.
+4. Jobs present only in Hermes are untouched (retained, no deletion).
+5. Missing or malformed stores, invalid identities, relative paths, and duplicate names in the store abort reconciliation before any CLI commands run.
+6. A CLI command failure stops execution of later commands, but does not roll back commands Hermes already accepted.
+
+Manual CLI commands remain available for inspection, deletion of unneeded jobs, or exceptional maintenance:
 
 ```bash
 H="/root/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main"
 $H cron list
 $H cron rm <job-id>
-```
-
-For a one-off tweak to a single already-registered job without a full re-sync, edit it directly:
-
-```bash
-H="/root/.hermes/hermes-agent/venv/bin/python -m hermes_cli.main"
 $H cron edit <job-id> --prompt "<new prompt text>" --schedule "<new cron-expr>"
 ```
 
