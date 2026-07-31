@@ -5,10 +5,11 @@ import type {
   EvidenceBundleRepo,
   EvidenceBundleContract,
   EvidenceBundleInsert,
-  NormalizedObservationCandidateQuery
+  NormalizedObservationCandidateQuery,
+  NormalizedObservationRow,
+  RawObservationRow
 } from "../ports/index.js";
 import type { EvidenceBundleInsertOutcome } from "../ports/bundle-repo.js";
-import type { NormalizedObservationRow, RawObservationRow } from "../contracts/index.js";
 import type {
   EvidenceBundleContractError,
   CanonicalEvidenceBundle
@@ -42,7 +43,6 @@ export interface AssemblePairEvidenceBundleRequest {
   readonly evaluationTimeUnixMs: number;
   readonly createdAtUnixMs: number;
   readonly schemaVersion: string;
-  readonly assemblySelectionVersion: string;
   readonly codeVersion: string;
   readonly gitCommit: string;
   readonly environment: "production" | "staging" | "development" | "test";
@@ -67,6 +67,7 @@ export type AssemblePairEvidenceBundleSuccess =
   | { readonly outcome: "no_bundle" };
 
 export type AssemblePairEvidenceBundleError =
+  | { readonly code: "VALIDATION_ERROR"; readonly errors: readonly unknown[] }
   | { readonly code: "LINEAGE_ERROR"; readonly message: string }
   | { readonly code: "PERSISTENCE_ERROR"; readonly message: string }
   | { readonly code: "CONTRACT_ERROR"; readonly error: EvidenceBundleContractError }
@@ -115,11 +116,14 @@ function validateRequest(request: AssemblePairEvidenceBundleRequest): void {
   if (request.schemaVersion !== SUPPORTED_SCHEMA_VERSION) {
     throw { code: "UNSUPPORTED_SCHEMA_VERSION", schemaVersion: request.schemaVersion };
   }
-  if (!request.assemblySelectionVersion) {
-    throw { code: "REQUEST_VALIDATION_ERROR", message: "assemblySelectionVersion is required" };
-  }
-  if (!request.codeVersion) {
+  if (!request.codeVersion || !request.codeVersion.trim()) {
     throw { code: "REQUEST_VALIDATION_ERROR", message: "codeVersion is required" };
+  }
+  if (!request.gitCommit || !request.gitCommit.trim()) {
+    throw { code: "REQUEST_VALIDATION_ERROR", message: "gitCommit is required" };
+  }
+  if (!request.environment) {
+    throw { code: "REQUEST_VALIDATION_ERROR", message: "environment is required" };
   }
 }
 
@@ -280,11 +284,12 @@ export async function assemblePairEvidenceBundle(
     contextualObservations: selectedContextualRows,
     rawObservations: rawMap
   });
+
   if (!lineageResult.ok) {
     return { code: "LINEAGE_ERROR", message: lineageResult.error.message };
   }
 
-  const slots: readonly SelectedFeatureSlot[] = MVP_FEATURE_KINDS.map(
+  const slots: SelectedFeatureSlot[] = MVP_FEATURE_KINDS.map(
     (featureKind): SelectedFeatureSlot => ({ featureKind, outcome: "missing" })
   );
 
@@ -316,11 +321,13 @@ export async function assemblePairEvidenceBundle(
 
   const quality: EvidenceBundleQuality = classifyEvidenceBundleQuality(qualityInput);
 
+  const runId = buildPairRunId(request.pipelineRunId);
+
   const assembleInput: AssembleEvidenceBundleInput = {
     slots,
     quality,
     lineage: lineageResult.lineage,
-    runId: buildPairRunId(request.pipelineRunId),
+    runId,
     correlationId: request.correlationId,
     scope: { kind: "pair" },
     createdAt: request.createdAtUnixMs,
