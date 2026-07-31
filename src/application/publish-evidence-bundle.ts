@@ -223,6 +223,12 @@ export type PublishEvidenceBundleEvent =
       readonly type: "transient_failure_exhausted";
       readonly bundleId: number;
       readonly httpStatus: number;
+    }
+  | {
+      readonly type: "brief_composition_failed";
+      readonly bundleId: number;
+      readonly researchBriefId: number;
+      readonly reason: string;
     };
 
 export async function publishEvidenceBundle(
@@ -372,7 +378,13 @@ export async function publishEvidenceBundle(
           payloadHash = canonicalComposed.payloadHash;
           idempotencyKey = canonicalComposed.idempotencyKey;
           selectedResearchBriefId = newestRow.id;
-        } catch {
+        } catch (err) {
+          onEvent?.({
+            type: "brief_composition_failed",
+            bundleId: targetBundle.id,
+            researchBriefId: newestRow.id,
+            reason: err instanceof Error ? err.message : String(err)
+          });
           payload = targetBundle.payload;
           payloadHash = targetBundle.payloadHash;
           idempotencyKey = targetBundle.idempotencyKey;
@@ -424,7 +436,7 @@ export async function publishEvidenceBundle(
         researchBriefId: selectedResearchBriefId,
         idempotencyKey,
         requestHash,
-        payloadHash: targetBundle.payloadHash,
+        payloadHash,
         status: "network_failed",
         httpStatus: null,
         responseBody: null,
@@ -514,7 +526,7 @@ export async function publishEvidenceBundle(
         researchBriefId: selectedResearchBriefId,
         idempotencyKey,
         requestHash,
-        payloadHash: targetBundle.payloadHash,
+        payloadHash,
         status: auditStatus,
         httpStatus: lastResponse.status,
         responseBody: redactedResponseBody,
@@ -587,7 +599,7 @@ export async function publishEvidenceBundle(
       researchBriefId: selectedResearchBriefId,
       idempotencyKey,
       requestHash,
-      payloadHash: targetBundle.payloadHash,
+      payloadHash,
       status: auditStatus,
       httpStatus: lastResponse.status,
       responseBody: redactedResponseBody,

@@ -20,6 +20,9 @@ import type {
 } from "../../src/application/publish-evidence-bundle.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 import { FakeRetry } from "../fakes/fake-retry.js";
+import { FakeBriefRepo } from "../fakes/fake-brief-repo.js";
+import type { PersistedResearchBrief } from "../../src/contracts/research-brief.js";
+import { RESEARCH_BRIEF_PROMPT_VERSION } from "../../src/domain/brief/prompts.js";
 
 const EPOCH = "2024-01-01T00:00:00.000Z";
 const EVAL_MS = new Date(EPOCH).getTime();
@@ -307,6 +310,7 @@ describe("publishEvidenceBundle", () => {
   let http: FakeHttp;
   let env: FakeEnvReader;
   let bundleRepo: FakeBundleRepo;
+  let briefRepo: FakeBriefRepo;
   let publishAttemptRepo: FakePublishAttemptRepo;
   let contract: FakeContract;
   let retry: FakeRetry;
@@ -316,6 +320,7 @@ describe("publishEvidenceBundle", () => {
     http = new FakeHttp();
     env = new FakeEnvReader();
     bundleRepo = new FakeBundleRepo();
+    briefRepo = new FakeBriefRepo();
     publishAttemptRepo = new FakePublishAttemptRepo();
     contract = createFakeContract();
     retry = new FakeRetry([]);
@@ -334,12 +339,209 @@ describe("publishEvidenceBundle", () => {
       await import("../../src/application/publish-evidence-bundle.js");
     const events: PublishEvidenceBundleEvent[] = [];
     const result = await publishEvidenceBundle(
-      { clock, http, env, bundleRepo, publishAttemptRepo, contract, retry },
+      { clock, http, env, bundleRepo, briefRepo, publishAttemptRepo, contract, retry },
       { evidenceBundleId: 1 },
       { onEvent: (e) => events.push(e) }
     );
     return { result, events };
   }
+
+  async function insertCompleteBrief(
+    bundle: EvidenceBundleRow,
+    sourceEvidenceIds: readonly string[]
+  ) {
+    const artifact: PersistedResearchBrief = {
+      briefId: `brief-${bundle.id}`,
+      pair: "SOL/USDC",
+      generationStatus: "complete",
+      llmOutput: {
+        summary: "Grounded brief",
+        keyTakeaways: ["Price evidence is available"],
+        supportsCurrentRegime: "supports",
+        regimeAssessmentReasoning: "The cited feature supports the assessment.",
+        confidenceScore: 0.9,
+        confidenceReasoning: "The brief cites source-bundle evidence.",
+        sourceEvidenceIds,
+        unsupportedOrMissingInputs: []
+      },
+      sourceRefs: [],
+      providerMetadata: { provider: "openai", model: "gpt-4o" },
+      sourceBundleRef: {
+        bundleId: bundle.id,
+        bundleHash: bundle.payloadHash
+      },
+      inputContextHash: "context-hash",
+      priorBriefRef: null,
+      generatedAt: EPOCH,
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+    };
+
+    return briefRepo.insert({
+      evidenceBundleId: bundle.id,
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+      modelProvider: "openai",
+      structuredOutput: artifact,
+      signalClass: "contextual",
+      confidence: DEFAULT_CONFIDENCE,
+      provenance: DEFAULT_PROVENANCE,
+      payloadHash: `brief-hash-${sourceEvidenceIds.join("-") || "empty"}`,
+      receivedAtUnixMs: EVAL_MS - 30_000,
+      validUntilUnixMs: EVAL_MS + 3_600_000
+    });
+  }
+
+  describe("brief composition selection and fallback", () => {
+    it("emits brief_composition_failed and publishes the base bundle when a complete brief has no evidence IDs", async () => {
+      const bundle = makeBundleRow({});
+      bundleRepo.store.push(bundle);
+      const briefRow = await insertCompleteBrief(bundle, []);
+      http.nextResponse = {
+        status: 201,
+        ok: true,
+        body: { id: "new-123" },
+        headers: {}
+      };
+
+      const { result, events } = await publish();
+
+      expect(result.outcome).toBe("created");
+      expect(http.callLog).toHaveLength(1);
+      expect(http.callLog[0]!.body).toBe(bundle.payload);
+      expect(publishAttemptRepo.store[0]!.researchBriefId).toBeNull();
+      expect(events).toContainEqual({
+        type: "brief_composition_failed",
+        bundleId: bundle.id,
+        researchBriefId: briefRow.id,
+        reason: "Complete research brief must have at least 1 source evidence ID."
+      });
+    });
+
+    it("publishes a valid complete brief without emitting brief_composition_failed", async () => {
+      const payload = JSON.parse(JSON.stringify(DEFAULT_PAYLOAD)) as EvidenceBundleV1;
+      payload.deterministicFeatures[0]!.featureId = "feat-1";
+      const bundle = makeBundleRow({ payload });
+      bundleRepo.store.push(bundle);
+      const briefRow = await insertCompleteBrief(bundle, ["feat-1"]);
+      http.nextResponse = {
+        status: 201,
+        ok: true,
+        body: { id: "new-123" },
+        headers: {}
+      };
+
+      const { result, events } = await publish();
+
+      expect(result.outcome).toBe("created");
+      const sent = http.callLog[0]!.body as EvidenceBundleV1;
+      expect(sent).not.toBe(bundle.payload);
+      expect(sent.researchBrief?.briefId).toBe(`brief-${bundle.id}`);
+      expect(publishAttemptRepo.store[0]!.researchBriefId).toBe(briefRow.id);
+      expect(events.some((event) => event.type === "brief_composition_failed")).toBe(false);
+    });
+  });
+
+  describe("composed payload audit hashes", () => {
+    async function arrangeComposedPublish() {
+      const payload = JSON.parse(JSON.stringify(DEFAULT_PAYLOAD)) as EvidenceBundleV1;
+      payload.deterministicFeatures[0]!.featureId = "feat-1";
+      const bundle = makeBundleRow({ payload });
+      bundleRepo.store.push(bundle);
+      const briefRow = await insertCompleteBrief(bundle, ["feat-1"]);
+
+      const composed = {
+        ...payload,
+        researchBrief: {
+          briefId: `brief-${bundle.id}`,
+          generatedAt: EPOCH,
+          summary: "Grounded brief",
+          keyFindings: ["Price evidence is available"],
+          uncertainties: [],
+          model: {
+            provider: "openai",
+            modelId: "gpt-4o",
+            modelVersion: RESEARCH_BRIEF_PROMPT_VERSION
+          },
+          promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+          sourceEvidenceIds: ["feat-1"] as [string, ...string[]]
+        },
+        assessment: {
+          ...payload.assessment,
+          coverage: {
+            ...payload.assessment.coverage,
+            researchBrief: "available" as const
+          },
+          warnings: payload.assessment.warnings.filter(
+            (warning) => warning.code !== "RESEARCH_BRIEF_UNAVAILABLE"
+          )
+        }
+      } satisfies EvidenceBundleV1;
+
+      return {
+        bundle,
+        briefRow,
+        composedHash: buildCanonicalFromPayload(composed).payloadHash
+      };
+    }
+
+    it("records the composed payload hash for a terminal response", async () => {
+      const { bundle, briefRow, composedHash } = await arrangeComposedPublish();
+      http.nextResponse = {
+        status: 201,
+        ok: true,
+        body: { id: "new-123" },
+        headers: {}
+      };
+
+      await publish();
+
+      expect((http.callLog[0]!.body as EvidenceBundleV1).researchBrief).not.toBeNull();
+      expect(publishAttemptRepo.store).toHaveLength(1);
+      expect(publishAttemptRepo.store[0]).toMatchObject({
+        researchBriefId: briefRow.id,
+        requestHash: composedHash,
+        payloadHash: composedHash
+      });
+      expect(publishAttemptRepo.store[0]!.payloadHash).not.toBe(bundle.payloadHash);
+    });
+
+    it("records the composed payload hash for every retryable HTTP response", async () => {
+      const { bundle, briefRow, composedHash } = await arrangeComposedPublish();
+      http.nextResponse = {
+        status: 503,
+        ok: false,
+        body: { error: "unavailable" },
+        headers: {}
+      };
+
+      await publish();
+
+      expect(http.callLog).toHaveLength(3);
+      expect(publishAttemptRepo.store).toHaveLength(3);
+      for (const audit of publishAttemptRepo.store) {
+        expect(audit.researchBriefId).toBe(briefRow.id);
+        expect(audit.requestHash).toBe(composedHash);
+        expect(audit.payloadHash).toBe(composedHash);
+        expect(audit.payloadHash).not.toBe(bundle.payloadHash);
+      }
+    });
+
+    it("records the composed payload hash for every network failure", async () => {
+      const { bundle, briefRow, composedHash } = await arrangeComposedPublish();
+      http.nextError = new HttpRequestError("network", "ECONNRESET", null, true);
+
+      await publish();
+
+      expect(http.callLog).toHaveLength(3);
+      expect(publishAttemptRepo.store).toHaveLength(3);
+      for (const audit of publishAttemptRepo.store) {
+        expect(audit.status).toBe("network_failed");
+        expect(audit.researchBriefId).toBe(briefRow.id);
+        expect(audit.requestHash).toBe(composedHash);
+        expect(audit.payloadHash).toBe(composedHash);
+        expect(audit.payloadHash).not.toBe(bundle.payloadHash);
+      }
+    });
+  });
 
   describe("local invalid never sends and audits validation_failed", () => {
     it("no HTTP call is made when bundle row has unsupported schema version", async () => {
