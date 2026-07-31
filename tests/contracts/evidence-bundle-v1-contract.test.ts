@@ -240,6 +240,29 @@ describe("EvidenceBundleV1 Contract", () => {
   });
 
   describe("derives the canonical idempotency identity exactly like Regime Engine", () => {
+    function withResearchBrief(fixture: EvidenceBundleV1, briefId: string): EvidenceBundleV1 {
+      const composed = JSON.parse(JSON.stringify(fixture)) as EvidenceBundleV1;
+      composed.researchBrief = {
+        briefId,
+        generatedAt: "2024-01-15T10:00:00.000Z",
+        summary: "Grounded SOL/USDC research summary",
+        keyFindings: ["Price evidence is available"],
+        uncertainties: [],
+        model: {
+          provider: "openai",
+          modelId: "gpt-4o",
+          modelVersion: "prompt-v1"
+        },
+        promptVersion: "prompt-v1",
+        sourceEvidenceIds: ["feat-price-001"]
+      };
+      composed.assessment.coverage.researchBrief = "available";
+      composed.assessment.warnings = composed.assessment.warnings.filter(
+        (warning) => warning.code !== "RESEARCH_BRIEF_UNAVAILABLE"
+      );
+      return composed;
+    }
+
     it("should derive idempotency key from identity fields only", async () => {
       const fixture = (await loadValidFixture("deterministic-only")) as EvidenceBundleV1;
       const result1 = await contract.validateCanonicalizeAndHash(fixture);
@@ -280,6 +303,41 @@ describe("EvidenceBundleV1 Contract", () => {
 
       const result3 = await contract.validateCanonicalizeAndHash(modifiedFixture2);
       expect(result1.idempotencyKey).not.toBe(result3.idempotencyKey);
+    });
+
+    it("uses different idempotency keys for base and brief-composed variants", async () => {
+      const base = (await loadValidFixture("deterministic-only")) as EvidenceBundleV1;
+      const composed = withResearchBrief(base, "brief-001");
+
+      const baseResult = await contract.validateCanonicalizeAndHash(base);
+      const composedResult = await contract.validateCanonicalizeAndHash(composed);
+
+      expect(composedResult.idempotencyKey).not.toBe(baseResult.idempotencyKey);
+    });
+
+    it("keeps the idempotency key stable when non-identity brief content changes", async () => {
+      const base = (await loadValidFixture("deterministic-only")) as EvidenceBundleV1;
+      const first = withResearchBrief(base, "brief-001");
+      const second = withResearchBrief(base, "brief-001");
+      second.researchBrief!.summary = "Different summary for the same brief identity";
+      second.researchBrief!.keyFindings = ["Different finding"];
+
+      const firstResult = await contract.validateCanonicalizeAndHash(first);
+      const secondResult = await contract.validateCanonicalizeAndHash(second);
+
+      expect(secondResult.idempotencyKey).toBe(firstResult.idempotencyKey);
+      expect(secondResult.payloadHash).not.toBe(firstResult.payloadHash);
+    });
+
+    it("uses different idempotency keys for different research brief IDs", async () => {
+      const base = (await loadValidFixture("deterministic-only")) as EvidenceBundleV1;
+      const first = withResearchBrief(base, "brief-001");
+      const second = withResearchBrief(base, "brief-002");
+
+      const firstResult = await contract.validateCanonicalizeAndHash(first);
+      const secondResult = await contract.validateCanonicalizeAndHash(second);
+
+      expect(secondResult.idempotencyKey).not.toBe(firstResult.idempotencyKey);
     });
   });
 

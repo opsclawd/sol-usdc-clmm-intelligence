@@ -132,6 +132,10 @@ function deriveIdempotencyKey(payload: EvidenceBundleV1): string {
     identityFields.push(feat.featureId, feat.calculator.name, feat.calculator.version);
   }
 
+  if (payload.researchBrief) {
+    identityFields.push(payload.researchBrief.briefId);
+  }
+
   const combined = identityFields.filter(Boolean).join("|");
   return computeSha256(combined);
 }

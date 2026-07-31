@@ -427,6 +427,39 @@ describe("runCoreEvidencePipeline - Per-Position Targeting", () => {
     expect(result.status).toBe("degraded");
   });
 
+  it("publishes a created_degraded outcome as degraded status", async () => {
+    const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
+    const base = createBaseServices(evalTime);
+
+    let publishedId: number | null = null;
+
+    const services: CoreEvidencePipelineServices = {
+      ...base,
+      publish: async (req) => {
+        publishedId = req.evidenceBundleId;
+        return { outcome: "created_degraded", bundleId: req.evidenceBundleId, attemptCount: 1 };
+      }
+    };
+
+    const deps: RunCoreEvidencePipelineDeps = {
+      clock: new QueuedClock([
+        "2026-07-30T12:00:00.000Z",
+        "2026-07-30T12:00:05.000Z",
+        "2026-07-30T12:00:06.000Z"
+      ]),
+      runIdFactory: new FakeRunIdFactory(["run-pub-degraded"]),
+      lock: new FakePipelineRunLock(),
+      openResources: async () => ({ connection: new FakeDbConnection(), services })
+    };
+
+    const result = await runCoreEvidencePipeline(deps, createDefaultConfig(["pos-1"]));
+
+    expect(result.positions[0]?.status).toBe("degraded");
+    expect(result.positions[0]?.publishOutcome).toBe("created_degraded");
+    expect(publishedId).toBe(101);
+    expect(result.status).toBe("degraded");
+  });
+
   it("fails no_brief and thrown brief errors without publishing", async () => {
     const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
     const base = createBaseServices(evalTime);

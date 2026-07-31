@@ -174,6 +174,11 @@ function calculateRetryDelay(
 export type PublishEvidenceBundleResult =
   | { readonly outcome: "created"; readonly bundleId: number; readonly attemptCount: 1 | 2 | 3 }
   | {
+      readonly outcome: "created_degraded";
+      readonly bundleId: number;
+      readonly attemptCount: 1 | 2 | 3;
+    }
+  | {
       readonly outcome: "idempotent_replay";
       readonly bundleId: number;
       readonly attemptCount: 1 | 2 | 3;
@@ -223,6 +228,12 @@ export type PublishEvidenceBundleEvent =
       readonly type: "transient_failure_exhausted";
       readonly bundleId: number;
       readonly httpStatus: number;
+    }
+  | {
+      readonly type: "brief_composition_failed";
+      readonly bundleId: number;
+      readonly researchBriefId: number;
+      readonly reason: string;
     };
 
 export async function publishEvidenceBundle(
@@ -331,6 +342,7 @@ export async function publishEvidenceBundle(
   let payloadHash = targetBundle.payloadHash;
   let idempotencyKey = targetBundle.idempotencyKey;
   let selectedResearchBriefId: number | null = null;
+  let briefCompositionFailed = false;
 
   if (deps.briefRepo) {
     try {
@@ -372,7 +384,14 @@ export async function publishEvidenceBundle(
           payloadHash = canonicalComposed.payloadHash;
           idempotencyKey = canonicalComposed.idempotencyKey;
           selectedResearchBriefId = newestRow.id;
-        } catch {
+        } catch (err) {
+          briefCompositionFailed = true;
+          onEvent?.({
+            type: "brief_composition_failed",
+            bundleId: targetBundle.id,
+            researchBriefId: newestRow.id,
+            reason: err instanceof Error ? err.message : String(err)
+          });
           payload = targetBundle.payload;
           payloadHash = targetBundle.payloadHash;
           idempotencyKey = targetBundle.idempotencyKey;
@@ -424,7 +443,7 @@ export async function publishEvidenceBundle(
         researchBriefId: selectedResearchBriefId,
         idempotencyKey,
         requestHash,
-        payloadHash: targetBundle.payloadHash,
+        payloadHash,
         status: "network_failed",
         httpStatus: null,
         responseBody: null,
@@ -514,7 +533,7 @@ export async function publishEvidenceBundle(
         researchBriefId: selectedResearchBriefId,
         idempotencyKey,
         requestHash,
-        payloadHash: targetBundle.payloadHash,
+        payloadHash,
         status: auditStatus,
         httpStatus: lastResponse.status,
         responseBody: redactedResponseBody,
@@ -587,7 +606,7 @@ export async function publishEvidenceBundle(
       researchBriefId: selectedResearchBriefId,
       idempotencyKey,
       requestHash,
-      payloadHash: targetBundle.payloadHash,
+      payloadHash,
       status: auditStatus,
       httpStatus: lastResponse.status,
       responseBody: redactedResponseBody,
@@ -632,7 +651,8 @@ export async function publishEvidenceBundle(
         | "permanent_http_failed",
       targetBundle.id,
       lastResponse.status,
-      attemptNumber
+      attemptNumber,
+      briefCompositionFailed
     );
   }
 
@@ -654,8 +674,12 @@ function mapOutcomeToResult(
     | "permanent_http_failed",
   bundleId: number,
   httpStatus: number,
-  attemptCount: number
+  attemptCount: number,
+  briefCompositionFailed = false
 ): PublishEvidenceBundleResult {
+  if (briefCompositionFailed && (outcome === "created" || outcome === "idempotent_replay")) {
+    return { outcome: "created_degraded", bundleId, attemptCount: attemptCount as 1 | 2 | 3 };
+  }
   switch (outcome) {
     case "created":
       return { outcome: "created", bundleId, attemptCount: attemptCount as 1 | 2 | 3 };
