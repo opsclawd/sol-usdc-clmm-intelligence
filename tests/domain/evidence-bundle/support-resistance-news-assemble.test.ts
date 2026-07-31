@@ -166,14 +166,18 @@ function makeAssembleInput(
   overrides?: Partial<AssembleEvidenceBundleInput>
 ): AssembleEvidenceBundleInput {
   return {
+    scope: overrides?.scope ?? {
+      kind: "position",
+      network: "solana-mainnet",
+      walletAddress: "wallet-xyz",
+      whirlpoolAddress: "pool-abc",
+      positionId: "position-1"
+    },
     slots: makeSlotsAllAvailable(),
     quality: makeQuality(),
     lineage: makeLineage(),
     runId: "run-123",
     correlationId: "corr-456",
-    poolId: "pool-abc",
-    positionId: "position-1",
-    walletId: "wallet-xyz",
     createdAt: 5000000000000,
     asOf: 5000000000000,
     freshUntil: 50000003600000,

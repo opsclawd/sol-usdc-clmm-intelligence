@@ -490,9 +490,13 @@ export async function assembleEvidenceBundle(
     lineage: lineageResult.lineage,
     runId: buildPositionRunId(request.pipelineRunId, positionId),
     correlationId: request.correlationId,
-    poolId,
-    positionId,
-    walletId,
+    scope: {
+      kind: "position",
+      network: "solana-mainnet",
+      walletAddress: walletId,
+      whirlpoolAddress: poolId,
+      positionId
+    },
     createdAt: request.createdAtUnixMs,
     asOf: evaluationTimeUnixMs,
     freshUntil,
