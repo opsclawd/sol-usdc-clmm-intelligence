@@ -43,6 +43,13 @@ export function buildPositionRunId(pipelineRunId: string, positionId: string): s
   return `${pipelineRunId}:${positionId}`;
 }
 
+export function buildPairRunId(pipelineRunId: string): string {
+  if (!pipelineRunId || !pipelineRunId.trim()) {
+    throw new Error("pipelineRunId must not be empty");
+  }
+  return `${pipelineRunId}:pair`;
+}
+
 export function evaluatePositionFeatureGate(input: {
   rows: readonly DerivedFeatureRow[];
   poolId: string;

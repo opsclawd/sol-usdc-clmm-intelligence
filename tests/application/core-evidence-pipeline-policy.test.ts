@@ -4,6 +4,7 @@ import {
   REQUIRED_POSITION_FEATURE_KINDS,
   buildPositionCorrelationId,
   buildPositionRunId,
+  buildPairRunId,
   evaluatePositionFeatureGate,
   aggregatePipelineStatus
 } from "../../src/application/core-evidence-pipeline-policy.js";
@@ -179,6 +180,18 @@ describe("core-evidence-pipeline-policy", () => {
     expect(() => buildPositionRunId("   ", "pos-1")).toThrow();
     expect(() => buildPositionRunId("run-123", "")).toThrow();
     expect(() => buildPositionRunId("run-123", "   ")).toThrow();
+  });
+
+  it("builds a stable pair bundle run id distinct from every position run id", () => {
+    const pairRunId = buildPairRunId("run-123");
+    const posRunId = buildPositionRunId("run-123", "pos-1");
+
+    expect(pairRunId).toBe("run-123:pair");
+    expect(posRunId).toBe("run-123:pos-1");
+    expect(pairRunId).not.toBe(posRunId);
+
+    expect(() => buildPairRunId("")).toThrow();
+    expect(() => buildPairRunId("   ")).toThrow();
   });
 
   it("returns failed when no position published", () => {
