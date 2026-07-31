@@ -43,6 +43,36 @@ function makePositionState(overrides: Partial<PositionStatePayloadV1>): Position
 }
 
 describe("range calculators", () => {
+  describe("price labels carrying a currency prefix (real clmm-v2 bundle format)", () => {
+    it("parses lower/upper/current price labels prefixed with 'USDC '", () => {
+      const pos = makePositionState({
+        rangeState: "in-range",
+        lowerPriceLabel: "USDC 200.06",
+        upperPriceLabel: "USDC 250.09",
+        currentPrice: 225,
+        currentPriceLabel: "USDC 225"
+      });
+
+      const location = calculateRangeLocation(pos);
+      const distanceToLower = calculateDistanceToLower(pos);
+      const distanceToUpper = calculateDistanceToUpper(pos);
+
+      expect(location.status).toBe("AVAILABLE");
+      expect(distanceToLower.status).toBe("AVAILABLE");
+      expect(distanceToUpper.status).toBe("AVAILABLE");
+    });
+
+    it("still rejects a currentPriceLabel that is invalid after prefix stripping", () => {
+      const pos = makePositionState({
+        currentPriceLabel: "USDC not-a-number"
+      });
+
+      const result = calculateRangeLocation(pos);
+      expect(result.status).toBe("UNAVAILABLE");
+      expect(result.reasons).toContain("invalid currentPriceLabel");
+    });
+  });
+
   describe("RANGE_CALCULATOR_VERSIONS", () => {
     it("exports correct version strings", () => {
       expect(RANGE_CALCULATOR_VERSIONS.range_location).toBe("range-location/v1");

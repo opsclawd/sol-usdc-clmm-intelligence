@@ -24,7 +24,10 @@ export type RangeClassification =
   | "at_upper_boundary";
 
 function parsePriceLabel(label: string): Rational | null {
-  const result = parseDecimal(label);
+  // clmm-v2 price labels carry a currency prefix, e.g. "USDC 200.06" — strip it before
+  // parsing the numeric value. Confirmed against real clmm-v2 bundle data in production.
+  const stripped = label.replace(/^(USDC|USD|SOL)\s+/i, "");
+  const result = parseDecimal(stripped);
   if (typeof result === "string") {
     return null;
   }
@@ -95,7 +98,7 @@ function clamp(value: number, min: number, max: number): number {
 export function calculateRangeLocation(position: PositionStatePayloadV1): FeatureCalculation {
   const lowerPriceRational = parsePriceLabel(position.lowerPriceLabel);
   const upperPriceRational = parsePriceLabel(position.upperPriceLabel);
-  const currentPriceRational = parseDecimal(position.currentPriceLabel);
+  const currentPriceRational = parsePriceLabel(position.currentPriceLabel);
 
   if (lowerPriceRational === null) {
     return makeUnavailable(["invalid lowerPriceLabel"]);
@@ -103,7 +106,7 @@ export function calculateRangeLocation(position: PositionStatePayloadV1): Featur
   if (upperPriceRational === null) {
     return makeUnavailable(["invalid upperPriceLabel"]);
   }
-  if (typeof currentPriceRational === "string") {
+  if (currentPriceRational === null) {
     return makeUnavailable(["invalid currentPriceLabel"]);
   }
 
@@ -162,7 +165,7 @@ export function calculateRangeLocation(position: PositionStatePayloadV1): Featur
 export function calculateDistanceToLower(position: PositionStatePayloadV1): FeatureCalculation {
   const lowerPrice = parsePriceLabel(position.lowerPriceLabel);
   const upperPrice = parsePriceLabel(position.upperPriceLabel);
-  const currentPrice = parseDecimal(position.currentPriceLabel);
+  const currentPrice = parsePriceLabel(position.currentPriceLabel);
 
   if (lowerPrice === null) {
     return makeUnavailable(["invalid lowerPriceLabel"]);
@@ -170,7 +173,7 @@ export function calculateDistanceToLower(position: PositionStatePayloadV1): Feat
   if (upperPrice === null) {
     return makeUnavailable(["invalid upperPriceLabel"]);
   }
-  if (typeof currentPrice === "string") {
+  if (currentPrice === null) {
     return makeUnavailable(["invalid currentPriceLabel"]);
   }
 
@@ -225,7 +228,7 @@ export function calculateDistanceToLower(position: PositionStatePayloadV1): Feat
 export function calculateDistanceToUpper(position: PositionStatePayloadV1): FeatureCalculation {
   const lowerPrice = parsePriceLabel(position.lowerPriceLabel);
   const upperPrice = parsePriceLabel(position.upperPriceLabel);
-  const currentPrice = parseDecimal(position.currentPriceLabel);
+  const currentPrice = parsePriceLabel(position.currentPriceLabel);
 
   if (lowerPrice === null) {
     return makeUnavailable(["invalid lowerPriceLabel"]);
@@ -233,7 +236,7 @@ export function calculateDistanceToUpper(position: PositionStatePayloadV1): Feat
   if (upperPrice === null) {
     return makeUnavailable(["invalid upperPriceLabel"]);
   }
-  if (typeof currentPrice === "string") {
+  if (currentPrice === null) {
     return makeUnavailable(["invalid currentPriceLabel"]);
   }
 
