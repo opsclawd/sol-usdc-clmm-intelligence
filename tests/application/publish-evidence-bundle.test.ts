@@ -404,7 +404,7 @@ describe("publishEvidenceBundle", () => {
 
       const { result, events } = await publish();
 
-      expect(result.outcome).toBe("created");
+      expect(result.outcome).toBe("created_degraded");
       expect(http.callLog).toHaveLength(1);
       expect(http.callLog[0]!.body).toBe(bundle.payload);
       expect(publishAttemptRepo.store[0]!.researchBriefId).toBeNull();

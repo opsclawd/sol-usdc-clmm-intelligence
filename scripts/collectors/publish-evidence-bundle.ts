@@ -13,7 +13,11 @@ export interface RedactedOutcome {
 }
 
 function isTerminalSuccess(result: PublishEvidenceBundleJobResult): boolean {
-  return result.outcome === "created" || result.outcome === "idempotent_replay";
+  return (
+    result.outcome === "created" ||
+    result.outcome === "created_degraded" ||
+    result.outcome === "idempotent_replay"
+  );
 }
 
 function redactedOutcomeFromResult(result: PublishEvidenceBundleJobResult): RedactedOutcome {
@@ -21,6 +25,12 @@ function redactedOutcomeFromResult(result: PublishEvidenceBundleJobResult): Reda
     case "created":
       return {
         outcome: "created",
+        bundleId: result.bundleId,
+        attemptCount: result.attemptCount
+      };
+    case "created_degraded":
+      return {
+        outcome: "created_degraded",
         bundleId: result.bundleId,
         attemptCount: result.attemptCount
       };

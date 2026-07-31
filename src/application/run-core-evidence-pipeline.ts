@@ -394,7 +394,9 @@ export async function runCoreEvidencePipeline(
 
               const publishOutcomeStr = publication.outcome;
               const isPublishSuccess =
-                publication.outcome === "created" || publication.outcome === "idempotent_replay";
+                publication.outcome === "created" ||
+                publication.outcome === "created_degraded" ||
+                publication.outcome === "idempotent_replay";
 
               if (!isPublishSuccess) {
                 positions.push({
@@ -418,7 +420,9 @@ export async function runCoreEvidencePipeline(
               }
 
               const isPositionDegraded =
-                collectionStatus === "PARTIAL" || brief.outcome === "generated_degraded";
+                collectionStatus === "PARTIAL" ||
+                brief.outcome === "generated_degraded" ||
+                publication.outcome === "created_degraded";
               const positionStatus: PositionPipelineStatus = isPositionDegraded
                 ? "degraded"
                 : "complete";

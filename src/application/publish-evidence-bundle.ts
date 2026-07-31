@@ -174,6 +174,11 @@ function calculateRetryDelay(
 export type PublishEvidenceBundleResult =
   | { readonly outcome: "created"; readonly bundleId: number; readonly attemptCount: 1 | 2 | 3 }
   | {
+      readonly outcome: "created_degraded";
+      readonly bundleId: number;
+      readonly attemptCount: 1 | 2 | 3;
+    }
+  | {
       readonly outcome: "idempotent_replay";
       readonly bundleId: number;
       readonly attemptCount: 1 | 2 | 3;
@@ -337,6 +342,7 @@ export async function publishEvidenceBundle(
   let payloadHash = targetBundle.payloadHash;
   let idempotencyKey = targetBundle.idempotencyKey;
   let selectedResearchBriefId: number | null = null;
+  let briefCompositionFailed = false;
 
   if (deps.briefRepo) {
     try {
@@ -379,6 +385,7 @@ export async function publishEvidenceBundle(
           idempotencyKey = canonicalComposed.idempotencyKey;
           selectedResearchBriefId = newestRow.id;
         } catch (err) {
+          briefCompositionFailed = true;
           onEvent?.({
             type: "brief_composition_failed",
             bundleId: targetBundle.id,
@@ -644,7 +651,8 @@ export async function publishEvidenceBundle(
         | "permanent_http_failed",
       targetBundle.id,
       lastResponse.status,
-      attemptNumber
+      attemptNumber,
+      briefCompositionFailed
     );
   }
 
@@ -666,8 +674,12 @@ function mapOutcomeToResult(
     | "permanent_http_failed",
   bundleId: number,
   httpStatus: number,
-  attemptCount: number
+  attemptCount: number,
+  briefCompositionFailed = false
 ): PublishEvidenceBundleResult {
+  if (briefCompositionFailed && (outcome === "created" || outcome === "idempotent_replay")) {
+    return { outcome: "created_degraded", bundleId, attemptCount: attemptCount as 1 | 2 | 3 };
+  }
   switch (outcome) {
     case "created":
       return { outcome: "created", bundleId, attemptCount: attemptCount as 1 | 2 | 3 };
