@@ -12,6 +12,7 @@ import type { AssembleEvidenceBundleJobRequest } from "../../src/jobs/assemble-e
 import type { RetryControl } from "../../src/ports/retry.js";
 import { makeClmmBundle, makePoolData, makePositionData } from "../fixtures/clmm-bundle.js";
 import { runAssembleEvidenceBundleScript } from "../../scripts/collectors/assemble-evidence-bundle.js";
+import { buildPositionRunId } from "../../src/application/core-evidence-pipeline-policy.js";
 
 const originalProcessExitCode = process.exitCode;
 
@@ -219,7 +220,7 @@ describe("job forwards an explicit immutable assembly request unchanged", () => 
     vi.restoreAllMocks();
   });
 
-  it("job adds no clock, run ID, wallet, version, or timestamp defaults", async () => {
+  it("job adds no clock, wallet, version, or timestamp defaults, and derives a per-position run ID", async () => {
     const { assembleEvidenceBundleJob } =
       await import("../../src/jobs/assemble-evidence-bundle-job.js");
 
@@ -406,11 +407,13 @@ describe("job forwards an explicit immutable assembly request unchanged", () => 
     const validateFn = contract.validateCanonicalizeAndHash as Mock;
     expect(validateFn).toHaveBeenCalled();
     const passedCandidate = validateFn.mock.calls[0]![0];
-    expect(passedCandidate.runId).toBe(VALID_REQUEST.pipelineRunId);
+    expect(passedCandidate.runId).toBe(
+      buildPositionRunId(VALID_REQUEST.pipelineRunId, VALID_REQUEST.positionId)
+    );
     expect(passedCandidate.correlationId).toBe(VALID_REQUEST.correlationId);
   });
 
-  it("request with all required fields is forwarded without modification", async () => {
+  it("request with all required fields is forwarded unmodified, aside from the derived run ID", async () => {
     const { assembleEvidenceBundleJob } =
       await import("../../src/jobs/assemble-evidence-bundle-job.js");
 
@@ -591,7 +594,9 @@ describe("job forwards an explicit immutable assembly request unchanged", () => 
     }
 
     const candidateCall = (contract.validateCanonicalizeAndHash as Mock).mock.calls[0]![0];
-    expect(candidateCall.runId).toBe(VALID_REQUEST.pipelineRunId);
+    expect(candidateCall.runId).toBe(
+      buildPositionRunId(VALID_REQUEST.pipelineRunId, VALID_REQUEST.positionId)
+    );
     expect(candidateCall.correlationId).toBe(VALID_REQUEST.correlationId);
     expect(candidateCall.createdAt).toBeDefined();
   });

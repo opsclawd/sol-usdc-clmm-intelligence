@@ -569,6 +569,62 @@ describe("assembleEvidenceBundle", () => {
       );
     });
 
+    it("gives bundles from different positions in the same pipeline run distinct runIds", async () => {
+      const { assembleEvidenceBundle } =
+        await import("../../src/application/assemble-evidence-bundle.js");
+
+      seedRaw([makeRawRow({ id: 1 }), makeRawRow({ id: 2, positionId: "pos-2" })]);
+      seedFeature([
+        makeDerivedFeatureRow({
+          id: 1,
+          featureKind: "range_location",
+          positionId: "pos-1",
+          poolId: "pool-abc",
+          inputObservationIds: [1],
+          rawRefs: [makeRawRef(1, "clmm-v2-bundle", "raw-hash-1")]
+        }),
+        makeDerivedFeatureRow({
+          id: 2,
+          featureKind: "range_location",
+          positionId: "pos-2",
+          poolId: "pool-abc",
+          inputObservationIds: [2],
+          rawRefs: [makeRawRef(2, "clmm-v2-bundle", "raw-hash-2")]
+        })
+      ]);
+
+      const requestPos1 = makeRequest({ positionId: "pos-1", correlationId: "corr-pos-1" });
+      const requestPos2 = makeRequest({ positionId: "pos-2", correlationId: "corr-pos-2" });
+
+      const seenCandidates: unknown[] = [];
+      const capturingContract: FakeContract = {
+        ...contract,
+        async validateCanonicalizeAndHash(candidate: unknown) {
+          seenCandidates.push(candidate);
+          return contract.validateCanonicalizeAndHash(candidate);
+        }
+      };
+
+      assertSuccess(
+        await assembleEvidenceBundle(
+          { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract: capturingContract },
+          requestPos1
+        )
+      );
+      assertSuccess(
+        await assembleEvidenceBundle(
+          { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract: capturingContract },
+          requestPos2
+        )
+      );
+
+      expect(seenCandidates).toHaveLength(2);
+      const runIds = seenCandidates.map((c) => (c as { runId: string }).runId);
+      expect(runIds[0]).toBe("run-123:pos-1");
+      expect(runIds[1]).toBe("run-123:pos-2");
+      expect(runIds[0]).not.toBe(runIds[1]);
+    });
+
     it("insertOrClassify is called exactly once on successful assembly", async () => {
       const { assembleEvidenceBundle } =
         await import("../../src/application/assemble-evidence-bundle.js");
