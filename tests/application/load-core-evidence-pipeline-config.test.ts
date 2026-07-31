@@ -7,7 +7,7 @@ const VALID_ENV: Record<string, string> = {
   WHIRLPOOL_ADDRESS: "whirlpool-123",
   WALLET_PUBLIC_KEY: "wallet-456",
   INTELLIGENCE_CODE_VERSION: "1.0.0",
-  INTELLIGENCE_GIT_COMMIT: "0123456789abcdef0123456789abcdef01234567",
+  INTELLIGENCE_GIT_COMMIT: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   INTELLIGENCE_ENVIRONMENT: "production",
   DATABASE_URL: "postgresql://user:pass@localhost:5432/intelligence",
   CLMM_DATA_API_BASE: "https://api.clmm.example.com",
@@ -115,27 +115,29 @@ describe("loadCoreEvidencePipelineConfig", () => {
     }
   });
 
-  it("requires a 40-character lowercase hexadecimal git commit", () => {
-    // 39 chars
-    const shortCommit = new FakeEnv({
-      ...VALID_ENV,
-      INTELLIGENCE_GIT_COMMIT: "0123456789abcdef0123456789abcdef0123456"
-    });
-    expect(() => loadCoreEvidencePipelineConfig(shortCommit)).toThrow("INTELLIGENCE_GIT_COMMIT");
+  it("accepts exactly 64 lowercase hexadecimal git commit provenance and rejects other forms", () => {
+    const config = loadCoreEvidencePipelineConfig(new FakeEnv(VALID_ENV));
+    expect(config.gitCommit).toBe(
+      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    );
 
-    // Uppercase
-    const upperCommit = new FakeEnv({
-      ...VALID_ENV,
-      INTELLIGENCE_GIT_COMMIT: "0123456789ABCDEF0123456789ABCDEF01234567"
-    });
-    expect(() => loadCoreEvidencePipelineConfig(upperCommit)).toThrow("INTELLIGENCE_GIT_COMMIT");
+    const invalidCommits = [
+      "0123456789abcdef0123456789abcdef01234567",
+      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde",
+      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0",
+      "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF",
+      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg"
+    ];
 
-    // Non-hex character
-    const nonHexCommit = new FakeEnv({
-      ...VALID_ENV,
-      INTELLIGENCE_GIT_COMMIT: "0123456789abcdef0123456789abcdef0123456g"
-    });
-    expect(() => loadCoreEvidencePipelineConfig(nonHexCommit)).toThrow("INTELLIGENCE_GIT_COMMIT");
+    for (const gitCommit of invalidCommits) {
+      const env = new FakeEnv({
+        ...VALID_ENV,
+        INTELLIGENCE_GIT_COMMIT: gitCommit
+      });
+      expect(() => loadCoreEvidencePipelineConfig(env)).toThrow(
+        "Invalid git commit in INTELLIGENCE_GIT_COMMIT"
+      );
+    }
   });
 
   it("accepts only production staging development or test environments", () => {
