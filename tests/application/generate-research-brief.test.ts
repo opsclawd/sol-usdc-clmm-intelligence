@@ -587,6 +587,38 @@ describe("generateResearchBrief", () => {
     }
   });
 
+  it("degrades a generated brief when sourceEvidenceIds is empty", async () => {
+    const bundleRow = await insertTestBundle();
+    llmProvider.enqueueResult({
+      output: { ...validLlmOutput, sourceEvidenceIds: [] },
+      provider: "openai",
+      model: "gpt-4o"
+    });
+
+    const result = await generateResearchBrief(
+      { bundleRepo, briefRepo, llmProvider },
+      {
+        evidenceBundleId: bundleRow.id,
+        pair: "SOL/USDC",
+        evaluationTimeUnixMs: evalTimeMs,
+        codeVersion: "1.0.0"
+      }
+    );
+
+    expect(result.outcome).toBe("generated_degraded");
+    if (result.outcome !== "generated_degraded") return;
+    expect(result.brief.generationStatus).toBe("degraded");
+    expect(result.brief.llmOutput.degradationReason).toBe("schema_validation_failed");
+    expect(result.brief.llmOutput.sourceEvidenceIds).toEqual([]);
+    expect(result.brief.llmOutput.unsupportedOrMissingInputs).toContain(
+      "Research brief contains no grounded source evidence IDs."
+    );
+
+    const rows = await briefRepo.findByBundleId(bundleRow.id);
+    expect(rows).toHaveLength(1);
+    expect((rows[0]!.structuredOutput as PersistedResearchBrief).generationStatus).toBe("degraded");
+  });
+
   it("does-not-reuse-degraded-briefs-on-retry", async () => {
     const bundleRow = await insertTestBundle();
     llmProvider.enqueueError(new Error("LLM API Timeout"));

@@ -222,18 +222,24 @@ export async function generateResearchBrief(
         model: generation.model
       };
 
-      const groundedCheck = validateGroundedReferences(
-        projectedContext,
-        outputClean.sourceEvidenceIds ? [...outputClean.sourceEvidenceIds] : [],
-        []
-      );
+      const sourceEvidenceIds = outputClean.sourceEvidenceIds
+        ? [...outputClean.sourceEvidenceIds]
+        : [];
 
-      if (!groundedCheck.valid) {
+      if (sourceEvidenceIds.length === 0) {
         generationStatus = "degraded";
         degradationReason = "schema_validation_failed";
-        warnings.push(
-          `Unsupported or ungrounded evidence IDs: ${groundedCheck.unsupportedIds.join(", ")}`
-        );
+        warnings.push("Research brief contains no grounded source evidence IDs.");
+      } else {
+        const groundedCheck = validateGroundedReferences(projectedContext, sourceEvidenceIds, []);
+
+        if (!groundedCheck.valid) {
+          generationStatus = "degraded";
+          degradationReason = "schema_validation_failed";
+          warnings.push(
+            `Unsupported or ungrounded evidence IDs: ${groundedCheck.unsupportedIds.join(", ")}`
+          );
+        }
       }
     } catch (err) {
       generationStatus = "degraded";
