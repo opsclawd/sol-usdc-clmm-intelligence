@@ -628,7 +628,7 @@ cp .env.example .env
 pnpm cron:render
 ```
 
-`pnpm cron:render` prints `hermes cron create` commands generated from `cron/jobs.yaml`. The actual scheduled runtime is **Hermes**; see `scheduling.md` for the full explanation and `pnpm cron:sync -- --apply` to actually register/update jobs against it.
+`pnpm cron:render` prints create-command rendering generated from `cron/jobs.yaml` without inspecting current Hermes state. The actual scheduled runtime is **Hermes**; see `scheduling.md` for the full explanation and `pnpm cron:sync -- --apply` (which reads `HERMES_JOBS_FILE_PATH`, edits exact name matches, and creates missing names) to actually register/update jobs against it.
 
 ### Scheduled cron jobs
 
@@ -669,8 +669,8 @@ pnpm db:generate          # generates Drizzle migrations from schema changes
 pnpm db:migrate           # runs Drizzle migrations against DATABASE_URL
 pnpm db:push              # pushes schema changes directly (dev only)
 pnpm db:provision-roles   # provisions least-privilege Postgres roles for the intelligence schema
-pnpm cron:render          # prints hermes cron create commands generated from cron/jobs.yaml (see scheduling.md)
-pnpm cron:sync -- --apply # creates the jobs against Hermes (does not diff/delete existing jobs — see scheduling.md)
+pnpm cron:render          # prints create-command rendering generated from cron/jobs.yaml without inspecting Hermes state (see scheduling.md)
+pnpm cron:sync -- --apply # reads HERMES_JOBS_FILE_PATH, edits exact name matches, and creates missing names (retains extra Hermes jobs, aborts on duplicate persisted names — see scheduling.md)
 pnpm verify               # typecheck, lint, format, tests, boundaries
 ```
 
@@ -693,11 +693,14 @@ WHIRLPOOL_ADDRESS=Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE
 For `pnpm cron:sync -- --apply` (see `scheduling.md`), consumed only by that command — not by the Hermes gateway itself, which has its own separate config:
 
 ```bash
+HERMES_JOBS_FILE_PATH=/root/.hermes/cron/jobs.json
 OPENCLAW_DELIVERY_CHANNEL=telegram
 OPENCLAW_DELIVERY_TO=<chat-id-or-channel-id>
 OPENCLAW_MODEL=opus
 OPENCLAW_THINKING=high
 ```
+
+`HERMES_JOBS_FILE_PATH` must be an absolute path on the host running `cron:sync` (defaults to `$HOME/.hermes/cron/jobs.json` if omitted; do not use `~` because `FsTextReader` does not expand it). `cron:sync` reads this store before any mutation, editing exact name matches via `hermes cron edit <id>` and creating missing names via `hermes cron create`. Extra jobs present only in Hermes are retained untouched, while missing/malformed store files or duplicate persisted names abort reconciliation.
 
 `OPENCLAW_DELIVERY_CHANNEL`/`OPENCLAW_DELIVERY_TO` are used — mapped into each job's `--deliver <channel>:<to>`. `OPENCLAW_MODEL`/`OPENCLAW_THINKING` (and `OPENCLAW_AGENT`/`OPENCLAW_EXACT`) are read but currently have no effect: Hermes's `cron create` has no per-job model/thinking/agent/exact override, only a single gateway-wide default model configured separately on the Hermes side.
 

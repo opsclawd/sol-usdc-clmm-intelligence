@@ -108,9 +108,22 @@ describe("syncCron", () => {
     expect(commandRunner.calls[1]?.args.slice(0, 2)).toEqual(["cron", "create"]);
   });
 
+  it("falls back to empty job store when Hermes job store file does not exist (ENOENT)", async () => {
+    const textReader = new FakeTextReader();
+    textReader.seed("cron/jobs.yaml", yaml);
+    textReader.seed("r.md", "msg");
+    const env = new FakeEnv({ HOME });
+    const commandRunner = new FakeCommandRunner();
+
+    const result = await syncCron({ textReader, env, commandRunner, apply: false });
+
+    expect(result.commands).toHaveLength(2);
+    expect(result.commands[0]?.args.slice(0, 2)).toEqual(["cron", "create"]);
+    expect(result.commands[1]?.args.slice(0, 2)).toEqual(["cron", "create"]);
+  });
+
   it("aborts before mutation when the Hermes job store is unreadable or malformed", async () => {
     const malformedContents = [
-      null,
       "invalid json",
       JSON.stringify({}),
       JSON.stringify({ jobs: "not-an-array" }),
@@ -124,9 +137,7 @@ describe("syncCron", () => {
       const textReader = new FakeTextReader();
       textReader.seed("cron/jobs.yaml", yaml);
       textReader.seed("r.md", "msg");
-      if (content !== null) {
-        textReader.seed(DEFAULT_JOBS_PATH, content);
-      }
+      textReader.seed(DEFAULT_JOBS_PATH, content);
       const env = new FakeEnv({ HOME });
       const commandRunner = new FakeCommandRunner();
 

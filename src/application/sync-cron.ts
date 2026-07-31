@@ -59,7 +59,15 @@ export async function syncCron(deps: SyncCronDeps): Promise<SyncCronResult> {
   });
 
   const jobsFilePath = resolveHermesJobsFilePath(env);
-  const idsByName = parseHermesJobs(await textReader.readText(jobsFilePath));
+  let storeContent = '{"jobs": []}';
+  try {
+    storeContent = await textReader.readText(jobsFilePath);
+  } catch (error) {
+    if ((error as { code?: string })?.code !== "ENOENT") {
+      throw error;
+    }
+  }
+  const idsByName = parseHermesJobs(storeContent);
   const commands = preparedJobs.map((prepared) => {
     const jobId = idsByName.get(prepared.job.name);
     const inputs = {

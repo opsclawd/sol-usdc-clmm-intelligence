@@ -13,14 +13,21 @@ If `pnpm collect:core` fails, check the configuration or credentials of the fail
 
 ## Register scheduled jobs
 
-The scheduled runtime is **Hermes**, not OpenClaw — see `scheduling.md` for the full explanation. `pnpm cron:render`/`pnpm cron:sync -- --apply` generate and (with `--apply`) run `hermes cron create` commands from `cron/jobs.yaml`/`cron/routines/*.md`:
+The scheduled runtime is **Hermes**, not OpenClaw — see `scheduling.md` for the full explanation. `pnpm cron:render` prints create-command rendering without inspecting current Hermes state. `pnpm cron:sync -- --apply` reconciles desired jobs from `cron/jobs.yaml`/`cron/routines/*.md` against the host Hermes store:
 
 ```bash
 pnpm cron:render          # print the hermes cron create commands without running them
-pnpm cron:sync -- --apply # actually create/update the jobs against Hermes
+pnpm cron:sync -- --apply # reconcile jobs against host Hermes store (create or edit)
 ```
 
-This only _adds_ jobs — it does not diff or delete existing ones, so re-running it after jobs are already registered creates duplicates. Inspect active/running jobs before registration and avoid creating duplicates; remove stale jobs first with `hermes cron rm <job-id>` (see "Test a job" below for listing IDs).
+Repeated runs of `pnpm cron:sync -- --apply` operate as **create-or-edit** by exact job name:
+
+- Reads the host job store from `HERMES_JOBS_FILE_PATH` (or `$HOME/.hermes/cron/jobs.json` if unset; must be an absolute path on the host).
+- Unique exact name matches are updated via `hermes cron edit <id> ...`.
+- Missing job names are created via `hermes cron create ...`.
+- Extra jobs present only in Hermes are preserved (no automatic deletion).
+- An unreadable, missing, or malformed store acts as a fail-closed safety stop, preventing command execution (it is NOT permission to recreate every job).
+- If the persisted store already contains duplicate job names for a configured job, `cron:sync` aborts and requires manual inspection and cleanup (`hermes cron rm <job-id>`).
 
 Before registering scheduled jobs:
 
@@ -67,6 +74,7 @@ Durable core telemetry collection requires the following credentials and environ
 - `DRIFT_BASE_PRECISION`: Drift base precision scaling exponent factor (defaults to `1000000000` / 10^9).
 - `DRIFT_QUOTE_PRECISION`: Drift quote precision scaling exponent factor (defaults to `1000000` / 10^6).
 - `PERP_LIQUIDATION_LOOKBACK_MS`: Lookback window in milliseconds for perp and liquidation collection (defaults to `14400000` / 4 hours minimum). Must be an integer >= 14,400,000 to cover the `oi_trend_4h` window; collector fails closed if less than 14,400,000.
+- `HERMES_JOBS_FILE_PATH`: Absolute path on the host running `cron:sync` to Hermes's job store JSON file (defaults to `$HOME/.hermes/cron/jobs.json` if omitted). Do not use `~` because `FsTextReader` does not expand tilde. Missing, malformed, or duplicate-name store files cause `cron:sync` to abort reconciliation before executing any CLI commands.
 
 > [!WARNING]
 > This release removes the on-chain-flow fallback name. Confirm the live Hermes job exposes `WHIRLPOOL_ADDRESS` before deploying the updated collector; otherwise the command intentionally exits before external collection or persistence.
@@ -152,7 +160,7 @@ If a job's `Next run` never advances and it silently flips to `[inactive]`/`comp
 
 ### Cron fired but no message arrived
 
-Check the job's `--deliver` target (`hermes cron list` shows it per job). `OPENCLAW_DELIVERY_CHANNEL`/`OPENCLAW_DELIVERY_TO` are consumed by `pnpm cron:sync` at registration time (mapped into `--deliver <channel>:<to>`) — they have no effect on an already-registered job; edit it directly with `hermes cron edit <job-id> --deliver <target>` instead.
+Check the job's `--deliver` target (`hermes cron list` shows it per job). `OPENCLAW_DELIVERY_CHANNEL`/`OPENCLAW_DELIVERY_TO` are consumed by `pnpm cron:sync` at registration time (mapped into `--deliver <channel>:<to>`). Re-running `pnpm cron:sync -- --apply` updates matching jobs via `hermes cron edit <id> --deliver <target>`, or operators can edit a single job directly with `hermes cron edit <job-id> --deliver <target>`.
 
 ### Missing data
 

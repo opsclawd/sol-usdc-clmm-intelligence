@@ -8,6 +8,9 @@ async function main(): Promise<void> {
       "Dry run. Pass --apply to create missing jobs and edit existing jobs. Jobs absent from cron/jobs.yaml are not deleted."
     );
   }
+  console.log(
+    "WARNING: Jobs absent from cron/jobs.yaml (including old names when renaming jobs) are not automatically deleted — delete old jobs manually via Hermes CLI (`hermes cron delete <id>`) to avoid duplicate executions."
+  );
 
   const runtime = createNodeRuntime();
   const result = await cronSyncJob({
