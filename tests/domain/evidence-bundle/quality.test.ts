@@ -81,12 +81,12 @@ describe("classifyEvidenceBundleQuality", () => {
 
         expect(result.quality).toBe("complete");
         expect(result.coverage.deterministic).toBe("available");
-        expect(result.coverage.supportResistance).toBe("not_applicable");
-        expect(result.coverage.flows).toBe("not_applicable");
-        expect(result.coverage.derivatives).toBe("not_applicable");
-        expect(result.coverage.events).toBe("not_applicable");
-        expect(result.coverage.newsRegulatory).toBe("not_applicable");
-        expect(result.coverage.researchBrief).toBe("not_applicable");
+        expect(result.coverage.supportResistance).toBe("unavailable");
+        expect(result.coverage.flows).toBe("unavailable");
+        expect(result.coverage.derivatives).toBe("unavailable");
+        expect(result.coverage.events).toBe("unavailable");
+        expect(result.coverage.newsRegulatory).toBe("unavailable");
+        expect(result.coverage.researchBrief).toBe("unavailable");
       });
 
       it("seven fresh available slots = complete even when context and brief are present", () => {
@@ -404,11 +404,11 @@ describe("classifyEvidenceBundleQuality", () => {
       const result = classifyEvidenceBundleQuality(input);
 
       expect(result.coverage.events).toBe("partial");
-      expect(result.coverage.supportResistance).toBe("not_applicable");
-      expect(result.coverage.flows).toBe("not_applicable");
-      expect(result.coverage.derivatives).toBe("not_applicable");
-      expect(result.coverage.newsRegulatory).toBe("not_applicable");
-      expect(result.coverage.researchBrief).toBe("not_applicable");
+      expect(result.coverage.supportResistance).toBe("unavailable");
+      expect(result.coverage.flows).toBe("unavailable");
+      expect(result.coverage.derivatives).toBe("unavailable");
+      expect(result.coverage.newsRegulatory).toBe("unavailable");
+      expect(result.coverage.researchBrief).toBe("unavailable");
     });
 
     it("reports only news coverage for a news only bundle", () => {
@@ -420,11 +420,11 @@ describe("classifyEvidenceBundleQuality", () => {
       const result = classifyEvidenceBundleQuality(input);
 
       expect(result.coverage.newsRegulatory).toBe("partial");
-      expect(result.coverage.supportResistance).toBe("not_applicable");
-      expect(result.coverage.flows).toBe("not_applicable");
-      expect(result.coverage.derivatives).toBe("not_applicable");
-      expect(result.coverage.events).toBe("not_applicable");
-      expect(result.coverage.researchBrief).toBe("not_applicable");
+      expect(result.coverage.supportResistance).toBe("unavailable");
+      expect(result.coverage.flows).toBe("unavailable");
+      expect(result.coverage.derivatives).toBe("unavailable");
+      expect(result.coverage.events).toBe("unavailable");
+      expect(result.coverage.researchBrief).toBe("unavailable");
     });
 
     it("reports only support resistance coverage for a levels only bundle", () => {
@@ -436,14 +436,14 @@ describe("classifyEvidenceBundleQuality", () => {
       const result = classifyEvidenceBundleQuality(input);
 
       expect(result.coverage.supportResistance).toBe("partial");
-      expect(result.coverage.flows).toBe("not_applicable");
-      expect(result.coverage.derivatives).toBe("not_applicable");
-      expect(result.coverage.events).toBe("not_applicable");
-      expect(result.coverage.newsRegulatory).toBe("not_applicable");
-      expect(result.coverage.researchBrief).toBe("not_applicable");
+      expect(result.coverage.flows).toBe("unavailable");
+      expect(result.coverage.derivatives).toBe("unavailable");
+      expect(result.coverage.events).toBe("unavailable");
+      expect(result.coverage.newsRegulatory).toBe("unavailable");
+      expect(result.coverage.researchBrief).toBe("unavailable");
     });
 
-    it("keeps empty contextual families not applicable", () => {
+    it("keeps empty contextual families unavailable", () => {
       const slots = makeSlotsAllAvailable();
       const input = makeQualityInput(slots, {
         hasSupportResistance: false,
@@ -456,12 +456,12 @@ describe("classifyEvidenceBundleQuality", () => {
 
       const result = classifyEvidenceBundleQuality(input);
 
-      expect(result.coverage.supportResistance).toBe("not_applicable");
-      expect(result.coverage.flows).toBe("not_applicable");
-      expect(result.coverage.derivatives).toBe("not_applicable");
-      expect(result.coverage.events).toBe("not_applicable");
-      expect(result.coverage.newsRegulatory).toBe("not_applicable");
-      expect(result.coverage.researchBrief).toBe("not_applicable");
+      expect(result.coverage.supportResistance).toBe("unavailable");
+      expect(result.coverage.flows).toBe("unavailable");
+      expect(result.coverage.derivatives).toBe("unavailable");
+      expect(result.coverage.events).toBe("unavailable");
+      expect(result.coverage.newsRegulatory).toBe("unavailable");
+      expect(result.coverage.researchBrief).toBe("unavailable");
     });
 
     it("emits one unavailable warning for each missing contextual family", () => {
@@ -546,7 +546,7 @@ describe("classifyEvidenceBundleQuality", () => {
       );
 
       expect(result.coverage.researchBrief).toBe("available");
-      expect(result.coverage.supportResistance).toBe("not_applicable");
+      expect(result.coverage.supportResistance).toBe("unavailable");
       expect(result.warnings.map((w) => w.code)).not.toContain("RESEARCH_BRIEF_UNAVAILABLE");
     });
   });

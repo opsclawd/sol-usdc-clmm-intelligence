@@ -745,9 +745,9 @@ describe("assembleEvidenceBundle contextual integration", () => {
 
     expect(bundle.assessment.coverage.supportResistance).toBe("partial");
     expect(bundle.assessment.coverage.newsRegulatory).toBe("partial");
-    expect(bundle.assessment.coverage.flows).toBe("not_applicable");
-    expect(bundle.assessment.coverage.derivatives).toBe("not_applicable");
-    expect(bundle.assessment.coverage.events).toBe("not_applicable");
+    expect(bundle.assessment.coverage.flows).toBe("unavailable");
+    expect(bundle.assessment.coverage.derivatives).toBe("unavailable");
+    expect(bundle.assessment.coverage.events).toBe("unavailable");
 
     expect(bundle.provenance.upstreamRunIds).toContain("100");
     expect(bundle.provenance.upstreamRunIds).toContain("200");

@@ -242,6 +242,26 @@ function buildWarnings(
     });
   }
 
+  const unavailableContextualFamilies = (
+    [
+      ["supportResistance", input.hasSupportResistance],
+      ["flows", input.hasFlows],
+      ["derivatives", input.hasDerivatives],
+      ["events", input.hasEvents],
+      ["newsRegulatory", input.hasNewsRegulatory]
+    ] as const
+  )
+    .filter(([, has]) => !has)
+    .map(([family]) => family);
+
+  if (unavailableContextualFamilies.length > 0) {
+    warnings.push({
+      code: "CONTEXTUAL_EVIDENCE_UNAVAILABLE",
+      message: "One or more contextual evidence families have no usable evidence",
+      affectedFamilies: unavailableContextualFamilies
+    });
+  }
+
   return warnings;
 }
 
@@ -304,12 +324,12 @@ export function classifyEvidenceBundleQuality(input: EvidenceQualityInput): Evid
 
   const coverage: FamilyCoverage = {
     deterministic: deterministicCoverage,
-    supportResistance: input.hasSupportResistance ? "partial" : "not_applicable",
-    flows: input.hasFlows ? "partial" : "not_applicable",
-    derivatives: input.hasDerivatives ? "partial" : "not_applicable",
-    events: input.hasEvents ? "partial" : "not_applicable",
-    newsRegulatory: input.hasNewsRegulatory ? "partial" : "not_applicable",
-    researchBrief: input.hasResearchBrief ? "available" : "not_applicable"
+    supportResistance: input.hasSupportResistance ? "partial" : "unavailable",
+    flows: input.hasFlows ? "partial" : "unavailable",
+    derivatives: input.hasDerivatives ? "partial" : "unavailable",
+    events: input.hasEvents ? "partial" : "unavailable",
+    newsRegulatory: input.hasNewsRegulatory ? "partial" : "unavailable",
+    researchBrief: input.hasResearchBrief ? "available" : "unavailable"
   };
 
   return {
