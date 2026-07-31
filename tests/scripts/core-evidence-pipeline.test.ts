@@ -253,6 +253,7 @@ describe("core-evidence-pipeline CLI script", () => {
       collectionStartedAtUnixMs: null,
       evaluationTimeUnixMs: null,
       collectionStatus: null,
+      pair: null,
       positions: [],
       status: "failed",
       warnings: [],

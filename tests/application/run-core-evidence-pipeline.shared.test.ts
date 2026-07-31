@@ -242,6 +242,13 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
           warnings: []
         };
       },
+      assemblePair: async () => ({
+        outcome: "persisted",
+        rowId: 50,
+        payloadHash: "hash50",
+        slotCount: 16,
+        warnings: []
+      }),
       generateBrief: async (req) => {
         briefRunId = req.runId ?? null;
         return {
@@ -390,6 +397,13 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
         assembleEvalTime = req.evaluationTimeUnixMs;
         return { outcome: "persisted", rowId: 100, payloadHash: "h", slotCount: 3, warnings: [] };
       },
+      assemblePair: async () => ({
+        outcome: "persisted",
+        rowId: 50,
+        payloadHash: "hash50",
+        slotCount: 16,
+        warnings: []
+      }),
       generateBrief: async (req) => {
         briefEvalTime = req.evaluationTimeUnixMs;
         return { outcome: "generated_complete", row: dummyBriefRow, brief: dummyBrief };
@@ -502,6 +516,13 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
         slotCount: 3,
         warnings: []
       }),
+      assemblePair: async () => ({
+        outcome: "persisted",
+        rowId: 50,
+        payloadHash: "hash50",
+        slotCount: 16,
+        warnings: []
+      }),
       generateBrief: async () => ({
         outcome: "generated_complete",
         row: dummyBriefRow,
@@ -612,6 +633,7 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
           };
         },
         assemble: async () => ({ outcome: "no_bundle" }),
+        assemblePair: async () => ({ outcome: "no_bundle" }),
         generateBrief: async () => ({ outcome: "no_brief", reason: "no_bundle" }),
         publish: async () => ({ outcome: "bundle_not_found" })
       };
@@ -734,6 +756,13 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
         const id = req.positionId === "pos-1" ? 101 : 102;
         return { outcome: "persisted", rowId: id, payloadHash: "h", slotCount: 3, warnings: [] };
       },
+      assemblePair: async () => ({
+        outcome: "persisted",
+        rowId: 50,
+        payloadHash: "hash50",
+        slotCount: 16,
+        warnings: []
+      }),
       generateBrief: async () => ({
         outcome: "generated_complete",
         row: dummyBriefRow,

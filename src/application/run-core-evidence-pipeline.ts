@@ -10,6 +10,10 @@ import type {
   AssembleEvidenceBundleResult
 } from "./assemble-evidence-bundle.js";
 import type {
+  AssemblePairEvidenceBundleRequest,
+  AssemblePairEvidenceBundleResult
+} from "./assemble-pair-evidence-bundle.js";
+import type {
   GenerateResearchBriefParams,
   GenerateResearchBriefOutcome
 } from "./generate-research-brief.js";
@@ -26,6 +30,7 @@ import { MVP_ACCEPTED_CALCULATOR_VERSIONS } from "../domain/derived-feature/cons
 import { EVIDENCE_BUNDLE_SELECTION_VERSION } from "../domain/evidence-bundle/select.js";
 import {
   buildPositionCorrelationId,
+  buildPairCorrelationId,
   evaluatePositionFeatureGate,
   aggregatePipelineStatus,
   type PositionPipelineStatus,
@@ -38,6 +43,9 @@ export interface CoreEvidencePipelineServices {
   readonly assemble: (
     request: AssembleEvidenceBundleRequest
   ) => Promise<AssembleEvidenceBundleResult>;
+  readonly assemblePair: (
+    request: AssemblePairEvidenceBundleRequest
+  ) => Promise<AssemblePairEvidenceBundleResult>;
   readonly generateBrief: (
     request: GenerateResearchBriefParams
   ) => Promise<GenerateResearchBriefOutcome>;
@@ -74,11 +82,23 @@ export interface PositionPipelineResult {
   readonly diagnostic: PipelineDiagnostic | null;
 }
 
+export interface PairPipelineResult {
+  readonly correlationId: string;
+  readonly bundleId: number | null;
+  readonly assemblyOutcome: string | null;
+  readonly briefOutcome: string | null;
+  readonly publishOutcome: string | null;
+  readonly status: PositionPipelineStatus;
+  readonly warnings: readonly string[];
+  readonly diagnostic: PipelineDiagnostic | null;
+}
+
 export interface CoreEvidencePipelineResult {
   readonly pipelineRunId: string;
   readonly collectionStartedAtUnixMs: number;
   readonly evaluationTimeUnixMs: number | null;
   readonly collectionStatus: CoreCollectionStatus | null;
+  readonly pair: PairPipelineResult | null;
   readonly positions: readonly PositionPipelineResult[];
   readonly status: CoreEvidencePipelineStatus;
   readonly warnings: readonly string[];
@@ -104,6 +124,7 @@ export async function runCoreEvidencePipeline(
         collectionStartedAtUnixMs,
         evaluationTimeUnixMs: null,
         collectionStatus: null,
+        pair: null,
         positions: [],
         status: "skipped_already_running",
         warnings: [],
@@ -118,6 +139,7 @@ export async function runCoreEvidencePipeline(
       collectionStartedAtUnixMs,
       evaluationTimeUnixMs: null,
       collectionStatus: null,
+      pair: null,
       positions: [],
       status: "failed",
       warnings: [],
@@ -135,6 +157,7 @@ export async function runCoreEvidencePipeline(
   let resources: CoreEvidencePipelineResources | null = null;
   let evaluationTimeUnixMs: number | null = null;
   let collectionStatus: CoreCollectionStatus | null = null;
+  let pairResult: PairPipelineResult | null = null;
   const positions: PositionPipelineResult[] = [];
   let status: CoreEvidencePipelineStatus = "failed";
   const sharedWarnings: string[] = [];
@@ -213,6 +236,194 @@ export async function runCoreEvidencePipeline(
           if (deriveSuccess && deriveResult) {
             for (const w of deriveResult.warnings) {
               sharedWarnings.push(redactSecretMentions(w));
+            }
+
+            const pairCorrelationId = buildPairCorrelationId(pipelineRunId);
+            const pairCreatedAtUnixMs = new Date(deps.clock.now()).getTime();
+            const pairAssemblyReq: AssemblePairEvidenceBundleRequest = {
+              pair: "SOL/USDC",
+              pipelineRunId,
+              correlationId: pairCorrelationId,
+              evaluationTimeUnixMs,
+              createdAtUnixMs: pairCreatedAtUnixMs,
+              schemaVersion: "evidence-bundle.v1",
+              codeVersion: config.codeVersion,
+              gitCommit: config.gitCommit,
+              environment: config.environment
+            };
+
+            let pairAssembly: AssemblePairEvidenceBundleResult | null = null;
+            try {
+              pairAssembly = await resources.services.assemblePair(pairAssemblyReq);
+            } catch (err) {
+              pairResult = {
+                correlationId: pairCorrelationId,
+                bundleId: null,
+                assemblyOutcome: "error",
+                briefOutcome: null,
+                publishOutcome: null,
+                status: "failed",
+                warnings: [],
+                diagnostic: {
+                  stage: "assembly",
+                  code: "ASSEMBLY_FAILED",
+                  message: redactSecretMentions(err instanceof Error ? err.message : String(err))
+                }
+              };
+            }
+
+            if (!pairResult && pairAssembly) {
+              const assemblyOutcomeStr =
+                "outcome" in pairAssembly ? pairAssembly.outcome : pairAssembly.code;
+              const isAssemblySuccess =
+                "outcome" in pairAssembly &&
+                (pairAssembly.outcome === "persisted" ||
+                  pairAssembly.outcome === "identical_replay");
+
+              if (!isAssemblySuccess || !("rowId" in pairAssembly)) {
+                pairResult = {
+                  correlationId: pairCorrelationId,
+                  bundleId: null,
+                  assemblyOutcome: assemblyOutcomeStr,
+                  briefOutcome: null,
+                  publishOutcome: null,
+                  status: "failed",
+                  warnings: [],
+                  diagnostic: {
+                    stage: "assembly",
+                    code: "ASSEMBLY_FAILED",
+                    message: redactSecretMentions(
+                      `Assembly failed with outcome: ${assemblyOutcomeStr}`
+                    )
+                  }
+                };
+              } else {
+                const bundleId = pairAssembly.rowId;
+                const assemblyWarnings =
+                  "warnings" in pairAssembly && Array.isArray(pairAssembly.warnings)
+                    ? pairAssembly.warnings.map(redactSecretMentions)
+                    : [];
+
+                let pairBrief: GenerateResearchBriefOutcome | null = null;
+                try {
+                  pairBrief = await resources.services.generateBrief({
+                    evidenceBundleId: bundleId,
+                    pair: "SOL/USDC",
+                    evaluationTimeUnixMs,
+                    codeVersion: config.codeVersion,
+                    runId: pipelineRunId
+                  });
+                } catch (err) {
+                  pairResult = {
+                    correlationId: pairCorrelationId,
+                    bundleId,
+                    assemblyOutcome: assemblyOutcomeStr,
+                    briefOutcome: "error",
+                    publishOutcome: null,
+                    status: "failed",
+                    warnings: Object.freeze(assemblyWarnings),
+                    diagnostic: {
+                      stage: "brief",
+                      code: "BRIEF_FAILED",
+                      message: redactSecretMentions(
+                        err instanceof Error ? err.message : String(err)
+                      )
+                    }
+                  };
+                }
+
+                if (!pairResult && pairBrief) {
+                  const briefOutcomeStr = pairBrief.outcome;
+                  if (pairBrief.outcome === "no_brief") {
+                    pairResult = {
+                      correlationId: pairCorrelationId,
+                      bundleId,
+                      assemblyOutcome: assemblyOutcomeStr,
+                      briefOutcome: briefOutcomeStr,
+                      publishOutcome: null,
+                      status: "failed",
+                      warnings: Object.freeze(assemblyWarnings),
+                      diagnostic: {
+                        stage: "brief",
+                        code: "NO_BRIEF",
+                        message: redactSecretMentions(
+                          `Brief generation returned no_brief (${pairBrief.reason})`
+                        )
+                      }
+                    };
+                  } else {
+                    let pairPublication: PublishEvidenceBundleResult | null = null;
+                    try {
+                      pairPublication = await resources.services.publish({
+                        evidenceBundleId: bundleId
+                      });
+                    } catch (err) {
+                      pairResult = {
+                        correlationId: pairCorrelationId,
+                        bundleId,
+                        assemblyOutcome: assemblyOutcomeStr,
+                        briefOutcome: briefOutcomeStr,
+                        publishOutcome: "error",
+                        status: "failed",
+                        warnings: Object.freeze(assemblyWarnings),
+                        diagnostic: {
+                          stage: "publish",
+                          code: "PUBLISH_FAILED",
+                          message: redactSecretMentions(
+                            err instanceof Error ? err.message : String(err)
+                          )
+                        }
+                      };
+                    }
+
+                    if (!pairResult && pairPublication) {
+                      const publishOutcomeStr = pairPublication.outcome;
+                      const isPublishSuccess =
+                        pairPublication.outcome === "created" ||
+                        pairPublication.outcome === "created_degraded" ||
+                        pairPublication.outcome === "idempotent_replay";
+
+                      if (!isPublishSuccess) {
+                        pairResult = {
+                          correlationId: pairCorrelationId,
+                          bundleId,
+                          assemblyOutcome: assemblyOutcomeStr,
+                          briefOutcome: briefOutcomeStr,
+                          publishOutcome: publishOutcomeStr,
+                          status: "failed",
+                          warnings: Object.freeze(assemblyWarnings),
+                          diagnostic: {
+                            stage: "publish",
+                            code: "PUBLISH_FAILED",
+                            message: redactSecretMentions(
+                              `Publish failed with outcome: ${publishOutcomeStr}`
+                            )
+                          }
+                        };
+                      } else {
+                        const isPairDegraded =
+                          collectionStatus === "PARTIAL" ||
+                          pairBrief.outcome === "generated_degraded" ||
+                          pairPublication.outcome === "created_degraded";
+                        const pairStatus: PositionPipelineStatus = isPairDegraded
+                          ? "degraded"
+                          : "complete";
+
+                        pairResult = {
+                          correlationId: pairCorrelationId,
+                          bundleId,
+                          assemblyOutcome: assemblyOutcomeStr,
+                          briefOutcome: briefOutcomeStr,
+                          publishOutcome: publishOutcomeStr,
+                          status: pairStatus,
+                          warnings: Object.freeze(assemblyWarnings),
+                          diagnostic: null
+                        };
+                      }
+                    }
+                  }
+                }
+              }
             }
 
             const derivedRows = deriveResult.rows;
@@ -440,7 +651,11 @@ export async function runCoreEvidencePipeline(
               });
             }
 
-            status = aggregatePipelineStatus(collectionStatus as "COMPLETE" | "PARTIAL", positions);
+            const allTargets = pairResult ? [pairResult, ...positions] : positions;
+            status = aggregatePipelineStatus(
+              collectionStatus as "COMPLETE" | "PARTIAL",
+              allTargets
+            );
           }
         }
       }
@@ -475,6 +690,7 @@ export async function runCoreEvidencePipeline(
     collectionStartedAtUnixMs,
     evaluationTimeUnixMs,
     collectionStatus,
+    pair: pairResult,
     positions: Object.freeze([...positions]),
     status: cleanupErrors.length > 0 ? "failed" : status,
     warnings: Object.freeze([...sharedWarnings]),

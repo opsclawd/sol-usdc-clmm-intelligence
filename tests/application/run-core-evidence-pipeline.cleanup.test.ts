@@ -198,6 +198,13 @@ function createSuccessfulServices(evalTime: number): CoreEvidencePipelineService
       slotCount: 3,
       warnings: []
     }),
+    assemblePair: async () => ({
+      outcome: "persisted",
+      rowId: 500,
+      payloadHash: "hash-500",
+      slotCount: 16,
+      warnings: []
+    }),
     generateBrief: async () => ({
       outcome: "generated_complete",
       row: dummyBriefRow,

@@ -17,6 +17,10 @@ import {
   type AssembleEvidenceBundleDeps
 } from "../../src/application/assemble-evidence-bundle.js";
 import {
+  assemblePairEvidenceBundle,
+  type AssemblePairEvidenceBundleDeps
+} from "../../src/application/assemble-pair-evidence-bundle.js";
+import {
   generateResearchBrief,
   type GenerateResearchBriefDeps
 } from "../../src/application/generate-research-brief.js";
@@ -38,6 +42,7 @@ export async function runCoreEvidencePipelineScript(runtime: NodeRuntime): Promi
       collectionStartedAtUnixMs: null,
       evaluationTimeUnixMs: null,
       collectionStatus: null,
+      pair: null,
       positions: [],
       status: "failed",
       warnings: [],
@@ -101,6 +106,14 @@ export async function runCoreEvidencePipelineScript(runtime: NodeRuntime): Promi
           contract
         };
 
+        const pairDeps: AssemblePairEvidenceBundleDeps = {
+          clock: runtime.clock,
+          normalizedRepo: persistence.normalizedObservationRepo,
+          rawRepo: persistence.rawObservationRepo,
+          bundleRepo: persistence.bundleRepo,
+          contract
+        };
+
         const briefDeps: GenerateResearchBriefDeps = {
           bundleRepo: persistence.bundleRepo,
           briefRepo: persistence.briefRepo,
@@ -124,6 +137,7 @@ export async function runCoreEvidencePipelineScript(runtime: NodeRuntime): Promi
             collect: (context) => runCoreCollectionJob(coreDeps, context),
             derive: (request) => deriveMvpFeatures(deriveDeps, request),
             assemble: (request) => assembleEvidenceBundle(assembleDeps, request),
+            assemblePair: (request) => assemblePairEvidenceBundle(pairDeps, request),
             generateBrief: (request) => generateResearchBrief(briefDeps, request),
             publish: (request) => publishEvidenceBundle(publishDeps, request)
           }
