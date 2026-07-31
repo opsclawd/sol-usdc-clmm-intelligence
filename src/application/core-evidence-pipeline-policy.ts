@@ -29,6 +29,20 @@ export function buildPositionCorrelationId(pipelineRunId: string, positionId: st
   return `run:${pipelineRunId}:position:${positionId}`;
 }
 
+// regime-engine's evidence_bundles table enforces uniqueness on
+// (schemaVersion, sourcePublisher, sourceId, runId), and our sourcePublisher/sourceId
+// are fixed constants — so a bundle's runId must be unique per position, not shared
+// across every position assembled within the same pipeline run.
+export function buildPositionRunId(pipelineRunId: string, positionId: string): string {
+  if (!pipelineRunId || !pipelineRunId.trim()) {
+    throw new Error("pipelineRunId must not be empty");
+  }
+  if (!positionId || !positionId.trim()) {
+    throw new Error("positionId must not be empty");
+  }
+  return `${pipelineRunId}:${positionId}`;
+}
+
 export function evaluatePositionFeatureGate(input: {
   rows: readonly DerivedFeatureRow[];
   poolId: string;

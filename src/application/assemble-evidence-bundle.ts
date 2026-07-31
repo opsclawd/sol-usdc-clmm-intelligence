@@ -48,6 +48,7 @@ import {
   type SelectedSupportResistance
 } from "../domain/support-resistance/select.js";
 import { selectNewsEvidence, type SelectedNewsEvidence } from "../domain/news-events/select.js";
+import { buildPositionRunId } from "./core-evidence-pipeline-policy.js";
 
 export interface AssembleEvidenceBundleRequest {
   readonly pair: "SOL/USDC";
@@ -487,7 +488,7 @@ export async function assembleEvidenceBundle(
     slots,
     quality,
     lineage: lineageResult.lineage,
-    runId: request.pipelineRunId,
+    runId: buildPositionRunId(request.pipelineRunId, positionId),
     correlationId: request.correlationId,
     poolId,
     positionId,

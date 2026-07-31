@@ -3,6 +3,7 @@ import type { DerivedFeatureRow } from "../../src/ports/feature-repo.js";
 import {
   REQUIRED_POSITION_FEATURE_KINDS,
   buildPositionCorrelationId,
+  buildPositionRunId,
   evaluatePositionFeatureGate,
   aggregatePipelineStatus
 } from "../../src/application/core-evidence-pipeline-policy.js";
@@ -160,6 +161,24 @@ describe("core-evidence-pipeline-policy", () => {
     expect(() => buildPositionCorrelationId("   ", "pos-1")).toThrow();
     expect(() => buildPositionCorrelationId("run-123", "")).toThrow();
     expect(() => buildPositionCorrelationId("run-123", "   ")).toThrow();
+  });
+
+  it("builds stable per-position bundle run IDs without cross-position collisions", () => {
+    const id1 = buildPositionRunId("run-123", "pos-1");
+    const id2 = buildPositionRunId("run-123", "pos-2");
+    const id3 = buildPositionRunId("run-456", "pos-1");
+
+    expect(id1).toBe("run-123:pos-1");
+    expect(id2).toBe("run-123:pos-2");
+    expect(id3).toBe("run-456:pos-1");
+
+    expect(id1).not.toBe(id2);
+    expect(id1).not.toBe(id3);
+
+    expect(() => buildPositionRunId("", "pos-1")).toThrow();
+    expect(() => buildPositionRunId("   ", "pos-1")).toThrow();
+    expect(() => buildPositionRunId("run-123", "")).toThrow();
+    expect(() => buildPositionRunId("run-123", "   ")).toThrow();
   });
 
   it("returns failed when no position published", () => {
