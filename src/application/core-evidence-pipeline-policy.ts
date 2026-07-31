@@ -19,10 +19,14 @@ export interface PositionGateResult {
   readonly reasons: readonly string[];
 }
 
-export function buildPositionCorrelationId(pipelineRunId: string, positionId: string): string {
+function assertNonEmptyPipelineRunId(pipelineRunId: string): void {
   if (!pipelineRunId || !pipelineRunId.trim()) {
     throw new Error("pipelineRunId must not be empty");
   }
+}
+
+export function buildPositionCorrelationId(pipelineRunId: string, positionId: string): string {
+  assertNonEmptyPipelineRunId(pipelineRunId);
   if (!positionId || !positionId.trim()) {
     throw new Error("positionId must not be empty");
   }
@@ -34,9 +38,7 @@ export function buildPositionCorrelationId(pipelineRunId: string, positionId: st
 // are fixed constants — so a bundle's runId must be unique per position, not shared
 // across every position assembled within the same pipeline run.
 export function buildPositionRunId(pipelineRunId: string, positionId: string): string {
-  if (!pipelineRunId || !pipelineRunId.trim()) {
-    throw new Error("pipelineRunId must not be empty");
-  }
+  assertNonEmptyPipelineRunId(pipelineRunId);
   if (!positionId || !positionId.trim()) {
     throw new Error("positionId must not be empty");
   }
@@ -44,10 +46,13 @@ export function buildPositionRunId(pipelineRunId: string, positionId: string): s
 }
 
 export function buildPairRunId(pipelineRunId: string): string {
-  if (!pipelineRunId || !pipelineRunId.trim()) {
-    throw new Error("pipelineRunId must not be empty");
-  }
+  assertNonEmptyPipelineRunId(pipelineRunId);
   return `${pipelineRunId}:pair`;
+}
+
+export function buildPairCorrelationId(pipelineRunId: string): string {
+  assertNonEmptyPipelineRunId(pipelineRunId);
+  return `run:${pipelineRunId}:pair`;
 }
 
 export function evaluatePositionFeatureGate(input: {
@@ -98,12 +103,12 @@ export function evaluatePositionFeatureGate(input: {
 
 export function aggregatePipelineStatus(
   collectionStatus: "COMPLETE" | "PARTIAL",
-  positions: readonly { status: PositionPipelineStatus }[]
+  targets: readonly { status: PositionPipelineStatus }[]
 ): Exclude<CoreEvidencePipelineStatus, "skipped_already_running"> {
-  const publishedCount = positions.filter(
-    (p) => p.status === "complete" || p.status === "degraded"
+  const publishedCount = targets.filter(
+    (t) => t.status === "complete" || t.status === "degraded"
   ).length;
-  const failedCount = positions.filter((p) => p.status === "failed").length;
+  const failedCount = targets.filter((t) => t.status === "failed").length;
 
   if (publishedCount === 0) {
     return "failed";
@@ -113,7 +118,7 @@ export function aggregatePipelineStatus(
     return "partial_failure";
   }
 
-  const degradedCount = positions.filter((p) => p.status === "degraded").length;
+  const degradedCount = targets.filter((t) => t.status === "degraded").length;
   if (collectionStatus === "PARTIAL" || degradedCount > 0) {
     return "degraded";
   }
