@@ -7,7 +7,8 @@ import type {
   FlowClaim,
   SupportResistanceClaim,
   NewsRegulatoryClaim,
-  Identifier128
+  Identifier128,
+  Scope
 } from "../../contracts/generated/evidence-bundle-v1.js";
 import type { SelectedFeatureSlot } from "./select.js";
 import type { EvidenceBundleQuality } from "./quality.js";
@@ -29,14 +30,12 @@ const FEATURE_UNAVAILABLE_REFERENCE_ID = "feature_unavailable" as Identifier128;
 export const EVIDENCE_BUNDLE_ASSEMBLE_VERSION = "mvp-evidence-bundle-assemble/v1";
 
 export interface AssembleEvidenceBundleInput {
+  readonly scope: Scope;
   readonly slots: readonly SelectedFeatureSlot[];
   readonly quality: EvidenceBundleQuality;
   readonly lineage: VerifiedEvidenceLineage["lineage"];
   readonly runId: string;
   readonly correlationId: string;
-  readonly poolId: string;
-  readonly positionId: string;
-  readonly walletId: string;
   readonly createdAt: number;
   readonly asOf: number;
   readonly freshUntil: number;
@@ -485,14 +484,12 @@ export function assembleEvidenceBundleCandidate(
   input: AssembleEvidenceBundleInput
 ): EvidenceBundleV1 {
   const {
+    scope,
     slots,
     quality,
     lineage,
     runId,
     correlationId,
-    poolId,
-    positionId,
-    walletId,
     createdAt,
     asOf,
     freshUntil,
@@ -531,14 +528,6 @@ export function assembleEvidenceBundleCandidate(
       observedAt: toCanonicalTimestamp(asOf)
     });
   }
-
-  const scope = {
-    kind: "position" as const,
-    network: "solana-mainnet" as const,
-    walletAddress: walletId,
-    whirlpoolAddress: poolId,
-    positionId: positionId
-  };
 
   const source = {
     publisher: "sol-usdc-clmm-intelligence" as const,

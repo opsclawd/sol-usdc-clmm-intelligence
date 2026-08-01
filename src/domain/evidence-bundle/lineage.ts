@@ -338,79 +338,30 @@ function collectLineage(
   return { rawObservationIds, normalizedObservationIds, sourceReferences };
 }
 
-export function verifyEvidenceLineage(
-  input: VerifyEvidenceLineageInput
+export interface VerifyContextualEvidenceLineageInput {
+  readonly contextualObservations: readonly NormalizedObservationRow[];
+  readonly rawObservations: ReadonlyMap<number, RawObservationRow>;
+}
+
+const ALLOWED_CONTEXTUAL_KINDS: ReadonlySet<string> = new Set([
+  "scheduled_event",
+  "protocol_incident",
+  "whale_transfer",
+  "whale_swap",
+  "stablecoin_flow",
+  "cex_flow_proxy",
+  "dex_net_flow",
+  "support_resistance_level",
+  "ecosystem_news",
+  "regulatory_risk"
+]);
+
+export function verifyContextualEvidenceLineage(
+  input: VerifyContextualEvidenceLineageInput
 ):
   | { ok: true; lineage: VerifiedEvidenceLineage["lineage"] }
   | { ok: false; error: LineageVerificationError } {
-  const {
-    slots,
-    rawObservations,
-    normalizedObservations,
-    clmmCanonical,
-    walletId,
-    positionId,
-    poolId,
-    contextualObservations = []
-  } = input;
-
-  const clmmResult = validateClmmCanonical(clmmCanonical);
-  if (!clmmResult.ok) {
-    return clmmResult;
-  }
-
-  const scopeResult = verifyScopeConsistency(clmmResult.bundle, walletId, positionId, poolId);
-  if (!scopeResult.ok) {
-    return scopeResult;
-  }
-
-  const selectedSlots = slots.filter(
-    (s) =>
-      s.outcome === "selected_available" ||
-      s.outcome === "selected_partial" ||
-      s.outcome === "selected_unavailable"
-  );
-
-  for (const slot of selectedSlots) {
-    const provenance = slot.provenance;
-    if (!provenance) continue;
-
-    for (const ref of provenance.rawObservationRefs) {
-      const refResult = verifyProvenanceRef(ref, normalizedObservations, rawObservations);
-      if (!refResult.ok) {
-        return refResult;
-      }
-
-      if (refResult.normalizedRow && refResult.rawRow) {
-        const rawRefResult = verifyProvenanceRef(
-          {
-            refType: "raw_observation",
-            id: refResult.rawRow.id,
-            source: refResult.rawRow.source,
-            payloadHash: refResult.rawRow.payloadHash
-          },
-          normalizedObservations,
-          rawObservations
-        );
-        if (!rawRefResult.ok) {
-          return rawRefResult;
-        }
-      }
-    }
-  }
-
-  const ALLOWED_CONTEXTUAL_KINDS: ReadonlySet<string> = new Set([
-    "scheduled_event",
-    "protocol_incident",
-    "whale_transfer",
-    "whale_swap",
-    "stablecoin_flow",
-    "cex_flow_proxy",
-    "dex_net_flow",
-    "support_resistance_level",
-    "ecosystem_news",
-    "regulatory_risk"
-  ]);
+  const { contextualObservations, rawObservations } = input;
 
   for (const ctxRow of contextualObservations) {
     if (!ALLOWED_CONTEXTUAL_KINDS.has(ctxRow.observationKind)) {
@@ -484,7 +435,7 @@ export function verifyEvidenceLineage(
         source: rawRow.source,
         payloadHash: rawRow.payloadHash
       },
-      normalizedObservations,
+      new Map(),
       rawObservations
     );
     if (!rawRefResult.ok) {
@@ -492,13 +443,10 @@ export function verifyEvidenceLineage(
     }
   }
 
-  const { rawObservationIds, normalizedObservationIds, sourceReferences } = collectLineage(
-    slots,
-    normalizedObservations,
-    rawObservations
-  );
-
-  const seenSourceReferenceIds = new Set(sourceReferences.map((sr) => sr.referenceId));
+  const rawObservationIds = new Set<number>();
+  const normalizedObservationIds = new Set<number>();
+  const sourceReferences: VerifiedLineageSourceRef[] = [];
+  const seenSourceReferenceIds = new Set<string>();
 
   for (const ctxRow of contextualObservations) {
     rawObservationIds.add(ctxRow.rawObservationId);
@@ -515,6 +463,106 @@ export function verifyEvidenceLineage(
           observedAt: toCanonicalTimestamp(rawRow.observedAtUnixMs)
         });
       }
+    }
+  }
+
+  const sortedRawIds = [...rawObservationIds].sort((a, b) => a - b);
+  const sortedNormIds = [...normalizedObservationIds].sort((a, b) => a - b);
+
+  return {
+    ok: true,
+    lineage: {
+      rawObservationIds: sortedRawIds,
+      normalizedObservationIds: sortedNormIds,
+      sourceReferences
+    }
+  };
+}
+
+export function verifyEvidenceLineage(
+  input: VerifyEvidenceLineageInput
+):
+  | { ok: true; lineage: VerifiedEvidenceLineage["lineage"] }
+  | { ok: false; error: LineageVerificationError } {
+  const {
+    slots,
+    rawObservations,
+    normalizedObservations,
+    clmmCanonical,
+    walletId,
+    positionId,
+    poolId,
+    contextualObservations = []
+  } = input;
+
+  const clmmResult = validateClmmCanonical(clmmCanonical);
+  if (!clmmResult.ok) {
+    return clmmResult;
+  }
+
+  const scopeResult = verifyScopeConsistency(clmmResult.bundle, walletId, positionId, poolId);
+  if (!scopeResult.ok) {
+    return scopeResult;
+  }
+
+  const selectedSlots = slots.filter(
+    (s) =>
+      s.outcome === "selected_available" ||
+      s.outcome === "selected_partial" ||
+      s.outcome === "selected_unavailable"
+  );
+
+  for (const slot of selectedSlots) {
+    const provenance = slot.provenance;
+    if (!provenance) continue;
+
+    for (const ref of provenance.rawObservationRefs) {
+      const refResult = verifyProvenanceRef(ref, normalizedObservations, rawObservations);
+      if (!refResult.ok) {
+        return refResult;
+      }
+
+      if (refResult.normalizedRow && refResult.rawRow) {
+        const rawRefResult = verifyProvenanceRef(
+          {
+            refType: "raw_observation",
+            id: refResult.rawRow.id,
+            source: refResult.rawRow.source,
+            payloadHash: refResult.rawRow.payloadHash
+          },
+          normalizedObservations,
+          rawObservations
+        );
+        if (!rawRefResult.ok) {
+          return rawRefResult;
+        }
+      }
+    }
+  }
+
+  const { rawObservationIds, normalizedObservationIds, sourceReferences } = collectLineage(
+    slots,
+    normalizedObservations,
+    rawObservations
+  );
+
+  if (contextualObservations.length > 0) {
+    const ctxLineageResult = verifyContextualEvidenceLineage({
+      contextualObservations,
+      rawObservations
+    });
+    if (!ctxLineageResult.ok) {
+      return ctxLineageResult;
+    }
+
+    for (const rawId of ctxLineageResult.lineage.rawObservationIds) {
+      rawObservationIds.add(rawId);
+    }
+    for (const normId of ctxLineageResult.lineage.normalizedObservationIds) {
+      normalizedObservationIds.add(normId);
+    }
+    for (const sr of ctxLineageResult.lineage.sourceReferences) {
+      sourceReferences.push(sr);
     }
   }
 

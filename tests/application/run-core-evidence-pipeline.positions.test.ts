@@ -201,6 +201,13 @@ function createBaseServices(evalTime: number): CoreEvidencePipelineServices {
         warnings: []
       };
     },
+    assemblePair: async () => ({
+      outcome: "persisted",
+      rowId: 500,
+      payloadHash: "hash-500",
+      slotCount: 16,
+      warnings: []
+    }),
     generateBrief: async (req) => ({
       outcome: "generated_complete",
       row: { id: req.evidenceBundleId } as unknown as ResearchBriefRow,
@@ -247,7 +254,7 @@ describe("runCoreEvidencePipeline - Per-Position Targeting", () => {
     expect(result.positions[0]?.bundleId).toBe(101);
     expect(result.positions[1]?.positionId).toBe("pos-2");
     expect(result.positions[1]?.bundleId).toBe(102);
-    expect(publishedBundleIds).toEqual([101, 102]);
+    expect(publishedBundleIds).toEqual([500, 101, 102]);
     expect(result.status).toBe("complete");
   });
 
@@ -635,7 +642,8 @@ describe("runCoreEvidencePipeline - Per-Position Targeting", () => {
     {
       const services = {
         ...base,
-        assemble: async () => ({ outcome: "no_bundle" as const })
+        assemble: async () => ({ outcome: "no_bundle" as const }),
+        assemblePair: async () => ({ outcome: "no_bundle" as const })
       };
       const deps: RunCoreEvidencePipelineDeps = {
         clock: new QueuedClock([

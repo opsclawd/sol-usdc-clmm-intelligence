@@ -1,35 +1,21 @@
 import type { Clock } from "../ports/clock.js";
 import type {
-  DerivedFeatureRepo,
   NormalizedObservationRepo,
   RawObservationRepo,
   EvidenceBundleRepo,
   EvidenceBundleContract,
   EvidenceBundleInsert,
-  NormalizedObservationCandidateQuery
-} from "../ports/index.js";
-import type { EvidenceBundleInsertOutcome } from "../ports/bundle-repo.js";
-import type { BundleFeatureCandidateQuery } from "../ports/feature-repo.js";
-import type {
-  FeatureKind,
-  DerivedFeatureRow,
+  NormalizedObservationCandidateQuery,
   NormalizedObservationRow,
   RawObservationRow
-} from "../contracts/index.js";
+} from "../ports/index.js";
+import type { EvidenceBundleInsertOutcome } from "../ports/bundle-repo.js";
 import type {
   EvidenceBundleContractError,
   CanonicalEvidenceBundle
 } from "../ports/evidence-bundle-contract.js";
-import {
-  selectEvidenceFeatureSlots,
-  type BundleSelectionRequest,
-  type BundleSelectionResult,
-  type SelectedFeatureSlot
-} from "../domain/evidence-bundle/select.js";
-import {
-  verifyEvidenceLineage,
-  type VerifyEvidenceLineageInput
-} from "../domain/evidence-bundle/lineage.js";
+import type { SelectedFeatureSlot } from "../domain/evidence-bundle/select.js";
+import { verifyContextualEvidenceLineage } from "../domain/evidence-bundle/lineage.js";
 import {
   classifyEvidenceBundleQuality,
   type EvidenceBundleQuality
@@ -48,26 +34,21 @@ import {
   type SelectedSupportResistance
 } from "../domain/support-resistance/select.js";
 import { selectNewsEvidence, type SelectedNewsEvidence } from "../domain/news-events/select.js";
-import { buildPositionRunId } from "./core-evidence-pipeline-policy.js";
+import { buildPairRunId } from "./core-evidence-pipeline-policy.js";
 
-export interface AssembleEvidenceBundleRequest {
+export interface AssemblePairEvidenceBundleRequest {
   readonly pair: "SOL/USDC";
-  readonly poolId: string;
-  readonly positionId: string;
-  readonly walletId: string;
   readonly pipelineRunId: string;
   readonly correlationId: string;
   readonly evaluationTimeUnixMs: number;
   readonly createdAtUnixMs: number;
-  readonly acceptedCalculatorVersions: Readonly<Record<FeatureKind, string>>;
   readonly schemaVersion: string;
-  readonly assemblySelectionVersion: string;
   readonly codeVersion: string;
   readonly gitCommit: string;
   readonly environment: "production" | "staging" | "development" | "test";
 }
 
-export type AssembleEvidenceBundleSuccess =
+export type AssemblePairEvidenceBundleSuccess =
   | {
       readonly outcome: "persisted";
       readonly rowId: number;
@@ -85,7 +66,7 @@ export type AssembleEvidenceBundleSuccess =
   | { readonly outcome: "conflict"; readonly rowId: number; readonly incomingPayloadHash: string }
   | { readonly outcome: "no_bundle" };
 
-export type AssembleEvidenceBundleError =
+export type AssemblePairEvidenceBundleError =
   | { readonly code: "VALIDATION_ERROR"; readonly errors: readonly unknown[] }
   | { readonly code: "LINEAGE_ERROR"; readonly message: string }
   | { readonly code: "PERSISTENCE_ERROR"; readonly message: string }
@@ -93,13 +74,12 @@ export type AssembleEvidenceBundleError =
   | { readonly code: "REQUEST_VALIDATION_ERROR"; readonly message: string }
   | { readonly code: "UNSUPPORTED_SCHEMA_VERSION"; readonly schemaVersion: string };
 
-export type AssembleEvidenceBundleResult =
-  | AssembleEvidenceBundleSuccess
-  | AssembleEvidenceBundleError;
+export type AssemblePairEvidenceBundleResult =
+  | AssemblePairEvidenceBundleSuccess
+  | AssemblePairEvidenceBundleError;
 
-export interface AssembleEvidenceBundleDeps {
+export interface AssemblePairEvidenceBundleDeps {
   readonly clock: Clock;
-  readonly featureRepo: DerivedFeatureRepo;
   readonly normalizedRepo: NormalizedObservationRepo;
   readonly rawRepo: RawObservationRepo;
   readonly bundleRepo: EvidenceBundleRepo;
@@ -108,23 +88,14 @@ export interface AssembleEvidenceBundleDeps {
 
 const SUPPORTED_SCHEMA_VERSION = "evidence-bundle.v1";
 
-function validateRequest(request: AssembleEvidenceBundleRequest): void {
+function validateRequest(request: AssemblePairEvidenceBundleRequest): void {
   if (!request.pair || request.pair !== "SOL/USDC") {
     throw { code: "REQUEST_VALIDATION_ERROR", message: "pair must be SOL/USDC" };
   }
-  if (!request.poolId) {
-    throw { code: "REQUEST_VALIDATION_ERROR", message: "poolId is required" };
-  }
-  if (!request.positionId) {
-    throw { code: "REQUEST_VALIDATION_ERROR", message: "positionId is required" };
-  }
-  if (!request.walletId) {
-    throw { code: "REQUEST_VALIDATION_ERROR", message: "walletId is required" };
-  }
-  if (!request.pipelineRunId) {
+  if (!request.pipelineRunId || !request.pipelineRunId.trim()) {
     throw { code: "REQUEST_VALIDATION_ERROR", message: "pipelineRunId is required" };
   }
-  if (!request.correlationId) {
+  if (!request.correlationId || !request.correlationId.trim()) {
     throw { code: "REQUEST_VALIDATION_ERROR", message: "correlationId is required" };
   }
   if (typeof request.evaluationTimeUnixMs !== "number" || request.evaluationTimeUnixMs < 0) {
@@ -139,31 +110,20 @@ function validateRequest(request: AssembleEvidenceBundleRequest): void {
       message: "createdAtUnixMs must be a non-negative number"
     };
   }
-  if (
-    !request.acceptedCalculatorVersions ||
-    typeof request.acceptedCalculatorVersions !== "object"
-  ) {
-    throw { code: "REQUEST_VALIDATION_ERROR", message: "acceptedCalculatorVersions is required" };
-  }
-  for (const kind of MVP_FEATURE_KINDS) {
-    if (!request.acceptedCalculatorVersions[kind]) {
-      throw {
-        code: "REQUEST_VALIDATION_ERROR",
-        message: `acceptedCalculatorVersions must include ${kind}`
-      };
-    }
-  }
   if (!request.schemaVersion) {
     throw { code: "REQUEST_VALIDATION_ERROR", message: "schemaVersion is required" };
   }
   if (request.schemaVersion !== SUPPORTED_SCHEMA_VERSION) {
     throw { code: "UNSUPPORTED_SCHEMA_VERSION", schemaVersion: request.schemaVersion };
   }
-  if (!request.assemblySelectionVersion) {
-    throw { code: "REQUEST_VALIDATION_ERROR", message: "assemblySelectionVersion is required" };
-  }
-  if (!request.codeVersion) {
+  if (!request.codeVersion || !request.codeVersion.trim()) {
     throw { code: "REQUEST_VALIDATION_ERROR", message: "codeVersion is required" };
+  }
+  if (!request.gitCommit || !request.gitCommit.trim()) {
+    throw { code: "REQUEST_VALIDATION_ERROR", message: "gitCommit is required" };
+  }
+  if (!request.environment) {
+    throw { code: "REQUEST_VALIDATION_ERROR", message: "environment is required" };
   }
 }
 
@@ -186,7 +146,7 @@ function buildBundleInsert(
     payloadCanonical: canonical.payloadCanonical,
     idempotencyKey: canonical.idempotencyKey,
     taxonomySummary: null,
-    dominantSignalClass: "deterministic",
+    dominantSignalClass: "contextual",
     confidence: {
       components: {
         sourceReliability: 1,
@@ -212,7 +172,7 @@ function buildBundleInsert(
       derivedFromRefs: [],
       processRef: {
         collector: "evidence-bundle-assembly",
-        jobName: "assemble-evidence-bundle",
+        jobName: "assemble-pair-evidence-bundle",
         pipelineRunId: null,
         codeVersion: null,
         modelVersion: null
@@ -225,41 +185,10 @@ function buildBundleInsert(
   };
 }
 
-function collectLineageIds(slots: readonly SelectedFeatureSlot[]): {
-  rawObservationIds: Set<number>;
-  normalizedObservationIds: Set<number>;
-} {
-  const rawObservationIds = new Set<number>();
-  const normalizedObservationIds = new Set<number>();
-
-  for (const slot of slots) {
-    if (
-      slot.outcome === "missing" ||
-      slot.outcome === "expired_only" ||
-      slot.outcome === "unsupported_version_only"
-    ) {
-      continue;
-    }
-
-    const provenance = slot.provenance;
-    if (!provenance) continue;
-
-    for (const ref of provenance.rawObservationRefs) {
-      if (ref.refType === "normalized_observation") {
-        normalizedObservationIds.add(ref.id);
-      } else if (ref.refType === "raw_observation") {
-        rawObservationIds.add(ref.id);
-      }
-    }
-  }
-
-  return { rawObservationIds, normalizedObservationIds };
-}
-
-export async function assembleEvidenceBundle(
-  deps: AssembleEvidenceBundleDeps,
-  request: AssembleEvidenceBundleRequest
-): Promise<AssembleEvidenceBundleResult> {
+export async function assemblePairEvidenceBundle(
+  deps: AssemblePairEvidenceBundleDeps,
+  request: AssemblePairEvidenceBundleRequest
+): Promise<AssemblePairEvidenceBundleResult> {
   const clockNow = deps.clock.now();
   const receivedAtUnixMs = new Date(clockNow).getTime();
   if (Number.isNaN(receivedAtUnixMs)) {
@@ -270,64 +199,13 @@ export async function assembleEvidenceBundle(
     validateRequest(request);
   } catch (err) {
     if (typeof err === "object" && err !== null && "code" in err) {
-      return err as AssembleEvidenceBundleError;
+      return err as AssemblePairEvidenceBundleError;
     }
     return { code: "REQUEST_VALIDATION_ERROR", message: String(err) };
   }
 
-  const { featureRepo, normalizedRepo, rawRepo, bundleRepo, contract } = deps;
-  const {
-    evaluationTimeUnixMs,
-    poolId,
-    positionId,
-    walletId,
-    acceptedCalculatorVersions,
-    assemblySelectionVersion,
-    codeVersion,
-    gitCommit,
-    environment
-  } = request;
-
-  const asOfAtOrAfterUnixMs = evaluationTimeUnixMs - 24 * 3600000;
-  const asOfAtOrBeforeUnixMs = evaluationTimeUnixMs;
-
-  let candidates: DerivedFeatureRow[];
-  try {
-    const query: BundleFeatureCandidateQuery = {
-      featureKinds: MVP_FEATURE_KINDS,
-      pair: request.pair,
-      asOfAtOrAfterUnixMs,
-      asOfAtOrBeforeUnixMs,
-      receivedAtOrBeforeUnixMs: evaluationTimeUnixMs,
-      poolId,
-      positionId
-    };
-    candidates = await featureRepo.listBundleCandidates(query);
-  } catch (err) {
-    return { code: "LINEAGE_ERROR", message: `Failed to query candidates: ${err}` };
-  }
-
-  const selectionRequest: BundleSelectionRequest = {
-    evaluationTimeUnixMs,
-    selectionVersion: assemblySelectionVersion,
-    calculatorVersions: acceptedCalculatorVersions,
-    candidates,
-    poolId,
-    positionId
-  };
-
-  const selectionResult: BundleSelectionResult = selectEvidenceFeatureSlots(selectionRequest);
-  const { slots } = selectionResult;
-
-  const usableCount = slots.filter(
-    (s) => s.outcome === "selected_available" || s.outcome === "selected_partial"
-  ).length;
-
-  if (usableCount === 0) {
-    return { outcome: "no_bundle" };
-  }
-
-  const { rawObservationIds, normalizedObservationIds } = collectLineageIds(slots);
+  const { normalizedRepo, rawRepo, bundleRepo, contract } = deps;
+  const { evaluationTimeUnixMs, codeVersion, gitCommit, environment } = request;
 
   const contextualCandidateQuery: NormalizedObservationCandidateQuery = {
     sourceKinds: [
@@ -369,9 +247,7 @@ export async function assembleEvidenceBundle(
       maxItems: 16
     });
   } catch (err) {
-    selectedContextEvents = [];
-    selectedSupportResistance = [];
-    selectedNewsEvidence = [];
+    return { code: "LINEAGE_ERROR", message: `Failed to query contextual candidates: ${err}` };
   }
 
   const selectedContextualRows: NormalizedObservationRow[] = [
@@ -380,23 +256,13 @@ export async function assembleEvidenceBundle(
     ...selectedNewsEvidence.map((ne) => ne.row)
   ];
 
+  if (selectedContextualRows.length === 0) {
+    return { outcome: "no_bundle" };
+  }
+
+  const rawObservationIds = new Set<number>();
   for (const row of selectedContextualRows) {
-    normalizedObservationIds.add(row.id);
     rawObservationIds.add(row.rawObservationId);
-  }
-
-  const normalizedIdArray = [...normalizedObservationIds];
-  let normalizedRows: NormalizedObservationRow[] = [];
-  if (normalizedIdArray.length > 0) {
-    try {
-      normalizedRows = await normalizedRepo.findByIds(normalizedIdArray);
-    } catch (err) {
-      return { code: "LINEAGE_ERROR", message: `Failed to load normalized observations: ${err}` };
-    }
-  }
-
-  for (const normRow of normalizedRows) {
-    rawObservationIds.add(normRow.rawObservationId);
   }
 
   const rawIdArray = [...rawObservationIds];
@@ -409,52 +275,23 @@ export async function assembleEvidenceBundle(
     }
   }
 
-  const normalizedMap = new Map<number, NormalizedObservationRow>();
-  for (const row of normalizedRows) {
-    normalizedMap.set(row.id, row);
-  }
-
   const rawMap = new Map<number, RawObservationRow>();
   for (const row of rawRows) {
     rawMap.set(row.id, row);
   }
 
-  const clmmRawRow = rawRows.find((row) => row.source === "clmm-v2-bundle");
-  if (!clmmRawRow) {
-    return { outcome: "no_bundle" };
-  }
-  const clmmCanonical = clmmRawRow.payloadCanonical;
+  const lineageResult = verifyContextualEvidenceLineage({
+    contextualObservations: selectedContextualRows,
+    rawObservations: rawMap
+  });
 
-  const derivedFeaturesMap = new Map<number, DerivedFeatureRow>();
-  for (const candidate of candidates) {
-    derivedFeaturesMap.set(candidate.id, candidate);
-  }
-
-  const lineageInput: VerifyEvidenceLineageInput = {
-    request: selectionRequest,
-    slots: slots.map((slot): VerifyEvidenceLineageInput["slots"][number] => ({
-      featureKind: slot.featureKind,
-      outcome: slot.outcome,
-      ...("rowId" in slot && slot.rowId !== undefined ? { rowId: slot.rowId } : {}),
-      ...("provenance" in slot && slot.provenance !== undefined
-        ? { provenance: slot.provenance }
-        : {}),
-      ...("reasons" in slot && slot.reasons !== undefined ? { reasons: slot.reasons } : {})
-    })),
-    rawObservations: rawMap,
-    normalizedObservations: normalizedMap,
-    derivedFeatures: derivedFeaturesMap,
-    clmmCanonical,
-    walletId,
-    positionId,
-    poolId,
-    contextualObservations: selectedContextualRows
-  };
-
-  const lineageResult = verifyEvidenceLineage(lineageInput);
   if (!lineageResult.ok) {
     return { code: "LINEAGE_ERROR", message: lineageResult.error.message };
   }
+
+  const slots: SelectedFeatureSlot[] = MVP_FEATURE_KINDS.map(
+    (featureKind): SelectedFeatureSlot => ({ featureKind, outcome: "missing" })
+  );
 
   const freshUntil = evaluationTimeUnixMs + 3600000;
   const expiresAt = evaluationTimeUnixMs + 7200000;
@@ -479,24 +316,20 @@ export async function assembleEvidenceBundle(
     hasEvents,
     hasNewsRegulatory,
     hasResearchBrief,
-    allowNoUsableFeatures: false
+    allowNoUsableFeatures: true
   };
 
   const quality: EvidenceBundleQuality = classifyEvidenceBundleQuality(qualityInput);
+
+  const runId = buildPairRunId(request.pipelineRunId);
 
   const assembleInput: AssembleEvidenceBundleInput = {
     slots,
     quality,
     lineage: lineageResult.lineage,
-    runId: buildPositionRunId(request.pipelineRunId, positionId),
+    runId,
     correlationId: request.correlationId,
-    scope: {
-      kind: "position",
-      network: "solana-mainnet",
-      walletAddress: walletId,
-      whirlpoolAddress: poolId,
-      positionId
-    },
+    scope: { kind: "pair" },
     createdAt: request.createdAtUnixMs,
     asOf: evaluationTimeUnixMs,
     freshUntil,

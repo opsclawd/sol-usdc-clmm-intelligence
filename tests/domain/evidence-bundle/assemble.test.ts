@@ -181,14 +181,18 @@ function makeAssembleInput(
   overrides?: Partial<AssembleEvidenceBundleInput>
 ): AssembleEvidenceBundleInput {
   return {
+    scope: overrides?.scope ?? {
+      kind: "position",
+      network: "solana-mainnet",
+      walletAddress: "wallet-xyz",
+      whirlpoolAddress: "pool-abc",
+      positionId: "position-1"
+    },
     slots,
     quality,
     lineage,
     runId: overrides?.runId ?? "run-123",
     correlationId: overrides?.correlationId ?? "corr-456",
-    poolId: overrides?.poolId ?? "pool-abc",
-    positionId: overrides?.positionId ?? "position-1",
-    walletId: overrides?.walletId ?? "wallet-xyz",
     createdAt: overrides?.createdAt ?? 5000000000000,
     asOf: overrides?.asOf ?? 5000000000000,
     freshUntil: overrides?.freshUntil ?? 50000003600000,
@@ -219,16 +223,16 @@ describe("assembleEvidenceBundleCandidate", () => {
       ];
       const slots = makeSlotsAllAvailable(candidates);
       const quality = makeQuality();
-      const lineage = makeLineage();
+      const lineage = makeLineage(RAW_SOURCE_REFERENCES);
 
       const result = assembleEvidenceBundleCandidate(makeAssembleInput(slots, quality, lineage));
 
-      expect(result).toHaveProperty("schemaVersion");
-      expect(result).toHaveProperty("pair");
+      expect(result).toHaveProperty("schemaVersion", "evidence-bundle.v1");
+      expect(result).toHaveProperty("pair", "SOL/USDC");
       expect(result).toHaveProperty("scope");
       expect(result).toHaveProperty("source");
-      expect(result).toHaveProperty("runId");
-      expect(result).toHaveProperty("correlationId");
+      expect(result).toHaveProperty("runId", "run-123");
+      expect(result).toHaveProperty("correlationId", "corr-456");
       expect(result).toHaveProperty("createdAt");
       expect(result).toHaveProperty("asOf");
       expect(result).toHaveProperty("freshUntil");
@@ -263,9 +267,13 @@ describe("assembleEvidenceBundleCandidate", () => {
       const slots = makeSlotsAllAvailable([]);
       const result = assembleEvidenceBundleCandidate(
         makeAssembleInput(slots, makeQuality(), makeLineage(), {
-          poolId: "pool-xyz",
-          positionId: "pos-123",
-          walletId: "wallet-abc"
+          scope: {
+            kind: "position",
+            network: "solana-mainnet",
+            walletAddress: "wallet-abc",
+            whirlpoolAddress: "pool-xyz",
+            positionId: "pos-123"
+          }
         })
       );
 

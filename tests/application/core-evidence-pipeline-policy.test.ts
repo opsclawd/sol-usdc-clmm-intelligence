@@ -4,6 +4,8 @@ import {
   REQUIRED_POSITION_FEATURE_KINDS,
   buildPositionCorrelationId,
   buildPositionRunId,
+  buildPairRunId,
+  buildPairCorrelationId,
   evaluatePositionFeatureGate,
   aggregatePipelineStatus
 } from "../../src/application/core-evidence-pipeline-policy.js";
@@ -181,7 +183,33 @@ describe("core-evidence-pipeline-policy", () => {
     expect(() => buildPositionRunId("run-123", "   ")).toThrow();
   });
 
-  it("returns failed when no position published", () => {
+  it("builds a stable pair bundle run id distinct from every position run id", () => {
+    const pairRunId = buildPairRunId("run-123");
+    const posRunId = buildPositionRunId("run-123", "pos-1");
+
+    expect(pairRunId).toBe("run-123:pair");
+    expect(posRunId).toBe("run-123:pos-1");
+    expect(pairRunId).not.toBe(posRunId);
+
+    expect(() => buildPairRunId("")).toThrow();
+    expect(() => buildPairRunId("   ")).toThrow();
+  });
+
+  it("builds a stable pair correlation id distinct from every position correlation id", () => {
+    const pairCorrelationId = buildPairCorrelationId("run-123");
+    const posCorrelationId = buildPositionCorrelationId("run-123", "pos-1");
+
+    expect(pairCorrelationId).toBe("run:run-123:pair");
+    expect(posCorrelationId).toBe("run:run-123:position:pos-1");
+    expect(pairCorrelationId).not.toBe(posCorrelationId);
+  });
+
+  it("rejects empty pair correlation pipeline run identifiers", () => {
+    expect(() => buildPairCorrelationId("")).toThrow();
+    expect(() => buildPairCorrelationId("   ")).toThrow();
+  });
+
+  it("returns failed when no target publishes", () => {
     expect(aggregatePipelineStatus("COMPLETE", [])).toBe("failed");
     expect(aggregatePipelineStatus("COMPLETE", [{ status: "failed" }, { status: "failed" }])).toBe(
       "failed"
@@ -189,7 +217,7 @@ describe("core-evidence-pipeline-policy", () => {
     expect(aggregatePipelineStatus("PARTIAL", [{ status: "failed" }])).toBe("failed");
   });
 
-  it("returns partial_failure when published and failed positions coexist", () => {
+  it("returns partial_failure when published and failed targets are mixed", () => {
     expect(
       aggregatePipelineStatus("COMPLETE", [{ status: "complete" }, { status: "failed" }])
     ).toBe("partial_failure");
@@ -199,15 +227,25 @@ describe("core-evidence-pipeline-policy", () => {
     expect(aggregatePipelineStatus("PARTIAL", [{ status: "complete" }, { status: "failed" }])).toBe(
       "partial_failure"
     );
+    expect(
+      aggregatePipelineStatus("COMPLETE", [
+        { status: "complete" },
+        { status: "failed" },
+        { status: "degraded" }
+      ])
+    ).toBe("partial_failure");
   });
 
-  it("returns degraded for partial collection or a degraded published position", () => {
+  it("returns degraded when every target publishes and any target or collection is degraded", () => {
     expect(aggregatePipelineStatus("PARTIAL", [{ status: "complete" }])).toBe("degraded");
     expect(aggregatePipelineStatus("COMPLETE", [{ status: "degraded" }])).toBe("degraded");
     expect(aggregatePipelineStatus("PARTIAL", [{ status: "degraded" }])).toBe("degraded");
+    expect(
+      aggregatePipelineStatus("COMPLETE", [{ status: "complete" }, { status: "degraded" }])
+    ).toBe("degraded");
   });
 
-  it("returns complete only when complete collection and every position are complete", () => {
+  it("returns complete only when collection and every target are complete", () => {
     expect(
       aggregatePipelineStatus("COMPLETE", [{ status: "complete" }, { status: "complete" }])
     ).toBe("complete");

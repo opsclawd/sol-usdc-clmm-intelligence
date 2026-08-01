@@ -11,6 +11,7 @@ export type {
   RunCoreEvidencePipelineDeps,
   PipelineDiagnostic,
   PositionPipelineResult,
+  PairPipelineResult,
   CoreEvidencePipelineResult
 } from "../application/run-core-evidence-pipeline.js";
 export { runCoreEvidencePipeline } from "../application/run-core-evidence-pipeline.js";

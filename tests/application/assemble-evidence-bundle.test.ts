@@ -623,6 +623,22 @@ describe("assembleEvidenceBundle", () => {
       expect(runIds[0]).toBe("run-123:pos-1");
       expect(runIds[1]).toBe("run-123:pos-2");
       expect(runIds[0]).not.toBe(runIds[1]);
+
+      const scopes = seenCandidates.map((c) => (c as EvidenceBundleV1).scope);
+      expect(scopes[0]).toEqual({
+        kind: "position",
+        network: "solana-mainnet",
+        walletAddress: "wallet-123",
+        whirlpoolAddress: "pool-abc",
+        positionId: "pos-1"
+      });
+      expect(scopes[1]).toEqual({
+        kind: "position",
+        network: "solana-mainnet",
+        walletAddress: "wallet-123",
+        whirlpoolAddress: "pool-abc",
+        positionId: "pos-2"
+      });
     });
 
     it("insertOrClassify is called exactly once on successful assembly", async () => {
