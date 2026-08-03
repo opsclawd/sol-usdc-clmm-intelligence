@@ -32,3 +32,6 @@ jobs:
   - name: core-evidence-pipeline
     cron: "*/30 * * * *"
     messageFile: cron/routines/core-evidence-pipeline.md
+  - name: clmm-bundle
+    cron: "* * * * *"
+    messageFile: cron/routines/clmm-bundle.md
