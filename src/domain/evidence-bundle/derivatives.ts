@@ -70,7 +70,7 @@ export function buildDerivativeClaims(slots: readonly SelectedFeatureSlot[]): De
   return eligibleSlots.map((slot) => {
     const kind = DERIVATIVE_KINDS[slot.featureKind];
     const rawIds = getRawObservationIds(slot);
-    const sourceReferenceIds = rawIds.map((id) => `raw-${id}` as Identifier128) as [
+    const sourceReferenceIds = rawIds.map((id) => `raw-${id}` as Identifier128).slice(0, 64) as [
       Identifier128,
       ...Identifier128[]
     ];

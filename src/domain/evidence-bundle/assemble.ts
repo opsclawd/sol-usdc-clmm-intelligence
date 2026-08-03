@@ -149,7 +149,9 @@ function getValidUntilUnixMsFromSlot(slot: SelectedFeatureSlot): number | null {
 function buildDeterministicFeature(
   slot: SelectedFeatureSlot,
   featureKind: FeatureKind,
-  availableInputLineage: [Identifier128, ...Identifier128[]]
+  availableInputLineage: [Identifier128, ...Identifier128[]],
+  fallbackFreshUntil: number,
+  fallbackAsOf: number
 ): DeterministicFeature {
   const family = mapFeatureKindToFamily(featureKind);
   const featureKindType = mapFeatureKindToKind(featureKind);
@@ -199,8 +201,8 @@ function buildDeterministicFeature(
       status: "available" as const,
       value: slot.value,
       unit: unit,
-      observedAt: asOfUnixMs !== null ? toCanonicalTimestamp(asOfUnixMs) : null,
-      freshUntil: validUntilUnixMs !== null ? toCanonicalTimestamp(validUntilUnixMs) : null,
+      observedAt: toCanonicalTimestamp(asOfUnixMs ?? fallbackAsOf),
+      freshUntil: toCanonicalTimestamp(validUntilUnixMs ?? fallbackFreshUntil),
       confidenceBps: slot.confidence.compositeScore,
       warnings: normalizedWarnings.slice(0, 16) as [string, ...string[]],
       inputLineage: availableInputLineage
@@ -281,7 +283,10 @@ function buildSupportResistanceClaims(
       confidenceBps,
       observedAt: toCanonicalTimestamp(payload.asOfUnixMs),
       expiresAt: toCanonicalTimestamp(payload.expiresAtUnixMs),
-      sourceReferenceIds: [`raw-${row.rawObservationId}`] as [Identifier128, ...Identifier128[]],
+      sourceReferenceIds: ([`raw-${row.rawObservationId}`] as Identifier128[]).slice(0, 64) as [
+        Identifier128,
+        ...Identifier128[]
+      ],
       provenanceMethod: "collected"
     });
   }
@@ -316,7 +321,10 @@ function buildNewsRegulatoryClaims(
       confidenceBps,
       observedAt: toCanonicalTimestamp(payload.asOfUnixMs),
       expiresAt: toCanonicalTimestamp(payload.expiresAtUnixMs),
-      sourceReferenceIds: [`raw-${row.rawObservationId}`] as [Identifier128, ...Identifier128[]],
+      sourceReferenceIds: ([`raw-${row.rawObservationId}`] as Identifier128[]).slice(0, 64) as [
+        Identifier128,
+        ...Identifier128[]
+      ],
       provenanceMethod: "collected"
     });
   }
@@ -366,7 +374,11 @@ function buildContextualEvidence(
         expiresAt: toCanonicalTimestamp(
           flowPayload.observedAtUnixMs + 900000
         ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
-        sourceReferenceIds: [`raw-${row.rawObservationId}`] as [
+        sourceReferenceIds: (
+          [
+            `raw-${row.rawObservationId}`
+          ] as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
+        ).slice(0, 64) as [
           import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
           ...import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
         ],
@@ -399,7 +411,11 @@ function buildContextualEvidence(
         expiresAt: toCanonicalTimestamp(
           typedPayload.expiresAtUnixMs
         ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
-        sourceReferenceIds: [`raw-${row.rawObservationId}`] as [
+        sourceReferenceIds: (
+          [
+            `raw-${row.rawObservationId}`
+          ] as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
+        ).slice(0, 64) as [
           import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
           ...import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
         ],
@@ -496,18 +512,23 @@ export function assembleEvidenceBundleCandidate(
   } = input;
 
   const sourceReferences = buildSourceReferences(lineage);
-  const availableInputLineage = sourceReferences.map((reference) => reference.referenceId) as [
-    Identifier128,
-    ...Identifier128[]
-  ];
+  const availableInputLineage = sourceReferences
+    .map((reference) => reference.referenceId)
+    .slice(0, 64) as [Identifier128, ...Identifier128[]];
 
   const deterministicFeatures: DeterministicFeature[] = MVP_FEATURE_KINDS.map((featureKind) => {
     const slot = slots.find((s) => s.featureKind === featureKind);
     if (!slot) {
       const missingSlot: SelectedFeatureSlot = { featureKind, outcome: "missing" };
-      return buildDeterministicFeature(missingSlot, featureKind, availableInputLineage);
+      return buildDeterministicFeature(
+        missingSlot,
+        featureKind,
+        availableInputLineage,
+        freshUntil,
+        asOf
+      );
     }
-    return buildDeterministicFeature(slot, featureKind, availableInputLineage);
+    return buildDeterministicFeature(slot, featureKind, availableInputLineage, freshUntil, asOf);
   });
 
   const needsUnavailableReference = deterministicFeatures.some((feature) =>
@@ -538,7 +559,7 @@ export function assembleEvidenceBundleCandidate(
     slots
   );
 
-  const researchBrief = input.briefPresent ? null : null;
+  const researchBrief = null;
 
   return {
     schemaVersion: "evidence-bundle.v1",
