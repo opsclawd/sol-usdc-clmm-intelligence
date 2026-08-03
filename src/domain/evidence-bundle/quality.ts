@@ -47,6 +47,7 @@ export interface EvidenceBundleQuality {
 
 export interface EvidenceQualityInput {
   readonly slots: readonly SelectedFeatureSlot[];
+  readonly featureKinds?: readonly FeatureKind[];
   readonly runId: string;
   readonly correlationId: string;
   readonly createdAt: number;
@@ -268,8 +269,9 @@ function buildWarnings(
 
 export function classifyEvidenceBundleQuality(input: EvidenceQualityInput): EvidenceBundleQuality {
   const { slots, createdAt, asOf, freshUntil, expiresAt, allowNoUsableFeatures = false } = input;
+  const featureKinds = input.featureKinds ?? MVP_FEATURE_KINDS;
 
-  const slotQualitySummaries: SlotQualitySummary[] = MVP_FEATURE_KINDS.map((featureKind) => {
+  const slotQualitySummaries: SlotQualitySummary[] = featureKinds.map((featureKind) => {
     const slot = slots.find((s) => s.featureKind === featureKind);
     if (!slot) {
       return {
