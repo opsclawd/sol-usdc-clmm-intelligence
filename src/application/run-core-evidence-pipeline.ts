@@ -242,6 +242,7 @@ export async function runCoreEvidencePipeline(
             const pairCreatedAtUnixMs = new Date(deps.clock.now()).getTime();
             const pairAssemblyReq: AssemblePairEvidenceBundleRequest = {
               pair: "SOL/USDC",
+              poolId: config.poolId,
               pipelineRunId,
               correlationId: pairCorrelationId,
               evaluationTimeUnixMs,

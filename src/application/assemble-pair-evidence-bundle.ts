@@ -47,6 +47,7 @@ import { buildPairRunId } from "./core-evidence-pipeline-policy.js";
 
 export interface AssemblePairEvidenceBundleRequest {
   readonly pair: "SOL/USDC";
+  readonly poolId: string;
   readonly pipelineRunId: string;
   readonly correlationId: string;
   readonly evaluationTimeUnixMs: number;
@@ -100,9 +101,22 @@ export interface AssemblePairEvidenceBundleDeps {
 
 const SUPPORTED_SCHEMA_VERSION = "evidence-bundle.v1";
 
+const POSITION_SCOPED_FEATURE_KINDS = new Set<FeatureKind>([
+  "range_location",
+  "distance_to_lower",
+  "distance_to_upper"
+]);
+
+const PAIR_FEATURE_KINDS = MVP_FEATURE_KINDS.filter(
+  (kind) => !POSITION_SCOPED_FEATURE_KINDS.has(kind)
+);
+
 function validateRequest(request: AssemblePairEvidenceBundleRequest): void {
   if (!request.pair || request.pair !== "SOL/USDC") {
     throw { code: "REQUEST_VALIDATION_ERROR", message: "pair must be SOL/USDC" };
+  }
+  if (!request.poolId || !request.poolId.trim()) {
+    throw { code: "REQUEST_VALIDATION_ERROR", message: "poolId is required" };
   }
   if (!request.pipelineRunId || !request.pipelineRunId.trim()) {
     throw { code: "REQUEST_VALIDATION_ERROR", message: "pipelineRunId is required" };
@@ -275,12 +289,12 @@ export async function assemblePairEvidenceBundle(
   let candidates: DerivedFeatureRow[];
   try {
     const query: BundleFeatureCandidateQuery = {
-      featureKinds: MVP_FEATURE_KINDS,
+      featureKinds: PAIR_FEATURE_KINDS,
       pair: request.pair,
       asOfAtOrAfterUnixMs,
       asOfAtOrBeforeUnixMs,
       receivedAtOrBeforeUnixMs: evaluationTimeUnixMs,
-      poolId: null,
+      poolId: request.poolId,
       positionId: null
     };
     candidates = await featureRepo.listBundleCandidates(query);
@@ -293,7 +307,8 @@ export async function assemblePairEvidenceBundle(
     selectionVersion: request.assemblySelectionVersion,
     calculatorVersions: request.acceptedCalculatorVersions,
     candidates,
-    poolId: undefined,
+    featureKinds: PAIR_FEATURE_KINDS,
+    poolId: request.poolId,
     positionId: undefined
   };
 
@@ -420,6 +435,7 @@ export async function assemblePairEvidenceBundle(
 
   const qualityInput = {
     slots,
+    featureKinds: PAIR_FEATURE_KINDS,
     runId: request.pipelineRunId,
     correlationId: request.correlationId,
     createdAt: request.createdAtUnixMs,
@@ -441,6 +457,7 @@ export async function assemblePairEvidenceBundle(
 
   const assembleInput: AssembleEvidenceBundleInput = {
     slots,
+    featureKinds: PAIR_FEATURE_KINDS,
     quality,
     lineage: lineageResult.lineage,
     runId,

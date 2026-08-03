@@ -267,7 +267,7 @@ describe("runCoreEvidencePipeline - Pair Orchestration", () => {
     expect(result.status).toBe("complete");
   });
 
-  it("shares pipelineRunId and evaluation time while using a pair-specific correlation id", async () => {
+  it("shares pipelineRunId and evaluation time while passing the canonical pool id and a pair-specific correlation id", async () => {
     const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
     let capturedPairReq: AssemblePairEvidenceBundleRequest | null = null;
     let capturedPairBriefReq: GenerateResearchBriefParams | null = null;
@@ -307,6 +307,7 @@ describe("runCoreEvidencePipeline - Pair Orchestration", () => {
     expect(capturedPairReq).not.toBeNull();
     const pairReq = capturedPairReq!;
     expect(pairReq.pair).toBe("SOL/USDC");
+    expect(pairReq.poolId).toBe("pool-1");
     expect(pairReq.pipelineRunId).toBe("run-identity");
     expect(pairReq.correlationId).toBe("run:run-identity:pair");
     expect(pairReq.evaluationTimeUnixMs).toBe(evalTime);
@@ -314,7 +315,6 @@ describe("runCoreEvidencePipeline - Pair Orchestration", () => {
     expect(pairReq.assemblySelectionVersion).toBe(EVIDENCE_BUNDLE_SELECTION_VERSION);
     const pairReqObj = pairReq as unknown as Record<string, unknown>;
     expect(pairReqObj.walletId).toBeUndefined();
-    expect(pairReqObj.poolId).toBeUndefined();
     expect(pairReqObj.positionId).toBeUndefined();
 
     expect(capturedPairBriefReq).not.toBeNull();
