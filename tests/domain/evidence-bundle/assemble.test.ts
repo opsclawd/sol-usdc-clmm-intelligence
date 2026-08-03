@@ -17,7 +17,7 @@ const DEFAULT_CONFIDENCE: Confidence = {
     derivationConfidence: 1,
     llmConfidence: null
   },
-  compositeScore: 10000,
+  compositeScore: 1,
   level: "high",
   weightingVersion: "v1",
   reasons: []
@@ -345,6 +345,26 @@ describe("assembleEvidenceBundleCandidate", () => {
       expect(feature).toHaveProperty("inputLineage");
       expect(feature).toHaveProperty("warnings");
       expect((feature as unknown as Record<string, unknown>).localExtraField).toBeUndefined();
+    });
+
+    it("scales available deterministic feature confidence from a fraction to basis points", () => {
+      const candidate = makeFeatureRow({
+        id: 1,
+        featureKind: "range_location",
+        derivationKey: "pool=abc,position=1",
+        asOfUnixMs: 1000,
+        receivedAtUnixMs: 1000,
+        status: "AVAILABLE",
+        value: 5000,
+        poolId: "pool-abc",
+        positionId: "position-1",
+        confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0.85 }
+      });
+      const result = assembleEvidenceBundleCandidate(
+        makeAssembleInput(makeSlotsAllAvailable([candidate]), makeQuality(), makeLineage())
+      );
+
+      expect(result.deterministicFeatures[0]!.confidenceBps).toBe(8500);
     });
   });
 
@@ -995,12 +1015,12 @@ describe("assembleEvidenceBundleCandidate", () => {
           rowId: 1,
           value: 5000,
           confidence: {
-            compositeScore: 8000,
+            compositeScore: 0.8,
             components: {
-              freshness: 8000,
-              sampleSize: 8000,
-              sourceReliability: 8000,
-              variance: 8000
+              freshness: 0.8,
+              sampleSize: 0.8,
+              sourceReliability: 0.8,
+              variance: 0.8
             }
           },
           asOfUnixMs: null,

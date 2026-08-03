@@ -48,7 +48,10 @@ import {
   type SelectedSupportResistance
 } from "../domain/support-resistance/select.js";
 import { selectNewsEvidence, type SelectedNewsEvidence } from "../domain/news-events/select.js";
-import { hasUsableDerivativeSlots } from "../domain/evidence-bundle/index.js";
+import {
+  hasUsableDerivativeSlots,
+  confidenceBpsToFraction
+} from "../domain/evidence-bundle/index.js";
 import { buildPositionRunId } from "./core-evidence-pipeline-policy.js";
 
 export interface AssembleEvidenceBundleRequest {
@@ -176,6 +179,7 @@ function buildBundleInsert(
 ): EvidenceBundleInsert {
   const expiresAtUnixMs = asOfUnixMs + 3600000;
   const validUntilUnixMs = quality.expiresAt;
+  const compositeScore = confidenceBpsToFraction(quality.overallConfidenceBps);
 
   return {
     schemaVersion: canonical.schemaVersion,
@@ -195,15 +199,16 @@ function buildBundleInsert(
         derivationConfidence: 1,
         llmConfidence: null
       },
-      compositeScore: quality.overallConfidenceBps,
+      compositeScore,
       level:
         quality.quality === "complete" ? "high" : quality.quality === "partial" ? "medium" : "low",
       weightingVersion: "v1",
       reasons: []
     },
-    confidenceComposite: quality.overallConfidenceBps,
+    confidenceComposite: compositeScore,
     confidenceLevel:
       quality.quality === "complete" ? "high" : quality.quality === "partial" ? "medium" : "low",
+
     validUntilUnixMs,
     isStale: false,
     staleBehavior: null,

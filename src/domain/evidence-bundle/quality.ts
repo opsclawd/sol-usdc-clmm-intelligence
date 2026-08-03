@@ -1,6 +1,7 @@
 import type { FeatureKind } from "../../contracts/taxonomy.js";
 import { MVP_FEATURE_KINDS } from "../../contracts/derived-feature.js";
 import type { SelectedFeatureSlot } from "./select.js";
+import { confidenceFractionToBps } from "./confidence-bps.js";
 
 export const EVIDENCE_BUNDLE_QUALITY_VERSION = "mvp-evidence-bundle-quality/v1";
 
@@ -86,7 +87,7 @@ function getSlotConfidenceBps(slot: SelectedFeatureSlot): number {
   ) {
     return 0;
   }
-  return Math.max(0, Math.min(10_000, Math.round(slot.confidence.compositeScore)));
+  return confidenceFractionToBps(slot.confidence.compositeScore);
 }
 
 function hasSlotValue(slot: SelectedFeatureSlot): boolean {

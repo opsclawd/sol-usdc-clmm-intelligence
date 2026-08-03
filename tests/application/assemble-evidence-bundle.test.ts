@@ -562,6 +562,14 @@ describe("assembleEvidenceBundle", () => {
       );
 
       expect(result.outcome).toBe("persisted");
+      expect(bundleRepo.store[0]?.confidenceComposite).toBeGreaterThanOrEqual(0);
+      expect(bundleRepo.store[0]?.confidenceComposite).toBeLessThanOrEqual(1);
+      expect(
+        (bundleRepo.store[0]?.confidence as { compositeScore: number }).compositeScore
+      ).toBeGreaterThanOrEqual(0);
+      expect(
+        (bundleRepo.store[0]?.confidence as { compositeScore: number }).compositeScore
+      ).toBeLessThanOrEqual(1);
       expect(executionLog).toContain("contract.validateCanonicalizeAndHash");
       expect(executionLog).toContain("bundle.insertOrClassify");
       expect(executionLog.indexOf("contract.validateCanonicalizeAndHash")).toBeLessThan(

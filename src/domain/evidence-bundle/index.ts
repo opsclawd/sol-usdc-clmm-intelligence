@@ -39,3 +39,5 @@ export { assembleEvidenceBundleCandidate } from "./assemble.js";
 export type { AssembleEvidenceBundleInput } from "./assemble.js";
 
 export { hasUsableDerivativeSlots, buildDerivativeClaims } from "./derivatives.js";
+
+export { confidenceFractionToBps, confidenceBpsToFraction } from "./confidence-bps.js";

@@ -388,6 +388,14 @@ describe("assemblePairEvidenceBundle", () => {
     if (insert) {
       expect(insert.pair).toBe("SOL/USDC");
       expect(insert.dominantSignalClass).toBe("contextual");
+      expect(insert.confidenceComposite).toBeGreaterThanOrEqual(0);
+      expect(insert.confidenceComposite).toBeLessThanOrEqual(1);
+      expect(
+        (insert.confidence as { compositeScore: number })?.compositeScore
+      ).toBeGreaterThanOrEqual(0);
+      expect((insert.confidence as { compositeScore: number })?.compositeScore).toBeLessThanOrEqual(
+        1
+      );
     }
   });
 

@@ -25,7 +25,7 @@ const DEFAULT_CONFIDENCE: Confidence = {
     derivationConfidence: 1,
     llmConfidence: null
   },
-  compositeScore: 10000,
+  compositeScore: 1,
   level: "high",
   weightingVersion: "v1",
   reasons: []
@@ -384,42 +384,63 @@ describe("context-events assembly", () => {
     });
 
     it("confidenceBps is converted from composite score to basis points", () => {
-      const candidates: DerivedFeatureRow[] = [
-        makeFeatureRow({
-          id: 1,
-          featureKind: "range_location",
-          derivationKey: "pool=abc,position=1",
-          asOfUnixMs: 1000,
-          receivedAtUnixMs: 1000,
-          status: "AVAILABLE",
-          value: 5000,
-          poolId: "pool-abc",
-          positionId: "position-1"
-        })
-      ];
-      const slots = makeSlotsAllAvailable(candidates);
-      const quality = makeQuality();
-      const lineage = makeLineage();
-
-      const confidenceScore = 8500;
+      const confidenceScore = 0.85;
       const scheduledPayload = makeScheduledEventPayload({ status: "SCHEDULED" });
       const normRow = makeNormalizedRow({
         id: 100,
         observationKind: "scheduled_event",
-        confidence: {
-          ...DEFAULT_CONFIDENCE,
-          compositeScore: confidenceScore
-        }
+        confidence: { ...DEFAULT_CONFIDENCE, compositeScore: confidenceScore }
       });
       const contextEvent = makeSelectedContextEvent(normRow, scheduledPayload);
-
       const result = assembleEvidenceBundleCandidate(
-        makeAssembleInput(slots, quality, lineage, {
+        makeAssembleInput(makeSlotsAllAvailable([]), makeQuality(), makeLineage(), {
           contextualEvents: [contextEvent]
         })
       );
 
-      expect(result.contextualEvidence.events[0]!.confidenceBps).toBe(confidenceScore);
+      expect(result.contextualEvidence.events[0]!.confidenceBps).toBe(
+        Math.round(confidenceScore * 10_000)
+      );
+    });
+
+    it("scales on-chain flow confidence from a fraction to basis points", () => {
+      const flowPayload: import("../../../src/contracts/on-chain-flow.js").OnChainFlowPayloadV1 = {
+        schemaVersion: 1,
+        eventFamily: "on_chain_flow",
+        eventType: "cex_flow_proxy",
+        sourceEventId: "flow-100",
+        observedAtUnixMs: 5_000_000_000_000,
+        amountUsdc: "2500000",
+        direction: "inbound",
+        venue: "cex",
+        addressContext: { addressType: "wallet", address: "wallet-100" },
+        sourceReferences: ["helius:flow-100"],
+        sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "full" },
+        freshnessContext: { blockTimestampUnixMs: 5_000_000_000_000 },
+        quality: "proxy",
+        attributionConfidence: 0.69,
+        attributionProvider: "helius-api",
+        caveats: []
+      };
+      const row = makeNormalizedRow({
+        id: 100,
+        rawObservationId: 500,
+        observationKind: "cex_flow_proxy",
+        payload: flowPayload,
+        confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0.69 }
+      });
+      const selected: SelectedContextEvent = {
+        row,
+        payload: flowPayload,
+        eventFamily: "on_chain_flow"
+      };
+      const result = assembleEvidenceBundleCandidate(
+        makeAssembleInput(makeSlotsAllAvailable([]), makeQuality(), makeLineage(), {
+          contextualEvents: [selected]
+        })
+      );
+
+      expect(result.contextualEvidence.flows[0]!.confidenceBps).toBe(6900);
     });
 
     it("observedAt uses canonical timestamp from payload asOfUnixMs", () => {

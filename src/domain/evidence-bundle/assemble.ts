@@ -28,6 +28,7 @@ import type { SelectedSupportResistance } from "../support-resistance/select.js"
 import type { SelectedNewsEvidence } from "../news-events/select.js";
 import { toCanonicalTimestamp } from "./timestamp.js";
 import { buildDerivativeClaims } from "./derivatives.js";
+import { confidenceFractionToBps } from "./confidence-bps.js";
 
 const FEATURE_UNAVAILABLE_REFERENCE_ID = "feature_unavailable" as Identifier128;
 
@@ -206,7 +207,7 @@ function buildDeterministicFeature(
       unit: unit,
       observedAt: toCanonicalTimestamp(asOfUnixMs ?? fallbackAsOf),
       freshUntil: toCanonicalTimestamp(validUntilUnixMs ?? fallbackFreshUntil),
-      confidenceBps: slot.confidence.compositeScore,
+      confidenceBps: confidenceFractionToBps(slot.confidence.compositeScore),
       warnings: normalizedWarnings.slice(0, 16),
       inputLineage: availableInputLineage
     };
@@ -276,7 +277,7 @@ function buildSupportResistanceClaims(
     }
 
     const claim = baseClaim.length > 512 ? baseClaim.slice(0, 512) : baseClaim;
-    const confidenceBps = Math.max(0, Math.min(10_000, Math.round(row.confidence.compositeScore)));
+    const confidenceBps = confidenceFractionToBps(row.confidence.compositeScore);
 
     claims.push({
       evidenceId: `normalized-${row.id}` as Identifier128,
@@ -314,7 +315,7 @@ function buildNewsRegulatoryClaims(
     }
 
     const claim = baseClaim.length > 512 ? baseClaim.slice(0, 512) : baseClaim;
-    const confidenceBps = Math.max(0, Math.min(10_000, Math.round(row.confidence.compositeScore)));
+    const confidenceBps = confidenceFractionToBps(row.confidence.compositeScore);
 
     claims.push({
       evidenceId: `normalized-${row.id}` as Identifier128,
@@ -369,7 +370,7 @@ function buildContextualEvidence(
         kind: onChainFlowKind,
         claim,
         direction,
-        confidenceBps: Math.max(0, Math.min(10_000, Math.round(row.confidence.compositeScore))),
+        confidenceBps: confidenceFractionToBps(row.confidence.compositeScore),
         observedAt: toCanonicalTimestamp(flowPayload.observedAtUnixMs) as CanonicalTimestamp,
         expiresAt: toCanonicalTimestamp(
           flowPayload.observedAtUnixMs + 900000
@@ -399,7 +400,7 @@ function buildContextualEvidence(
         kind,
         claim,
         direction: "unknown" as const,
-        confidenceBps: Math.max(0, Math.min(10_000, Math.round(row.confidence.compositeScore))),
+        confidenceBps: confidenceFractionToBps(row.confidence.compositeScore),
         observedAt: toCanonicalTimestamp(typedPayload.asOfUnixMs) as CanonicalTimestamp,
         expiresAt: toCanonicalTimestamp(typedPayload.expiresAtUnixMs) as CanonicalTimestamp,
         sourceReferenceIds: ([`raw-${row.rawObservationId}`] as Identifier128[]).slice(0, 64) as [
