@@ -18,6 +18,7 @@ import type {
 } from "../../../src/domain/evidence-bundle/select.js";
 import type { Confidence, Provenance, FeatureKind } from "../../../src/contracts/taxonomy.js";
 import type { Scope } from "../../../src/contracts/generated/evidence-bundle-v1.js";
+import { makeScheduledEventPayload } from "../../fixtures/context-events.js";
 
 const DEFAULT_CONFIDENCE: Confidence = {
   components: {
@@ -385,5 +386,281 @@ describe("derivatives claim mapper and assembly", () => {
     expect(claims[1]!.confidenceBps).toBe(10000);
     expect(claims[1]!.expiresAt).toBeNull();
     expect(claims[1]!.sourceReferenceIds).toEqual(["raw-99"]);
+  });
+
+  it("correctly maps non-empty contextualEvents, selectedSupportResistance, and selectedNewsEvidence without corrupting confidenceBps", () => {
+    const mvpSlots = buildMvpSlots({});
+
+    const scheduledPayload = makeScheduledEventPayload({
+      title: "Fed Rate Decision",
+      description: "US Fed announcement",
+      status: "SCHEDULED",
+      severity: "HIGH"
+    });
+
+    const normEventRow: import("../../../src/ports/index.js").NormalizedObservationRow = {
+      id: 201,
+      rawObservationId: 601,
+      source: "macro-calendar-api",
+      observationKind: "scheduled_event",
+      signalClass: "contextual",
+      evidenceFamily: "macro_protocol_risk",
+      payload: scheduledPayload,
+      payloadHash: "hash-201",
+      confidence: {
+        ...DEFAULT_CONFIDENCE,
+        compositeScore: 7500
+      },
+      confidenceComposite: 7500,
+      confidenceLevel: "high",
+      validUntilUnixMs: 1700003600000,
+      isStale: false,
+      staleBehavior: null,
+      provenance: makeRawProvenance([601]),
+      receivedAtUnixMs: 1700000000000
+    };
+
+    const selectedContextEvent: import("../../../src/domain/context-events/select.js").SelectedContextEvent =
+      {
+        row: normEventRow,
+        payload: scheduledPayload,
+        eventFamily: "scheduled_event"
+      };
+
+    const srPayload: import("../../../src/contracts/support-resistance.js").SupportResistancePayloadV1 =
+      {
+        kind: "support_resistance_level",
+        schemaVersion: 1,
+        pair: "SOL/USDC",
+        unit: "USDC_PER_SOL",
+        evidenceSide: "SUPPORT",
+        levelType: "point",
+        levelUsdcPerSol: 145.5,
+        timeframe: "1h",
+        thesisCodes: [],
+        invalidationConditions: [],
+        asOfUnixMs: 1700000000000,
+        expiresAtUnixMs: 1700003600000,
+        warnings: [],
+        sourceReferences: ["sr-ref-1"],
+        sourceQuality: { providerId: "ta", reliability: 0.8, completeness: "complete" }
+      };
+
+    const normSrRow: import("../../../src/ports/index.js").NormalizedObservationRow = {
+      id: 202,
+      rawObservationId: 602,
+      source: "technical-analysis-api",
+      observationKind: "support_resistance_level",
+      signalClass: "contextual",
+      evidenceFamily: "support_resistance",
+      payload: srPayload,
+      payloadHash: "hash-202",
+      confidence: {
+        ...DEFAULT_CONFIDENCE,
+        compositeScore: 8000
+      },
+      confidenceComposite: 8000,
+      confidenceLevel: "high",
+      validUntilUnixMs: 1700003600000,
+      isStale: false,
+      staleBehavior: null,
+      provenance: makeRawProvenance([602]),
+      receivedAtUnixMs: 1700000000000
+    };
+
+    const selectedSr: import("../../../src/domain/support-resistance/select.js").SelectedSupportResistance =
+      {
+        row: normSrRow,
+        payload: srPayload
+      };
+
+    const newsPayload: import("../../../src/contracts/news-events.js").NewsPayloadV1 = {
+      evidenceKind: "ecosystem_news",
+      articleId: "art-1",
+      sourceVersionId: "v1",
+      correctsSourceVersionId: null,
+      clusterId: "cluster-1",
+      title: "Solana Upgrade Complete",
+      factualSummary: "v1.18 deployed",
+      extractedClaims: ["v1.18 deployed"],
+      topicTags: ["solana"],
+      publishedAtUnixMs: 1700000000000,
+      sourceUpdatedAtUnixMs: 1700000000000,
+      retrievedAtUnixMs: 1700000000000,
+      asOfUnixMs: 1700000000000,
+      expiresAtUnixMs: 1700003600000,
+      publisher: { publisherId: "coindesk", displayName: "CoinDesk", tier: "primary" },
+      sourceQuality: {
+        providerId: "news-api",
+        reliability: 0.85,
+        completeness: "complete",
+        confirmation: "confirmed",
+        isPaywalled: false
+      },
+      corroborationState: "independently_corroborated",
+      originatingReportId: "rep-1",
+      syndicationId: null,
+      affectedAssets: ["SOL"],
+      affectedProtocols: ["solana"],
+      affectedJurisdictions: [],
+      sourceReferences: ["news-ref-1"],
+      rawProvenance: {
+        retrievedAtUnixMs: 1700000000000,
+        license: "standard",
+        retentionMode: "bounded_factual_extract",
+        robotsCompliance: true,
+        termsAccepted: true
+      },
+      warnings: []
+    };
+
+    const normNewsRow: import("../../../src/ports/index.js").NormalizedObservationRow = {
+      id: 203,
+      rawObservationId: 603,
+      source: "crypto-news-api",
+      observationKind: "ecosystem_news",
+      signalClass: "contextual",
+      evidenceFamily: "news_evidence",
+      payload: newsPayload,
+      payloadHash: "hash-203",
+      confidence: {
+        ...DEFAULT_CONFIDENCE,
+        compositeScore: 8500
+      },
+      confidenceComposite: 8500,
+      confidenceLevel: "high",
+      validUntilUnixMs: 1700003600000,
+      isStale: false,
+      staleBehavior: null,
+      provenance: makeRawProvenance([603]),
+      receivedAtUnixMs: 1700000000000
+    };
+
+    const selectedNews: import("../../../src/domain/news-events/select.js").SelectedNewsEvidence = {
+      row: normNewsRow,
+      payload: newsPayload
+    };
+
+    const quality = classifyEvidenceBundleQuality({
+      slots: mvpSlots,
+      runId: "run-1",
+      correlationId: "corr-1",
+      createdAt: 1700000000000,
+      asOf: 1700000000000,
+      freshUntil: 1700003600000,
+      expiresAt: 1700007200000,
+      hasSupportResistance: true,
+      hasFlows: false,
+      hasDerivatives: true,
+      hasEvents: true,
+      hasNewsRegulatory: true,
+      hasResearchBrief: false
+    });
+
+    const candidate = assembleEvidenceBundleCandidate({
+      scope: DEFAULT_SCOPE,
+      slots: mvpSlots,
+      quality,
+      lineage: {
+        rawObservationIds: [601, 602, 603],
+        normalizedObservationIds: [201, 202, 203],
+        sourceReferences: [
+          {
+            referenceId: "raw-601",
+            sourceType: "api",
+            locator: "loc-601",
+            observedAt: "2023-11-14T22:13:20.000Z"
+          },
+          {
+            referenceId: "raw-602",
+            sourceType: "api",
+            locator: "loc-602",
+            observedAt: "2023-11-14T22:13:20.000Z"
+          },
+          {
+            referenceId: "raw-603",
+            sourceType: "api",
+            locator: "loc-603",
+            observedAt: "2023-11-14T22:13:20.000Z"
+          }
+        ]
+      },
+      runId: "run-1",
+      correlationId: "corr-1",
+      createdAt: 1700000000000,
+      asOf: 1700000000000,
+      freshUntil: 1700003600000,
+      expiresAt: 1700007200000,
+      briefPresent: false,
+      pipelineVersion: "1.0.0",
+      gitCommit: "0000000000000000000000000000000000000000000000000000000000000000",
+      environment: "test",
+      contextualEvents: [selectedContextEvent],
+      selectedSupportResistance: [selectedSr],
+      selectedNewsEvidence: [selectedNews]
+    });
+
+    expect(candidate.contextualEvidence.events).toHaveLength(1);
+    expect(candidate.contextualEvidence.events[0]!.confidenceBps).toBe(7500);
+
+    expect(candidate.contextualEvidence.supportResistance).toHaveLength(1);
+    expect(candidate.contextualEvidence.supportResistance[0]!.confidenceBps).toBe(8000);
+
+    expect(candidate.contextualEvidence.newsRegulatory).toHaveLength(1);
+    expect(candidate.contextualEvidence.newsRegulatory[0]!.confidenceBps).toBe(8500);
+  });
+
+  it("handles out-of-order slots array when assembling evidence bundle candidate", () => {
+    const defaultSlots = buildMvpSlots({});
+    const reversedSlots = [...defaultSlots].reverse();
+
+    const quality = classifyEvidenceBundleQuality({
+      slots: reversedSlots,
+      runId: "run-1",
+      correlationId: "corr-1",
+      createdAt: 1700000000000,
+      asOf: 1700000000000,
+      freshUntil: 1700003600000,
+      expiresAt: 1700007200000,
+      hasSupportResistance: false,
+      hasFlows: false,
+      hasDerivatives: true,
+      hasEvents: false,
+      hasNewsRegulatory: false,
+      hasResearchBrief: false
+    });
+
+    const candidate = assembleEvidenceBundleCandidate({
+      scope: DEFAULT_SCOPE,
+      slots: reversedSlots,
+      quality,
+      lineage: {
+        rawObservationIds: [41],
+        normalizedObservationIds: [1],
+        sourceReferences: [
+          {
+            referenceId: "raw-41",
+            sourceType: "api",
+            locator: "loc-41",
+            observedAt: "2023-11-14T22:13:20.000Z"
+          }
+        ]
+      },
+      runId: "run-1",
+      correlationId: "corr-1",
+      createdAt: 1700000000000,
+      asOf: 1700000000000,
+      freshUntil: 1700003600000,
+      expiresAt: 1700007200000,
+      briefPresent: false,
+      pipelineVersion: "1.0.0",
+      gitCommit: "0000000000000000000000000000000000000000000000000000000000000000",
+      environment: "test",
+      contextualEvents: []
+    });
+
+    for (const feature of candidate.deterministicFeatures) {
+      expect(feature.status).toBe("available");
+    }
   });
 });

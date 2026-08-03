@@ -271,10 +271,7 @@ function buildSupportResistanceClaims(
     }
 
     const claim = baseClaim.length > 512 ? baseClaim.slice(0, 512) : baseClaim;
-    const confidenceBps = Math.max(
-      0,
-      Math.min(10_000, Math.round(row.confidence.compositeScore * 10_000))
-    );
+    const confidenceBps = Math.max(0, Math.min(10_000, Math.round(row.confidence.compositeScore)));
 
     claims.push({
       evidenceId: `normalized-${row.id}` as Identifier128,
@@ -309,10 +306,7 @@ function buildNewsRegulatoryClaims(
     }
 
     const claim = baseClaim.length > 512 ? baseClaim.slice(0, 512) : baseClaim;
-    const confidenceBps = Math.max(
-      0,
-      Math.min(10_000, Math.round(row.confidence.compositeScore * 10_000))
-    );
+    const confidenceBps = Math.max(0, Math.min(10_000, Math.round(row.confidence.compositeScore)));
 
     claims.push({
       evidenceId: `normalized-${row.id}` as Identifier128,
@@ -365,7 +359,7 @@ function buildContextualEvidence(
         kind: onChainFlowKind,
         claim,
         direction,
-        confidenceBps: Math.round(row.confidence.compositeScore * 10000),
+        confidenceBps: Math.max(0, Math.min(10_000, Math.round(row.confidence.compositeScore))),
         observedAt: toCanonicalTimestamp(
           flowPayload.observedAtUnixMs
         ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
@@ -398,7 +392,7 @@ function buildContextualEvidence(
         kind,
         claim,
         direction: "unknown" as const,
-        confidenceBps: Math.round(row.confidence.compositeScore * 10000),
+        confidenceBps: Math.max(0, Math.min(10_000, Math.round(row.confidence.compositeScore))),
         observedAt: toCanonicalTimestamp(
           typedPayload.asOfUnixMs
         ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
@@ -507,16 +501,14 @@ export function assembleEvidenceBundleCandidate(
     ...Identifier128[]
   ];
 
-  const deterministicFeatures: DeterministicFeature[] = MVP_FEATURE_KINDS.map(
-    (featureKind, index) => {
-      const slot = slots[index];
-      if (!slot || slot.featureKind !== featureKind) {
-        const missingSlot: SelectedFeatureSlot = { featureKind, outcome: "missing" };
-        return buildDeterministicFeature(missingSlot, featureKind, availableInputLineage);
-      }
-      return buildDeterministicFeature(slot, featureKind, availableInputLineage);
+  const deterministicFeatures: DeterministicFeature[] = MVP_FEATURE_KINDS.map((featureKind) => {
+    const slot = slots.find((s) => s.featureKind === featureKind);
+    if (!slot) {
+      const missingSlot: SelectedFeatureSlot = { featureKind, outcome: "missing" };
+      return buildDeterministicFeature(missingSlot, featureKind, availableInputLineage);
     }
-  );
+    return buildDeterministicFeature(slot, featureKind, availableInputLineage);
+  });
 
   const needsUnavailableReference = deterministicFeatures.some((feature) =>
     feature.inputLineage.includes(FEATURE_UNAVAILABLE_REFERENCE_ID)

@@ -93,12 +93,7 @@ export function buildDerivativeClaims(slots: readonly SelectedFeatureSlot[]): De
     const rawClaimText = `${slot.featureKind}: ${signedBps} (${window})`;
     const claim = rawClaimText.length > 512 ? rawClaimText.slice(0, 512) : rawClaimText;
 
-    const rawBps = Math.round(
-      slot.confidence.compositeScore <= 1
-        ? slot.confidence.compositeScore * 10_000
-        : slot.confidence.compositeScore
-    );
-    const confidenceBps = Math.max(0, Math.min(10_000, rawBps));
+    const confidenceBps = Math.max(0, Math.min(10_000, Math.round(slot.confidence.compositeScore)));
 
     const observedAt = toCanonicalTimestamp(slot.asOfUnixMs);
     const expiresAt =
