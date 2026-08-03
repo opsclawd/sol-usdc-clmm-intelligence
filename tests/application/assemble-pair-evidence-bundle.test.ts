@@ -261,6 +261,7 @@ function makeDefaultRequest(
 ): AssemblePairEvidenceBundleRequest {
   return {
     pair: "SOL/USDC",
+    poolId: "pool-1",
     pipelineRunId: "pipeline-1",
     correlationId: "corr-1",
     evaluationTimeUnixMs: 1000000,
@@ -374,7 +375,7 @@ function makeValidPairFeatureFixture() {
 }
 
 describe("assemblePairEvidenceBundle", () => {
-  it("queries and selects pair deterministic features with poolId: null and positionId: null filters", async () => {
+  it("queries pair-applicable deterministic features for the canonical pool with no position filter", async () => {
     let capturedQuery: BundleFeatureCandidateQuery | null = null;
     const { detRaw, detNorm, featureRow } = makeValidPairFeatureFixture();
 
@@ -417,18 +418,216 @@ describe("assemblePairEvidenceBundle", () => {
       contract
     };
 
+    const expectedPairFeatureKinds = MVP_FEATURE_KINDS.filter(
+      (kind) => !["range_location", "distance_to_lower", "distance_to_upper"].includes(kind)
+    );
+
     const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
     expect("outcome" in result && result.outcome).toBe("persisted");
 
     expect(capturedQuery).not.toBeNull();
     const query = capturedQuery as unknown as BundleFeatureCandidateQuery;
     expect(query.pair).toBe("SOL/USDC");
-    expect(query.featureKinds).toEqual(MVP_FEATURE_KINDS);
+    expect(query.featureKinds).toEqual(expectedPairFeatureKinds);
     expect(query.asOfAtOrAfterUnixMs).toBe(1000000 - 24 * 3600000);
     expect(query.asOfAtOrBeforeUnixMs).toBe(1000000);
     expect(query.receivedAtOrBeforeUnixMs).toBe(1000000);
-    expect(query.poolId).toBeNull();
+    expect(query.poolId).toBe("pool-1");
     expect(query.positionId).toBeNull();
+  });
+
+  it("selects a pool-scoped volume ratio into the pair bundle", async () => {
+    const rawRow = makeRawObservationRow({
+      id: 5,
+      source: "jupiter-price",
+      payloadHash: "raw-hash-5"
+    });
+    const normRow = makeNormalizedRow({
+      id: 15,
+      rawObservationId: 5,
+      source: "jupiter-price",
+      payloadHash: "norm-hash-15",
+      provenance: {
+        ...DEFAULT_PROVENANCE,
+        rawObservationRefs: [
+          { refType: "raw_observation", id: 5, source: "jupiter-price", payloadHash: "raw-hash-5" }
+        ]
+      }
+    });
+
+    const poolVolumeRow = makeFeatureRow({
+      id: 101,
+      featureKind: "volume_liquidity_ratio_24h",
+      derivationKey: "pool=pool-1,kind=volume_liquidity_ratio_24h",
+      asOfUnixMs: 1000000,
+      receivedAtUnixMs: 1000000,
+      status: "AVAILABLE",
+      value: 1.5,
+      pair: "SOL/USDC",
+      poolId: "pool-1",
+      positionId: null,
+      provenance: {
+        ...DEFAULT_PROVENANCE,
+        rawObservationRefs: [
+          {
+            refType: "normalized_observation",
+            id: 15,
+            source: "jupiter-price",
+            payloadHash: "norm-hash-15"
+          }
+        ]
+      }
+    });
+
+    let capturedCandidate: unknown = null;
+
+    const deps: AssemblePairEvidenceBundleDeps = {
+      clock: { now: () => "2026-05-10T12:00:00.000Z" },
+      featureRepo: makeMockFeatureRepo({
+        listBundleCandidates: async () => [poolVolumeRow]
+      }),
+      normalizedRepo: makeMockNormalizedRepo({
+        listCandidates: async () => [],
+        findByIds: async () => [normRow]
+      }),
+      rawRepo: makeMockRawRepo({
+        findByIds: async () => [rawRow],
+        findById: async () => rawRow
+      }),
+      contract: {
+        validateCanonicalizeAndHash: async (candidate) => {
+          capturedCandidate = candidate;
+          return makeCanonicalBundle();
+        }
+      },
+      bundleRepo: {
+        insertOrClassify: async () => ({ outcome: "inserted", row: makeBundleRow() }),
+        findById: async () => undefined,
+        findByPair: async () => [],
+        findLatestByPair: async () => undefined
+      }
+    };
+
+    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    expect("outcome" in result && result.outcome).toBe("persisted");
+
+    const candidateObj = capturedCandidate as {
+      deterministicFeatures: Array<{ featureId: string; status: string; value: number | null }>;
+    };
+
+    const selectedVolumeRatio = candidateObj.deterministicFeatures.find((f) =>
+      f.featureId.includes("volume_liquidity_ratio_24h")
+    );
+    expect(selectedVolumeRatio).toBeDefined();
+    expect(selectedVolumeRatio?.status).toBe("available");
+    expect(selectedVolumeRatio?.value).toBe(1.5);
+  });
+
+  it("omits position-scoped kinds from pair quality warnings and deterministic output", async () => {
+    const rawRow = makeRawObservationRow({
+      id: 5,
+      source: "jupiter-price",
+      payloadHash: "raw-hash-5"
+    });
+    const normRow = makeNormalizedRow({
+      id: 15,
+      rawObservationId: 5,
+      source: "jupiter-price",
+      payloadHash: "norm-hash-15",
+      provenance: {
+        ...DEFAULT_PROVENANCE,
+        rawObservationRefs: [
+          { refType: "raw_observation", id: 5, source: "jupiter-price", payloadHash: "raw-hash-5" }
+        ]
+      }
+    });
+
+    const expectedPairKinds = MVP_FEATURE_KINDS.filter(
+      (kind) => !["range_location", "distance_to_lower", "distance_to_upper"].includes(kind)
+    );
+
+    const featureRows: DerivedFeatureRow[] = expectedPairKinds.map((kind, idx) =>
+      makeFeatureRow({
+        id: 200 + idx,
+        featureKind: kind,
+        derivationKey: `kind=${kind}`,
+        asOfUnixMs: 1000000,
+        receivedAtUnixMs: 1000000,
+        status: "AVAILABLE",
+        value: 10 + idx,
+        pair: "SOL/USDC",
+        poolId: kind === "volume_liquidity_ratio_24h" ? "pool-1" : null,
+        positionId: null,
+        provenance: {
+          ...DEFAULT_PROVENANCE,
+          rawObservationRefs: [
+            {
+              refType: "normalized_observation",
+              id: 15,
+              source: "jupiter-price",
+              payloadHash: "norm-hash-15"
+            }
+          ]
+        }
+      })
+    );
+
+    let capturedCandidate: unknown = null;
+
+    const deps: AssemblePairEvidenceBundleDeps = {
+      clock: { now: () => "2026-05-10T12:00:00.000Z" },
+      featureRepo: makeMockFeatureRepo({
+        listBundleCandidates: async () => featureRows
+      }),
+      normalizedRepo: makeMockNormalizedRepo({
+        listCandidates: async () => [],
+        findByIds: async () => [normRow]
+      }),
+      rawRepo: makeMockRawRepo({
+        findByIds: async () => [rawRow],
+        findById: async () => rawRow
+      }),
+      contract: {
+        validateCanonicalizeAndHash: async (candidate) => {
+          capturedCandidate = candidate;
+          return makeCanonicalBundle();
+        }
+      },
+      bundleRepo: {
+        insertOrClassify: async () => ({ outcome: "inserted", row: makeBundleRow() }),
+        findById: async () => undefined,
+        findByPair: async () => [],
+        findLatestByPair: async () => undefined
+      }
+    };
+
+    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    expect("outcome" in result && result.outcome).toBe("persisted");
+
+    const candidateObj = capturedCandidate as {
+      deterministicFeatures: Array<{ featureId: string; status: string; value: number | null }>;
+      assessment: { warnings: Array<{ code: string; message: string }> };
+    };
+
+    const deterministicKinds = candidateObj.deterministicFeatures.map((f) =>
+      f.featureId.replace(/^feat-/, "").replace(/-\d+$|-missing$/, "")
+    );
+    expect(deterministicKinds).toEqual(expectedPairKinds);
+
+    const positionKinds = ["range_location", "distance_to_lower", "distance_to_upper"];
+    for (const posKind of positionKinds) {
+      expect(candidateObj.deterministicFeatures.some((f) => f.featureId.includes(posKind))).toBe(
+        false
+      );
+      expect(
+        candidateObj.deterministicFeatures.some((f) => f.featureId === `feat-${posKind}-missing`)
+      ).toBe(false);
+    }
+
+    const missingSlotsWarnings = candidateObj.assessment.warnings.filter(
+      (w) => w.code === "missing_slots"
+    );
+    expect(missingSlotsWarnings).toHaveLength(0);
   });
 
   it("persists a degraded pair bundle with deterministic features and no contextual claims", async () => {

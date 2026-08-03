@@ -54,6 +54,7 @@ function makeQualityInput(
 ): EvidenceQualityInput {
   return {
     slots,
+    ...(overrides?.featureKinds !== undefined ? { featureKinds: overrides.featureKinds } : {}),
     runId: overrides?.runId ?? "run-123",
     correlationId: overrides?.correlationId ?? "corr-456",
     createdAt: overrides?.createdAt ?? 5000000000000,
@@ -634,6 +635,46 @@ describe("classifyEvidenceBundleQuality", () => {
 
       expect(result.slotQualitySummaries).toHaveLength(MVP_FEATURE_KINDS.length);
       expect(result.slotQualitySummaries.map((s) => s.featureKind)).toEqual([...MVP_FEATURE_KINDS]);
+    });
+
+    it("scores only explicitly requested feature kinds without inventing omitted missing slots", () => {
+      const requestedKinds = ["oracle_dex_divergence", "volume_liquidity_ratio_24h"] as const;
+      const slots: SelectedFeatureSlot[] = [
+        {
+          featureKind: "oracle_dex_divergence",
+          outcome: "selected_available",
+          rowId: 1,
+          value: 10,
+          confidence: DEFAULT_CONFIDENCE,
+          provenance: DEFAULT_PROVENANCE,
+          warnings: [],
+          reasons: [],
+          asOfUnixMs: 5000000000000,
+          validUntilUnixMs: null
+        },
+        {
+          featureKind: "volume_liquidity_ratio_24h",
+          outcome: "selected_available",
+          rowId: 2,
+          value: 200,
+          confidence: DEFAULT_CONFIDENCE,
+          provenance: DEFAULT_PROVENANCE,
+          warnings: [],
+          reasons: [],
+          asOfUnixMs: 5000000000000,
+          validUntilUnixMs: null
+        }
+      ];
+      const input = makeQualityInput(slots, {
+        featureKinds: requestedKinds
+      } as Partial<EvidenceQualityInput>);
+
+      const result = classifyEvidenceBundleQuality(input);
+
+      expect(result.slotQualitySummaries).toHaveLength(2);
+      expect(result.slotQualitySummaries.map((s) => s.featureKind)).toEqual([...requestedKinds]);
+      expect(result.coverage.deterministic).toBe("available");
+      expect(result.warnings.map((w) => w.code)).not.toContain("missing_slots");
     });
   });
 

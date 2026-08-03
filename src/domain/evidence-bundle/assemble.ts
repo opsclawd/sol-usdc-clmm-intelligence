@@ -37,6 +37,7 @@ export const EVIDENCE_BUNDLE_ASSEMBLE_VERSION = "mvp-evidence-bundle-assemble/v1
 export interface AssembleEvidenceBundleInput {
   readonly scope: Scope;
   readonly slots: readonly SelectedFeatureSlot[];
+  readonly featureKinds?: readonly FeatureKind[];
   readonly quality: EvidenceBundleQuality;
   readonly lineage: VerifiedEvidenceLineage["lineage"];
   readonly runId: string;
@@ -497,7 +498,9 @@ export function assembleEvidenceBundleCandidate(
     .map((reference) => reference.referenceId)
     .slice(0, 64) as [Identifier128, ...Identifier128[]];
 
-  const deterministicFeatures: DeterministicFeature[] = MVP_FEATURE_KINDS.map((featureKind) => {
+  const featureKinds = input.featureKinds ?? MVP_FEATURE_KINDS;
+
+  const deterministicFeatures: DeterministicFeature[] = featureKinds.map((featureKind) => {
     const slot = slots.find((s) => s.featureKind === featureKind);
     if (!slot) {
       const missingSlot: SelectedFeatureSlot = { featureKind, outcome: "missing" };
