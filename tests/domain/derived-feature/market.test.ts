@@ -480,7 +480,7 @@ describe("accepts zero volume only with positive TVL", () => {
     const result = calculateVolumeLiquidityRatio24h(pool);
     expect(result.status).toBe("AVAILABLE");
     expect(result.value).toBe(0);
-    expect(result.metadata.unit).toBe("PERCENT");
+    expect(result.metadata.unit).toBe("BPS");
   });
 
   it("returns UNAVAILABLE null when TVL is missing", () => {
@@ -524,14 +524,14 @@ describe("accepts zero volume only with positive TVL", () => {
     expect(result.value).toBeNull();
   });
 
-  it("returns 24_016 percent units for a live-shaped 2.401583 ratio", () => {
+  it("returns 24_016 BPS units for a live-shaped 2.401583 ratio", () => {
     const result = calculateVolumeLiquidityRatio24h(
       makePoolStats({ volume24hUsdc: "2401583", tvlUsdc: "1000000" })
     );
 
     expect(result.status).toBe("AVAILABLE");
     expect(result.value).toBe(24_016);
-    expect(result.metadata.unit).toBe("PERCENT");
+    expect(result.metadata.unit).toBe("BPS");
   });
 
   it("returns PARTIAL when pool has provider warning", () => {
@@ -543,11 +543,11 @@ describe("accepts zero volume only with positive TVL", () => {
     const result = calculateVolumeLiquidityRatio24h(pool);
     expect(result.status).toBe("PARTIAL");
     expect(result.value).toBe(5_000);
-    expect(result.metadata.unit).toBe("PERCENT");
+    expect(result.metadata.unit).toBe("BPS");
     expect(result.warnings.some((w) => w.includes("provider"))).toBe(true);
   });
 
-  it("returns exact percent-scaled ratio for positive volume and TVL", () => {
+  it("returns exact BPS-scaled ratio for positive volume and TVL", () => {
     const pool = makePoolStats({
       volume24hUsdc: "500000",
       tvlUsdc: "1000000"
@@ -555,7 +555,7 @@ describe("accepts zero volume only with positive TVL", () => {
     const result = calculateVolumeLiquidityRatio24h(pool);
     expect(result.status).toBe("AVAILABLE");
     expect(result.value).toBe(5_000);
-    expect(result.metadata.unit).toBe("PERCENT");
+    expect(result.metadata.unit).toBe("BPS");
   });
 
   it("rounds percent-scaled ratios to nearest integer away from zero", () => {

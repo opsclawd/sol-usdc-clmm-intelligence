@@ -259,7 +259,7 @@ export function calculateVolumeLiquidityRatio24h(pool: PoolStatisticsPayloadV1):
       value: roundedRatio,
       warnings,
       reasons: [],
-      metadata: { unit: "PERCENT" as const }
+      metadata: { unit: "BPS" as const }
     };
   }
 
@@ -268,6 +268,6 @@ export function calculateVolumeLiquidityRatio24h(pool: PoolStatisticsPayloadV1):
     value: roundedRatio,
     warnings: [],
     reasons: [],
-    metadata: { unit: "PERCENT" as const }
+    metadata: { unit: "BPS" as const }
   };
 }
