@@ -22,7 +22,7 @@ const DEFAULT_CONFIDENCE: Confidence = {
     derivationConfidence: 1,
     llmConfidence: null
   },
-  compositeScore: 10000,
+  compositeScore: 1,
   level: "high",
   weightingVersion: "v1",
   reasons: []
@@ -248,7 +248,7 @@ function makeSupportPointFixture(): SelectedSupportResistance {
     sourceQuality: { providerId: "ta", reliability: 0.9, completeness: "complete" }
   };
   return {
-    row: makeNormalizedRow(101, 501, "support_resistance_level", payload, 0.9),
+    row: makeNormalizedRow(101, 501, "support_resistance_level", payload, 0.85),
     payload
   };
 }
@@ -486,9 +486,21 @@ describe("support-resistance and news assembly mapping", () => {
     expect(newsClaim.sourceReferenceIds).toEqual(["raw-601"]);
   });
 
+  it("scales support resistance and news confidence from fractions to basis points", () => {
+    const candidate = assembleEvidenceBundleCandidate(
+      makeAssembleInput({
+        selectedSupportResistance: [makeSupportPointFixture()],
+        selectedNewsEvidence: [makeRegulatoryRiskFixture()]
+      })
+    );
+
+    expect(candidate.contextualEvidence.supportResistance[0]!.confidenceBps).toBe(8500);
+    expect(candidate.contextualEvidence.newsRegulatory[0]!.confidenceBps).toBe(9500);
+  });
+
   it("clamps confidence to contract basis points and bounds claim text", () => {
     const srOver = makeSupportPointFixture();
-    (srOver.row.confidence as { compositeScore: number }).compositeScore = 15000;
+    (srOver.row.confidence as { compositeScore: number }).compositeScore = 1.5;
     const srLongClaim = makeResistanceZoneFixture();
     (srLongClaim.payload as unknown as { thesisCodes: string[] }).thesisCodes = ["a".repeat(600)];
 

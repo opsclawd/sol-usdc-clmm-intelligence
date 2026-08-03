@@ -409,9 +409,9 @@ describe("derivatives claim mapper and assembly", () => {
       payloadHash: "hash-201",
       confidence: {
         ...DEFAULT_CONFIDENCE,
-        compositeScore: 7500
+        compositeScore: 0.75
       },
-      confidenceComposite: 7500,
+      confidenceComposite: 0.75,
       confidenceLevel: "high",
       validUntilUnixMs: 1700003600000,
       isStale: false,
@@ -457,9 +457,9 @@ describe("derivatives claim mapper and assembly", () => {
       payloadHash: "hash-202",
       confidence: {
         ...DEFAULT_CONFIDENCE,
-        compositeScore: 8000
+        compositeScore: 0.8
       },
-      confidenceComposite: 8000,
+      confidenceComposite: 0.8,
       confidenceLevel: "high",
       validUntilUnixMs: 1700003600000,
       isStale: false,
@@ -525,9 +525,9 @@ describe("derivatives claim mapper and assembly", () => {
       payloadHash: "hash-203",
       confidence: {
         ...DEFAULT_CONFIDENCE,
-        compositeScore: 8500
+        compositeScore: 0.85
       },
-      confidenceComposite: 8500,
+      confidenceComposite: 0.85,
       confidenceLevel: "high",
       validUntilUnixMs: 1700003600000,
       isStale: false,
