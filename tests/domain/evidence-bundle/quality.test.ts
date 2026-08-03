@@ -12,7 +12,7 @@ const DEFAULT_CONFIDENCE: Confidence = {
     derivationConfidence: 1,
     llmConfidence: null
   },
-  compositeScore: 10000,
+  compositeScore: 1,
   level: "high",
   weightingVersion: "v1",
   reasons: []
@@ -39,7 +39,7 @@ function makeSlotsAllAvailable(): SelectedFeatureSlot[] {
     outcome: "selected_available" as const,
     rowId: i + 1,
     value: 1000 + i,
-    confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 10000 - i * 100 },
+    confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 1 - i * 0.01 },
     provenance: DEFAULT_PROVENANCE,
     warnings: [] as readonly string[],
     reasons: [] as readonly string[],
@@ -182,7 +182,7 @@ describe("classifyEvidenceBundleQuality", () => {
         outcome: "selected_partial",
         rowId: 1,
         value: 500,
-        confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 5000 },
+        confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0.5 },
         provenance: DEFAULT_PROVENANCE,
         warnings: ["partial_input"],
         reasons: ["degraded_confidence"],
@@ -294,14 +294,14 @@ describe("classifyEvidenceBundleQuality", () => {
   });
 
   describe("keeps bundle confidence monotonic with its usable evidence", () => {
-    it("bundle confidence does not exceed weakest summarized evidence", () => {
+    it("bundle confidence equals the weakest scaled usable evidence", () => {
       const slots = makeSlotsAllAvailable();
       slots[0] = {
         featureKind: "range_location",
         outcome: "selected_available",
         rowId: 1,
         value: 1000,
-        confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 3000 },
+        confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0.3 },
         provenance: DEFAULT_PROVENANCE,
         warnings: [],
         reasons: [],
@@ -313,7 +313,7 @@ describe("classifyEvidenceBundleQuality", () => {
         outcome: "selected_available",
         rowId: 2,
         value: 500,
-        confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 5000 },
+        confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0.5 },
         provenance: DEFAULT_PROVENANCE,
         warnings: [],
         reasons: [],
@@ -324,7 +324,45 @@ describe("classifyEvidenceBundleQuality", () => {
       const input = makeQualityInput(slots);
       const result = classifyEvidenceBundleQuality(input);
 
-      expect(result.overallConfidenceBps).toBeLessThanOrEqual(3000);
+      expect(result.slotQualitySummaries[0]!.confidenceBps).toBe(3000);
+      expect(result.slotQualitySummaries[1]!.confidenceBps).toBe(5000);
+      expect(result.overallConfidenceBps).toBe(3000);
+    });
+
+    it("scales available and partial slot confidence from fractions to basis points", () => {
+      const slots = makeSlotsAllAvailable();
+      slots[0] = {
+        featureKind: "range_location",
+        outcome: "selected_partial",
+        rowId: 1,
+        value: 1000,
+        confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0.625 },
+        provenance: DEFAULT_PROVENANCE,
+        warnings: ["partial_input"],
+        reasons: ["degraded_confidence"],
+        asOfUnixMs: 5_000_000_000_000,
+        validUntilUnixMs: null
+      };
+
+      const result = classifyEvidenceBundleQuality(makeQualityInput(slots));
+
+      expect(result.slotQualitySummaries[0]!.confidenceBps).toBe(6250);
+    });
+
+    it("missing expired and unsupported slots keep zero confidence", () => {
+      const slots: SelectedFeatureSlot[] = [
+        { featureKind: "range_location", outcome: "missing" },
+        { featureKind: "distance_to_lower", outcome: "expired_only", rowId: 2 },
+        { featureKind: "distance_to_upper", outcome: "unsupported_version_only", rowId: 3 }
+      ];
+
+      const result = classifyEvidenceBundleQuality(
+        makeQualityInput(slots, { allowNoUsableFeatures: true })
+      );
+
+      expect(result.slotQualitySummaries.map((summary) => summary.confidenceBps)).toEqual(
+        Array(MVP_FEATURE_KINDS.length).fill(0)
+      );
     });
 
     it("all high confidence features yields high bundle confidence", () => {
@@ -335,14 +373,14 @@ describe("classifyEvidenceBundleQuality", () => {
       expect(result.overallConfidenceBps).toBeGreaterThan(0);
     });
 
-    it("clamps slot composite score above 10,000 to 10,000 bps", () => {
+    it("clamps a slot composite score above one to 10,000 basis points", () => {
       const slots = makeSlotsAllAvailable();
       slots[0] = {
         featureKind: "range_location",
         outcome: "selected_available",
         rowId: 1,
         value: 1000,
-        confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 15000 },
+        confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 1.5 },
         provenance: DEFAULT_PROVENANCE,
         warnings: [],
         reasons: [],
