@@ -48,7 +48,7 @@ import {
   type SelectedSupportResistance
 } from "../domain/support-resistance/select.js";
 import { selectNewsEvidence, type SelectedNewsEvidence } from "../domain/news-events/select.js";
-import { hasUsableDerivativeSlots } from "../domain/evidence-bundle/derivatives.js";
+import { hasUsableDerivativeSlots } from "../domain/evidence-bundle/index.js";
 import { buildPositionRunId } from "./core-evidence-pipeline-policy.js";
 
 export interface AssembleEvidenceBundleRequest {

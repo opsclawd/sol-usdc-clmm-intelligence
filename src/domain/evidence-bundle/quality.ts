@@ -86,7 +86,7 @@ function getSlotConfidenceBps(slot: SelectedFeatureSlot): number {
   ) {
     return 0;
   }
-  return slot.confidence.compositeScore;
+  return Math.max(0, Math.min(10_000, Math.round(slot.confidence.compositeScore)));
 }
 
 function hasSlotValue(slot: SelectedFeatureSlot): boolean {
