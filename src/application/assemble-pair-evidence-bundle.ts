@@ -279,7 +279,9 @@ export async function assemblePairEvidenceBundle(
       pair: request.pair,
       asOfAtOrAfterUnixMs,
       asOfAtOrBeforeUnixMs,
-      receivedAtOrBeforeUnixMs: evaluationTimeUnixMs
+      receivedAtOrBeforeUnixMs: evaluationTimeUnixMs,
+      poolId: null,
+      positionId: null
     };
     candidates = await featureRepo.listBundleCandidates(query);
   } catch (err) {

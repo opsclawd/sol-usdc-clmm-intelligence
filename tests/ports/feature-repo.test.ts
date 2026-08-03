@@ -640,4 +640,49 @@ describe("DerivedFeatureRepo listBundleCandidates", () => {
     expect(candidates).toHaveLength(1);
     expect(candidates[0]!.pair).toBe("SOL/USDC");
   });
+
+  it("filters strictly for poolId: null and positionId: null when explicit nulls are provided", async () => {
+    const repo = new FakeFeatureRepo();
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "key1",
+        featureKind: "realized_volatility_1h",
+        value: 0.5,
+        asOfUnixMs: 1000,
+        payloadHash: "hash1",
+        receivedAtUnixMs: 1001,
+        pair: "SOL/USDC",
+        poolId: null,
+        positionId: null
+      })
+    );
+
+    await repo.insert(
+      makeInsert({
+        derivationKey: "key2",
+        featureKind: "range_location",
+        value: 0.6,
+        asOfUnixMs: 1000,
+        payloadHash: "hash2",
+        receivedAtUnixMs: 1002,
+        pair: "SOL/USDC",
+        poolId: "pool-1",
+        positionId: "pos-1"
+      })
+    );
+
+    const candidates = await repo.listBundleCandidates({
+      featureKinds: ["realized_volatility_1h", "range_location"],
+      pair: "SOL/USDC",
+      asOfAtOrAfterUnixMs: 0,
+      asOfAtOrBeforeUnixMs: 2000,
+      receivedAtOrBeforeUnixMs: 2000,
+      poolId: null,
+      positionId: null
+    });
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.featureKind).toBe("realized_volatility_1h");
+  });
 });

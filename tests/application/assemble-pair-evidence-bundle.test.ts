@@ -374,7 +374,7 @@ function makeValidPairFeatureFixture() {
 }
 
 describe("assemblePairEvidenceBundle", () => {
-  it("queries and selects pair deterministic features without pool or position filters", async () => {
+  it("queries and selects pair deterministic features with poolId: null and positionId: null filters", async () => {
     let capturedQuery: BundleFeatureCandidateQuery | null = null;
     const { detRaw, detNorm, featureRow } = makeValidPairFeatureFixture();
 
@@ -427,8 +427,8 @@ describe("assemblePairEvidenceBundle", () => {
     expect(query.asOfAtOrAfterUnixMs).toBe(1000000 - 24 * 3600000);
     expect(query.asOfAtOrBeforeUnixMs).toBe(1000000);
     expect(query.receivedAtOrBeforeUnixMs).toBe(1000000);
-    expect(query.poolId).toBeUndefined();
-    expect(query.positionId).toBeUndefined();
+    expect(query.poolId).toBeNull();
+    expect(query.positionId).toBeNull();
   });
 
   it("persists a degraded pair bundle with deterministic features and no contextual claims", async () => {

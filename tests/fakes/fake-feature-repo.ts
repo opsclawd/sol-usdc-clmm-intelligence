@@ -87,14 +87,31 @@ export class FakeFeatureRepo implements DerivedFeatureRepo {
 
   async listBundleCandidates(query: BundleFeatureCandidateQuery): Promise<DerivedFeatureRow[]> {
     const result = this.store
-      .filter(
-        (r) =>
-          query.featureKinds.includes(r.featureKind) &&
-          r.pair === query.pair &&
-          r.asOfUnixMs >= query.asOfAtOrAfterUnixMs &&
-          r.asOfUnixMs <= query.asOfAtOrBeforeUnixMs &&
-          r.receivedAtUnixMs <= query.receivedAtOrBeforeUnixMs
-      )
+      .filter((r) => {
+        if (!query.featureKinds.includes(r.featureKind)) return false;
+        if (r.pair !== query.pair) return false;
+        if (r.asOfUnixMs < query.asOfAtOrAfterUnixMs) return false;
+        if (r.asOfUnixMs > query.asOfAtOrBeforeUnixMs) return false;
+        if (r.receivedAtUnixMs > query.receivedAtOrBeforeUnixMs) return false;
+
+        if (query.poolId !== undefined) {
+          if (query.poolId === null) {
+            if (r.poolId !== null) return false;
+          } else {
+            if (r.poolId !== query.poolId && r.poolId !== null) return false;
+          }
+        }
+
+        if (query.positionId !== undefined) {
+          if (query.positionId === null) {
+            if (r.positionId !== null) return false;
+          } else {
+            if (r.positionId !== query.positionId && r.positionId !== null) return false;
+          }
+        }
+
+        return true;
+      })
       .sort((a, b) => {
         if (b.asOfUnixMs !== a.asOfUnixMs) return b.asOfUnixMs - a.asOfUnixMs;
         if (b.receivedAtUnixMs !== a.receivedAtUnixMs)
