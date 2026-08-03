@@ -11,6 +11,25 @@ pnpm collect:core
 
 If `pnpm collect:core` fails, check the configuration or credentials of the failing core sources. Legacy standalone commands (`pnpm collect:price` and `pnpm collect:clmm-bundle`) remain supported.
 
+## Deploy live updates
+
+On the production VPS, run the checked-in deployment entrypoint from the repository checkout:
+
+```bash
+pnpm deploy:live
+```
+
+Use `pnpm deploy:live` for routine production updates instead of a bare `git pull`. It runs the required stages in order:
+
+1. `git pull --ff-only` fast-forwards the current branch from its configured upstream.
+2. `pnpm install --frozen-lockfile` installs the lockfile-pinned dependency set.
+3. `pnpm db:migrate` applies pending database migrations.
+4. `pnpm cron:sync -- --apply` reconciles `cron/jobs.yaml` and its routine prompts into Hermes.
+
+The command is fail-fast. A failed stage prevents every later stage from starting, but successful earlier stages are not rolled back. In particular, a migration may already be applied before cron reconciliation fails, and Hermes may accept some job edits before a later edit fails.
+
+On failure, read the failing command's output, correct the checkout or host configuration, and rerun `pnpm deploy:live`. After a successful run, use the Hermes inspection commands under **Test a job** to confirm the expected jobs and recent runs. Do not manually reverse an applied migration or recreate all Hermes jobs as a recovery shortcut.
+
 ## Register scheduled jobs
 
 The scheduled runtime is **Hermes**, not OpenClaw — see `scheduling.md` for the full explanation. `pnpm cron:render` prints create-command rendering without inspecting current Hermes state. `pnpm cron:sync -- --apply` reconciles desired jobs from `cron/jobs.yaml`/`cron/routines/*.md` against the host Hermes store:
