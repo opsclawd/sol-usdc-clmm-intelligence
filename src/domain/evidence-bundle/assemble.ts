@@ -24,6 +24,7 @@ import type { OnChainFlowPayloadV1 } from "../../contracts/on-chain-flow.js";
 import type { SelectedSupportResistance } from "../support-resistance/select.js";
 import type { SelectedNewsEvidence } from "../news-events/select.js";
 import { toCanonicalTimestamp } from "./timestamp.js";
+import { buildDerivativeClaims } from "./derivatives.js";
 
 const FEATURE_UNAVAILABLE_REFERENCE_ID = "feature_unavailable" as Identifier128;
 
@@ -331,7 +332,8 @@ function buildNewsRegulatoryClaims(
 function buildContextualEvidence(
   contextualEvents: readonly SelectedContextEvent[],
   selectedSupportResistance: readonly SelectedSupportResistance[] = [],
-  selectedNewsEvidence: readonly SelectedNewsEvidence[] = []
+  selectedNewsEvidence: readonly SelectedNewsEvidence[] = [],
+  slots: readonly SelectedFeatureSlot[] = []
 ): ContextualEvidence {
   const events: EventClaim[] = [];
   const flows: FlowClaim[] = [];
@@ -418,7 +420,7 @@ function buildContextualEvidence(
   return {
     supportResistance,
     flows,
-    derivatives: [],
+    derivatives: buildDerivativeClaims(slots),
     events,
     newsRegulatory
   };
@@ -540,7 +542,8 @@ export function assembleEvidenceBundleCandidate(
   const contextualEvidence = buildContextualEvidence(
     contextualEvents,
     selectedSupportResistance,
-    selectedNewsEvidence
+    selectedNewsEvidence,
+    slots
   );
 
   const researchBrief = input.briefPresent ? null : null;
