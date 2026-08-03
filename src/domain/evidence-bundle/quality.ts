@@ -86,7 +86,7 @@ function getSlotConfidenceBps(slot: SelectedFeatureSlot): number {
   ) {
     return 0;
   }
-  return slot.confidence.compositeScore;
+  return Math.max(0, Math.min(10_000, Math.round(slot.confidence.compositeScore)));
 }
 
 function hasSlotValue(slot: SelectedFeatureSlot): boolean {
@@ -268,9 +268,9 @@ function buildWarnings(
 export function classifyEvidenceBundleQuality(input: EvidenceQualityInput): EvidenceBundleQuality {
   const { slots, createdAt, asOf, freshUntil, expiresAt, allowNoUsableFeatures = false } = input;
 
-  const slotQualitySummaries: SlotQualitySummary[] = MVP_FEATURE_KINDS.map((featureKind, index) => {
-    const slot = slots[index];
-    if (!slot || slot.featureKind !== featureKind) {
+  const slotQualitySummaries: SlotQualitySummary[] = MVP_FEATURE_KINDS.map((featureKind) => {
+    const slot = slots.find((s) => s.featureKind === featureKind);
+    if (!slot) {
       return {
         featureKind,
         status: "missing" as const,

@@ -48,6 +48,7 @@ import {
   type SelectedSupportResistance
 } from "../domain/support-resistance/select.js";
 import { selectNewsEvidence, type SelectedNewsEvidence } from "../domain/news-events/select.js";
+import { hasUsableDerivativeSlots } from "../domain/evidence-bundle/index.js";
 import { buildPositionRunId } from "./core-evidence-pipeline-policy.js";
 
 export interface AssembleEvidenceBundleRequest {
@@ -460,7 +461,7 @@ export async function assembleEvidenceBundle(
   const expiresAt = evaluationTimeUnixMs + 7200000;
   const hasSupportResistance = selectedSupportResistance.length > 0;
   const hasFlows = selectedContextEvents.some((item) => item.eventFamily === "on_chain_flow");
-  const hasDerivatives = false;
+  const hasDerivatives = hasUsableDerivativeSlots(slots);
   const hasEvents = selectedContextEvents.some((item) => item.eventFamily !== "on_chain_flow");
   const hasNewsRegulatory = selectedNewsEvidence.length > 0;
   const hasResearchBrief = false;

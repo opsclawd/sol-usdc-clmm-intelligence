@@ -401,7 +401,7 @@ describe("context-events assembly", () => {
       const quality = makeQuality();
       const lineage = makeLineage();
 
-      const confidenceScore = 0.85;
+      const confidenceScore = 8500;
       const scheduledPayload = makeScheduledEventPayload({ status: "SCHEDULED" });
       const normRow = makeNormalizedRow({
         id: 100,
@@ -419,9 +419,7 @@ describe("context-events assembly", () => {
         })
       );
 
-      expect(result.contextualEvidence.events[0]!.confidenceBps).toBe(
-        Math.round(confidenceScore * 10000)
-      );
+      expect(result.contextualEvidence.events[0]!.confidenceBps).toBe(confidenceScore);
     });
 
     it("observedAt uses canonical timestamp from payload asOfUnixMs", () => {

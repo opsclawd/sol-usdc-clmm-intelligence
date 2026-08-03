@@ -958,4 +958,188 @@ describe("assembleEvidenceBundle contextual integration", () => {
     expect(contract.lastCandidate?.contextualEvidence.newsRegulatory).toEqual([]);
     expect(contract.lastCandidate?.contextualEvidence.events).toEqual([]);
   });
+
+  it("persists a contract-valid position bundle with derivative claims", async () => {
+    const { assembleEvidenceBundle } =
+      await import("../../src/application/assemble-evidence-bundle.js");
+
+    const clmmRawRow = makeRawRow({ id: 1 });
+    const fundingRawRow = makeRawRow({
+      id: 101,
+      source: "binance-fapi",
+      payloadHash: "raw-hash-101"
+    });
+    const oiRawRow = makeRawRow({ id: 102, source: "binance-fapi", payloadHash: "raw-hash-102" });
+    const liqRawRow = makeRawRow({ id: 103, source: "drift-api", payloadHash: "raw-hash-103" });
+
+    rawRepo.store.push(clmmRawRow, fundingRawRow, oiRawRow, liqRawRow);
+
+    const clmmFeature = makeDerivedFeatureRow({
+      id: 1,
+      featureKind: "range_location",
+      positionId: "pos-1",
+      poolId: "pool-abc",
+      inputObservationIds: [1],
+      rawRefs: [makeRawRef(1, "clmm-v2-bundle", "raw-hash-1")]
+    });
+
+    const fundingFeature = {
+      ...makeDerivedFeatureRow({
+        id: 2,
+        featureKind: "funding_rate_annualized",
+        value: 150,
+        asOfUnixMs: EVAL_MS - 60000,
+        validUntilUnixMs: EVAL_MS + 3600000,
+        status: "AVAILABLE",
+        calculatorVersion: "1.0.0",
+        inputObservationIds: [101],
+        rawRefs: [makeRawRef(101, "binance-fapi", "raw-hash-101")]
+      }),
+      confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 10000 },
+      poolId: null,
+      positionId: null
+    };
+
+    const oiFeature = {
+      ...makeDerivedFeatureRow({
+        id: 3,
+        featureKind: "oi_trend_4h",
+        value: -200,
+        asOfUnixMs: EVAL_MS - 60000,
+        validUntilUnixMs: EVAL_MS + 3600000,
+        status: "AVAILABLE",
+        calculatorVersion: "1.0.0",
+        inputObservationIds: [102],
+        rawRefs: [makeRawRef(102, "binance-fapi", "raw-hash-102")]
+      }),
+      confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 10000 },
+      poolId: null,
+      positionId: null
+    };
+
+    const liqFeature = {
+      ...makeDerivedFeatureRow({
+        id: 4,
+        featureKind: "liquidation_cluster_1h",
+        value: 50,
+        asOfUnixMs: EVAL_MS - 60000,
+        validUntilUnixMs: EVAL_MS + 3600000,
+        status: "AVAILABLE",
+        calculatorVersion: "1.0.0",
+        inputObservationIds: [103],
+        rawRefs: [makeRawRef(103, "drift-api", "raw-hash-103")]
+      }),
+      confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 10000 },
+      poolId: null,
+      positionId: null
+    };
+
+    featureRepo.store.push(clmmFeature, fundingFeature, oiFeature, liqFeature);
+
+    const result = assertSuccess(
+      await assembleEvidenceBundle(
+        { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+        makeRequest()
+      )
+    );
+
+    expect(result.outcome).toBe("persisted");
+    expect(bundleRepo.store).toHaveLength(1);
+    expect(contract.lastCandidate).not.toBeNull();
+
+    const bundle = contract.lastCandidate!;
+    const claims = bundle.contextualEvidence.derivatives;
+    expect(claims).toHaveLength(3);
+
+    expect(claims[0]).toEqual({
+      evidenceId: "derivative-oi_trend_4h-3",
+      kind: "open_interest",
+      claim: "oi_trend_4h: -200 BPS (4h)",
+      direction: "bearish",
+      confidenceBps: 10000,
+      observedAt: "2023-12-31T23:59:00.000Z",
+      expiresAt: "2024-01-01T01:00:00.000Z",
+      sourceReferenceIds: ["raw-102"],
+      provenanceMethod: "derived"
+    });
+
+    expect(claims[1]).toEqual({
+      evidenceId: "derivative-liquidation_cluster_1h-4",
+      kind: "liquidation",
+      claim: "liquidation_cluster_1h: +50 BPS (1h)",
+      direction: "mixed",
+      confidenceBps: 10000,
+      observedAt: "2023-12-31T23:59:00.000Z",
+      expiresAt: "2024-01-01T01:00:00.000Z",
+      sourceReferenceIds: ["raw-103"],
+      provenanceMethod: "derived"
+    });
+
+    expect(claims[2]).toEqual({
+      evidenceId: "derivative-funding_rate_annualized-2",
+      kind: "funding",
+      claim: "funding_rate_annualized: +150 BPS (annualized)",
+      direction: "bullish",
+      confidenceBps: 10000,
+      observedAt: "2023-12-31T23:59:00.000Z",
+      expiresAt: "2024-01-01T01:00:00.000Z",
+      sourceReferenceIds: ["raw-101"],
+      provenanceMethod: "derived"
+    });
+
+    expect(bundle.assessment.coverage.derivatives).toBe("partial");
+    const warningCodes = bundle.assessment.warnings.map((w) => w.code);
+    expect(warningCodes).not.toContain("DERIVATIVES_UNAVAILABLE");
+  });
+
+  it("marks derivative coverage present exactly when a derivative claim is eligible", async () => {
+    const { assembleEvidenceBundle } =
+      await import("../../src/application/assemble-evidence-bundle.js");
+
+    const clmmRawRow = makeRawRow({ id: 1 });
+    const basisRawRow = makeRawRow({
+      id: 104,
+      source: "binance-fapi",
+      payloadHash: "raw-hash-104"
+    });
+    rawRepo.store.push(clmmRawRow, basisRawRow);
+
+    const clmmFeature = makeDerivedFeatureRow({
+      id: 1,
+      featureKind: "range_location",
+      positionId: "pos-1",
+      poolId: "pool-abc",
+      inputObservationIds: [1],
+      rawRefs: [makeRawRef(1, "clmm-v2-bundle", "raw-hash-1")]
+    });
+
+    const basisFeature = {
+      ...makeDerivedFeatureRow({
+        id: 5,
+        featureKind: "basis_spread_bps",
+        value: 25,
+        asOfUnixMs: EVAL_MS - 60000,
+        validUntilUnixMs: EVAL_MS + 3600000,
+        status: "AVAILABLE",
+        calculatorVersion: "1.0.0",
+        inputObservationIds: [104],
+        rawRefs: [makeRawRef(104, "binance-fapi", "raw-hash-104")]
+      }),
+      poolId: null,
+      positionId: null
+    };
+
+    featureRepo.store.push(clmmFeature, basisFeature);
+
+    await assembleEvidenceBundle(
+      { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+      makeRequest()
+    );
+
+    const bundle = contract.lastCandidate!;
+    expect(bundle.contextualEvidence.derivatives).toHaveLength(0);
+    expect(bundle.assessment.coverage.derivatives).toBe("unavailable");
+    const warningCodes = bundle.assessment.warnings.map((w) => w.code);
+    expect(warningCodes).toContain("DERIVATIVES_UNAVAILABLE");
+  });
 });

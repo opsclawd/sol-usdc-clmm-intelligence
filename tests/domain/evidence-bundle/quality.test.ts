@@ -334,6 +334,28 @@ describe("classifyEvidenceBundleQuality", () => {
 
       expect(result.overallConfidenceBps).toBeGreaterThan(0);
     });
+
+    it("clamps slot composite score above 10,000 to 10,000 bps", () => {
+      const slots = makeSlotsAllAvailable();
+      slots[0] = {
+        featureKind: "range_location",
+        outcome: "selected_available",
+        rowId: 1,
+        value: 1000,
+        confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 15000 },
+        provenance: DEFAULT_PROVENANCE,
+        warnings: [],
+        reasons: [],
+        asOfUnixMs: 5000000000000,
+        validUntilUnixMs: null
+      };
+
+      const input = makeQualityInput(slots);
+      const result = classifyEvidenceBundleQuality(input);
+
+      expect(result.slotQualitySummaries[0]?.confidenceBps).toBe(10000);
+      expect(result.overallConfidenceBps).toBeLessThanOrEqual(10000);
+    });
   });
 
   describe("derives timestamps deterministically", () => {

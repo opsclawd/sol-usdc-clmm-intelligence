@@ -488,7 +488,7 @@ describe("support-resistance and news assembly mapping", () => {
 
   it("clamps confidence to contract basis points and bounds claim text", () => {
     const srOver = makeSupportPointFixture();
-    (srOver.row.confidence as { compositeScore: number }).compositeScore = 1.5;
+    (srOver.row.confidence as { compositeScore: number }).compositeScore = 15000;
     const srLongClaim = makeResistanceZoneFixture();
     (srLongClaim.payload as unknown as { thesisCodes: string[] }).thesisCodes = ["a".repeat(600)];
 

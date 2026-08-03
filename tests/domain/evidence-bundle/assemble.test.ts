@@ -986,5 +986,56 @@ describe("assembleEvidenceBundleCandidate", () => {
         schemaVersion: "evidence-bundle.v1"
       });
     });
+
+    it("falls back to bundle freshUntil/asOf when slot validUntilUnixMs/asOfUnixMs is null for available feature", () => {
+      const slots: SelectedFeatureSlot[] = [
+        {
+          featureKind: "range_location",
+          outcome: "selected_available",
+          rowId: 1,
+          value: 5000,
+          confidence: {
+            compositeScore: 8000,
+            components: {
+              freshness: 8000,
+              sampleSize: 8000,
+              sourceReliability: 8000,
+              variance: 8000
+            }
+          },
+          asOfUnixMs: null,
+          validUntilUnixMs: null
+        } as unknown as SelectedFeatureSlot
+      ];
+      const quality = makeQuality();
+      const lineage = makeLineage(RAW_SOURCE_REFERENCES);
+      const bundleFreshUntil = 50000003600000;
+      const bundleAsOf = 5000000000000;
+
+      const result = assembleEvidenceBundleCandidate(
+        makeAssembleInput(slots, quality, lineage, {
+          asOf: bundleAsOf,
+          freshUntil: bundleFreshUntil
+        })
+      );
+
+      const availableFeature = result.deterministicFeatures.find(
+        (f) => f.featureId === "feat-range_location-1"
+      );
+      expect(availableFeature).toBeDefined();
+      expect(availableFeature?.freshUntil).not.toBeNull();
+      expect(availableFeature?.observedAt).not.toBeNull();
+    });
+
+    it("assigns researchBrief as null", () => {
+      const slots = makeSlotsAllAvailable([]);
+      const quality = makeQuality();
+      const lineage = makeLineage(RAW_SOURCE_REFERENCES);
+
+      const result = assembleEvidenceBundleCandidate(
+        makeAssembleInput(slots, quality, lineage, { briefPresent: true })
+      );
+      expect(result.researchBrief).toBeNull();
+    });
   });
 });
