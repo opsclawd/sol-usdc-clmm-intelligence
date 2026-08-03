@@ -995,7 +995,7 @@ describe("assembleEvidenceBundle contextual integration", () => {
         inputObservationIds: [101],
         rawRefs: [makeRawRef(101, "binance-fapi", "raw-hash-101")]
       }),
-      confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 10000 },
+      confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0.81 },
       poolId: null,
       positionId: null
     };
@@ -1012,7 +1012,7 @@ describe("assembleEvidenceBundle contextual integration", () => {
         inputObservationIds: [102],
         rawRefs: [makeRawRef(102, "binance-fapi", "raw-hash-102")]
       }),
-      confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 10000 },
+      confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0.82 },
       poolId: null,
       positionId: null
     };
@@ -1029,7 +1029,7 @@ describe("assembleEvidenceBundle contextual integration", () => {
         inputObservationIds: [103],
         rawRefs: [makeRawRef(103, "drift-api", "raw-hash-103")]
       }),
-      confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 10000 },
+      confidence: { ...DEFAULT_CONFIDENCE, compositeScore: 0.83 },
       poolId: null,
       positionId: null
     };
@@ -1051,12 +1051,16 @@ describe("assembleEvidenceBundle contextual integration", () => {
     const claims = bundle.contextualEvidence.derivatives;
     expect(claims).toHaveLength(3);
 
+    expect(claims[0]!.confidenceBps).toBe(8200); // oi_trend_4h
+    expect(claims[1]!.confidenceBps).toBe(8300); // liquidation_cluster_1h
+    expect(claims[2]!.confidenceBps).toBe(8100); // funding_rate_annualized
+
     expect(claims[0]).toEqual({
       evidenceId: "derivative-oi_trend_4h-3",
       kind: "open_interest",
       claim: "oi_trend_4h: -200 BPS (4h)",
       direction: "bearish",
-      confidenceBps: 10000,
+      confidenceBps: 8200,
       observedAt: "2023-12-31T23:59:00.000Z",
       expiresAt: "2024-01-01T01:00:00.000Z",
       sourceReferenceIds: ["raw-102"],
@@ -1068,7 +1072,7 @@ describe("assembleEvidenceBundle contextual integration", () => {
       kind: "liquidation",
       claim: "liquidation_cluster_1h: +50 BPS (1h)",
       direction: "mixed",
-      confidenceBps: 10000,
+      confidenceBps: 8300,
       observedAt: "2023-12-31T23:59:00.000Z",
       expiresAt: "2024-01-01T01:00:00.000Z",
       sourceReferenceIds: ["raw-103"],
@@ -1080,7 +1084,7 @@ describe("assembleEvidenceBundle contextual integration", () => {
       kind: "funding",
       claim: "funding_rate_annualized: +150 BPS (annualized)",
       direction: "bullish",
-      confidenceBps: 10000,
+      confidenceBps: 8100,
       observedAt: "2023-12-31T23:59:00.000Z",
       expiresAt: "2024-01-01T01:00:00.000Z",
       sourceReferenceIds: ["raw-101"],

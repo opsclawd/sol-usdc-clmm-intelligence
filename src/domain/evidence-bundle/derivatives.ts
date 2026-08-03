@@ -3,6 +3,7 @@ import type {
   Identifier128
 } from "../../contracts/generated/evidence-bundle-v1.js";
 import type { SelectedFeatureSlot, SelectedAvailableSlot, SelectedPartialSlot } from "./select.js";
+import { confidenceFractionToBps } from "./confidence-bps.js";
 import { toCanonicalTimestamp } from "./timestamp.js";
 
 const DERIVATIVE_KINDS = {
@@ -93,7 +94,7 @@ export function buildDerivativeClaims(slots: readonly SelectedFeatureSlot[]): De
     const rawClaimText = `${slot.featureKind}: ${signedBps} (${window})`;
     const claim = rawClaimText.length > 512 ? rawClaimText.slice(0, 512) : rawClaimText;
 
-    const confidenceBps = Math.max(0, Math.min(10_000, Math.round(slot.confidence.compositeScore)));
+    const confidenceBps = confidenceFractionToBps(slot.confidence.compositeScore);
 
     const observedAt = toCanonicalTimestamp(slot.asOfUnixMs);
     const expiresAt =

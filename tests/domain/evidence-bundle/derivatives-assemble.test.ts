@@ -27,7 +27,7 @@ const DEFAULT_CONFIDENCE: Confidence = {
     derivationConfidence: 0.95,
     llmConfidence: null
   },
-  compositeScore: 8500,
+  compositeScore: 0.85,
   level: "high",
   weightingVersion: "v1",
   reasons: []
@@ -354,14 +354,14 @@ describe("derivatives claim mapper and assembly", () => {
     expect(buildDerivativeClaims([basisSlot])).toHaveLength(0);
   });
 
-  it("converts confidence timestamps expiry and lineage without widening provenance", () => {
-    const highConf: Confidence = {
+  it("converts fractional confidence while preserving timestamps expiry and lineage", () => {
+    const fractionalConf: Confidence = {
       ...DEFAULT_CONFIDENCE,
-      compositeScore: 9250
+      compositeScore: 0.925
     };
     const overConf: Confidence = {
       ...DEFAULT_CONFIDENCE,
-      compositeScore: 15000
+      compositeScore: 1.5
     };
 
     const slot1 = makeAvailableSlot(
@@ -369,7 +369,7 @@ describe("derivatives claim mapper and assembly", () => {
       5,
       120,
       [41, 12, 41],
-      highConf,
+      fractionalConf,
       1700000000000,
       1700003600000
     );
