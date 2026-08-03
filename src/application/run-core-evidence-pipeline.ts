@@ -246,7 +246,9 @@ export async function runCoreEvidencePipeline(
               correlationId: pairCorrelationId,
               evaluationTimeUnixMs,
               createdAtUnixMs: pairCreatedAtUnixMs,
+              acceptedCalculatorVersions: MVP_ACCEPTED_CALCULATOR_VERSIONS,
               schemaVersion: "evidence-bundle.v1",
+              assemblySelectionVersion: EVIDENCE_BUNDLE_SELECTION_VERSION,
               codeVersion: config.codeVersion,
               gitCommit: config.gitCommit,
               environment: config.environment

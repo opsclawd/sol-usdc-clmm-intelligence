@@ -61,6 +61,13 @@ export type VerifyEvidenceLineageInput = {
   readonly contextualObservations?: readonly NormalizedObservationRow[];
 };
 
+export type VerifyPairEvidenceLineageInput = {
+  readonly slots: VerifyEvidenceLineageInput["slots"];
+  readonly rawObservations: ReadonlyMap<number, RawObservationRow>;
+  readonly normalizedObservations: ReadonlyMap<number, NormalizedObservationRow>;
+  readonly contextualObservations?: readonly NormalizedObservationRow[];
+};
+
 export interface VerifiedLineageSourceRef {
   readonly referenceId: string;
   readonly sourceType: "api" | "database" | "chain" | "document" | "internal_bundle";
@@ -466,45 +473,17 @@ export function verifyContextualEvidenceLineage(
     }
   }
 
-  const sortedRawIds = [...rawObservationIds].sort((a, b) => a - b);
-  const sortedNormIds = [...normalizedObservationIds].sort((a, b) => a - b);
-
   return {
     ok: true,
-    lineage: {
-      rawObservationIds: sortedRawIds,
-      normalizedObservationIds: sortedNormIds,
-      sourceReferences
-    }
+    lineage: finalizeLineage(rawObservationIds, normalizedObservationIds, sourceReferences)
   };
 }
 
-export function verifyEvidenceLineage(
-  input: VerifyEvidenceLineageInput
-):
-  | { ok: true; lineage: VerifiedEvidenceLineage["lineage"] }
-  | { ok: false; error: LineageVerificationError } {
-  const {
-    slots,
-    rawObservations,
-    normalizedObservations,
-    clmmCanonical,
-    walletId,
-    positionId,
-    poolId,
-    contextualObservations = []
-  } = input;
-
-  const clmmResult = validateClmmCanonical(clmmCanonical);
-  if (!clmmResult.ok) {
-    return clmmResult;
-  }
-
-  const scopeResult = verifyScopeConsistency(clmmResult.bundle, walletId, positionId, poolId);
-  if (!scopeResult.ok) {
-    return scopeResult;
-  }
-
+function verifySelectedSlotsProvenance(
+  slots: VerifyPairEvidenceLineageInput["slots"],
+  normalizedObservations: ReadonlyMap<number, NormalizedObservationRow>,
+  rawObservations: ReadonlyMap<number, RawObservationRow>
+): { ok: true } | { ok: false; error: LineageVerificationError } {
   const selectedSlots = slots.filter(
     (s) =>
       s.outcome === "selected_available" ||
@@ -540,6 +519,49 @@ export function verifyEvidenceLineage(
     }
   }
 
+  return { ok: true };
+}
+
+function finalizeLineage(
+  rawObservationIds: Iterable<number>,
+  normalizedObservationIds: Iterable<number>,
+  sourceReferences: readonly VerifiedLineageSourceRef[]
+): VerifiedEvidenceLineage["lineage"] {
+  const uniqueSourceReferences: VerifiedLineageSourceRef[] = [];
+  const seenRefIds = new Set<string>();
+  for (const sr of sourceReferences) {
+    if (!seenRefIds.has(sr.referenceId)) {
+      seenRefIds.add(sr.referenceId);
+      uniqueSourceReferences.push(sr);
+    }
+  }
+
+  const sortedRawIds = [...rawObservationIds].sort((a, b) => a - b);
+  const sortedNormIds = [...normalizedObservationIds].sort((a, b) => a - b);
+
+  return {
+    rawObservationIds: sortedRawIds,
+    normalizedObservationIds: sortedNormIds,
+    sourceReferences: uniqueSourceReferences
+  };
+}
+
+export function verifyPairEvidenceLineage(
+  input: VerifyPairEvidenceLineageInput
+):
+  | { ok: true; lineage: VerifiedEvidenceLineage["lineage"] }
+  | { ok: false; error: LineageVerificationError } {
+  const { slots, rawObservations, normalizedObservations, contextualObservations = [] } = input;
+
+  const provenanceResult = verifySelectedSlotsProvenance(
+    slots,
+    normalizedObservations,
+    rawObservations
+  );
+  if (!provenanceResult.ok) {
+    return provenanceResult;
+  }
+
   const { rawObservationIds, normalizedObservationIds, sourceReferences } = collectLineage(
     slots,
     normalizedObservations,
@@ -566,24 +588,75 @@ export function verifyEvidenceLineage(
     }
   }
 
-  const uniqueSourceReferences: VerifiedLineageSourceRef[] = [];
-  const seenRefIds = new Set<string>();
-  for (const sr of sourceReferences) {
-    if (!seenRefIds.has(sr.referenceId)) {
-      seenRefIds.add(sr.referenceId);
-      uniqueSourceReferences.push(sr);
+  return {
+    ok: true,
+    lineage: finalizeLineage(rawObservationIds, normalizedObservationIds, sourceReferences)
+  };
+}
+
+export function verifyEvidenceLineage(
+  input: VerifyEvidenceLineageInput
+):
+  | { ok: true; lineage: VerifiedEvidenceLineage["lineage"] }
+  | { ok: false; error: LineageVerificationError } {
+  const {
+    slots,
+    rawObservations,
+    normalizedObservations,
+    clmmCanonical,
+    walletId,
+    positionId,
+    poolId,
+    contextualObservations = []
+  } = input;
+
+  const clmmResult = validateClmmCanonical(clmmCanonical);
+  if (!clmmResult.ok) {
+    return clmmResult;
+  }
+
+  const scopeResult = verifyScopeConsistency(clmmResult.bundle, walletId, positionId, poolId);
+  if (!scopeResult.ok) {
+    return scopeResult;
+  }
+
+  const provenanceResult = verifySelectedSlotsProvenance(
+    slots,
+    normalizedObservations,
+    rawObservations
+  );
+  if (!provenanceResult.ok) {
+    return provenanceResult;
+  }
+
+  const { rawObservationIds, normalizedObservationIds, sourceReferences } = collectLineage(
+    slots,
+    normalizedObservations,
+    rawObservations
+  );
+
+  if (contextualObservations.length > 0) {
+    const ctxLineageResult = verifyContextualEvidenceLineage({
+      contextualObservations,
+      rawObservations
+    });
+    if (!ctxLineageResult.ok) {
+      return ctxLineageResult;
+    }
+
+    for (const rawId of ctxLineageResult.lineage.rawObservationIds) {
+      rawObservationIds.add(rawId);
+    }
+    for (const normId of ctxLineageResult.lineage.normalizedObservationIds) {
+      normalizedObservationIds.add(normId);
+    }
+    for (const sr of ctxLineageResult.lineage.sourceReferences) {
+      sourceReferences.push(sr);
     }
   }
 
-  const sortedRawIds = [...rawObservationIds].sort((a, b) => a - b);
-  const sortedNormIds = [...normalizedObservationIds].sort((a, b) => a - b);
-
   return {
     ok: true,
-    lineage: {
-      rawObservationIds: sortedRawIds,
-      normalizedObservationIds: sortedNormIds,
-      sourceReferences: uniqueSourceReferences
-    }
+    lineage: finalizeLineage(rawObservationIds, normalizedObservationIds, sourceReferences)
   };
 }

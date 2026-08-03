@@ -13,10 +13,15 @@ export type {
   BundleSelectionResult
 } from "./select.js";
 
-export { verifyEvidenceLineage, verifyContextualEvidenceLineage } from "./lineage.js";
+export {
+  verifyEvidenceLineage,
+  verifyContextualEvidenceLineage,
+  verifyPairEvidenceLineage
+} from "./lineage.js";
 
 export type {
   VerifyEvidenceLineageInput,
+  VerifyPairEvidenceLineageInput,
   VerifyContextualEvidenceLineageInput,
   VerifiedEvidenceLineage,
   VerifiedLineageSourceRef,

@@ -245,16 +245,24 @@ export class DrizzleFeatureRepo implements DerivedFeatureRepo {
     // match only, or every null-scoped candidate is silently excluded before the
     // domain layer ever sees it.
     if (query.poolId !== undefined) {
-      // or() with two given conditions always returns a defined SQL expression;
-      // the `| undefined` in its return type only applies to the zero-args case.
-      conditions.push(
-        or(eq(derivedFeatures.poolId, query.poolId), isNull(derivedFeatures.poolId))!
-      );
+      if (query.poolId === null) {
+        conditions.push(isNull(derivedFeatures.poolId));
+      } else {
+        // or() with two given conditions always returns a defined SQL expression;
+        // the `| undefined` in its return type only applies to the zero-args case.
+        conditions.push(
+          or(eq(derivedFeatures.poolId, query.poolId), isNull(derivedFeatures.poolId))!
+        );
+      }
     }
     if (query.positionId !== undefined) {
-      conditions.push(
-        or(eq(derivedFeatures.positionId, query.positionId), isNull(derivedFeatures.positionId))!
-      );
+      if (query.positionId === null) {
+        conditions.push(isNull(derivedFeatures.positionId));
+      } else {
+        conditions.push(
+          or(eq(derivedFeatures.positionId, query.positionId), isNull(derivedFeatures.positionId))!
+        );
+      }
     }
 
     const rows = await this.db

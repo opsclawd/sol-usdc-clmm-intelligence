@@ -1,5 +1,6 @@
 import type { Clock } from "../ports/clock.js";
 import type {
+  DerivedFeatureRepo,
   NormalizedObservationRepo,
   RawObservationRepo,
   EvidenceBundleRepo,
@@ -10,12 +11,19 @@ import type {
   RawObservationRow
 } from "../ports/index.js";
 import type { EvidenceBundleInsertOutcome } from "../ports/bundle-repo.js";
+import type { BundleFeatureCandidateQuery } from "../ports/feature-repo.js";
+import type { FeatureKind, DerivedFeatureRow } from "../contracts/index.js";
 import type {
   EvidenceBundleContractError,
   CanonicalEvidenceBundle
 } from "../ports/evidence-bundle-contract.js";
-import type { SelectedFeatureSlot } from "../domain/evidence-bundle/select.js";
-import { verifyContextualEvidenceLineage } from "../domain/evidence-bundle/lineage.js";
+import {
+  selectEvidenceFeatureSlots,
+  type BundleSelectionRequest,
+  type BundleSelectionResult,
+  type SelectedFeatureSlot
+} from "../domain/evidence-bundle/select.js";
+import { verifyPairEvidenceLineage } from "../domain/evidence-bundle/lineage.js";
 import {
   classifyEvidenceBundleQuality,
   type EvidenceBundleQuality
@@ -43,7 +51,9 @@ export interface AssemblePairEvidenceBundleRequest {
   readonly correlationId: string;
   readonly evaluationTimeUnixMs: number;
   readonly createdAtUnixMs: number;
+  readonly acceptedCalculatorVersions: Readonly<Record<FeatureKind, string>>;
   readonly schemaVersion: string;
+  readonly assemblySelectionVersion: string;
   readonly codeVersion: string;
   readonly gitCommit: string;
   readonly environment: "production" | "staging" | "development" | "test";
@@ -81,6 +91,7 @@ export type AssemblePairEvidenceBundleResult =
 
 export interface AssemblePairEvidenceBundleDeps {
   readonly clock: Clock;
+  readonly featureRepo: DerivedFeatureRepo;
   readonly normalizedRepo: NormalizedObservationRepo;
   readonly rawRepo: RawObservationRepo;
   readonly bundleRepo: EvidenceBundleRepo;
@@ -111,11 +122,28 @@ function validateRequest(request: AssemblePairEvidenceBundleRequest): void {
       message: "createdAtUnixMs must be a non-negative number"
     };
   }
+  if (
+    !request.acceptedCalculatorVersions ||
+    typeof request.acceptedCalculatorVersions !== "object"
+  ) {
+    throw { code: "REQUEST_VALIDATION_ERROR", message: "acceptedCalculatorVersions is required" };
+  }
+  for (const kind of MVP_FEATURE_KINDS) {
+    if (!request.acceptedCalculatorVersions[kind]) {
+      throw {
+        code: "REQUEST_VALIDATION_ERROR",
+        message: `acceptedCalculatorVersions must include ${kind}`
+      };
+    }
+  }
   if (!request.schemaVersion) {
     throw { code: "REQUEST_VALIDATION_ERROR", message: "schemaVersion is required" };
   }
   if (request.schemaVersion !== SUPPORTED_SCHEMA_VERSION) {
     throw { code: "UNSUPPORTED_SCHEMA_VERSION", schemaVersion: request.schemaVersion };
+  }
+  if (!request.assemblySelectionVersion) {
+    throw { code: "REQUEST_VALIDATION_ERROR", message: "assemblySelectionVersion is required" };
   }
   if (!request.codeVersion || !request.codeVersion.trim()) {
     throw { code: "REQUEST_VALIDATION_ERROR", message: "codeVersion is required" };
@@ -148,7 +176,7 @@ function buildBundleInsert(
     payloadCanonical: canonical.payloadCanonical,
     idempotencyKey: canonical.idempotencyKey,
     taxonomySummary: null,
-    dominantSignalClass: "contextual",
+    dominantSignalClass: "deterministic",
     confidence: {
       components: {
         sourceReliability: 1,
@@ -188,6 +216,37 @@ function buildBundleInsert(
   };
 }
 
+function collectLineageIds(slots: readonly SelectedFeatureSlot[]): {
+  rawObservationIds: Set<number>;
+  normalizedObservationIds: Set<number>;
+} {
+  const rawObservationIds = new Set<number>();
+  const normalizedObservationIds = new Set<number>();
+
+  for (const slot of slots) {
+    if (
+      slot.outcome === "missing" ||
+      slot.outcome === "expired_only" ||
+      slot.outcome === "unsupported_version_only"
+    ) {
+      continue;
+    }
+
+    const provenance = slot.provenance;
+    if (!provenance) continue;
+
+    for (const ref of provenance.rawObservationRefs) {
+      if (ref.refType === "normalized_observation") {
+        normalizedObservationIds.add(ref.id);
+      } else if (ref.refType === "raw_observation") {
+        rawObservationIds.add(ref.id);
+      }
+    }
+  }
+
+  return { rawObservationIds, normalizedObservationIds };
+}
+
 export async function assemblePairEvidenceBundle(
   deps: AssemblePairEvidenceBundleDeps,
   request: AssemblePairEvidenceBundleRequest
@@ -207,8 +266,47 @@ export async function assemblePairEvidenceBundle(
     return { code: "REQUEST_VALIDATION_ERROR", message: String(err) };
   }
 
-  const { normalizedRepo, rawRepo, bundleRepo, contract } = deps;
+  const { featureRepo, normalizedRepo, rawRepo, bundleRepo, contract } = deps;
   const { evaluationTimeUnixMs, codeVersion, gitCommit, environment } = request;
+
+  const asOfAtOrAfterUnixMs = evaluationTimeUnixMs - 24 * 3600000;
+  const asOfAtOrBeforeUnixMs = evaluationTimeUnixMs;
+
+  let candidates: DerivedFeatureRow[];
+  try {
+    const query: BundleFeatureCandidateQuery = {
+      featureKinds: MVP_FEATURE_KINDS,
+      pair: request.pair,
+      asOfAtOrAfterUnixMs,
+      asOfAtOrBeforeUnixMs,
+      receivedAtOrBeforeUnixMs: evaluationTimeUnixMs,
+      poolId: null,
+      positionId: null
+    };
+    candidates = await featureRepo.listBundleCandidates(query);
+  } catch (err) {
+    return { code: "LINEAGE_ERROR", message: `Failed to query candidates: ${err}` };
+  }
+
+  const selectionRequest: BundleSelectionRequest = {
+    evaluationTimeUnixMs,
+    selectionVersion: request.assemblySelectionVersion,
+    calculatorVersions: request.acceptedCalculatorVersions,
+    candidates,
+    poolId: undefined,
+    positionId: undefined
+  };
+
+  const selectionResult: BundleSelectionResult = selectEvidenceFeatureSlots(selectionRequest);
+  const { slots } = selectionResult;
+
+  const usableCount = slots.filter(
+    (slot) => slot.outcome === "selected_available" || slot.outcome === "selected_partial"
+  ).length;
+
+  if (usableCount === 0) {
+    return { outcome: "no_bundle" };
+  }
 
   const contextualCandidateQuery: NormalizedObservationCandidateQuery = {
     sourceKinds: [
@@ -259,13 +357,25 @@ export async function assemblePairEvidenceBundle(
     ...selectedNewsEvidence.map((ne) => ne.row)
   ];
 
-  if (selectedContextualRows.length === 0) {
-    return { outcome: "no_bundle" };
+  const { rawObservationIds, normalizedObservationIds } = collectLineageIds(slots);
+
+  for (const row of selectedContextualRows) {
+    normalizedObservationIds.add(row.id);
+    rawObservationIds.add(row.rawObservationId);
   }
 
-  const rawObservationIds = new Set<number>();
-  for (const row of selectedContextualRows) {
-    rawObservationIds.add(row.rawObservationId);
+  const normalizedIdArray = [...normalizedObservationIds];
+  let normalizedRows: NormalizedObservationRow[] = [];
+  if (normalizedIdArray.length > 0) {
+    try {
+      normalizedRows = await normalizedRepo.findByIds(normalizedIdArray);
+    } catch (err) {
+      return { code: "LINEAGE_ERROR", message: `Failed to load normalized observations: ${err}` };
+    }
+  }
+
+  for (const normRow of normalizedRows) {
+    rawObservationIds.add(normRow.rawObservationId);
   }
 
   const rawIdArray = [...rawObservationIds];
@@ -278,23 +388,26 @@ export async function assemblePairEvidenceBundle(
     }
   }
 
+  const normalizedMap = new Map<number, NormalizedObservationRow>();
+  for (const row of normalizedRows) {
+    normalizedMap.set(row.id, row);
+  }
+
   const rawMap = new Map<number, RawObservationRow>();
   for (const row of rawRows) {
     rawMap.set(row.id, row);
   }
 
-  const lineageResult = verifyContextualEvidenceLineage({
-    contextualObservations: selectedContextualRows,
-    rawObservations: rawMap
+  const lineageResult = verifyPairEvidenceLineage({
+    slots,
+    normalizedObservations: normalizedMap,
+    rawObservations: rawMap,
+    contextualObservations: selectedContextualRows
   });
 
   if (!lineageResult.ok) {
     return { code: "LINEAGE_ERROR", message: lineageResult.error.message };
   }
-
-  const slots: SelectedFeatureSlot[] = MVP_FEATURE_KINDS.map(
-    (featureKind): SelectedFeatureSlot => ({ featureKind, outcome: "missing" })
-  );
 
   const freshUntil = evaluationTimeUnixMs + 3600000;
   const expiresAt = evaluationTimeUnixMs + 7200000;
@@ -319,7 +432,7 @@ export async function assemblePairEvidenceBundle(
     hasEvents,
     hasNewsRegulatory,
     hasResearchBrief,
-    allowNoUsableFeatures: true
+    allowNoUsableFeatures: false
   };
 
   const quality: EvidenceBundleQuality = classifyEvidenceBundleQuality(qualityInput);

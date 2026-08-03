@@ -490,6 +490,66 @@ describe("selectEvidenceFeatureSlots", () => {
       const slot = result.slots.find((s) => s.featureKind === "oracle_dex_divergence")!;
       expect(slot.outcome).toBe("selected_available");
     });
+
+    it("selects pair-scoped deterministic candidates and excludes pool and position candidates when scope ids are omitted", () => {
+      const candidates: DerivedFeatureRow[] = [
+        makeFeatureRow({
+          id: 1,
+          featureKind: "oracle_dex_divergence",
+          derivationKey: "pair=SOL/USDC",
+          asOfUnixMs: 1000,
+          receivedAtUnixMs: 1000,
+          status: "AVAILABLE",
+          value: 10,
+          calculatorVersion: "1.0",
+          pair: "SOL/USDC",
+          poolId: null,
+          positionId: null
+        }),
+        makeFeatureRow({
+          id: 2,
+          featureKind: "volume_liquidity_ratio_24h",
+          derivationKey: "pool=abc",
+          asOfUnixMs: 1000,
+          receivedAtUnixMs: 1000,
+          status: "AVAILABLE",
+          value: 0.8,
+          calculatorVersion: "1.0",
+          pair: "SOL/USDC",
+          poolId: "pool-abc",
+          positionId: null
+        }),
+        makeFeatureRow({
+          id: 3,
+          featureKind: "range_location",
+          derivationKey: "pool=abc,position=1",
+          asOfUnixMs: 1000,
+          receivedAtUnixMs: 1000,
+          status: "AVAILABLE",
+          value: 0.5,
+          calculatorVersion: "1.0",
+          pair: "SOL/USDC",
+          poolId: "pool-abc",
+          positionId: "position-1"
+        })
+      ];
+      const request = makeRequest(candidates, {
+        poolId: undefined,
+        positionId: undefined
+      });
+
+      const result = selectEvidenceFeatureSlots(request);
+
+      const pairSlot = result.slots.find((s) => s.featureKind === "oracle_dex_divergence")!;
+      const poolSlot = result.slots.find((s) => s.featureKind === "volume_liquidity_ratio_24h")!;
+      const positionSlot = result.slots.find((s) => s.featureKind === "range_location")!;
+
+      expect(pairSlot.outcome).toBe("selected_available");
+      expect(poolSlot.outcome).toBe("missing");
+      expect(positionSlot.outcome).toBe("missing");
+      expect(result.rejectedIds).toContain(2);
+      expect(result.rejectedIds).toContain(3);
+    });
   });
 
   describe("rejects unsupported calculator versions per feature kind", () => {

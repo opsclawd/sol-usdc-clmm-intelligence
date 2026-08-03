@@ -4,10 +4,13 @@ import type {
   NormalizedObservationRepo,
   RawObservationRepo,
   EvidenceBundleRepo,
-  EvidenceBundleContract,
-  NormalizedObservationCandidateQuery,
-  EvidenceBundleInsert
+  EvidenceBundleContract
 } from "../../src/ports/index.js";
+import type {
+  DerivedFeatureRepo,
+  DerivedFeatureRow,
+  BundleFeatureCandidateQuery
+} from "../../src/ports/feature-repo.js";
 import type {
   EvidenceBundleRow,
   EvidenceBundleInsertOutcome
@@ -18,11 +21,15 @@ import type {
   Provenance,
   ProvenanceRef,
   SignalClass,
-  EvidenceFamily
+  EvidenceFamily,
+  FeatureKind
 } from "../../src/contracts/taxonomy.js";
 import type { ScheduledEventPayloadV1 } from "../../src/contracts/context-events.js";
 import type { NormalizedObservationRow, RawObservationRow } from "../../src/contracts/index.js";
 import type { EvidenceBundleV1 } from "../../src/contracts/generated/evidence-bundle-v1.js";
+import { MVP_FEATURE_KINDS } from "../../src/contracts/derived-feature.js";
+import { MVP_ACCEPTED_CALCULATOR_VERSIONS } from "../../src/domain/derived-feature/constants.js";
+import { EVIDENCE_BUNDLE_SELECTION_VERSION } from "../../src/domain/evidence-bundle/select.js";
 import {
   assemblePairEvidenceBundle,
   type AssemblePairEvidenceBundleRequest,
@@ -148,6 +155,71 @@ function makeNormalizedRow(
   };
 }
 
+function makeFeatureRow(
+  overrides: Partial<DerivedFeatureRow> & {
+    id: number;
+    featureKind: FeatureKind;
+    derivationKey: string;
+    asOfUnixMs: number;
+    receivedAtUnixMs: number;
+    status: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE";
+    value?: number | null;
+    calculatorVersion?: string;
+    selectionVersion?: string;
+    poolId?: string | null;
+    positionId?: string | null;
+    pair?: string;
+    validUntilUnixMs?: number | null;
+  }
+): DerivedFeatureRow {
+  const normId = overrides.provenance?.rawObservationRefs?.[0]?.id ?? 15;
+  const rawId = overrides.inputObservationIds?.[0] ?? 5;
+
+  const provenance: Provenance = overrides.provenance ?? {
+    ...DEFAULT_PROVENANCE,
+    rawObservationRefs: [
+      {
+        refType: "normalized_observation",
+        id: normId,
+        source: "jupiter-price",
+        payloadHash: `norm-hash-${normId}`
+      }
+    ]
+  };
+
+  return {
+    id: overrides.id,
+    featureKind: overrides.featureKind,
+    signalClass: (overrides.signalClass ?? "deterministic") as SignalClass,
+    evidenceFamily: (overrides.evidenceFamily ?? "price_and_volatility") as EvidenceFamily,
+    value: overrides.value ?? null,
+    structuredPayload: overrides.structuredPayload ?? {},
+    asOfUnixMs: overrides.asOfUnixMs,
+    confidence: overrides.confidence ?? DEFAULT_CONFIDENCE,
+    confidenceComposite: overrides.confidenceComposite ?? null,
+    confidenceLevel: overrides.confidenceLevel ?? null,
+    validUntilUnixMs: overrides.validUntilUnixMs ?? null,
+    isStale: overrides.isStale ?? false,
+    staleBehavior: overrides.staleBehavior ?? null,
+    provenance,
+    payloadHash: overrides.payloadHash ?? `feature-hash-${overrides.id}`,
+    receivedAtUnixMs: overrides.receivedAtUnixMs,
+    status: overrides.status,
+    unit: overrides.unit ?? "PPM",
+    pair: overrides.pair ?? "SOL/USDC",
+    calculatorVersion:
+      overrides.calculatorVersion ?? MVP_ACCEPTED_CALCULATOR_VERSIONS[overrides.featureKind],
+    selectionVersion: overrides.selectionVersion ?? "mvp-evidence-bundle-selection/v1",
+    inputObservationIds: overrides.inputObservationIds ?? [rawId],
+    rejectedObservationIds: overrides.rejectedObservationIds ?? [],
+    derivationKey: overrides.derivationKey,
+    poolId: overrides.poolId ?? null,
+    positionId: overrides.positionId ?? null,
+    warnings: overrides.warnings ?? [],
+    reasons: overrides.reasons ?? []
+  };
+}
+
 function makeCanonicalBundle(): CanonicalEvidenceBundle {
   return {
     schemaVersion: "evidence-bundle.v1",
@@ -170,7 +242,7 @@ function makeBundleRow(overrides: Partial<EvidenceBundleRow> = {}): EvidenceBund
     payloadCanonical: JSON.stringify({ pair: "SOL/USDC" }),
     idempotencyKey: "canonical-idemp-1",
     taxonomySummary: null,
-    dominantSignalClass: "contextual",
+    dominantSignalClass: "deterministic",
     confidence: DEFAULT_CONFIDENCE,
     confidenceComposite: 8000,
     confidenceLevel: "high",
@@ -184,17 +256,22 @@ function makeBundleRow(overrides: Partial<EvidenceBundleRow> = {}): EvidenceBund
   };
 }
 
-function makeDefaultRequest(): AssemblePairEvidenceBundleRequest {
+function makeDefaultRequest(
+  overrides: Partial<AssemblePairEvidenceBundleRequest> = {}
+): AssemblePairEvidenceBundleRequest {
   return {
     pair: "SOL/USDC",
     pipelineRunId: "pipeline-1",
     correlationId: "corr-1",
     evaluationTimeUnixMs: 1000000,
     createdAtUnixMs: 1000000,
+    acceptedCalculatorVersions: MVP_ACCEPTED_CALCULATOR_VERSIONS,
     schemaVersion: "evidence-bundle.v1",
+    assemblySelectionVersion: EVIDENCE_BUNDLE_SELECTION_VERSION,
     codeVersion: "1.0.0",
     gitCommit: "9a0c68f4080ec2b934f44b0e3bc0f668d5255171",
-    environment: "test"
+    environment: "test",
+    ...overrides
   };
 }
 
@@ -235,31 +312,87 @@ function makeMockRawRepo(overrides: Partial<RawObservationRepo> = {}): RawObserv
   };
 }
 
+function makeMockFeatureRepo(overrides: Partial<DerivedFeatureRepo> = {}): DerivedFeatureRepo {
+  return {
+    insert: async () => {
+      throw new Error("not implemented");
+    },
+    insertMany: async () => {
+      throw new Error("not implemented");
+    },
+    findByDerivationKey: async () => undefined,
+    findByKind: async () => [],
+    listBundleCandidates: async () => [],
+    ...overrides
+  };
+}
+
+function makeValidPairFeatureFixture() {
+  const detRaw = makeRawObservationRow({
+    id: 5,
+    source: "jupiter-price",
+    payloadHash: "raw-hash-5"
+  });
+  const detNorm = makeNormalizedRow({
+    id: 15,
+    rawObservationId: 5,
+    source: "jupiter-price",
+    payloadHash: "norm-hash-15",
+    provenance: {
+      ...DEFAULT_PROVENANCE,
+      rawObservationRefs: [
+        { refType: "raw_observation", id: 5, source: "jupiter-price", payloadHash: "raw-hash-5" }
+      ]
+    }
+  });
+
+  const featureRow = makeFeatureRow({
+    id: 100,
+    featureKind: "realized_volatility_1h",
+    derivationKey: "pair=SOL/USDC,kind=realized_volatility_1h",
+    asOfUnixMs: 1000000,
+    receivedAtUnixMs: 1000000,
+    status: "AVAILABLE",
+    value: 0.25,
+    pair: "SOL/USDC",
+    poolId: null,
+    positionId: null,
+    provenance: {
+      ...DEFAULT_PROVENANCE,
+      rawObservationRefs: [
+        {
+          refType: "normalized_observation",
+          id: 15,
+          source: "jupiter-price",
+          payloadHash: "norm-hash-15"
+        }
+      ]
+    }
+  });
+
+  return { detRaw, detNorm, featureRow };
+}
+
 describe("assemblePairEvidenceBundle", () => {
-  it("selects only the pair-safe contextual source matrix and never queries derived features", async () => {
-    let capturedQuery: NormalizedObservationCandidateQuery | null = null;
-    const rawRow = makeRawObservationRow({
-      id: 1,
-      source: "macro-calendar-api",
-      payloadHash: "raw-hash-1"
-    });
-    const normRow = makeNormalizedRow({
-      id: 10,
-      rawObservationId: 1,
-      source: "macro-calendar-api"
+  it("queries and selects pair deterministic features with poolId: null and positionId: null filters", async () => {
+    let capturedQuery: BundleFeatureCandidateQuery | null = null;
+    const { detRaw, detNorm, featureRow } = makeValidPairFeatureFixture();
+
+    const featureRepo = makeMockFeatureRepo({
+      listBundleCandidates: async (q) => {
+        capturedQuery = q;
+        return [featureRow];
+      }
     });
 
     const normalizedRepo = makeMockNormalizedRepo({
-      listCandidates: async (q) => {
-        capturedQuery = q;
-        return [normRow];
-      },
-      findByIds: async () => [normRow]
+      listCandidates: async () => [],
+      findByIds: async () => [detNorm]
     });
 
     const rawRepo = makeMockRawRepo({
-      findByIds: async () => [rawRow],
-      findById: async () => rawRow
+      findByIds: async () => [detRaw],
+      findById: async () => detRaw
     });
 
     const bundleRepo: EvidenceBundleRepo = {
@@ -277,74 +410,45 @@ describe("assemblePairEvidenceBundle", () => {
 
     const deps: AssemblePairEvidenceBundleDeps = {
       clock,
+      featureRepo,
       normalizedRepo,
       rawRepo,
       bundleRepo,
       contract
     };
 
-    expect("featureRepo" in (deps as unknown as Record<string, unknown>)).toBe(false);
-
     const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
     expect("outcome" in result && result.outcome).toBe("persisted");
 
     expect(capturedQuery).not.toBeNull();
-    if (capturedQuery) {
-      const sources = (capturedQuery as NormalizedObservationCandidateQuery).sourceKinds.map(
-        (sk) => `${sk.source}:${sk.observationKind}`
-      );
-      expect(sources).toEqual([
-        "macro-calendar-api:scheduled_event",
-        "solana-status-api:protocol_incident",
-        "helius-api:whale_transfer",
-        "helius-api:whale_swap",
-        "birdeye-api:whale_swap",
-        "helius-api:stablecoin_flow",
-        "helius-api:cex_flow_proxy",
-        "birdeye-api:dex_net_flow",
-        "technical-analysis-api:support_resistance_level",
-        "crypto-news-api:ecosystem_news",
-        "regulatory-monitor-api:regulatory_risk"
-      ]);
-    }
+    const query = capturedQuery as unknown as BundleFeatureCandidateQuery;
+    expect(query.pair).toBe("SOL/USDC");
+    expect(query.featureKinds).toEqual(MVP_FEATURE_KINDS);
+    expect(query.asOfAtOrAfterUnixMs).toBe(1000000 - 24 * 3600000);
+    expect(query.asOfAtOrBeforeUnixMs).toBe(1000000);
+    expect(query.receivedAtOrBeforeUnixMs).toBe(1000000);
+    expect(query.poolId).toBeNull();
+    expect(query.positionId).toBeNull();
   });
 
-  it("persists a canonical pair bundle with only contextual lineage and unavailable MVP slots", async () => {
-    const rawRow = makeRawObservationRow({
-      id: 1,
-      source: "macro-calendar-api",
-      payloadHash: "raw-hash-1"
-    });
-    const normRow = makeNormalizedRow({
-      id: 10,
-      rawObservationId: 1,
-      source: "macro-calendar-api",
-      observationKind: "scheduled_event",
-      provenance: {
-        ...DEFAULT_PROVENANCE,
-        rawObservationRefs: [
-          {
-            refType: "raw_observation",
-            id: 1,
-            source: "macro-calendar-api",
-            payloadHash: "raw-hash-1"
-          }
-        ]
-      }
-    });
+  it("persists a degraded pair bundle with deterministic features and no contextual claims", async () => {
+    const { detRaw, detNorm, featureRow } = makeValidPairFeatureFixture();
 
     let capturedCandidate: unknown = null;
-    let capturedInsert: EvidenceBundleInsert | null = null;
+    let persistenceCalledTimes = 0;
 
     const deps: AssemblePairEvidenceBundleDeps = {
       clock: { now: () => "2026-05-10T12:00:00.000Z" },
+      featureRepo: makeMockFeatureRepo({
+        listBundleCandidates: async () => [featureRow]
+      }),
       normalizedRepo: makeMockNormalizedRepo({
-        listCandidates: async () => [normRow],
-        findByIds: async () => [normRow]
+        listCandidates: async () => [],
+        findByIds: async () => [detNorm]
       }),
       rawRepo: makeMockRawRepo({
-        findByIds: async () => [rawRow],
-        findById: async () => rawRow
+        findByIds: async () => [detRaw],
+        findById: async () => detRaw
       }),
       contract: {
         validateCanonicalizeAndHash: async (candidate) => {
@@ -353,8 +457,8 @@ describe("assemblePairEvidenceBundle", () => {
         }
       },
       bundleRepo: {
-        insertOrClassify: async (insert) => {
-          capturedInsert = insert;
+        insertOrClassify: async () => {
+          persistenceCalledTimes++;
           return { outcome: "inserted", row: makeBundleRow() };
         },
         findById: async () => undefined,
@@ -366,45 +470,120 @@ describe("assemblePairEvidenceBundle", () => {
     const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
 
     expect("outcome" in result && result.outcome).toBe("persisted");
-    if ("outcome" in result && result.outcome === "persisted") {
-      expect(result.rowId).toBe(100);
-      expect(result.payloadHash).toBe("canonical-hash-1");
-    }
+    expect(persistenceCalledTimes).toBe(1);
 
     expect(capturedCandidate).toMatchObject({
       scope: { kind: "pair" },
-      runId: "pipeline-1:pair"
+      runId: "pipeline-1:pair",
+      contextualEvidence: {
+        events: [],
+        flows: [],
+        supportResistance: [],
+        newsRegulatory: []
+      }
     });
 
-    const features = (capturedCandidate as { deterministicFeatures: Array<{ status: string }> })
-      .deterministicFeatures;
-    expect(features).toHaveLength(11);
-    for (const feat of features) {
-      expect(feat.status).toBe("unavailable");
-    }
+    const candidateObj = capturedCandidate as {
+      deterministicFeatures: Array<{ featureId: string; status: string; value: number | null }>;
+      assessment: { warnings: Array<{ message: string }> };
+    };
 
-    const insert = capturedInsert as EvidenceBundleInsert | null;
-    expect(insert).not.toBeNull();
-    if (insert) {
-      expect(insert.pair).toBe("SOL/USDC");
-      expect(insert.dominantSignalClass).toBe("contextual");
-      expect(insert.confidenceComposite).toBeGreaterThanOrEqual(0);
-      expect(insert.confidenceComposite).toBeLessThanOrEqual(1);
-      expect(
-        (insert.confidence as { compositeScore: number })?.compositeScore
-      ).toBeGreaterThanOrEqual(0);
-      expect((insert.confidence as { compositeScore: number })?.compositeScore).toBeLessThanOrEqual(
-        1
-      );
-    }
+    const selectedVol = candidateObj.deterministicFeatures.find((f) =>
+      f.featureId.includes("realized_volatility_1h")
+    );
+    expect(selectedVol).toBeDefined();
+    expect(selectedVol?.status).toBe("available");
+    expect(selectedVol?.value).toBe(0.25);
+
+    const warnings = candidateObj.assessment.warnings.map((w) => w.message);
+    expect(warnings.some((w) => w.includes("evidence family is unavailable"))).toBe(true);
   });
 
-  it("returns no_bundle without validating or writing when no contextual evidence is selected", async () => {
+  it("returns no_bundle without validating or writing when no deterministic evidence is usable", async () => {
+    let contractCalled = false;
+    let bundleRepoCalled = false;
+
+    const rawRow = makeRawObservationRow({
+      id: 1,
+      source: "macro-calendar-api",
+      payloadHash: "raw-hash-1"
+    });
+    const normRow = makeNormalizedRow({
+      id: 10,
+      rawObservationId: 1,
+      source: "macro-calendar-api"
+    });
+
+    const deps: AssemblePairEvidenceBundleDeps = {
+      clock: { now: () => "2026-05-10T12:00:00.000Z" },
+      featureRepo: makeMockFeatureRepo({
+        listBundleCandidates: async () => []
+      }),
+      normalizedRepo: makeMockNormalizedRepo({
+        listCandidates: async () => [normRow],
+        findByIds: async () => [normRow]
+      }),
+      rawRepo: makeMockRawRepo({
+        findByIds: async () => [rawRow],
+        findById: async () => rawRow
+      }),
+      contract: {
+        validateCanonicalizeAndHash: async () => {
+          contractCalled = true;
+          return makeCanonicalBundle();
+        }
+      },
+      bundleRepo: {
+        insertOrClassify: async () => {
+          bundleRepoCalled = true;
+          return { outcome: "inserted", row: makeBundleRow() };
+        },
+        findById: async () => undefined,
+        findByPair: async () => [],
+        findLatestByPair: async () => undefined
+      }
+    };
+
+    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+
+    expect("outcome" in result && result.outcome).toBe("no_bundle");
+    expect(contractCalled).toBe(false);
+    expect(bundleRepoCalled).toBe(false);
+  });
+
+  it("returns LINEAGE_ERROR without persistence when deterministic feature provenance is invalid", async () => {
+    const invalidFeatureRow = makeFeatureRow({
+      id: 100,
+      featureKind: "realized_volatility_1h",
+      derivationKey: "pair=SOL/USDC,kind=realized_volatility_1h",
+      asOfUnixMs: 1000000,
+      receivedAtUnixMs: 1000000,
+      status: "AVAILABLE",
+      value: 0.25,
+      pair: "SOL/USDC",
+      poolId: null,
+      positionId: null,
+      provenance: {
+        ...DEFAULT_PROVENANCE,
+        rawObservationRefs: [
+          {
+            refType: "normalized_observation",
+            id: 999,
+            source: "jupiter-price",
+            payloadHash: "missing-norm-hash"
+          }
+        ]
+      }
+    });
+
     let contractCalled = false;
     let bundleRepoCalled = false;
 
     const deps: AssemblePairEvidenceBundleDeps = {
       clock: { now: () => "2026-05-10T12:00:00.000Z" },
+      featureRepo: makeMockFeatureRepo({
+        listBundleCandidates: async () => [invalidFeatureRow]
+      }),
       normalizedRepo: makeMockNormalizedRepo({
         listCandidates: async () => [],
         findByIds: async () => []
@@ -432,105 +611,26 @@ describe("assemblePairEvidenceBundle", () => {
 
     const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
 
-    expect("outcome" in result && result.outcome).toBe("no_bundle");
-    expect(contractCalled).toBe(false);
-    expect(bundleRepoCalled).toBe(false);
-  });
-
-  it("rejects a selected contextual row whose raw parent source or payload hash disagrees", async () => {
-    const rawRow = makeRawObservationRow({
-      id: 1,
-      source: "macro-calendar-api",
-      payloadHash: "raw-hash-1"
-    });
-    const normRow = makeNormalizedRow({
-      id: 10,
-      rawObservationId: 1,
-      source: "macro-calendar-api",
-      observationKind: "scheduled_event",
-      provenance: {
-        ...DEFAULT_PROVENANCE,
-        rawObservationRefs: [
-          {
-            refType: "raw_observation",
-            id: 1,
-            source: "macro-calendar-api",
-            payloadHash: "MISMASHED_HASH"
-          }
-        ]
-      }
-    });
-
-    let contractCalled = false;
-    let bundleRepoCalled = false;
-
-    const deps: AssemblePairEvidenceBundleDeps = {
-      clock: { now: () => "2026-05-10T12:00:00.000Z" },
-      normalizedRepo: makeMockNormalizedRepo({
-        listCandidates: async () => [normRow],
-        findByIds: async () => [normRow]
-      }),
-      rawRepo: makeMockRawRepo({
-        findByIds: async () => [rawRow],
-        findById: async () => rawRow
-      }),
-      contract: {
-        validateCanonicalizeAndHash: async () => {
-          contractCalled = true;
-          return makeCanonicalBundle();
-        }
-      },
-      bundleRepo: {
-        insertOrClassify: async () => {
-          bundleRepoCalled = true;
-          return { outcome: "inserted", row: makeBundleRow() };
-        },
-        findById: async () => undefined,
-        findByPair: async () => [],
-        findLatestByPair: async () => undefined
-      }
-    };
-
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
-
     expect("code" in result && result.code).toBe("LINEAGE_ERROR");
     expect(contractCalled).toBe(false);
     expect(bundleRepoCalled).toBe(false);
   });
 
   it("returns identical_replay for the same pair run identity and canonical content", async () => {
-    const rawRow = makeRawObservationRow({
-      id: 1,
-      source: "macro-calendar-api",
-      payloadHash: "raw-hash-1"
-    });
-    const normRow = makeNormalizedRow({
-      id: 10,
-      rawObservationId: 1,
-      source: "macro-calendar-api",
-      observationKind: "scheduled_event",
-      provenance: {
-        ...DEFAULT_PROVENANCE,
-        rawObservationRefs: [
-          {
-            refType: "raw_observation",
-            id: 1,
-            source: "macro-calendar-api",
-            payloadHash: "raw-hash-1"
-          }
-        ]
-      }
-    });
+    const { detRaw, detNorm, featureRow } = makeValidPairFeatureFixture();
 
     const deps: AssemblePairEvidenceBundleDeps = {
       clock: { now: () => "2026-05-10T12:00:00.000Z" },
+      featureRepo: makeMockFeatureRepo({
+        listBundleCandidates: async () => [featureRow]
+      }),
       normalizedRepo: makeMockNormalizedRepo({
-        listCandidates: async () => [normRow],
-        findByIds: async () => [normRow]
+        listCandidates: async () => [],
+        findByIds: async () => [detNorm]
       }),
       rawRepo: makeMockRawRepo({
-        findByIds: async () => [rawRow],
-        findById: async () => rawRow
+        findByIds: async () => [detRaw],
+        findById: async () => detRaw
       }),
       contract: {
         validateCanonicalizeAndHash: async () => makeCanonicalBundle()
@@ -556,38 +656,20 @@ describe("assemblePairEvidenceBundle", () => {
   });
 
   it("returns conflict for the same pair run identity with different canonical content", async () => {
-    const rawRow = makeRawObservationRow({
-      id: 1,
-      source: "macro-calendar-api",
-      payloadHash: "raw-hash-1"
-    });
-    const normRow = makeNormalizedRow({
-      id: 10,
-      rawObservationId: 1,
-      source: "macro-calendar-api",
-      observationKind: "scheduled_event",
-      provenance: {
-        ...DEFAULT_PROVENANCE,
-        rawObservationRefs: [
-          {
-            refType: "raw_observation",
-            id: 1,
-            source: "macro-calendar-api",
-            payloadHash: "raw-hash-1"
-          }
-        ]
-      }
-    });
+    const { detRaw, detNorm, featureRow } = makeValidPairFeatureFixture();
 
     const deps: AssemblePairEvidenceBundleDeps = {
       clock: { now: () => "2026-05-10T12:00:00.000Z" },
+      featureRepo: makeMockFeatureRepo({
+        listBundleCandidates: async () => [featureRow]
+      }),
       normalizedRepo: makeMockNormalizedRepo({
-        listCandidates: async () => [normRow],
-        findByIds: async () => [normRow]
+        listCandidates: async () => [],
+        findByIds: async () => [detNorm]
       }),
       rawRepo: makeMockRawRepo({
-        findByIds: async () => [rawRow],
-        findById: async () => rawRow
+        findByIds: async () => [detRaw],
+        findById: async () => detRaw
       }),
       contract: {
         validateCanonicalizeAndHash: async () => makeCanonicalBundle()
@@ -614,41 +696,23 @@ describe("assemblePairEvidenceBundle", () => {
   });
 
   it("converts contract and repository exceptions into typed errors without partial persistence", async () => {
-    const rawRow = makeRawObservationRow({
-      id: 1,
-      source: "macro-calendar-api",
-      payloadHash: "raw-hash-1"
-    });
-    const normRow = makeNormalizedRow({
-      id: 10,
-      rawObservationId: 1,
-      source: "macro-calendar-api",
-      observationKind: "scheduled_event",
-      provenance: {
-        ...DEFAULT_PROVENANCE,
-        rawObservationRefs: [
-          {
-            refType: "raw_observation",
-            id: 1,
-            source: "macro-calendar-api",
-            payloadHash: "raw-hash-1"
-          }
-        ]
-      }
-    });
+    const { detRaw, detNorm, featureRow } = makeValidPairFeatureFixture();
 
     let bundleRepoCalled = false;
 
     // 1. Contract failure
     const contractErrorDeps: AssemblePairEvidenceBundleDeps = {
       clock: { now: () => "2026-05-10T12:00:00.000Z" },
+      featureRepo: makeMockFeatureRepo({
+        listBundleCandidates: async () => [featureRow]
+      }),
       normalizedRepo: makeMockNormalizedRepo({
-        listCandidates: async () => [normRow],
-        findByIds: async () => [normRow]
+        listCandidates: async () => [],
+        findByIds: async () => [detNorm]
       }),
       rawRepo: makeMockRawRepo({
-        findByIds: async () => [rawRow],
-        findById: async () => rawRow
+        findByIds: async () => [detRaw],
+        findById: async () => detRaw
       }),
       contract: {
         validateCanonicalizeAndHash: async () => {
@@ -676,13 +740,16 @@ describe("assemblePairEvidenceBundle", () => {
     // 2. Persistence failure
     const persistenceErrorDeps: AssemblePairEvidenceBundleDeps = {
       clock: { now: () => "2026-05-10T12:00:00.000Z" },
+      featureRepo: makeMockFeatureRepo({
+        listBundleCandidates: async () => [featureRow]
+      }),
       normalizedRepo: makeMockNormalizedRepo({
-        listCandidates: async () => [normRow],
-        findByIds: async () => [normRow]
+        listCandidates: async () => [],
+        findByIds: async () => [detNorm]
       }),
       rawRepo: makeMockRawRepo({
-        findByIds: async () => [rawRow],
-        findById: async () => rawRow
+        findByIds: async () => [detRaw],
+        findById: async () => detRaw
       }),
       contract: {
         validateCanonicalizeAndHash: async () => makeCanonicalBundle()

@@ -84,8 +84,8 @@ export interface BundleSelectionRequest {
   readonly selectionVersion: string;
   readonly calculatorVersions: Readonly<Record<FeatureKind, string>>;
   readonly candidates: readonly DerivedFeatureRow[];
-  readonly poolId: string;
-  readonly positionId: string;
+  readonly poolId?: string | undefined;
+  readonly positionId?: string | undefined;
 }
 
 export interface BundleSelectionResult {
@@ -99,14 +99,17 @@ const POSITION_KINDS = new Set(["range_location", "distance_to_lower", "distance
 
 function getScopeFilter(
   featureKind: FeatureKind,
-  requestPoolId: string,
-  requestPositionId: string
+  requestPoolId: string | undefined,
+  requestPositionId: string | undefined
 ): { poolId: string | null; positionId: string | null } {
   if (POSITION_KINDS.has(featureKind)) {
-    return { poolId: requestPoolId, positionId: requestPositionId };
+    return {
+      poolId: requestPoolId ?? null,
+      positionId: requestPositionId ?? null
+    };
   }
   if (featureKind === "volume_liquidity_ratio_24h") {
-    return { poolId: requestPoolId, positionId: null };
+    return { poolId: requestPoolId ?? null, positionId: null };
   }
   return { poolId: null, positionId: null };
 }
