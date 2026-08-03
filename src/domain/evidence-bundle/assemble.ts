@@ -8,6 +8,9 @@ import type {
   SupportResistanceClaim,
   NewsRegulatoryClaim,
   Identifier128,
+  Identifier256,
+  Hex64,
+  CanonicalTimestamp,
   Scope
 } from "../../contracts/generated/evidence-bundle-v1.js";
 import type { SelectedFeatureSlot } from "./select.js";
@@ -204,7 +207,7 @@ function buildDeterministicFeature(
       observedAt: toCanonicalTimestamp(asOfUnixMs ?? fallbackAsOf),
       freshUntil: toCanonicalTimestamp(validUntilUnixMs ?? fallbackFreshUntil),
       confidenceBps: slot.confidence.compositeScore,
-      warnings: normalizedWarnings.slice(0, 16) as [string, ...string[]],
+      warnings: normalizedWarnings.slice(0, 16),
       inputLineage: availableInputLineage
     };
     return result as unknown as DeterministicFeature;
@@ -362,25 +365,18 @@ function buildContextualEvidence(
       const claim = `${onChainFlowKind}: ${flowPayload.amountUsdc} USDC ${flowPayload.direction} for ${flowPayload.venue}`;
 
       flows.push({
-        evidenceId:
-          `normalized-${row.id}` as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
+        evidenceId: `normalized-${row.id}` as Identifier128,
         kind: onChainFlowKind,
         claim,
         direction,
         confidenceBps: Math.max(0, Math.min(10_000, Math.round(row.confidence.compositeScore))),
-        observedAt: toCanonicalTimestamp(
-          flowPayload.observedAtUnixMs
-        ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
+        observedAt: toCanonicalTimestamp(flowPayload.observedAtUnixMs) as CanonicalTimestamp,
         expiresAt: toCanonicalTimestamp(
           flowPayload.observedAtUnixMs + 900000
-        ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
-        sourceReferenceIds: (
-          [
-            `raw-${row.rawObservationId}`
-          ] as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
-        ).slice(0, 64) as [
-          import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
-          ...import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
+        ) as CanonicalTimestamp,
+        sourceReferenceIds: ([`raw-${row.rawObservationId}`] as Identifier128[]).slice(0, 64) as [
+          Identifier128,
+          ...Identifier128[]
         ],
         provenanceMethod: "collected" as const
       });
@@ -399,25 +395,16 @@ function buildContextualEvidence(
       const claim = `${typedPayload.status}: ${typedPayload.title} — ${typedPayload.description}`;
 
       events.push({
-        evidenceId:
-          `normalized-${row.id}` as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
+        evidenceId: `normalized-${row.id}` as Identifier128,
         kind,
         claim,
         direction: "unknown" as const,
         confidenceBps: Math.max(0, Math.min(10_000, Math.round(row.confidence.compositeScore))),
-        observedAt: toCanonicalTimestamp(
-          typedPayload.asOfUnixMs
-        ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
-        expiresAt: toCanonicalTimestamp(
-          typedPayload.expiresAtUnixMs
-        ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp,
-        sourceReferenceIds: (
-          [
-            `raw-${row.rawObservationId}`
-          ] as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
-        ).slice(0, 64) as [
-          import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
-          ...import("../../contracts/generated/evidence-bundle-v1.js").Identifier128[]
+        observedAt: toCanonicalTimestamp(typedPayload.asOfUnixMs) as CanonicalTimestamp,
+        expiresAt: toCanonicalTimestamp(typedPayload.expiresAtUnixMs) as CanonicalTimestamp,
+        sourceReferenceIds: ([`raw-${row.rawObservationId}`] as Identifier128[]).slice(0, 64) as [
+          Identifier128,
+          ...Identifier128[]
         ],
         provenanceMethod: "collected" as const
       });
@@ -441,8 +428,7 @@ function buildSourceReferences(lineage: VerifiedEvidenceLineage["lineage"]): Sou
 
   for (const ref of lineage.sourceReferences) {
     refs.push({
-      referenceId:
-        ref.referenceId as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
+      referenceId: ref.referenceId as Identifier128,
       sourceType: ref.sourceType,
       locator: ref.locator,
       observedAt: ref.observedAt
@@ -451,13 +437,10 @@ function buildSourceReferences(lineage: VerifiedEvidenceLineage["lineage"]): Sou
 
   if (refs.length === 0) {
     refs.push({
-      referenceId:
-        "no_sources_available" as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
+      referenceId: "no_sources_available" as Identifier128,
       sourceType: "internal_bundle",
       locator: "no_sources_available",
-      observedAt: toCanonicalTimestamp(
-        0
-      ) as import("../../contracts/generated/evidence-bundle-v1.js").CanonicalTimestamp
+      observedAt: toCanonicalTimestamp(0) as CanonicalTimestamp
     });
   }
 
@@ -470,7 +453,7 @@ function buildBundleAssessment(quality: EvidenceBundleQuality) {
     quality: quality.quality,
     coverage: quality.coverage,
     warnings: quality.warnings.map((w) => ({
-      code: w.code as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
+      code: w.code as Identifier128,
       message: w.message,
       affectedFamilies: [...w.affectedFamilies]
     }))
@@ -482,13 +465,10 @@ function buildBundleProvenance(
   lineage: VerifiedEvidenceLineage["lineage"]
 ) {
   return {
-    pipelineVersion:
-      input.pipelineVersion as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
-    gitCommit: input.gitCommit as import("../../contracts/generated/evidence-bundle-v1.js").Hex64,
+    pipelineVersion: input.pipelineVersion as Identifier128,
+    gitCommit: input.gitCommit as Hex64,
     environment: input.environment,
-    upstreamRunIds: lineage.rawObservationIds.map(
-      (id) => String(id) as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128
-    )
+    upstreamRunIds: lineage.rawObservationIds.map((id) => String(id) as Identifier128)
   };
 }
 
@@ -546,10 +526,8 @@ export function assembleEvidenceBundleCandidate(
 
   const source = {
     publisher: "sol-usdc-clmm-intelligence" as const,
-    sourceId:
-      "source-001" as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128,
-    sourceVersion:
-      "1.0.0" as import("../../contracts/generated/evidence-bundle-v1.js").Identifier128
+    sourceId: "source-001" as Identifier128,
+    sourceVersion: "1.0.0" as Identifier128
   };
 
   const contextualEvidence = buildContextualEvidence(
@@ -566,9 +544,8 @@ export function assembleEvidenceBundleCandidate(
     pair: "SOL/USDC",
     scope,
     source,
-    runId: runId as import("../../contracts/generated/evidence-bundle-v1.js").Identifier256,
-    correlationId:
-      correlationId as import("../../contracts/generated/evidence-bundle-v1.js").Identifier256,
+    runId: runId as Identifier256,
+    correlationId: correlationId as Identifier256,
     createdAt: toCanonicalTimestamp(createdAt),
     asOf: toCanonicalTimestamp(asOf),
     freshUntil: toCanonicalTimestamp(freshUntil),
