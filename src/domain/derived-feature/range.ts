@@ -142,13 +142,13 @@ export function calculateRangeLocation(position: PositionStatePayloadV1): Featur
     return makeUnavailable(["numeric failure in range location calculation"]);
   }
 
-  const scaledLocation = multiply(rationalLocation, { numerator: 10_000n, denominator: 1n });
+  const scaledLocation = multiply(rationalLocation, { numerator: 1_000_000n, denominator: 1n });
   const roundedLocation = roundToSafeInteger(scaledLocation);
   if (typeof roundedLocation === "string") {
     return makeUnavailable(["numeric overflow in range location"]);
   }
 
-  const clampedLocation = clamp(roundedLocation, 0, 10_000);
+  const clampedLocation = clamp(roundedLocation, 0, 1_000_000);
 
   return {
     status: "AVAILABLE",
@@ -207,7 +207,7 @@ export function calculateDistanceToLower(position: PositionStatePayloadV1): Feat
     return makeUnavailable(["numeric failure in distance-to-lower calculation"]);
   }
 
-  const scaledDistance = multiply(rationalDistance, { numerator: 10_000n, denominator: 1n });
+  const scaledDistance = multiply(rationalDistance, { numerator: 1_000_000n, denominator: 1n });
   const roundedDistance = roundToSafeInteger(scaledDistance);
   if (typeof roundedDistance === "string") {
     return makeUnavailable(["numeric overflow in distance-to-lower"]);
@@ -270,7 +270,7 @@ export function calculateDistanceToUpper(position: PositionStatePayloadV1): Feat
     return makeUnavailable(["numeric failure in distance-to-upper calculation"]);
   }
 
-  const scaledDistance = multiply(rationalDistance, { numerator: 10_000n, denominator: 1n });
+  const scaledDistance = multiply(rationalDistance, { numerator: 1_000_000n, denominator: 1n });
   const roundedDistance = roundToSafeInteger(scaledDistance);
   if (typeof roundedDistance === "string") {
     return makeUnavailable(["numeric overflow in distance-to-upper"]);

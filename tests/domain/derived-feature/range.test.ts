@@ -97,7 +97,7 @@ describe("range calculators", () => {
       expect(result.metadata.rangeState).toBe("below-range");
     });
 
-    it("returns 10_000 percent units with above_range_clamped when current is above upper", () => {
+    it("returns 1_000_000 PPM with above_range_clamped when current is above upper", () => {
       const pos = makePositionState({
         currentPrice: 250,
         currentPriceLabel: "250",
@@ -107,12 +107,12 @@ describe("range calculators", () => {
       });
       const result = calculateRangeLocation(pos);
       expect(result.status).toBe("AVAILABLE");
-      expect(result.value).toBe(10_000);
+      expect(result.value).toBe(1_000_000);
       expect(result.metadata.classification).toBe("above_range_clamped");
       expect(result.metadata.rangeState).toBe("above-range");
     });
 
-    it("returns 5_000 percent units with in_range when current is at midpoint", () => {
+    it("returns exact midpoint PPM with in_range when current is inside range", () => {
       const pos = makePositionState({
         currentPrice: 150,
         currentPriceLabel: "150",
@@ -122,12 +122,12 @@ describe("range calculators", () => {
       });
       const result = calculateRangeLocation(pos);
       expect(result.status).toBe("AVAILABLE");
-      expect(result.value).toBe(5_000);
+      expect(result.value).toBe(500_000);
       expect(result.metadata.classification).toBe("in_range");
       expect(result.metadata.rangeState).toBe("in-range");
     });
 
-    it("returns 0 percent units with at_lower_boundary when current equals lower", () => {
+    it("returns 0 PPM with at_lower_boundary when current equals lower", () => {
       const pos = makePositionState({
         currentPrice: 100,
         currentPriceLabel: "100",
@@ -141,7 +141,7 @@ describe("range calculators", () => {
       expect(result.metadata.classification).toBe("at_lower_boundary");
     });
 
-    it("returns 10_000 percent units with at_upper_boundary when current equals upper", () => {
+    it("returns 1_000_000 PPM with at_upper_boundary when current equals upper", () => {
       const pos = makePositionState({
         currentPrice: 200,
         currentPriceLabel: "200",
@@ -151,7 +151,7 @@ describe("range calculators", () => {
       });
       const result = calculateRangeLocation(pos);
       expect(result.status).toBe("AVAILABLE");
-      expect(result.value).toBe(10_000);
+      expect(result.value).toBe(1_000_000);
       expect(result.metadata.classification).toBe("at_upper_boundary");
     });
   });
@@ -390,7 +390,7 @@ describe("range calculators", () => {
       const result = calculateRangeLocation(pos);
       expect(result.status).toBe("AVAILABLE");
       expect(result.value).toBeGreaterThan(0);
-      expect(result.value).toBeLessThan(10_000);
+      expect(result.value).toBeLessThan(1_000_000);
     });
 
     it("range_location: correctly classifies when currentPrice is below narrow fractional range", () => {
@@ -417,7 +417,7 @@ describe("range calculators", () => {
       });
       const result = calculateRangeLocation(pos);
       expect(result.status).toBe("AVAILABLE");
-      expect(result.value).toBe(10_000);
+      expect(result.value).toBe(1_000_000);
       expect(result.metadata.classification).toBe("above_range_clamped");
     });
 
@@ -483,13 +483,13 @@ describe("range calculators", () => {
       });
       const result = calculateRangeLocation(pos);
       expect(result.status).toBe("AVAILABLE");
-      expect(result.value).toBe(5_000);
+      expect(result.value).toBe(500_000);
       expect(result.metadata.classification).toBe("in_range");
     });
   });
 
   describe("applies nearest integer ties away from zero after the full formula", () => {
-    it("range_location: exact 0.5 position becomes 5000 percent units", () => {
+    it("range_location: exact 0.5 position becomes 500000 PPM", () => {
       const pos = makePositionState({
         currentPrice: 150,
         currentPriceLabel: "150",
@@ -499,10 +499,10 @@ describe("range calculators", () => {
       });
       const result = calculateRangeLocation(pos);
       expect(result.status).toBe("AVAILABLE");
-      expect(result.value).toBe(5_000);
+      expect(result.value).toBe(500_000);
     });
 
-    it("scales distance-to-lower by 10_000 using current price as denominator", () => {
+    it("distance_to_lower: exact 0.3333... becomes 333333 PPM (1/3 of 1_000_000)", () => {
       const pos = makePositionState({
         currentPrice: 150,
         currentPriceLabel: "150",
@@ -513,11 +513,11 @@ describe("range calculators", () => {
       const result = calculateDistanceToLower(pos);
       expect(result.status).toBe("AVAILABLE");
       const diff = 150 - 100;
-      const expectedPercentUnits = (diff / 150) * 10_000;
-      expect(result.value).toBe(Math.round(expectedPercentUnits));
+      const expectedPpm = (diff / 150) * 1_000_000;
+      expect(result.value).toBe(Math.round(expectedPpm));
     });
 
-    it("scales distance-to-upper by 10_000 using current price as denominator", () => {
+    it("distance_to_upper: exact 0.25 becomes 250000 PPM (50/200 * 1_000_000)", () => {
       const pos = makePositionState({
         currentPrice: 150,
         currentPriceLabel: "150",
@@ -528,11 +528,11 @@ describe("range calculators", () => {
       const result = calculateDistanceToUpper(pos);
       expect(result.status).toBe("AVAILABLE");
       const diff = 200 - 150;
-      const expectedPercentUnits = (diff / 150) * 10_000;
-      expect(result.value).toBe(Math.round(expectedPercentUnits));
+      const expectedPpm = (diff / 150) * 1_000_000;
+      expect(result.value).toBe(Math.round(expectedPpm));
     });
 
-    it("handles fractional percent units that round up", () => {
+    it("handles fractional PPM that rounds up (0.5 PPM rounds to 1)", () => {
       const pos = makePositionState({
         currentPrice: 101,
         currentPriceLabel: "101",
@@ -543,12 +543,12 @@ describe("range calculators", () => {
       const result = calculateDistanceToLower(pos);
       expect(result.status).toBe("AVAILABLE");
       const diff = 101 - 100;
-      const expectedPercentUnits = (diff / 101) * 10_000;
-      const rounded = Math.round(expectedPercentUnits);
+      const expectedPpm = (diff / 101) * 1_000_000;
+      const rounded = Math.round(expectedPpm);
       expect(result.value).toBe(rounded);
     });
 
-    it("handles negative fractional percent units that round away from zero", () => {
+    it("handles negative fractional PPM that rounds away from zero", () => {
       const pos = makePositionState({
         currentPrice: 99,
         currentPriceLabel: "99",
@@ -559,8 +559,8 @@ describe("range calculators", () => {
       const result = calculateDistanceToLower(pos);
       expect(result.status).toBe("AVAILABLE");
       const diff = 99 - 100;
-      const expectedPercentUnits = (diff / 99) * 10_000;
-      const rounded = Math.round(expectedPercentUnits);
+      const expectedPpm = (diff / 99) * 1_000_000;
+      const rounded = Math.round(expectedPpm);
       expect(result.value).toBe(rounded);
       expect(rounded).toBeLessThan(0);
     });
@@ -603,7 +603,7 @@ describe("range calculators", () => {
 
       const locationResult = calculateRangeLocation(pos);
       expect(locationResult.status).toBe("AVAILABLE");
-      expect(locationResult.value).toBe(5_000);
+      expect(locationResult.value).toBe(500_000);
       expect(locationResult.metadata.classification).toBe("in_range");
 
       const lowerResult = calculateDistanceToLower(pos);
@@ -626,7 +626,7 @@ describe("range calculators", () => {
 
       const locationResult = calculateRangeLocation(pos);
       expect(locationResult.status).toBe("AVAILABLE");
-      expect(locationResult.value).toBe(10_000);
+      expect(locationResult.value).toBe(1_000_000);
       expect(locationResult.metadata.classification).toBe("above_range_clamped");
 
       const lowerResult = calculateDistanceToLower(pos);
