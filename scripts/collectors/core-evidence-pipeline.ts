@@ -108,6 +108,7 @@ export async function runCoreEvidencePipelineScript(runtime: NodeRuntime): Promi
 
         const pairDeps: AssemblePairEvidenceBundleDeps = {
           clock: runtime.clock,
+          featureRepo: persistence.featureRepo,
           normalizedRepo: persistence.normalizedObservationRepo,
           rawRepo: persistence.rawObservationRepo,
           bundleRepo: persistence.bundleRepo,

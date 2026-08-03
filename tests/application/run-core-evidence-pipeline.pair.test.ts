@@ -15,6 +15,8 @@ import type { ResearchBriefRow } from "../../src/ports/brief-repo.js";
 import type { PersistedResearchBrief } from "../../src/contracts/research-brief.js";
 import { FakePipelineRunLock } from "../fakes/fake-pipeline-run-lock.js";
 import { FakeRunIdFactory } from "../fakes/fake-run-id-factory.js";
+import { MVP_ACCEPTED_CALCULATOR_VERSIONS } from "../../src/domain/derived-feature/constants.js";
+import { EVIDENCE_BUNDLE_SELECTION_VERSION } from "../../src/domain/evidence-bundle/select.js";
 
 class QueuedClock implements Clock {
   private queue: string[];
@@ -308,6 +310,8 @@ describe("runCoreEvidencePipeline - Pair Orchestration", () => {
     expect(pairReq.pipelineRunId).toBe("run-identity");
     expect(pairReq.correlationId).toBe("run:run-identity:pair");
     expect(pairReq.evaluationTimeUnixMs).toBe(evalTime);
+    expect(pairReq.acceptedCalculatorVersions).toBe(MVP_ACCEPTED_CALCULATOR_VERSIONS);
+    expect(pairReq.assemblySelectionVersion).toBe(EVIDENCE_BUNDLE_SELECTION_VERSION);
     const pairReqObj = pairReq as unknown as Record<string, unknown>;
     expect(pairReqObj.walletId).toBeUndefined();
     expect(pairReqObj.poolId).toBeUndefined();
