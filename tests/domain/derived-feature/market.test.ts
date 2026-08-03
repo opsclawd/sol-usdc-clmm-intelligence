@@ -132,7 +132,7 @@ describe("MARKET_CALCULATOR_VERSIONS", () => {
     expect(MARKET_CALCULATOR_VERSIONS.oracle_dex_divergence).toBe("oracle-dex-divergence/v1");
     expect(MARKET_CALCULATOR_VERSIONS.oracle_confidence_width).toBe("oracle-confidence-width/v1");
     expect(MARKET_CALCULATOR_VERSIONS.volume_liquidity_ratio_24h).toBe(
-      "volume-liquidity-ratio-24h/v1"
+      "volume-liquidity-ratio-24h/v2"
     );
   });
 });
@@ -480,7 +480,7 @@ describe("accepts zero volume only with positive TVL", () => {
     const result = calculateVolumeLiquidityRatio24h(pool);
     expect(result.status).toBe("AVAILABLE");
     expect(result.value).toBe(0);
-    expect(result.metadata.unit).toBe("PPM");
+    expect(result.metadata.unit).toBe("PERCENT");
   });
 
   it("returns UNAVAILABLE null when TVL is missing", () => {
@@ -524,6 +524,16 @@ describe("accepts zero volume only with positive TVL", () => {
     expect(result.value).toBeNull();
   });
 
+  it("returns 24_016 percent units for a live-shaped 2.401583 ratio", () => {
+    const result = calculateVolumeLiquidityRatio24h(
+      makePoolStats({ volume24hUsdc: "2401583", tvlUsdc: "1000000" })
+    );
+
+    expect(result.status).toBe("AVAILABLE");
+    expect(result.value).toBe(24_016);
+    expect(result.metadata.unit).toBe("PERCENT");
+  });
+
   it("returns PARTIAL when pool has provider warning", () => {
     const pool = makePoolStats({
       volume24hUsdc: "500000",
@@ -532,29 +542,30 @@ describe("accepts zero volume only with positive TVL", () => {
     });
     const result = calculateVolumeLiquidityRatio24h(pool);
     expect(result.status).toBe("PARTIAL");
-    expect(result.value).toBeGreaterThan(0);
+    expect(result.value).toBe(5_000);
+    expect(result.metadata.unit).toBe("PERCENT");
     expect(result.warnings.some((w) => w.includes("provider"))).toBe(true);
   });
 
-  it("returns exact PPM ratio for positive volume and TVL", () => {
+  it("returns exact percent-scaled ratio for positive volume and TVL", () => {
     const pool = makePoolStats({
       volume24hUsdc: "500000",
       tvlUsdc: "1000000"
     });
     const result = calculateVolumeLiquidityRatio24h(pool);
     expect(result.status).toBe("AVAILABLE");
-    expect(result.value).toBe(500000);
-    expect(result.metadata.unit).toBe("PPM");
+    expect(result.value).toBe(5_000);
+    expect(result.metadata.unit).toBe("PERCENT");
   });
 
-  it("rounds ties to nearest integer away from zero", () => {
+  it("rounds percent-scaled ratios to nearest integer away from zero", () => {
     const pool = makePoolStats({
       volume24hUsdc: "1",
       tvlUsdc: "3"
     });
     const result = calculateVolumeLiquidityRatio24h(pool);
     expect(result.status).toBe("AVAILABLE");
-    const expected = Math.round((1 / 3) * 1_000_000);
+    const expected = Math.round((1 / 3) * 10_000);
     expect(result.value).toBe(expected);
   });
 });
@@ -602,6 +613,6 @@ describe("golden fixtures", () => {
     });
     const result = calculateVolumeLiquidityRatio24h(pool);
     expect(result.status).toBe("AVAILABLE");
-    expect(result.value).toBe(250000);
+    expect(result.value).toBe(2_500);
   });
 });
