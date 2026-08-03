@@ -137,6 +137,21 @@ describe("selectEvidenceFeatureSlots", () => {
       expect(result.slots.map((s) => s.featureKind)).toEqual([...MVP_FEATURE_KINDS]);
     });
 
+    it("selects only requested feature kinds in supplied order", () => {
+      const candidates: DerivedFeatureRow[] = [];
+      const request = makeRequest(candidates, {
+        featureKinds: ["oracle_dex_divergence", "volume_liquidity_ratio_24h"]
+      });
+
+      const result = selectEvidenceFeatureSlots(request);
+
+      expect(result.slots.map((slot) => slot.featureKind)).toEqual([
+        "oracle_dex_divergence",
+        "volume_liquidity_ratio_24h"
+      ]);
+      expect(result.slots.map((slot) => slot.outcome)).toEqual(["missing", "missing"]);
+    });
+
     it("returns missing slot when no candidate exists", () => {
       const candidates: DerivedFeatureRow[] = [];
       const request = makeRequest(candidates);

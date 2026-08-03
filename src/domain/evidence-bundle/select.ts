@@ -84,6 +84,7 @@ export interface BundleSelectionRequest {
   readonly selectionVersion: string;
   readonly calculatorVersions: Readonly<Record<FeatureKind, string>>;
   readonly candidates: readonly DerivedFeatureRow[];
+  readonly featureKinds?: readonly FeatureKind[];
   readonly poolId?: string | undefined;
   readonly positionId?: string | undefined;
 }
@@ -322,6 +323,7 @@ function selectSlot(
 
 export function selectEvidenceFeatureSlots(request: BundleSelectionRequest): BundleSelectionResult {
   const { evaluationTimeUnixMs, calculatorVersions, candidates, poolId, positionId } = request;
+  const featureKinds = request.featureKinds ?? MVP_FEATURE_KINDS;
 
   const allRejectedIds: number[] = [];
   const allWarnings: string[] = [];
@@ -329,7 +331,7 @@ export function selectEvidenceFeatureSlots(request: BundleSelectionRequest): Bun
 
   const slots: SelectedFeatureSlot[] = [];
 
-  for (const featureKind of MVP_FEATURE_KINDS) {
+  for (const featureKind of featureKinds) {
     const scope = getScopeFilter(featureKind, poolId, positionId);
     const kindCandidates = candidates.filter((c) => c.featureKind === featureKind);
     const expectedCalculatorVersion = calculatorVersions[featureKind];
