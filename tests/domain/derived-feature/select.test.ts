@@ -155,34 +155,26 @@ describe("selectors", () => {
       expect(result.rejected[0]!.observationId).toBe(2);
     });
 
-    it("deduplicates volatility timestamps by slot receipt and id", () => {
-      const candidates = [
-        makeRow({
-          id: 1,
+    it("retains distinct Pyth timestamps when every slot is zero", () => {
+      const evaluationAsOfUnixMs = 3_600_000;
+      const candidates = Array.from({ length: 15 }, (_, index) => {
+        const observedAtUnixMs = 100_000 + index * 240_000;
+        return makeRow({
+          id: index + 1,
           source: "pyth-hermes",
           observationKind: "oracle_price",
-          receivedAtUnixMs: 1000,
-          payload: { observedSource: { slot: 100 } }
-        }),
-        makeRow({
-          id: 2,
-          source: "pyth-hermes",
-          observationKind: "oracle_price",
-          receivedAtUnixMs: 1000,
-          payload: { observedSource: { slot: 100 } }
-        }),
-        makeRow({
-          id: 3,
-          source: "pyth-hermes",
-          observationKind: "oracle_price",
-          receivedAtUnixMs: 2000,
-          payload: { observedSource: { slot: 100 } }
-        })
-      ];
-      const result = selectVolatilityTimestamps(candidates, 3000, 3600000);
-      expect(result.selected).toHaveLength(1);
-      expect(result.selected[0]!.id).toBe(3);
-      expect(result.rejected).toHaveLength(2);
+          receivedAtUnixMs: observedAtUnixMs,
+          validUntilUnixMs: evaluationAsOfUnixMs + 300_000,
+          payload: { observedSource: { slot: 0, observedAtUnixMs } }
+        });
+      });
+
+      const result = selectVolatilityTimestamps(candidates, evaluationAsOfUnixMs, 3_600_000);
+
+      expect(result.selected.map((row) => row.id)).toEqual(
+        Array.from({ length: 15 }, (_, index) => index + 1)
+      );
+      expect(result.rejected).toEqual([]);
     });
 
     it("accepts historical volatility samples while requiring a fresh anchor", () => {
@@ -442,34 +434,44 @@ describe("selectors", () => {
       expect(result.rejected).toHaveLength(0);
     });
 
-    it("selects highest slot then receipt time then id for duplicates", () => {
+    it("deduplicates exact volatility observations by timestamp and slot, then receipt and id", () => {
       const candidates = [
         makeRow({
           id: 1,
           source: "pyth-hermes",
           observationKind: "oracle_price",
           receivedAtUnixMs: 1000,
-          payload: { observedSource: { slot: 100 } }
+          payload: { observedSource: { slot: 100, observedAtUnixMs: 900 } }
         }),
         makeRow({
           id: 2,
           source: "pyth-hermes",
           observationKind: "oracle_price",
-          receivedAtUnixMs: 1000,
-          payload: { observedSource: { slot: 100 } }
+          receivedAtUnixMs: 2000,
+          payload: { observedSource: { slot: 100, observedAtUnixMs: 900 } }
         }),
         makeRow({
           id: 3,
           source: "pyth-hermes",
           observationKind: "oracle_price",
           receivedAtUnixMs: 2000,
-          payload: { observedSource: { slot: 100 } }
+          payload: { observedSource: { slot: 100, observedAtUnixMs: 900 } }
         })
       ];
-      const result = selectVolatilityTimestamps(candidates, 3000, 3600000);
-      expect(result.selected).toHaveLength(1);
-      expect(result.selected[0]!.id).toBe(3);
-      expect(result.rejected).toHaveLength(2);
+
+      const result = selectVolatilityTimestamps(candidates, 3000, 3_600_000);
+
+      expect(result.selected.map((row) => row.id)).toEqual([3]);
+      expect(result.rejected).toEqual([
+        expect.objectContaining({
+          observationId: 1,
+          reason: "duplicate_timestamp_and_slot: observedAtUnixMs=900, slot=100"
+        }),
+        expect.objectContaining({
+          observationId: 2,
+          reason: "duplicate_timestamp_and_slot: observedAtUnixMs=900, slot=100"
+        })
+      ]);
     });
 
     it("accepts historical volatility samples while requiring a fresh anchor", () => {
