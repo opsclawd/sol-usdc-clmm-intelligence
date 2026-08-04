@@ -43,10 +43,13 @@ const BPS_KINDS = new Set([
   "oracle_confidence_width",
   "realized_volatility_1h",
   "volume_liquidity_ratio_24h",
+  "range_location",
+  "distance_to_lower",
+  "distance_to_upper",
   ...PERP_BPS_KINDS
 ]);
 
-const PPM_KINDS = new Set(["range_location", "distance_to_lower", "distance_to_upper"]);
+const PPM_KINDS = new Set<string>();
 
 const POSITION_KINDS = new Set(["range_location", "distance_to_lower", "distance_to_upper"]);
 
