@@ -31,13 +31,14 @@ export const PERP_CALCULATOR_VERSIONS = {
   basis_spread_bps: "basis-spread-bps/v1"
 } as const;
 
+type PerpFeatureKind = keyof typeof PERP_CALCULATOR_VERSIONS;
+
 export interface DerivePerpLiquidationFeaturesOptions {
   readonly candidates: readonly NormalizedObservationRow[];
   readonly coverage: readonly PerpCoverageRecordV1[];
   readonly evaluationAsOfUnixMs: number;
   readonly runId: string;
   readonly codeVersion: string;
-  readonly calculatorVersion?: string;
   readonly selectionVersion?: string;
 }
 
@@ -305,7 +306,6 @@ export async function derivePerpLiquidationFeatures(
     evaluationAsOfUnixMs,
     runId,
     codeVersion,
-    calculatorVersion = PERP_CALCULATOR_VERSIONS.oi_trend_4h,
     selectionVersion = "perp-select/v1"
   } = options;
 
@@ -380,7 +380,7 @@ export async function derivePerpLiquidationFeatures(
 
   // Helper to assemble and push feature
   async function assembleAndPush(
-    featureKind: FeatureKind,
+    featureKind: PerpFeatureKind,
     calcResult: FeatureCalculation,
     selectedRows: NormalizedObservationRow[],
     rejectedRows: NormalizedObservationRow[],
@@ -474,7 +474,7 @@ export async function derivePerpLiquidationFeatures(
         },
         warnings: finalWarnings,
         reasons: finalReasons,
-        calculatorVersion,
+        calculatorVersion: PERP_CALCULATOR_VERSIONS[featureKind],
         selectionVersion,
         calculationMetadata: calcResult.metadata
       },

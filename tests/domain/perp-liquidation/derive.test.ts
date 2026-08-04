@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { derivePerpLiquidationFeatures } from "../../../src/domain/perp-liquidation/derive.js";
+import {
+  derivePerpLiquidationFeatures,
+  PERP_CALCULATOR_VERSIONS
+} from "../../../src/domain/perp-liquidation/derive.js";
 import type { NormalizedObservationRow } from "../../../src/contracts/normalized-observation.js";
 import type {
   PerpObservationPayloadV1,
@@ -71,7 +74,6 @@ describe("perp-liquidation derive", () => {
   const asOf = 1_700_000_000_000;
   const runId = "test-run";
   const codeVersion = "1.0.0";
-  const calculatorVersion = "perp-stress/v1";
   const selectionVersion = "perp-select/v1";
 
   const allAvailableCoverage: PerpCoverageRecordV1[] = [
@@ -80,6 +82,114 @@ describe("perp-liquidation derive", () => {
     { kind: "perp_basis", status: "available" },
     { kind: "liquidation_event", status: "available" }
   ];
+
+  it("stamps each perp feature kind with its own calculator version", async () => {
+    const oiEarlier = makeNormalizedRow(
+      110,
+      210,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "oi-version-earlier",
+        observedAtUnixMs: asOf - 3_600_000,
+        kind: "open_interest",
+        openInterestBase: "100",
+        openInterestUsdc: "100000",
+        sampleWindowSeconds: 300
+      },
+      asOf - 3_600_000
+    );
+    const oiLatest = makeNormalizedRow(
+      111,
+      211,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "oi-version-latest",
+        observedAtUnixMs: asOf,
+        kind: "open_interest",
+        openInterestBase: "110",
+        openInterestUsdc: "110000",
+        sampleWindowSeconds: 300
+      },
+      asOf
+    );
+    const funding = makeNormalizedRow(
+      112,
+      212,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "funding-version",
+        observedAtUnixMs: asOf,
+        kind: "funding_rate",
+        fundingRate: "0.0001",
+        fundingIntervalHours: 8
+      },
+      asOf
+    );
+    const basis = makeNormalizedRow(
+      113,
+      213,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "basis-version",
+        observedAtUnixMs: asOf,
+        kind: "perp_basis",
+        perpPriceUsdc: "151.50",
+        spotPriceUsdc: "150.00"
+      },
+      asOf
+    );
+    const liquidation = makeNormalizedRow(
+      114,
+      214,
+      {
+        schemaVersion: 1,
+        evidenceFamily: "perp_liquidation",
+        pair: "SOL/USDC",
+        venue: "binance-fapi",
+        instrument: "SOLUSDC_PERP",
+        sourceEventId: "liquidation-version",
+        observedAtUnixMs: asOf - 900_000,
+        kind: "liquidation_event",
+        side: "long",
+        amountBase: "10",
+        notionalUsdc: "5000"
+      },
+      asOf - 900_000
+    );
+
+    const results = await derivePerpLiquidationFeatures({
+      candidates: [oiEarlier, oiLatest, funding, basis, liquidation],
+      coverage: allAvailableCoverage,
+      evaluationAsOfUnixMs: asOf,
+      runId,
+      codeVersion,
+      selectionVersion
+    });
+
+    const versionsByKind = Object.fromEntries(
+      results.map((result) => [result.featureKind, result.calculatorVersion])
+    );
+
+    expect(results).toHaveLength(4);
+    expect(versionsByKind).toEqual(PERP_CALCULATOR_VERSIONS);
+    expect(new Set(Object.values(versionsByKind)).size).toBe(4);
+  });
 
   it("derives positive BPS for rising OI and negative BPS for falling OI", async () => {
     // Rising OI: earliest = 1000, latest = 1100 => +1000 BPS
@@ -127,7 +237,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -155,7 +264,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -190,7 +298,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -216,7 +323,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -251,7 +357,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -306,7 +411,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -353,7 +457,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -388,7 +491,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -444,7 +546,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -498,7 +599,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -585,7 +685,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -621,7 +720,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -658,7 +756,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -710,7 +807,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -800,7 +896,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
@@ -835,7 +930,6 @@ describe("perp-liquidation derive", () => {
       evaluationAsOfUnixMs: asOf,
       runId,
       codeVersion,
-      calculatorVersion,
       selectionVersion
     });
 
