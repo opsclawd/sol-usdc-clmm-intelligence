@@ -12,7 +12,7 @@ const FEATURE_INSERT: {
   derivationKey: string;
   structuredPayload: unknown;
   status: "AVAILABLE";
-  unit: "PPM";
+  unit: "BPS" | "PPM";
   value?: number | null;
   pair?: string;
   poolId?: string | null;
@@ -429,6 +429,7 @@ describe("DerivedFeatureRepo listBundleCandidates", () => {
       makeInsert({
         derivationKey: "pool=abc",
         featureKind: "volume_liquidity_ratio_24h",
+        unit: "BPS",
         value: 0.8,
         asOfUnixMs: 1000,
         payloadHash: "hash7",

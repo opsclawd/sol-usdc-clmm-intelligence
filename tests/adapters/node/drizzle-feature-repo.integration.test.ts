@@ -87,6 +87,7 @@ describe("DrizzleFeatureRepo integration", () => {
       await repo.insert(
         makeInsert({
           featureKind: "volume_liquidity_ratio_24h",
+          unit: "BPS",
           poolId: POOL_ID,
           positionId: null
         })
@@ -95,6 +96,7 @@ describe("DrizzleFeatureRepo integration", () => {
       await repo.insert(
         makeInsert({
           featureKind: "oracle_dex_divergence",
+          unit: "BPS",
           poolId: null,
           positionId: null
         })

@@ -63,12 +63,7 @@ type FeatureFamily =
   | "liquidity"
   | "risk";
 
-const PPM_KINDS: readonly FeatureKind[] = [
-  "range_location",
-  "distance_to_lower",
-  "distance_to_upper",
-  "volume_liquidity_ratio_24h"
-];
+const PPM_KINDS: readonly FeatureKind[] = [];
 
 function mapFeatureKindToFamily(featureKind: FeatureKind): FeatureFamily {
   switch (featureKind) {

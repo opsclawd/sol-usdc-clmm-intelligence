@@ -9,8 +9,8 @@ function buildMinimalFeature(overrides: Partial<DerivedFeatureV1> = {}): Derived
     schemaVersion: 1,
     featureKind: "range_location",
     status: "AVAILABLE",
-    value: 500000,
-    unit: "PPM",
+    value: 5000,
+    unit: "BPS",
     pair: "SOL/USDC",
     poolId: "pool123",
     positionId: "pos456",
@@ -168,58 +168,42 @@ describe("DerivedFeatureV1 contract", () => {
   });
 
   describe("enforces the canonical unit for every feature kind", () => {
-    const bpsKinds = ["oracle_dex_divergence", "oracle_confidence_width", "realized_volatility_1h"];
-    const ppmKinds = [
+    const bpsKinds = [
+      "oracle_dex_divergence",
+      "oracle_confidence_width",
+      "realized_volatility_1h",
+      "volume_liquidity_ratio_24h",
       "range_location",
       "distance_to_lower",
-      "distance_to_upper",
-      "volume_liquidity_ratio_24h"
+      "distance_to_upper"
     ];
 
     for (const kind of bpsKinds) {
       it(`${kind} requires BPS unit`, () => {
-        const feature = buildMinimalFeature({
-          featureKind: kind as DerivedFeatureV1["featureKind"],
-          unit: "BPS",
-          poolId: null,
-          positionId: null
-        });
-        expect(() => parseDerivedFeatureV1(feature)).not.toThrow();
-      });
-
-      it(`${kind} rejects PPM unit`, () => {
-        const feature = buildMinimalFeature({
-          featureKind: kind as DerivedFeatureV1["featureKind"],
-          unit: "PPM",
-          poolId: null,
-          positionId: null
-        });
-        expect(() => parseDerivedFeatureV1(feature)).toThrow();
-      });
-    }
-
-    for (const kind of ppmKinds) {
-      it(`${kind} requires PPM unit`, () => {
         const scope =
           kind === "volume_liquidity_ratio_24h"
             ? { poolId: "pool123", positionId: null }
-            : { poolId: "pool123", positionId: "pos456" };
+            : ["range_location", "distance_to_lower", "distance_to_upper"].includes(kind)
+              ? { poolId: "pool123", positionId: "pos456" }
+              : { poolId: null, positionId: null };
         const feature = buildMinimalFeature({
           featureKind: kind as DerivedFeatureV1["featureKind"],
-          unit: "PPM",
+          unit: "BPS",
           ...scope
         });
         expect(() => parseDerivedFeatureV1(feature)).not.toThrow();
       });
 
-      it(`${kind} rejects BPS unit`, () => {
+      it(`${kind} rejects PPM unit`, () => {
         const scope =
           kind === "volume_liquidity_ratio_24h"
             ? { poolId: "pool123", positionId: null }
-            : { poolId: "pool123", positionId: "pos456" };
+            : ["range_location", "distance_to_lower", "distance_to_upper"].includes(kind)
+              ? { poolId: "pool123", positionId: "pos456" }
+              : { poolId: null, positionId: null };
         const feature = buildMinimalFeature({
           featureKind: kind as DerivedFeatureV1["featureKind"],
-          unit: "BPS",
+          unit: "PPM",
           ...scope
         });
         expect(() => parseDerivedFeatureV1(feature)).toThrow();
@@ -302,6 +286,7 @@ describe("DerivedFeatureV1 contract", () => {
     it("pool ratio feature (volume_liquidity_ratio_24h) requires poolId and no positionId", () => {
       const withPoolOnly = buildMinimalFeature({
         featureKind: "volume_liquidity_ratio_24h",
+        unit: "BPS",
         poolId: "pool123",
         positionId: null
       });
@@ -309,6 +294,7 @@ describe("DerivedFeatureV1 contract", () => {
 
       const withPosition = buildMinimalFeature({
         featureKind: "volume_liquidity_ratio_24h",
+        unit: "BPS",
         poolId: "pool123",
         positionId: "pos456"
       });
@@ -316,6 +302,7 @@ describe("DerivedFeatureV1 contract", () => {
 
       const withNeither = buildMinimalFeature({
         featureKind: "volume_liquidity_ratio_24h",
+        unit: "BPS",
         poolId: null,
         positionId: null
       });
@@ -571,8 +558,8 @@ describe("DerivedFeatureV1 contract", () => {
       expect(() => parseDerivedFeatureV1(feature)).not.toThrow();
     });
 
-    it("has PPM unit", () => {
-      const feature = buildMinimalFeature({ featureKind: "range_location", unit: "PPM" });
+    it("accepts BPS unit for range_location", () => {
+      const feature = buildMinimalFeature({ featureKind: "range_location", unit: "BPS" });
       expect(() => parseDerivedFeatureV1(feature)).not.toThrow();
     });
   });

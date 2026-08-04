@@ -108,20 +108,20 @@ export const derivedFeatures = intelligence.table(
       sql`((${t.featureKind} = 'basis_spread_bps' AND ${t.unit} = 'BPS') OR (${t.featureKind} <> 'basis_spread_bps'))`
     ),
     check(
-      "chk_features_unit_ppm",
-      sql`((${t.featureKind} = 'range_location' AND ${t.unit} = 'PPM') OR (${t.featureKind} <> 'range_location'))`
+      "chk_features_unit_bps8",
+      sql`((${t.featureKind} = 'volume_liquidity_ratio_24h' AND ${t.unit} = 'BPS') OR (${t.featureKind} <> 'volume_liquidity_ratio_24h'))`
     ),
     check(
-      "chk_features_unit_ppm2",
-      sql`((${t.featureKind} = 'distance_to_lower' AND ${t.unit} = 'PPM') OR (${t.featureKind} <> 'distance_to_lower'))`
+      "chk_features_unit_bps9",
+      sql`((${t.featureKind} = 'range_location' AND ${t.unit} = 'BPS') OR (${t.featureKind} <> 'range_location'))`
     ),
     check(
-      "chk_features_unit_ppm3",
-      sql`((${t.featureKind} = 'distance_to_upper' AND ${t.unit} = 'PPM') OR (${t.featureKind} <> 'distance_to_upper'))`
+      "chk_features_unit_bps10",
+      sql`((${t.featureKind} = 'distance_to_lower' AND ${t.unit} = 'BPS') OR (${t.featureKind} <> 'distance_to_lower'))`
     ),
     check(
-      "chk_features_unit_ppm4",
-      sql`((${t.featureKind} = 'volume_liquidity_ratio_24h' AND ${t.unit} = 'PPM') OR (${t.featureKind} <> 'volume_liquidity_ratio_24h'))`
+      "chk_features_unit_bps11",
+      sql`((${t.featureKind} = 'distance_to_upper' AND ${t.unit} = 'BPS') OR (${t.featureKind} <> 'distance_to_upper'))`
     ),
     check(
       "chk_features_scope_position",

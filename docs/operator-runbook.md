@@ -463,13 +463,13 @@ pnpm assemble:bundle data/assembly-request.json
   "evaluationTimeUnixMs": 1700000000000,
   "createdAtUnixMs": 1700000000000,
   "acceptedCalculatorVersions": {
-    "range_location": "range-location/v1",
-    "distance_to_lower": "distance-to-lower/v1",
-    "distance_to_upper": "distance-to-upper/v1",
+    "range_location": "range-location/v2",
+    "distance_to_lower": "distance-to-lower/v2",
+    "distance_to_upper": "distance-to-upper/v2",
     "oracle_dex_divergence": "oracle-dex-divergence/v1",
     "oracle_confidence_width": "oracle-confidence-width/v1",
     "realized_volatility_1h": "realized-volatility-1h/v1",
-    "volume_liquidity_ratio_24h": "volume-liquidity-ratio-24h/v1",
+    "volume_liquidity_ratio_24h": "volume-liquidity-ratio-24h/v2",
     "oi_trend_4h": "oi-trend-4h/v1",
     "funding_rate_annualized": "funding-rate-annualized/v1",
     "liquidation_cluster_1h": "liquidation-cluster-1h/v1",
@@ -554,15 +554,15 @@ GROUP BY feature_kind;
 
 The assembler selects up to seven canonical feature slots:
 
-| Slot                       | Kind             | Unit |
-| -------------------------- | ---------------- | ---- |
-| range_location             | pool + position  | PPM  |
-| distance_to_lower          | pool + position  | PPM  |
-| distance_to_upper          | pool + position  | PPM  |
-| oracle_dex_divergence      | pool-independent | BPS  |
-| oracle_confidence_width    | pool-independent | BPS  |
-| realized_volatility_1h     | pool-independent | BPS  |
-| volume_liquidity_ratio_24h | pool only        | PPM  |
+| Slot                       | Kind             | Unit         |
+| -------------------------- | ---------------- | ------------ |
+| range_location             | pool + position  | percent ×100 |
+| distance_to_lower          | pool + position  | percent ×100 |
+| distance_to_upper          | pool + position  | percent ×100 |
+| oracle_dex_divergence      | pool-independent | BPS          |
+| oracle_confidence_width    | pool-independent | BPS          |
+| realized_volatility_1h     | pool-independent | BPS          |
+| volume_liquidity_ratio_24h | pool only        | percent ×100 |
 
 ### Exit Codes
 

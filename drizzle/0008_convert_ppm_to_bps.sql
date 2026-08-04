@@ -1,0 +1,9 @@
+ALTER TABLE "intelligence"."derived_features" DROP CONSTRAINT IF EXISTS "chk_features_unit_ppm";--> statement-breakpoint
+ALTER TABLE "intelligence"."derived_features" DROP CONSTRAINT IF EXISTS "chk_features_unit_ppm2";--> statement-breakpoint
+ALTER TABLE "intelligence"."derived_features" DROP CONSTRAINT IF EXISTS "chk_features_unit_ppm3";--> statement-breakpoint
+ALTER TABLE "intelligence"."derived_features" DROP CONSTRAINT IF EXISTS "chk_features_unit_ppm4";--> statement-breakpoint
+UPDATE "intelligence"."derived_features" SET "unit" = 'BPS', "value" = "value" / 100 WHERE "unit" = 'PPM';--> statement-breakpoint
+ALTER TABLE "intelligence"."derived_features" ADD CONSTRAINT "chk_features_unit_bps8" CHECK ((("intelligence"."derived_features"."feature_kind" = 'volume_liquidity_ratio_24h' AND "intelligence"."derived_features"."unit" = 'BPS') OR ("intelligence"."derived_features"."feature_kind" <> 'volume_liquidity_ratio_24h')));--> statement-breakpoint
+ALTER TABLE "intelligence"."derived_features" ADD CONSTRAINT "chk_features_unit_bps9" CHECK ((("intelligence"."derived_features"."feature_kind" = 'range_location' AND "intelligence"."derived_features"."unit" = 'BPS') OR ("intelligence"."derived_features"."feature_kind" <> 'range_location')));--> statement-breakpoint
+ALTER TABLE "intelligence"."derived_features" ADD CONSTRAINT "chk_features_unit_bps10" CHECK ((("intelligence"."derived_features"."feature_kind" = 'distance_to_lower' AND "intelligence"."derived_features"."unit" = 'BPS') OR ("intelligence"."derived_features"."feature_kind" <> 'distance_to_lower')));--> statement-breakpoint
+ALTER TABLE "intelligence"."derived_features" ADD CONSTRAINT "chk_features_unit_bps11" CHECK ((("intelligence"."derived_features"."feature_kind" = 'distance_to_upper' AND "intelligence"."derived_features"."unit" = 'BPS') OR ("intelligence"."derived_features"."feature_kind" <> 'distance_to_upper')));

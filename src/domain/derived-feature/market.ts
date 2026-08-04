@@ -9,7 +9,7 @@ import { parseDecimal, divide, subtract, multiply, roundToSafeInteger } from "./
 export const MARKET_CALCULATOR_VERSIONS = {
   oracle_dex_divergence: "oracle-dex-divergence/v1",
   oracle_confidence_width: "oracle-confidence-width/v1",
-  volume_liquidity_ratio_24h: "volume-liquidity-ratio-24h/v1"
+  volume_liquidity_ratio_24h: "volume-liquidity-ratio-24h/v2"
 } as const;
 
 const MAX_SKEW_MS = 30_000;
@@ -247,7 +247,7 @@ export function calculateVolumeLiquidityRatio24h(pool: PoolStatisticsPayloadV1):
     return makeUnavailable(["numeric_failure"]);
   }
 
-  const scaledRatio = multiply(rationalRatio, { numerator: 1_000_000n, denominator: 1n });
+  const scaledRatio = multiply(rationalRatio, { numerator: 10_000n, denominator: 1n });
   const roundedRatio = roundToSafeInteger(scaledRatio);
   if (typeof roundedRatio === "string") {
     return makeUnavailable(["numeric_overflow"]);
@@ -259,7 +259,7 @@ export function calculateVolumeLiquidityRatio24h(pool: PoolStatisticsPayloadV1):
       value: roundedRatio,
       warnings,
       reasons: [],
-      metadata: { unit: "PPM" as const }
+      metadata: { unit: "BPS" as const }
     };
   }
 
@@ -268,6 +268,6 @@ export function calculateVolumeLiquidityRatio24h(pool: PoolStatisticsPayloadV1):
     value: roundedRatio,
     warnings: [],
     reasons: [],
-    metadata: { unit: "PPM" as const }
+    metadata: { unit: "BPS" as const }
   };
 }
