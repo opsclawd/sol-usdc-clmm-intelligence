@@ -387,13 +387,13 @@ Replaying the same request file with identical inputs produces an `identical_rep
 
 The assembler selects up to seven canonical feature slots from candidate derived features:
 
-1. `range_location` — position range placement (PPM)
-2. `distance_to_lower` — price distance to lower tick (PPM)
-3. `distance_to_upper` — price distance to upper tick (PPM)
+1. `range_location` — position range placement (percent ×100)
+2. `distance_to_lower` — price distance to lower tick (percent ×100)
+3. `distance_to_upper` — price distance to upper tick (percent ×100)
 4. `oracle_dex_divergence` — oracle vs DEX price divergence (BPS)
 5. `oracle_confidence_width` — oracle confidence interval width (BPS)
 6. `realized_volatility_1h` — 1-hour realized volatility (BPS)
-7. `volume_liquidity_ratio_24h` — 24h volume to TVL ratio (PPM)
+7. `volume_liquidity_ratio_24h` — 24h volume to TVL ratio (percent ×100)
 
 Features are selected based on freshness (within 1 hour of `evaluationTimeUnixMs`) and version compatibility. Selection orders by: slot descending, then `observedAtUnixMs` descending, then `receivedAtUnixMs` descending, then ID ascending.
 

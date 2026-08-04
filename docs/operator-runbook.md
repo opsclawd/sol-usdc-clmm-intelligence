@@ -554,15 +554,15 @@ GROUP BY feature_kind;
 
 The assembler selects up to seven canonical feature slots:
 
-| Slot                       | Kind             | Unit |
-| -------------------------- | ---------------- | ---- |
-| range_location             | pool + position  | PPM  |
-| distance_to_lower          | pool + position  | PPM  |
-| distance_to_upper          | pool + position  | PPM  |
-| oracle_dex_divergence      | pool-independent | BPS  |
-| oracle_confidence_width    | pool-independent | BPS  |
-| realized_volatility_1h     | pool-independent | BPS  |
-| volume_liquidity_ratio_24h | pool only        | PPM  |
+| Slot                       | Kind             | Unit         |
+| -------------------------- | ---------------- | ------------ |
+| range_location             | pool + position  | percent ×100 |
+| distance_to_lower          | pool + position  | percent ×100 |
+| distance_to_upper          | pool + position  | percent ×100 |
+| oracle_dex_divergence      | pool-independent | BPS          |
+| oracle_confidence_width    | pool-independent | BPS          |
+| realized_volatility_1h     | pool-independent | BPS          |
+| volume_liquidity_ratio_24h | pool only        | percent ×100 |
 
 ### Exit Codes
 
