@@ -68,15 +68,17 @@ The system derives exactly seven canonical numeric features from normalized sour
 
 **Seven canonical feature kinds:**
 
-| Kind                         | Unit | Scope            | Calculator version              |
-| ---------------------------- | ---- | ---------------- | ------------------------------- |
-| `range_location`             | PPM  | pool + position  | `range-location/v1`             |
-| `distance_to_lower`          | PPM  | pool + position  | `distance-to-lower/v1`          |
-| `distance_to_upper`          | PPM  | pool + position  | `distance-to-upper/v1`          |
-| `oracle_dex_divergence`      | BPS  | pool-independent | `oracle-dex-divergence/v1`      |
-| `oracle_confidence_width`    | BPS  | pool-independent | `oracle-confidence-width/v1`    |
-| `realized_volatility_1h`     | BPS  | pool-independent | `realized-volatility-1h/v1`     |
-| `volume_liquidity_ratio_24h` | PPM  | pool only        | `volume-liquidity-ratio-24h/v1` |
+| Kind                         | Unit                    | Scope            | Calculator version              |
+| ---------------------------- | ----------------------- | ---------------- | ------------------------------- |
+| `range_location`             | percent ×100 (100 = 1%) | pool + position  | `range-location/v2`             |
+| `distance_to_lower`          | percent ×100 (100 = 1%) | pool + position  | `distance-to-lower/v2`          |
+| `distance_to_upper`          | percent ×100 (100 = 1%) | pool + position  | `distance-to-upper/v2`          |
+| `oracle_dex_divergence`      | BPS                     | pool-independent | `oracle-dex-divergence/v1`      |
+| `oracle_confidence_width`    | BPS                     | pool-independent | `oracle-confidence-width/v1`    |
+| `realized_volatility_1h`     | BPS                     | pool-independent | `realized-volatility-1h/v1`     |
+| `volume_liquidity_ratio_24h` | percent ×100 (100 = 1%) | pool only        | `volume-liquidity-ratio-24h/v2` |
+
+Historical `/v1` values were PPM-scaled and `/v2` is the corrected percent-scaled representation; the internal persisted feature-unit enum is unchanged for compatibility.
 
 **Authority boundary:** Derived features are numeric evidence. They carry provenance lineage, confidence metadata, and freshness expiry. They are stored in `intelligence.derived_features` and published as structured evidence to `regime-engine`. The LLM cannot invent, override, or approximate these values.
 
@@ -339,13 +341,13 @@ The pinned contract (`createEvidenceBundleContract()`) verifies all asset hashes
   "evaluationTimeUnixMs": 1700000000000,
   "createdAtUnixMs": 1700000000000,
   "acceptedCalculatorVersions": {
-    "range_location": "range-location/v1",
-    "distance_to_lower": "distance-to-lower/v1",
-    "distance_to_upper": "distance-to-upper/v1",
+    "range_location": "range-location/v2",
+    "distance_to_lower": "distance-to-lower/v2",
+    "distance_to_upper": "distance-to-upper/v2",
     "oracle_dex_divergence": "oracle-dex-divergence/v1",
     "oracle_confidence_width": "oracle-confidence-width/v1",
     "realized_volatility_1h": "realized-volatility-1h/v1",
-    "volume_liquidity_ratio_24h": "volume-liquidity-ratio-24h/v1",
+    "volume_liquidity_ratio_24h": "volume-liquidity-ratio-24h/v2",
     "oi_trend_4h": "oi-trend-4h/v1",
     "funding_rate_annualized": "funding-rate-annualized/v1",
     "liquidation_cluster_1h": "liquidation-cluster-1h/v1",
