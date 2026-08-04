@@ -17,7 +17,7 @@ describe("convert_ppm_to_bps migration", () => {
   it("updates existing PPM records to BPS", () => {
     const content = readMigration();
     expect(content).toMatch(
-      /UPDATE "intelligence"\."derived_features" SET "unit" = 'BPS' WHERE "unit" = 'PPM'/
+      /UPDATE "intelligence"\."derived_features" SET "unit" = 'BPS', "value" = "value" \/ 100 WHERE "unit" = 'PPM'/
     );
   });
 
