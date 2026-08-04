@@ -35,6 +35,7 @@ import {
   type AssemblePairEvidenceBundleRequest,
   type AssemblePairEvidenceBundleDeps
 } from "../../src/application/assemble-pair-evidence-bundle.js";
+import { createEvidenceBundleContract } from "../../src/adapters/node/evidence-bundle-v1-contract.js";
 
 const DEFAULT_CONFIDENCE: Confidence = {
   components: {
@@ -630,6 +631,95 @@ describe("assemblePairEvidenceBundle", () => {
     expect(missingSlotsWarnings).toHaveLength(0);
   });
 
+  it("persists a contract-valid pair bundle with usable derivative slots", async () => {
+    const derivativeRaw = makeRawObservationRow({
+      id: 101,
+      source: "binance-fapi",
+      payloadHash: "raw-hash-101"
+    });
+    const fundingFeature = makeFeatureRow({
+      id: 201,
+      featureKind: "funding_rate_annualized",
+      derivationKey: "pair=SOL/USDC,kind=funding_rate_annualized",
+      asOfUnixMs: 1000000,
+      receivedAtUnixMs: 1000000,
+      validUntilUnixMs: 2000000,
+      status: "AVAILABLE",
+      value: 150,
+      unit: "BPS",
+      pair: "SOL/USDC",
+      poolId: null,
+      positionId: null,
+      evidenceFamily: "perp_liquidation",
+      inputObservationIds: [101],
+      provenance: {
+        ...DEFAULT_PROVENANCE,
+        rawObservationRefs: [
+          {
+            refType: "raw_observation",
+            id: 101,
+            source: "binance-fapi",
+            payloadHash: "raw-hash-101"
+          }
+        ]
+      }
+    });
+
+    const productionContract = createEvidenceBundleContract();
+    let validatedCandidate: EvidenceBundleV1 | null = null;
+    let persistenceCalledTimes = 0;
+
+    const deps: AssemblePairEvidenceBundleDeps = {
+      clock: { now: () => "2026-05-10T12:00:00.000Z" },
+      featureRepo: makeMockFeatureRepo({
+        listBundleCandidates: async () => [fundingFeature]
+      }),
+      normalizedRepo: makeMockNormalizedRepo({
+        listCandidates: async () => [],
+        findByIds: async () => []
+      }),
+      rawRepo: makeMockRawRepo({
+        findByIds: async () => [derivativeRaw],
+        findById: async () => derivativeRaw
+      }),
+      contract: {
+        validateCanonicalizeAndHash: async (candidate) => {
+          validatedCandidate = candidate as EvidenceBundleV1;
+          return productionContract.validateCanonicalizeAndHash(candidate);
+        }
+      },
+      bundleRepo: {
+        insertOrClassify: async () => {
+          persistenceCalledTimes++;
+          return { outcome: "inserted", row: makeBundleRow() };
+        },
+        findById: async () => undefined,
+        findByPair: async () => [],
+        findLatestByPair: async () => undefined
+      }
+    };
+
+    const result = await assemblePairEvidenceBundle(
+      deps,
+      makeDefaultRequest({ gitCommit: "a".repeat(64) })
+    );
+
+    expect("outcome" in result && result.outcome).toBe("persisted");
+    expect(persistenceCalledTimes).toBe(1);
+    expect(validatedCandidate).not.toBeNull();
+    const bundle = validatedCandidate as unknown as EvidenceBundleV1;
+    expect(bundle.contextualEvidence.derivatives).toHaveLength(1);
+    expect(bundle.contextualEvidence.derivatives[0]).toMatchObject({
+      evidenceId: "derivative-funding_rate_annualized-201",
+      kind: "funding",
+      sourceReferenceIds: ["raw-101"]
+    });
+    expect(bundle.assessment.coverage.derivatives).toBe("partial");
+    expect(bundle.assessment.warnings.map((warning) => warning.code)).not.toContain(
+      "DERIVATIVES_UNAVAILABLE"
+    );
+  });
+
   it("persists a degraded pair bundle with deterministic features and no contextual claims", async () => {
     const { detRaw, detNorm, featureRow } = makeValidPairFeatureFixture();
 
@@ -677,8 +767,14 @@ describe("assemblePairEvidenceBundle", () => {
       contextualEvidence: {
         events: [],
         flows: [],
+        derivatives: [],
         supportResistance: [],
         newsRegulatory: []
+      },
+      assessment: {
+        coverage: {
+          derivatives: "unavailable"
+        }
       }
     });
 

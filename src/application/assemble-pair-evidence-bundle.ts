@@ -32,6 +32,7 @@ import {
   assembleEvidenceBundleCandidate,
   type AssembleEvidenceBundleInput
 } from "../domain/evidence-bundle/assemble.js";
+import { hasUsableDerivativeSlots } from "../domain/evidence-bundle/derivatives.js";
 import { MVP_FEATURE_KINDS } from "../contracts/derived-feature.js";
 import {
   selectCurrentContextEvents,
@@ -428,7 +429,7 @@ export async function assemblePairEvidenceBundle(
   const expiresAt = evaluationTimeUnixMs + 7200000;
   const hasSupportResistance = selectedSupportResistance.length > 0;
   const hasFlows = selectedContextEvents.some((item) => item.eventFamily === "on_chain_flow");
-  const hasDerivatives = false;
+  const hasDerivatives = hasUsableDerivativeSlots(slots);
   const hasEvents = selectedContextEvents.some((item) => item.eventFamily !== "on_chain_flow");
   const hasNewsRegulatory = selectedNewsEvidence.length > 0;
   const hasResearchBrief = false;
