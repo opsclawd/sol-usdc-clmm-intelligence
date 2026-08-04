@@ -58,7 +58,7 @@ describe("core evidence pipeline cron schedule regression", () => {
     expect(projectJobs(jobs, PRE_EXISTING_JOB_NAMES)).toEqual([
       ["context-events", "0 */4 * * *", "cron/routines/context-events.md"],
       ["news-evidence", "0 */2 * * *", "cron/routines/news-evidence.md"],
-      ["on-chain-flow", "0 * * * *", "cron/routines/on-chain-flow.md"],
+      ["on-chain-flow", "*/15 * * * *", "cron/routines/on-chain-flow.md"],
       ["perp-liquidation", "*/5 * * * *", "cron/routines/perp-liquidation.md"],
       ["support-resistance", "15 */4 * * *", "cron/routines/support-resistance.md"]
     ]);
