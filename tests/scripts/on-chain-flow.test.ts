@@ -68,13 +68,13 @@ function createMockRuntime() {
           case "WALLET_PUBLIC_KEY":
             return "Wallet123";
           case "ON_CHAIN_WHALE_TRANSFER_MIN_USDC":
-            return "1000000";
+            return "110000";
           case "ON_CHAIN_WHALE_SWAP_MIN_USDC":
-            return "1000000";
+            return "120000";
           case "ON_CHAIN_STABLECOIN_FLOW_MIN_USDC":
             return "1000000";
           case "ON_CHAIN_DEX_NET_FLOW_MIN_USDC":
-            return "5000000";
+            return "260000";
           case "ON_CHAIN_CEX_PROXY_MIN_USDC":
             return "1000000";
           case "ON_CHAIN_CEX_MIN_ATTRIBUTION_CONFIDENCE":
@@ -510,7 +510,7 @@ describe("on-chain-flow collector script", () => {
   });
 
   describe("configured values create both adapters and pass explicit thresholds to the job", () => {
-    it("passes correct thresholds to the job", async () => {
+    it("preserves explicit on-chain-flow threshold overrides", async () => {
       mockRunOnChainFlowJob.mockResolvedValue(COMPLETE_RESULT);
 
       await runOnChainFlowCollect();
@@ -521,14 +521,43 @@ describe("on-chain-flow collector script", () => {
       expect(callArgs).toHaveProperty("sources");
       expect(callArgs.sources).toHaveLength(2);
       expect(callArgs).toHaveProperty("thresholds");
-      expect(callArgs.thresholds.whaleTransferMinUsdc).toBe("1000000");
-      expect(callArgs.thresholds.whaleSwapMinUsdc).toBe("1000000");
+      expect(callArgs.thresholds.whaleTransferMinUsdc).toBe("110000");
+      expect(callArgs.thresholds.whaleSwapMinUsdc).toBe("120000");
       expect(callArgs.thresholds.stablecoinFlowMinUsdc).toBe("1000000");
-      expect(callArgs.thresholds.dexNetFlowMinUsdc).toBe("5000000");
+      expect(callArgs.thresholds.dexNetFlowMinUsdc).toBe("260000");
       expect(callArgs.thresholds.cexFlowProxyMinUsdc).toBe("1000000");
       expect(callArgs.thresholds.cexMinAttributionConfidence).toBe(0.8);
       expect(callArgs).toHaveProperty("lookbackMs");
       expect(callArgs.lookbackMs).toBe(900000);
+    });
+
+    it("uses calibrated on-chain-flow defaults when threshold overrides are absent", async () => {
+      const runtime = createMockRuntime();
+      runtime.env.getOptional.mockImplementation((name: string) => {
+        if (
+          name === "ON_CHAIN_WHALE_TRANSFER_MIN_USDC" ||
+          name === "ON_CHAIN_WHALE_SWAP_MIN_USDC" ||
+          name === "ON_CHAIN_DEX_NET_FLOW_MIN_USDC"
+        ) {
+          return undefined;
+        }
+        return createMockRuntime().env.getOptional(name);
+      });
+      mockCreateNodeRuntime.mockReturnValue(runtime);
+      mockRunOnChainFlowJob.mockResolvedValue(COMPLETE_RESULT);
+
+      await runOnChainFlowCollect();
+
+      expect(mockRunOnChainFlowJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          thresholds: expect.objectContaining({
+            whaleTransferMinUsdc: "100000",
+            whaleSwapMinUsdc: "100000",
+            dexNetFlowMinUsdc: "250000"
+          }),
+          lookbackMs: 900000
+        })
+      );
     });
   });
 

@@ -9,27 +9,27 @@ import { redactSecretMentions, secretRedactingReplacer } from "../../src/domain/
 import { parseOnChainFlowThresholds } from "../../src/domain/on-chain-flow/threshold.js";
 import type { OnChainFlowThresholds } from "../../src/contracts/on-chain-flow.js";
 
-const DEFAULT_THRESHOLDS = {
-  whaleTransferMinUsdc: "1000000",
-  whaleSwapMinUsdc: "1000000",
-  stablecoinFlowMinUsdc: "1000000",
-  dexNetFlowMinUsdc: "5000000",
-  cexFlowProxyMinUsdc: "1000000",
-  cexMinAttributionConfidence: 0.8
-};
+import {
+  DEFAULT_ON_CHAIN_FLOW_LOOKBACK_MS,
+  DEFAULT_ON_CHAIN_FLOW_THRESHOLDS
+} from "../../src/domain/on-chain-flow/defaults.js";
 
-const DEFAULT_LOOKBACK_MS = 900000;
-
-function parseThreshold(value: string | undefined, name: keyof typeof DEFAULT_THRESHOLDS): string {
+function parseThreshold(
+  value: string | undefined,
+  name: keyof typeof DEFAULT_ON_CHAIN_FLOW_THRESHOLDS
+): string {
   if (value === undefined || value.length === 0) {
-    return DEFAULT_THRESHOLDS[name] as string;
+    return DEFAULT_ON_CHAIN_FLOW_THRESHOLDS[name] as string;
   }
   return value;
 }
 
-function parseConfidence(value: string | undefined, name: keyof typeof DEFAULT_THRESHOLDS): number {
+function parseConfidence(
+  value: string | undefined,
+  name: keyof typeof DEFAULT_ON_CHAIN_FLOW_THRESHOLDS
+): number {
   if (value === undefined || value.length === 0) {
-    return DEFAULT_THRESHOLDS[name] as number;
+    return DEFAULT_ON_CHAIN_FLOW_THRESHOLDS[name] as number;
   }
   const parsed = parseFloat(value);
   if (isNaN(parsed)) {
@@ -40,7 +40,7 @@ function parseConfidence(value: string | undefined, name: keyof typeof DEFAULT_T
 
 function parseLookbackMs(value: string | undefined): number {
   if (value === undefined || value.length === 0) {
-    return DEFAULT_LOOKBACK_MS;
+    return DEFAULT_ON_CHAIN_FLOW_LOOKBACK_MS;
   }
   const parsed = parseInt(value, 10);
   if (isNaN(parsed) || parsed <= 0) {
