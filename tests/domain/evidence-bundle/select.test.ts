@@ -324,6 +324,149 @@ describe("selectEvidenceFeatureSlots", () => {
     });
   });
 
+  describe("ranks candidates by status before recency", () => {
+    it.each([
+      ["AVAILABLE", "UNAVAILABLE", "selected_available", -125],
+      ["PARTIAL", "UNAVAILABLE", "selected_partial", -125],
+      ["AVAILABLE", "PARTIAL", "selected_available", -125]
+    ] as const)(
+      "%s outranks a newer %s candidate",
+      (preferredStatus, newerStatus, expectedOutcome, preferredValue) => {
+        const candidates: DerivedFeatureRow[] = [
+          makeFeatureRow({
+            id: 15210,
+            featureKind: "oi_trend_4h",
+            derivationKey: `venue=drift-api,status=${preferredStatus}`,
+            asOfUnixMs: 1000,
+            receivedAtUnixMs: 1000,
+            status: preferredStatus,
+            value: preferredValue
+          }),
+          makeFeatureRow({
+            id: 15206,
+            featureKind: "oi_trend_4h",
+            derivationKey: `venue=binance-fapi,status=${newerStatus}`,
+            asOfUnixMs: 2000,
+            receivedAtUnixMs: 2000,
+            status: newerStatus,
+            value: newerStatus === "UNAVAILABLE" ? null : 25
+          })
+        ];
+
+        const result = selectEvidenceFeatureSlots(
+          makeRequest(candidates, { featureKinds: ["oi_trend_4h"] })
+        );
+
+        expect(result.slots).toEqual([
+          expect.objectContaining({
+            featureKind: "oi_trend_4h",
+            outcome: expectedOutcome,
+            rowId: 15210,
+            value: preferredValue
+          })
+        ]);
+        expect(result.rejectedIds).toEqual([15206]);
+      }
+    );
+
+    it("newest UNAVAILABLE candidate still wins when no usable candidate exists", () => {
+      const candidates: DerivedFeatureRow[] = [
+        makeFeatureRow({
+          id: 1,
+          featureKind: "oi_trend_4h",
+          derivationKey: "venue=drift-api",
+          asOfUnixMs: 1000,
+          receivedAtUnixMs: 1000,
+          status: "UNAVAILABLE"
+        }),
+        makeFeatureRow({
+          id: 2,
+          featureKind: "oi_trend_4h",
+          derivationKey: "venue=binance-fapi",
+          asOfUnixMs: 2000,
+          receivedAtUnixMs: 2000,
+          status: "UNAVAILABLE"
+        })
+      ];
+
+      const result = selectEvidenceFeatureSlots(
+        makeRequest(candidates, { featureKinds: ["oi_trend_4h"] })
+      );
+
+      expect(result.slots).toEqual([
+        expect.objectContaining({ outcome: "selected_unavailable", rowId: 2 })
+      ]);
+      expect(result.rejectedIds).toEqual([1]);
+    });
+
+    it("expired-only fallback cites the highest-status candidate", () => {
+      const candidates: DerivedFeatureRow[] = [
+        makeFeatureRow({
+          id: 10,
+          featureKind: "oi_trend_4h",
+          derivationKey: "venue=drift-api",
+          asOfUnixMs: 1000,
+          receivedAtUnixMs: 1000,
+          validUntilUnixMs: 3000,
+          status: "AVAILABLE",
+          value: -125
+        }),
+        makeFeatureRow({
+          id: 11,
+          featureKind: "oi_trend_4h",
+          derivationKey: "venue=binance-fapi",
+          asOfUnixMs: 2000,
+          receivedAtUnixMs: 2000,
+          validUntilUnixMs: 4000,
+          status: "UNAVAILABLE"
+        })
+      ];
+
+      const result = selectEvidenceFeatureSlots(
+        makeRequest(candidates, {
+          evaluationTimeUnixMs: 5000,
+          featureKinds: ["oi_trend_4h"]
+        })
+      );
+
+      expect(result.slots).toEqual([
+        { featureKind: "oi_trend_4h", outcome: "expired_only", rowId: 10 }
+      ]);
+    });
+
+    it("unsupported-version fallback cites the highest-status candidate", () => {
+      const candidates: DerivedFeatureRow[] = [
+        makeFeatureRow({
+          id: 20,
+          featureKind: "oi_trend_4h",
+          derivationKey: "venue=drift-api",
+          asOfUnixMs: 1000,
+          receivedAtUnixMs: 1000,
+          calculatorVersion: "2.0",
+          status: "AVAILABLE",
+          value: -125
+        }),
+        makeFeatureRow({
+          id: 21,
+          featureKind: "oi_trend_4h",
+          derivationKey: "venue=binance-fapi",
+          asOfUnixMs: 2000,
+          receivedAtUnixMs: 2000,
+          calculatorVersion: "2.0",
+          status: "UNAVAILABLE"
+        })
+      ];
+
+      const result = selectEvidenceFeatureSlots(
+        makeRequest(candidates, { featureKinds: ["oi_trend_4h"] })
+      );
+
+      expect(result.slots).toEqual([
+        { featureKind: "oi_trend_4h", outcome: "unsupported_version_only", rowId: 20 }
+      ]);
+    });
+  });
+
   describe("rejects future and boundary-expired rows", () => {
     it("asOfUnixMs > evaluationTimeUnixMs is future and rejected", () => {
       const candidates: DerivedFeatureRow[] = [
