@@ -19,9 +19,16 @@ Hermes has no per-job model/thinking/agent override and no per-job timezone (it 
 | Job                         | Cadence          | Responsibility                                                                                                |
 | --------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------- |
 | `price-observations` (#104) | Every 5 minutes  | Build historical price density for `realized_volatility_1h`.                                                  |
+| `on-chain-flow`             | Every 15 minutes | Collect SOL/USDC on-chain flow observations (Helius whale_transfer, Birdeye whale_swap and dex_net_flow).     |
 | `core-evidence-pipeline`    | Every 30 minutes | Collect core observations, derive features, assemble evidence, generate briefs, and publish the exact bundle. |
 
 The synthesis cadence is shorter than the one-hour core-feature validity boundary so scheduler drift, collection latency, bounded retries, and brief generation do not consume the entire freshness window. The five-minute sampler remains a separate job because historical telemetry density and expensive synthesis have different cadence and cost requirements.
+
+Specifically, for `on-chain-flow` (15-minute cadence):
+
+- The job runs every 15 minutes (`*/15 * * * *`) with a matching 900,000 ms (15-minute) default lookback window so adjacent runs have no structural gap.
+- Default thresholds are set to 100,000 USDC for whale transfers/swaps and 250,000 USDC for DEX net flow, calibrated to the pool's volume snapshot (~$65.6M daily volume implies ~$684K gross volume per 15-minute window for ~$25.5M TVL).
+- The 15-minute schedule makes four times as many collection attempts per hour (Helius and Birdeye) compared to the old hourly schedule; operators must monitor provider rate limits (429s) and costs after rollout.
 
 Specifically, for five-minute sampling:
 

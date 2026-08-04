@@ -20,7 +20,7 @@ This routine collects on-chain flow events from two providers: Helius (whale_tra
 - `HELIUS_FLOW_API_URL`: Base URL (`https://api.helius.xyz`)
 - `HELIUS_API_KEY`: Helius API key
 - `WALLET_PUBLIC_KEY`: Position wallet address (the only wallet watched)
-- `ON_CHAIN_WHALE_TRANSFER_MIN_USDC`: Minimum transfer amount in USDC (default: 1,000,000)
+- `ON_CHAIN_WHALE_TRANSFER_MIN_USDC`: Minimum transfer amount in USDC (default: 100,000)
 - `ON_CHAIN_FLOW_LOOKBACK_MS`: Lookback window in milliseconds (default: 900000 = 15 minutes)
 
 **Birdeye (whale_swap, dex_net_flow):**
@@ -28,8 +28,8 @@ This routine collects on-chain flow events from two providers: Helius (whale_tra
 - `BIRDEYE_FLOW_API_URL`: Base URL (`https://public-api.birdeye.so`)
 - `BIRDEYE_API_KEY`: Birdeye API key
 - `WHIRLPOOL_ADDRESS`: Authoritative Orca SOL/USDC Whirlpool address (`Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE`)
-- `ON_CHAIN_WHALE_SWAP_MIN_USDC`: Minimum swap amount (default: 1,000,000 USDC)
-- `ON_CHAIN_DEX_NET_FLOW_MIN_USDC`: Minimum DEX net flow amount (default: 5,000,000 USDC)
+- `ON_CHAIN_WHALE_SWAP_MIN_USDC`: Minimum swap amount (default: 100,000 USDC)
+- `ON_CHAIN_DEX_NET_FLOW_MIN_USDC`: Minimum DEX net flow amount (default: 250,000 USDC)
 
 ## Event Coverage Matrix
 
@@ -45,13 +45,19 @@ This routine collects on-chain flow events from two providers: Helius (whale_tra
 
 Helius whale_transfer is scoped exclusively to `WALLET_PUBLIC_KEY`. The collector polls the Helius legacy address-history endpoint for this single wallet only. A saturated page (100 transactions returned, window not fully covered) produces `unavailable` — not a clean no-event result. See docs/operator-runbook.md for the completeness guard details.
 
-## Threshold Gating
+## Threshold Gating & Calibration Rationale
+
+`on-chain-flow` runs every 15 minutes (`*/15 * * * *`). The default lookback remains 900,000 ms (15 minutes), so adjacent runs have no structural gap.
 
 Live event kinds use minimum USD value thresholds:
 
-- `ON_CHAIN_WHALE_TRANSFER_MIN_USDC`: Minimum whale transfer amount (default: 1,000,000 USDC)
-- `ON_CHAIN_WHALE_SWAP_MIN_USDC`: Minimum whale swap amount (default: 1,000,000 USDC)
-- `ON_CHAIN_DEX_NET_FLOW_MIN_USDC`: Minimum DEX net flow amount (default: 5,000,000 USDC)
+- `ON_CHAIN_WHALE_TRANSFER_MIN_USDC`: Minimum whale transfer amount (default: 100,000 USDC)
+- `ON_CHAIN_WHALE_SWAP_MIN_USDC`: Minimum whale swap amount (default: 100,000 USDC)
+- `ON_CHAIN_DEX_NET_FLOW_MIN_USDC`: Minimum DEX net flow amount (default: 250,000 USDC)
+
+This calibration is grounded in the snapshot: approximately $65.6M daily volume implies approximately $684K gross volume per 15-minute window for a pool with approximately $25.5M TVL. Net flow is expected to be below gross flow.
+
+Note: The 15-minute cadence makes four times as many Helius/Birdeye collection attempts as the old hourly cadence; provider rate limits and cost must be watched after rollout.
 
 ## Source Health Semantics
 

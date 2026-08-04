@@ -18,7 +18,7 @@ jobs:
     cron: "0 */2 * * *"
     messageFile: cron/routines/news-evidence.md
   - name: on-chain-flow
-    cron: "0 * * * *"
+    cron: "*/15 * * * *"
     messageFile: cron/routines/on-chain-flow.md
   - name: perp-liquidation
     cron: "*/5 * * * *"

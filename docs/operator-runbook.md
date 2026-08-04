@@ -1080,11 +1080,11 @@ BIRDEYE_FLOW_API_URL=https://public-api.birdeye.so
 BIRDEYE_API_KEY=<your-birdeye-api-key>
 
 # Whale transfer threshold (Helius, position wallet only)
-ON_CHAIN_WHALE_TRANSFER_MIN_USDC=1000000       # Default: 1,000,000 USDC
+ON_CHAIN_WHALE_TRANSFER_MIN_USDC=100000        # Default: 100,000 USDC
 
 # Threshold overrides (Birdeye)
-ON_CHAIN_WHALE_SWAP_MIN_USDC=1000000           # Default: 1,000,000 USDC
-ON_CHAIN_DEX_NET_FLOW_MIN_USDC=5000000          # Default: 5,000,000 USDC
+ON_CHAIN_WHALE_SWAP_MIN_USDC=100000            # Default: 100,000 USDC
+ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000          # Default: 250,000 USDC
 
 # Lookback window
 ON_CHAIN_FLOW_LOOKBACK_MS=900000               # Default: 900,000 ms (15 minutes)
@@ -1094,6 +1094,13 @@ WALLET_PUBLIC_KEY=<position-wallet-address>
 ```
 
 > Note: `stablecoin_flow` and `cex_flow_proxy` have no threshold env vars because they are not implemented in this phase.
+
+### Cadence and Calibration Rationale
+
+- **Schedule & Cadence**: `on-chain-flow` runs every 15 minutes (`*/15 * * * *`).
+- **Lookback Window**: `ON_CHAIN_FLOW_LOOKBACK_MS` defaults to 900,000 ms (15 minutes), ensuring adjacent runs have no structural gap.
+- **Threshold Calibration**: Grounded in pool snapshot data (~$65.6M daily volume implies ~$684K gross volume per 15-minute window for a pool with ~$25.5M TVL; net flow is expected to be below gross flow). Defaults are set to 100,000 USDC for whale transfers/swaps and 250,000 USDC for DEX net flow.
+- **Provider Costs & Rate Limits**: The 15-minute cadence makes four times as many Helius/Birdeye collection attempts as the old hourly cadence; monitor provider rate limits (429s) and costs after rollout.
 
 ### Command and Statuses
 
@@ -1126,6 +1133,43 @@ Thresholds are exact decimal strings parsed with arbitrary-precision arithmetic.
 
 - **`amountUsdc`**: Converted from raw token amounts using proper decimal arithmetic. Raw native-unit amounts mislabeled as USDC are rejected at normalization.
 - **`addressContext.address`**: The actual wallet public key (`WALLET_PUBLIC_KEY`), not the transaction signature. Transfer attribution uses `fromUserAccount`/`toUserAccount` fields; ambiguous records (wallet absent or appears on both sides) are omitted rather than guessed.
+
+### Existing-Deployment Rollout
+
+Editing `.env.example` does not rewrite deployed environment overrides on active systems. To roll out the calibrated thresholds and 15-minute schedule:
+
+1. Update deployed environment variables for all three live thresholds:
+   ```bash
+   ON_CHAIN_WHALE_TRANSFER_MIN_USDC=100000
+   ON_CHAIN_WHALE_SWAP_MIN_USDC=100000
+   ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000
+   ```
+2. Deploy the updated code.
+3. Reconcile desired state with Hermes cron registration:
+   ```bash
+   pnpm cron:render
+   pnpm cron:sync -- --apply
+   ```
+
+### Live Acceptance Evidence
+
+> **Warning**: The collector persists immutable raw and normalized rows directly to the database. Use the intended deployment database intentionally.
+
+To produce bounded live acceptance proof:
+
+1. Run the collector with a temporary process-level Helius threshold override and normal persistence path:
+   ```bash
+   ON_CHAIN_WHALE_TRANSFER_MIN_USDC=10 pnpm collect:on-chain-flow
+   ```
+2. Record the sanitized run ID, execution status, and event counts from stdout. Never log provider API keys.
+3. Query the database to verify a new `helius-api` / `whale_transfer` normalized observation row exists with `received_at_unix_ms` at or after the recorded run start time.
+4. Run the evidence bundle assembly workflow:
+   ```bash
+   pnpm assemble:bundle data/assembly-request.json
+   ```
+5. Verify the latest assembled payload reports `assessment.coverage.flows` as `partial` or `available`.
+
+> **Note**: Zero accepted transfers is **inconclusive**. A saturated Helius page, provider failure, or absent genuine transfer is not permission to insert synthetic data or claim success. If no genuine transfer occurs, record the run as inconclusive and re-test when live activity occurs.
 
 ### Live Smoke Command
 
