@@ -47,7 +47,7 @@ function makePositionPayload(positionId: string, poolId: string) {
   };
 }
 
-function makeOraclePayload(slot = 100) {
+function makeOraclePayload(slot = 100, observedAtUnixMs = EVAL_MS - 5000, price = "150.00") {
   return {
     kind: "oracle_price" as const,
     schemaVersion: 1 as const,
@@ -59,15 +59,15 @@ function makeOraclePayload(slot = 100) {
       quoteDecimals: 6
     },
     priceData: {
-      price: "150.00",
+      price,
       confidence: "0.50",
       status: "trading" as const,
       ageMs: 1000
     },
     observedSource: {
       source: "pyth-hermes" as const,
-      observedAtUnixMs: EVAL_MS - 5000,
-      fetchedAtUnixMs: EVAL_MS - 4000,
+      observedAtUnixMs,
+      fetchedAtUnixMs: observedAtUnixMs + 1000,
       slot
     },
     bounds: {
@@ -813,6 +813,30 @@ describe("deriveMvpFeatures", () => {
         (r) => r.featureKind === "range_location" && r.positionId === POSITION_IDS[0]
       );
       expect(secondResult!.id).toBe(firstResult!.id);
+    });
+  });
+
+  describe("volatility selection integration", () => {
+    it("makes realized volatility available from ten distinct slot-zero Pyth timestamps", async () => {
+      const oracleRows = Array.from({ length: 10 }, (_, index) => {
+        const observedAtUnixMs = EVAL_MS - 55 * 60_000 + index * 6 * 60_000;
+        return seedObservation(
+          normalizedObservationRepo,
+          "pyth-hermes",
+          "oracle_price",
+          makeOraclePayload(0, observedAtUnixMs, (150 + index / 10).toFixed(2)),
+          observedAtUnixMs
+        );
+      });
+
+      const result = await deriveMvpFeatures(deps, makeRequest());
+      const volatility = result.rows.find((row) => row.featureKind === "realized_volatility_1h");
+
+      expect(volatility).toBeDefined();
+      expect(volatility!.status).toBe("AVAILABLE");
+      expect(volatility!.structuredPayload).toEqual(expect.objectContaining({ sampleCount: 10 }));
+      expect(volatility!.inputObservationIds).toEqual(oracleRows.map((row) => row.id));
+      expect(volatility!.rejectedObservationIds).toEqual([]);
     });
   });
 });

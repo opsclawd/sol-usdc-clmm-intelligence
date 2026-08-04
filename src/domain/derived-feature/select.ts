@@ -191,22 +191,24 @@ export function selectVolatilityTimestamps(
     return { selected: [], rejected: allRejections };
   }
 
-  const bySlot = new Map<number, NormalizedObservationRow[]>();
+  const byObservation = new Map<string, NormalizedObservationRow[]>();
   for (const candidate of eligibleCandidates) {
     const payload = candidate.payload as VolatilityPayload;
+    const observedAtUnixMs = payload?.observedSource?.observedAtUnixMs ?? 0;
     const slot = payload?.observedSource?.slot ?? 0;
-    const group = bySlot.get(slot);
+    const deduplicationKey = `${observedAtUnixMs}_${slot}`;
+    const group = byObservation.get(deduplicationKey);
     if (group) {
       group.push(candidate);
     } else {
-      bySlot.set(slot, [candidate]);
+      byObservation.set(deduplicationKey, [candidate]);
     }
   }
 
   const duplicateRejections: CandidateRejection[] = [];
   const selected: NormalizedObservationRow[] = [];
 
-  for (const group of bySlot.values()) {
+  for (const group of byObservation.values()) {
     group.sort((a, b) => {
       if (a.receivedAtUnixMs !== b.receivedAtUnixMs) {
         return b.receivedAtUnixMs - a.receivedAtUnixMs;
@@ -215,9 +217,13 @@ export function selectVolatilityTimestamps(
     });
     selected.push(group[0]!);
     for (const duplicate of group.slice(1)) {
+      const duplicatePayload = duplicate.payload as VolatilityPayload;
+      const duplicateObservedAtUnixMs = duplicatePayload?.observedSource?.observedAtUnixMs ?? 0;
+      const duplicateSlot = duplicatePayload?.observedSource?.slot ?? 0;
+
       duplicateRejections.push({
         observationId: duplicate.id,
-        reason: `duplicate_slot: slot=${(duplicate.payload as VolatilityPayload)?.observedSource?.slot ?? 0}`,
+        reason: `duplicate_timestamp_and_slot: observedAtUnixMs=${duplicateObservedAtUnixMs}, slot=${duplicateSlot}`,
         source: duplicate.source,
         payloadHash: duplicate.payloadHash
       });
