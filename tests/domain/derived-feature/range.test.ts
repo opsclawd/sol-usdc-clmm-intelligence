@@ -74,7 +74,7 @@ describe("range calculators", () => {
   });
 
   describe("RANGE_CALCULATOR_VERSIONS", () => {
-    it("exports v2 version strings for all percent-scaled range calculators", () => {
+    it("exports v2 version strings for all range calculators", () => {
       expect(RANGE_CALCULATOR_VERSIONS.range_location).toBe("range-location/v2");
       expect(RANGE_CALCULATOR_VERSIONS.distance_to_lower).toBe("distance-to-lower/v2");
       expect(RANGE_CALCULATOR_VERSIONS.distance_to_upper).toBe("distance-to-upper/v2");
@@ -82,7 +82,7 @@ describe("range calculators", () => {
   });
 
   describe("classifies and clamps range location without hiding market state", () => {
-    it("returns 0 percent units with below_range_clamped when current is below lower", () => {
+    it("returns 0 PPM with below_range_clamped when current is below lower", () => {
       const pos = makePositionState({
         currentPrice: 50,
         currentPriceLabel: "50",
@@ -502,7 +502,7 @@ describe("range calculators", () => {
       expect(result.value).toBe(500_000);
     });
 
-    it("distance_to_lower: exact 0.3333... becomes 333333 PPM (1/3 of 1_000_000)", () => {
+    it("distance_to_lower: exact 0.3333... becomes 333333 PPM (50/150 * 1_000_000)", () => {
       const pos = makePositionState({
         currentPrice: 150,
         currentPriceLabel: "150",
@@ -517,7 +517,7 @@ describe("range calculators", () => {
       expect(result.value).toBe(Math.round(expectedPpm));
     });
 
-    it("distance_to_upper: exact 0.25 becomes 250000 PPM (50/200 * 1_000_000)", () => {
+    it("distance_to_upper: exact 0.3333... becomes 333333 PPM (50/150 * 1_000_000)", () => {
       const pos = makePositionState({
         currentPrice: 150,
         currentPriceLabel: "150",
