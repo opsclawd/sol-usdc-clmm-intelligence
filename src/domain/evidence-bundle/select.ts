@@ -98,6 +98,12 @@ export interface BundleSelectionResult {
 
 const POSITION_KINDS = new Set(["range_location", "distance_to_lower", "distance_to_upper"]);
 
+const FEATURE_STATUS_SELECTION_PRIORITY: Readonly<Record<DerivedFeatureRow["status"], number>> = {
+  AVAILABLE: 3,
+  PARTIAL: 2,
+  UNAVAILABLE: 1
+};
+
 function getScopeFilter(
   featureKind: FeatureKind,
   requestPoolId: string | undefined,
@@ -161,6 +167,9 @@ function checkVersionMismatch(row: DerivedFeatureRow, expectedCalculatorVersion:
 
 function sortCandidatesForSelection(candidates: DerivedFeatureRow[]): void {
   candidates.sort((a, b) => {
+    const statusPriorityDifference =
+      FEATURE_STATUS_SELECTION_PRIORITY[b.status] - FEATURE_STATUS_SELECTION_PRIORITY[a.status];
+    if (statusPriorityDifference !== 0) return statusPriorityDifference;
     if (b.asOfUnixMs !== a.asOfUnixMs) return b.asOfUnixMs - a.asOfUnixMs;
     if (b.receivedAtUnixMs !== a.receivedAtUnixMs) return b.receivedAtUnixMs - a.receivedAtUnixMs;
     return b.id - a.id;
