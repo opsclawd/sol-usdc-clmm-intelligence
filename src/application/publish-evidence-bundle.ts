@@ -344,7 +344,11 @@ export async function publishEvidenceBundle(
   let selectedResearchBriefId: number | null = null;
   let briefCompositionFailed = false;
 
-  if (deps.briefRepo) {
+  const targetPayload = targetBundle.payload as EvidenceBundleV1;
+  const hasEmbeddedBrief =
+    targetPayload.researchBrief !== null && targetPayload.researchBrief !== undefined;
+
+  if (!hasEmbeddedBrief && deps.briefRepo) {
     try {
       const briefRows = await deps.briefRepo.findByBundleId(targetBundle.id);
       const eligibleRows = briefRows
