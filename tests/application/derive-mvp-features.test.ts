@@ -838,5 +838,42 @@ describe("deriveMvpFeatures", () => {
       expect(volatility!.inputObservationIds).toEqual(oracleRows.map((row) => row.id));
       expect(volatility!.rejectedObservationIds).toEqual([]);
     });
+
+    it("uses latest_input expiry strategy for windowed features and aligns validUntilUnixMs", async () => {
+      const oldestValidUntil = EVAL_MS + 10_000;
+      const latestValidUntil = EVAL_MS + 3_600_000;
+
+      for (let index = 0; index < 10; index++) {
+        const observedAtUnixMs = EVAL_MS - 55 * 60_000 + index * 6 * 60_000;
+        const row = seedObservation(
+          normalizedObservationRepo,
+          "pyth-hermes",
+          "oracle_price",
+          makeOraclePayload(0, observedAtUnixMs, (150 + index / 10).toFixed(2)),
+          observedAtUnixMs
+        );
+        row.validUntilUnixMs = index === 0 ? oldestValidUntil : latestValidUntil;
+      }
+
+      const poolStatsRow = seedObservation(
+        normalizedObservationRepo,
+        "orca-public-api",
+        "pool_statistics",
+        makePoolStatsPayload(POOL_ID),
+        EVAL_MS - 60_000
+      );
+      poolStatsRow.validUntilUnixMs = latestValidUntil;
+
+      const result = await deriveMvpFeatures(deps, makeRequest());
+      const volatility = result.rows.find((row) => row.featureKind === "realized_volatility_1h");
+      const volumeRatio = result.rows.find(
+        (row) => row.featureKind === "volume_liquidity_ratio_24h"
+      );
+
+      expect(volatility).toBeDefined();
+      expect(volatility!.validUntilUnixMs).toBe(latestValidUntil);
+      expect(volumeRatio).toBeDefined();
+      expect(volumeRatio!.validUntilUnixMs).toBe(latestValidUntil);
+    });
   });
 });
