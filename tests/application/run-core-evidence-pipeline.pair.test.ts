@@ -6,7 +6,7 @@ import type {
 } from "../../src/application/run-core-evidence-pipeline.js";
 import type { AssembleEvidenceBundleRequest } from "../../src/application/assemble-evidence-bundle.js";
 import type { AssemblePairEvidenceBundleRequest } from "../../src/application/assemble-pair-evidence-bundle.js";
-import type { GenerateResearchBriefParams } from "../../src/application/generate-research-brief.js";
+import type { GenerateAndPersistResearchBriefParams as GenerateResearchBriefParams } from "../../src/application/generate-research-brief.js";
 import type { CoreEvidencePipelineConfig } from "../../src/application/load-core-evidence-pipeline-config.js";
 import type { Clock } from "../../src/ports/clock.js";
 import type { DbConnection } from "../../src/ports/db.js";

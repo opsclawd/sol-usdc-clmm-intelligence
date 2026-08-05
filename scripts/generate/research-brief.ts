@@ -1,8 +1,8 @@
 import { createNodeRuntime, type NodeRuntime } from "../../src/adapters/node/composition-root.js";
 import { generateResearchBriefJob } from "../../src/jobs/generate-research-brief-job.js";
 import type {
-  GenerateResearchBriefParams,
-  GenerateResearchBriefOutcome
+  GenerateAndPersistResearchBriefParams,
+  GenerateAndPersistResearchBriefOutcome
 } from "../../src/application/generate-research-brief.js";
 
 export interface RedactedBriefOutcome {
@@ -15,7 +15,7 @@ export interface RedactedBriefOutcome {
   reason?: string;
 }
 
-function redactOutcome(result: GenerateResearchBriefOutcome): RedactedBriefOutcome {
+function redactOutcome(result: GenerateAndPersistResearchBriefOutcome): RedactedBriefOutcome {
   switch (result.outcome) {
     case "no_brief":
       return { outcome: "no_brief", reason: result.reason };
@@ -59,10 +59,10 @@ export async function runGenerateResearchBriefScript(
     return { outcome: "error", reason: "request_required" };
   }
 
-  let parsedParams: GenerateResearchBriefParams;
+  let parsedParams: GenerateAndPersistResearchBriefParams;
 
   if (typeof requestInput === "object") {
-    parsedParams = requestInput as GenerateResearchBriefParams;
+    parsedParams = requestInput as GenerateAndPersistResearchBriefParams;
   } else if (typeof requestInput === "string") {
     const raw = requestInput.trim();
     if (raw === "") {
@@ -83,7 +83,9 @@ export async function runGenerateResearchBriefScript(
       }
     } else {
       try {
-        parsedParams = (await runtime.jsonStore.readJson(raw)) as GenerateResearchBriefParams;
+        parsedParams = (await runtime.jsonStore.readJson(
+          raw
+        )) as GenerateAndPersistResearchBriefParams;
       } catch (err) {
         console.error(
           "Failed to read request JSON file:",
@@ -156,7 +158,7 @@ export async function runGenerateResearchBriefScript(
     dbConnection: connection
   });
 
-  let result: GenerateResearchBriefOutcome;
+  let result: GenerateAndPersistResearchBriefOutcome;
   try {
     result = await job(parsedParams);
   } catch (err: unknown) {

@@ -14,8 +14,8 @@ import type {
   AssemblePairEvidenceBundleResult
 } from "./assemble-pair-evidence-bundle.js";
 import type {
-  GenerateResearchBriefParams,
-  GenerateResearchBriefOutcome
+  GenerateAndPersistResearchBriefParams as GenerateResearchBriefParams,
+  GenerateAndPersistResearchBriefOutcome as GenerateResearchBriefOutcome
 } from "./generate-research-brief.js";
 import type {
   PublishEvidenceBundleRequest,

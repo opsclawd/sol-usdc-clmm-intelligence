@@ -11,7 +11,7 @@ import type { DerivedFeatureRow } from "../../src/ports/feature-repo.js";
 import type { ResearchBriefRow } from "../../src/ports/brief-repo.js";
 import type { PersistedResearchBrief } from "../../src/contracts/research-brief.js";
 import type { AssembleEvidenceBundleResult } from "../../src/application/assemble-evidence-bundle.js";
-import type { GenerateResearchBriefOutcome } from "../../src/application/generate-research-brief.js";
+import type { GenerateAndPersistResearchBriefOutcome as GenerateResearchBriefOutcome } from "../../src/application/generate-research-brief.js";
 import type { PublishEvidenceBundleResult } from "../../src/application/publish-evidence-bundle.js";
 import { FakePipelineRunLock } from "../fakes/fake-pipeline-run-lock.js";
 import { FakeRunIdFactory } from "../fakes/fake-run-id-factory.js";
