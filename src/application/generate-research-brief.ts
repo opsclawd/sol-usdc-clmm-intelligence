@@ -61,10 +61,12 @@ export type GenerateResearchBriefOutcome =
   | {
       readonly outcome: "generated_complete";
       readonly brief: PersistedResearchBrief;
+      readonly priorBriefRowId?: number;
     }
   | {
       readonly outcome: "generated_degraded";
       readonly brief: PersistedResearchBrief;
+      readonly priorBriefRowId?: number;
     };
 
 export interface PersistResearchBriefDeps {
@@ -373,7 +375,8 @@ export async function generateResearchBrief(
 
   return {
     outcome: generationStatus === "complete" ? "generated_complete" : "generated_degraded",
-    brief: persistedBrief
+    brief: persistedBrief,
+    ...(priorBriefRow ? { priorBriefRowId: priorBriefRow.id } : {})
   };
 }
 
@@ -431,25 +434,12 @@ export async function persistResearchBrief(
 
   const derivedFromRefs: ProvenanceRef[] = [bundleRef];
   if (updatedBrief.priorBriefRef) {
-    let priorMatchId = params.priorBriefRowId;
-    let priorSource: Source = "clmm-v2-bundle";
-
-    if (!priorMatchId) {
-      const candidateBriefs = deps.briefRepo.findByBundleIds
-        ? await deps.briefRepo.findByBundleIds([])
-        : [];
-      const match = candidateBriefs.find(
-        (r) => r.payloadHash === updatedBrief.priorBriefRef?.payloadHash
-      );
-      if (match) {
-        priorMatchId = match.id;
-        priorSource = (match.provenance?.sourceRefs?.[0]?.source as Source) ?? "clmm-v2-bundle";
-      }
-    }
+    const priorMatchId = params.priorBriefRowId ?? 1;
+    const priorSource: Source = "clmm-v2-bundle";
 
     derivedFromRefs.push({
       refType: "research_brief",
-      id: priorMatchId ?? 1,
+      id: priorMatchId,
       source: priorSource,
       payloadHash: updatedBrief.priorBriefRef.payloadHash
     });
@@ -544,6 +534,12 @@ export async function generateAndPersistResearchBrief(
     }
   }
 
+  const priorBriefRowId =
+    candidateOutcome.outcome === "generated_complete" ||
+    candidateOutcome.outcome === "generated_degraded"
+      ? candidateOutcome.priorBriefRowId
+      : undefined;
+
   const row = await persistResearchBrief(deps, {
     bundleId: targetBundleRow.id,
     bundleHash: targetBundleRow.payloadHash,
@@ -552,7 +548,8 @@ export async function generateAndPersistResearchBrief(
     evaluationTimeUnixMs: params.evaluationTimeUnixMs,
     codeVersion: params.codeVersion,
     ...(params.runId !== undefined ? { runId: params.runId } : {}),
-    expiresAtUnixMs: targetBundleRow.expiresAtUnixMs
+    expiresAtUnixMs: targetBundleRow.expiresAtUnixMs,
+    ...(priorBriefRowId !== undefined ? { priorBriefRowId } : {})
   });
 
   return {

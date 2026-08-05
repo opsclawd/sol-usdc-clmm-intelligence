@@ -637,6 +637,74 @@ describe("generateResearchBrief", () => {
       expect(result.row.evidenceBundleId).not.toBe(newer.id);
     });
 
+    it("binds priorBriefRowId in provenance derivedFromRefs when prior brief exists", async () => {
+      // Insert dummy briefs first to ensure olderBriefRow gets ID > 1
+      await briefRepo.insert({
+        evidenceBundleId: 999,
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+        modelProvider: "openai",
+        structuredOutput: {},
+        signalClass: "contextual",
+        confidence: DEFAULT_CONFIDENCE,
+        payloadHash: "dummy-1",
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: evalTimeMs - 100000
+      });
+
+      const olderTime = evalTimeMs - 50000;
+      const olderBundle = await insertTestBundle(calmFixture, olderTime, expiresAtMs);
+
+      const olderBriefPersisted: PersistedResearchBrief = {
+        briefId: `brief-${olderBundle.id}`,
+        pair: "SOL/USDC",
+        generationStatus: "complete",
+        llmOutput: validLlmOutput,
+        sourceRefs: [],
+        providerMetadata: { provider: "openai", model: "gpt-4o" },
+        sourceBundleRef: { bundleId: olderBundle.id, bundleHash: olderBundle.payloadHash },
+        inputContextHash: "hash-older",
+        priorBriefRef: null,
+        generatedAt: new Date(olderTime).toISOString(),
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+      };
+      const olderBriefRow = await briefRepo.insert({
+        evidenceBundleId: olderBundle.id,
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+        modelProvider: "openai",
+        structuredOutput: olderBriefPersisted,
+        signalClass: "contextual",
+        confidence: DEFAULT_CONFIDENCE,
+        payloadHash: await canonicalHash(olderBriefPersisted),
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: olderTime
+      });
+
+      expect(olderBriefRow.id).toBeGreaterThan(1);
+
+      const targetBundle = await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs);
+      llmProvider.enqueueResult({ output: validLlmOutput, provider: "openai", model: "gpt-4o" });
+
+      const result = await generateAndPersistResearchBrief(
+        { bundleRepo, briefRepo, llmProvider },
+        {
+          evidenceBundleId: targetBundle.id,
+          pair: "SOL/USDC",
+          evaluationTimeUnixMs: evalTimeMs,
+          codeVersion: "1.0.0"
+        }
+      );
+
+      expect(result.outcome).toBe("generated_complete");
+      if (result.outcome !== "generated_complete") return;
+      expect(result.row.provenance.derivedFromRefs).toContainEqual(
+        expect.objectContaining({
+          refType: "research_brief",
+          id: olderBriefRow.id,
+          payloadHash: await canonicalHash(olderBriefPersisted)
+        })
+      );
+    });
+
     it("returns no_brief without falling back when requested bundle ID does not exist", async () => {
       const bundleRow = await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs);
       const nonExistentId = bundleRow.id + 999;
