@@ -57,6 +57,8 @@ export type GenerateResearchBriefOutcome =
   | {
       readonly outcome: "reused";
       readonly brief: PersistedResearchBrief;
+      readonly reusedRow: ResearchBriefRow;
+      readonly priorBriefRowId?: number;
     }
   | {
       readonly outcome: "generated_complete";
@@ -251,9 +253,14 @@ export async function generateResearchBrief(
     );
   });
   if (existingMatch) {
+    const priorBriefRefId = existingMatch.provenance?.derivedFromRefs?.find(
+      (r) => r.refType === "research_brief"
+    )?.id;
     return {
       outcome: "reused",
-      brief: existingMatch.structuredOutput as PersistedResearchBrief
+      brief: existingMatch.structuredOutput as PersistedResearchBrief,
+      reusedRow: existingMatch,
+      ...(priorBriefRefId !== undefined ? { priorBriefRowId: priorBriefRefId } : {})
     };
   }
 
@@ -536,7 +543,8 @@ export async function generateAndPersistResearchBrief(
 
   const priorBriefRowId =
     candidateOutcome.outcome === "generated_complete" ||
-    candidateOutcome.outcome === "generated_degraded"
+    candidateOutcome.outcome === "generated_degraded" ||
+    candidateOutcome.outcome === "reused"
       ? candidateOutcome.priorBriefRowId
       : undefined;
 

@@ -705,6 +705,95 @@ describe("generateResearchBrief", () => {
       );
     });
 
+    it("preserves priorBriefRowId in derivedFromRefs when reusing a brief across different bundles", async () => {
+      await briefRepo.insert({
+        evidenceBundleId: 888,
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+        modelProvider: "openai",
+        structuredOutput: {},
+        signalClass: "contextual",
+        confidence: DEFAULT_CONFIDENCE,
+        payloadHash: "dummy-prior",
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: evalTimeMs - 100000
+      });
+
+      const olderTime = evalTimeMs - 60000;
+      const olderBundle = await insertTestBundle(calmFixture, olderTime, expiresAtMs);
+
+      const olderBriefPersisted: PersistedResearchBrief = {
+        briefId: `brief-${olderBundle.id}`,
+        pair: "SOL/USDC",
+        generationStatus: "complete",
+        llmOutput: validLlmOutput,
+        sourceRefs: [],
+        providerMetadata: { provider: "openai", model: "gpt-4o" },
+        sourceBundleRef: { bundleId: olderBundle.id, bundleHash: olderBundle.payloadHash },
+        inputContextHash: "hash-older-2",
+        priorBriefRef: null,
+        generatedAt: new Date(olderTime).toISOString(),
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+      };
+      const olderBriefRow = await briefRepo.insert({
+        evidenceBundleId: olderBundle.id,
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+        modelProvider: "openai",
+        structuredOutput: olderBriefPersisted,
+        signalClass: "contextual",
+        confidence: DEFAULT_CONFIDENCE,
+        payloadHash: await canonicalHash(olderBriefPersisted),
+        provenance: DEFAULT_PROVENANCE,
+        receivedAtUnixMs: olderTime
+      });
+
+      expect(olderBriefRow.id).toBeGreaterThan(1);
+
+      const bundle1 = await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs);
+      llmProvider.enqueueResult({ output: validLlmOutput, provider: "openai", model: "gpt-4o" });
+
+      const res1 = await generateAndPersistResearchBrief(
+        { bundleRepo, briefRepo, llmProvider },
+        {
+          evidenceBundleId: bundle1.id,
+          pair: "SOL/USDC",
+          evaluationTimeUnixMs: evalTimeMs,
+          codeVersion: "1.0.0"
+        }
+      );
+      expect(res1.outcome).toBe("generated_complete");
+      if (res1.outcome !== "generated_complete") return;
+
+      expect(res1.row.provenance.derivedFromRefs).toContainEqual(
+        expect.objectContaining({
+          refType: "research_brief",
+          id: olderBriefRow.id
+        })
+      );
+
+      const bundle2 = await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs);
+
+      const res2 = await generateAndPersistResearchBrief(
+        { bundleRepo, briefRepo, llmProvider },
+        {
+          evidenceBundleId: bundle2.id,
+          pair: "SOL/USDC",
+          evaluationTimeUnixMs: evalTimeMs,
+          codeVersion: "1.0.0"
+        }
+      );
+
+      expect(res2.outcome).toBe("reused");
+      if (res2.outcome !== "reused") return;
+
+      expect(res2.row.evidenceBundleId).toBe(bundle2.id);
+      expect(res2.row.provenance.derivedFromRefs).toContainEqual(
+        expect.objectContaining({
+          refType: "research_brief",
+          id: olderBriefRow.id
+        })
+      );
+    });
+
     it("returns no_brief without falling back when requested bundle ID does not exist", async () => {
       const bundleRow = await insertTestBundle(calmFixture, evalTimeMs, expiresAtMs);
       const nonExistentId = bundleRow.id + 999;
