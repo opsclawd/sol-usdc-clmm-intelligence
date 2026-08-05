@@ -34,6 +34,35 @@ import { canonicalHash } from "../domain/content-hash.js";
 import type { Confidence, ProvenanceRef, Source } from "../contracts/taxonomy.js";
 import type { EvidenceBundleV1 } from "../contracts/generated/evidence-bundle-v1.js";
 
+// Bounds concurrent findByBundleId calls when the repo lacks a batch
+// findByBundleIds implementation, avoiding DB connection exhaustion when the
+// 7-day lookback window spans many bundles.
+const FIND_BY_BUNDLE_ID_CONCURRENCY = 10;
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      const currentIndex = nextIndex++;
+      if (currentIndex >= items.length) {
+        return;
+      }
+      const item = items[currentIndex] as T;
+      results[currentIndex] = await fn(item);
+    }
+  }
+
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
 export interface GenerateResearchBriefDeps {
   readonly bundleRepo: EvidenceBundleRepo;
   readonly briefRepo: ResearchBriefRepo;
@@ -191,7 +220,11 @@ export async function generateResearchBrief(
     recentBundleIds.length > 0
       ? deps.briefRepo.findByBundleIds
         ? await deps.briefRepo.findByBundleIds(recentBundleIds)
-        : (await Promise.all(recentBundleIds.map((id) => deps.briefRepo.findByBundleId(id)))).flat()
+        : (
+            await mapWithConcurrency(recentBundleIds, FIND_BY_BUNDLE_ID_CONCURRENCY, (id) =>
+              deps.briefRepo.findByBundleId(id)
+            )
+          ).flat()
       : [];
 
   let priorBrief: PersistedResearchBrief | null = null;
@@ -441,12 +474,17 @@ export async function persistResearchBrief(
 
   const derivedFromRefs: ProvenanceRef[] = [bundleRef];
   if (updatedBrief.priorBriefRef) {
-    const priorMatchId = params.priorBriefRowId ?? 1;
+    if (params.priorBriefRowId === undefined) {
+      throw new Error(
+        `persistResearchBrief: brief ${updatedBrief.briefId} references priorBriefRef ` +
+          `${updatedBrief.priorBriefRef.briefId} but no priorBriefRowId was supplied.`
+      );
+    }
     const priorSource: Source = "clmm-v2-bundle";
 
     derivedFromRefs.push({
       refType: "research_brief",
-      id: priorMatchId,
+      id: params.priorBriefRowId,
       source: priorSource,
       payloadHash: updatedBrief.priorBriefRef.payloadHash
     });

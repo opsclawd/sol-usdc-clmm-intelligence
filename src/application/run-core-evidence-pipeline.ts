@@ -108,6 +108,35 @@ export interface CoreEvidencePipelineResult {
 
 const LOCK_KEY = "core-evidence-pipeline:SOL/USDC";
 
+// Bounds how many positions are processed concurrently so the cron job
+// doesn't serialize dozens of sequential LLM round-trips (risking timeout)
+// while still respecting per-provider rate limits.
+const POSITION_PROCESSING_CONCURRENCY = 3;
+
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      const currentIndex = nextIndex++;
+      if (currentIndex >= items.length) {
+        return;
+      }
+      const item = items[currentIndex] as T;
+      results[currentIndex] = await fn(item);
+    }
+  }
+
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
 export async function runCoreEvidencePipeline(
   deps: RunCoreEvidencePipelineDeps,
   config: CoreEvidencePipelineConfig
@@ -430,19 +459,21 @@ export async function runCoreEvidencePipeline(
             }
 
             const derivedRows = deriveResult.rows;
+            const activeResources = resources;
+            const activeEvaluationTimeUnixMs = evaluationTimeUnixMs;
 
-            for (const positionId of config.positionIds) {
+            const processPosition = async (positionId: string): Promise<PositionPipelineResult> => {
               const correlationId = buildPositionCorrelationId(pipelineRunId, positionId);
 
               const gate = evaluatePositionFeatureGate({
                 rows: derivedRows.filter((r) => !r.positionId || r.positionId === positionId),
                 poolId: config.poolId,
                 positionId,
-                evaluationTimeUnixMs
+                evaluationTimeUnixMs: activeEvaluationTimeUnixMs
               });
 
               if (!gate.usable) {
-                positions.push({
+                return {
                   positionId,
                   correlationId,
                   bundleId: null,
@@ -458,8 +489,7 @@ export async function runCoreEvidencePipeline(
                       `Position feature gate failed: ${gate.reasons.join(", ")}`
                     )
                   }
-                });
-                continue;
+                };
               }
 
               const createdAtUnixMs = new Date(deps.clock.now()).getTime();
@@ -470,7 +500,7 @@ export async function runCoreEvidencePipeline(
                 walletId: config.walletId,
                 pipelineRunId,
                 correlationId,
-                evaluationTimeUnixMs,
+                evaluationTimeUnixMs: activeEvaluationTimeUnixMs,
                 createdAtUnixMs,
                 acceptedCalculatorVersions: MVP_ACCEPTED_CALCULATOR_VERSIONS,
                 schemaVersion: "evidence-bundle.v1",
@@ -482,9 +512,9 @@ export async function runCoreEvidencePipeline(
 
               let assembly: AssembleEvidenceBundleResult;
               try {
-                assembly = await resources.services.assemble(assemblyReq);
+                assembly = await activeResources.services.assemble(assemblyReq);
               } catch (err) {
-                positions.push({
+                return {
                   positionId,
                   correlationId,
                   bundleId: null,
@@ -498,8 +528,7 @@ export async function runCoreEvidencePipeline(
                     code: "ASSEMBLY_FAILED",
                     message: redactSecretMentions(err instanceof Error ? err.message : String(err))
                   }
-                });
-                continue;
+                };
               }
 
               const assemblyOutcomeStr = "outcome" in assembly ? assembly.outcome : assembly.code;
@@ -508,7 +537,7 @@ export async function runCoreEvidencePipeline(
                 (assembly.outcome === "persisted" || assembly.outcome === "identical_replay");
 
               if (!isAssemblySuccess || !("rowId" in assembly)) {
-                positions.push({
+                return {
                   positionId,
                   correlationId,
                   bundleId: null,
@@ -524,8 +553,7 @@ export async function runCoreEvidencePipeline(
                       `Assembly failed with outcome: ${assemblyOutcomeStr}`
                     )
                   }
-                });
-                continue;
+                };
               }
 
               const bundleId = assembly.rowId;
@@ -536,15 +564,15 @@ export async function runCoreEvidencePipeline(
 
               let brief: GenerateResearchBriefOutcome;
               try {
-                brief = await resources.services.generateBrief({
+                brief = await activeResources.services.generateBrief({
                   evidenceBundleId: bundleId,
                   pair: "SOL/USDC",
-                  evaluationTimeUnixMs,
+                  evaluationTimeUnixMs: activeEvaluationTimeUnixMs,
                   codeVersion: config.codeVersion,
                   runId: pipelineRunId
                 });
               } catch (err) {
-                positions.push({
+                return {
                   positionId,
                   correlationId,
                   bundleId,
@@ -558,13 +586,12 @@ export async function runCoreEvidencePipeline(
                     code: "BRIEF_FAILED",
                     message: redactSecretMentions(err instanceof Error ? err.message : String(err))
                   }
-                });
-                continue;
+                };
               }
 
               const briefOutcomeStr = brief.outcome;
               if (brief.outcome === "no_brief") {
-                positions.push({
+                return {
                   positionId,
                   correlationId,
                   bundleId,
@@ -580,15 +607,16 @@ export async function runCoreEvidencePipeline(
                       `Brief generation returned no_brief (${brief.reason})`
                     )
                   }
-                });
-                continue;
+                };
               }
 
               let publication: PublishEvidenceBundleResult;
               try {
-                publication = await resources.services.publish({ evidenceBundleId: bundleId });
+                publication = await activeResources.services.publish({
+                  evidenceBundleId: bundleId
+                });
               } catch (err) {
-                positions.push({
+                return {
                   positionId,
                   correlationId,
                   bundleId,
@@ -602,8 +630,7 @@ export async function runCoreEvidencePipeline(
                     code: "PUBLISH_FAILED",
                     message: redactSecretMentions(err instanceof Error ? err.message : String(err))
                   }
-                });
-                continue;
+                };
               }
 
               const publishOutcomeStr = publication.outcome;
@@ -613,7 +640,7 @@ export async function runCoreEvidencePipeline(
                 publication.outcome === "idempotent_replay";
 
               if (!isPublishSuccess) {
-                positions.push({
+                return {
                   positionId,
                   correlationId,
                   bundleId,
@@ -629,8 +656,7 @@ export async function runCoreEvidencePipeline(
                       `Publish failed with outcome: ${publishOutcomeStr}`
                     )
                   }
-                });
-                continue;
+                };
               }
 
               const isPositionDegraded =
@@ -641,7 +667,7 @@ export async function runCoreEvidencePipeline(
                 ? "degraded"
                 : "complete";
 
-              positions.push({
+              return {
                 positionId,
                 correlationId,
                 bundleId,
@@ -651,8 +677,15 @@ export async function runCoreEvidencePipeline(
                 status: positionStatus,
                 warnings: Object.freeze(assemblyWarnings),
                 diagnostic: null
-              });
-            }
+              };
+            };
+
+            const positionResults = await mapWithConcurrency(
+              config.positionIds,
+              POSITION_PROCESSING_CONCURRENCY,
+              processPosition
+            );
+            positions.push(...positionResults);
 
             const allTargets = pairResult ? [pairResult, ...positions] : positions;
             status = aggregatePipelineStatus(
