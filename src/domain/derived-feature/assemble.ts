@@ -71,6 +71,7 @@ export interface AssembleDerivedFeatureOptions {
   readonly evaluationAsOfUnixMs: number;
   readonly runId: string;
   readonly codeVersion: string;
+  readonly expiryStrategy?: "earliest_input" | "latest_input";
 }
 
 function computeComponentWiseMinima(selectedRows: readonly NormalizedObservationRow[]): {
@@ -129,27 +130,31 @@ const DEFAULT_CONFIDENCE_WEIGHTS = {
 
 const PARTIAL_DEGRADATION_FACTOR = 0.9;
 
-function computeMinimumExpiry(
+function computeExpiry(
   selectedRows: readonly NormalizedObservationRow[],
   status: FeatureStatus,
-  evaluationAsOfUnixMs: number
+  evaluationAsOfUnixMs: number,
+  strategy: NonNullable<AssembleDerivedFeatureOptions["expiryStrategy"]>
 ): number {
-  if (status === "UNAVAILABLE") {
+  if (status === "UNAVAILABLE" || selectedRows.length === 0) {
     return evaluationAsOfUnixMs;
   }
-  if (selectedRows.length === 0) {
-    return evaluationAsOfUnixMs;
-  }
-  let earliest: number | null = null;
+
+  let selectedExpiry: number | null = null;
   for (const row of selectedRows) {
     const validUntil = row.validUntilUnixMs;
-    if (validUntil !== null) {
-      if (earliest === null || validUntil < earliest) {
-        earliest = validUntil;
-      }
+    if (validUntil === null) continue;
+
+    if (
+      selectedExpiry === null ||
+      (strategy === "earliest_input" && validUntil < selectedExpiry) ||
+      (strategy === "latest_input" && validUntil > selectedExpiry)
+    ) {
+      selectedExpiry = validUntil;
     }
   }
-  return earliest ?? evaluationAsOfUnixMs;
+
+  return selectedExpiry ?? evaluationAsOfUnixMs;
 }
 
 function buildLineage(
@@ -343,7 +348,15 @@ async function computeDerivationKey(
 export async function assembleDerivedFeature(
   options: AssembleDerivedFeatureOptions
 ): Promise<AssembledFeature> {
-  const { input, selectedRows, rejectedRows, evaluationAsOfUnixMs, runId, codeVersion } = options;
+  const {
+    input,
+    selectedRows,
+    rejectedRows,
+    evaluationAsOfUnixMs,
+    runId,
+    codeVersion,
+    expiryStrategy = "earliest_input"
+  } = options;
 
   if (input.status === "AVAILABLE" || input.status === "PARTIAL") {
     if (selectedRows.length === 0) {
@@ -358,7 +371,12 @@ export async function assembleDerivedFeature(
   }
 
   const componentMinima = computeComponentWiseMinima(selectedRows);
-  const expiresAtUnixMs = computeMinimumExpiry(selectedRows, input.status, evaluationAsOfUnixMs);
+  const expiresAtUnixMs = computeExpiry(
+    selectedRows,
+    input.status,
+    evaluationAsOfUnixMs,
+    expiryStrategy
+  );
   const lineage = buildLineage(selectedRows, rejectedRows);
 
   const confidence = buildConfidence(input.status, input.confidence, componentMinima);

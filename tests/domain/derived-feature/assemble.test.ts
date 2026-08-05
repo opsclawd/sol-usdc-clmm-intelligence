@@ -365,6 +365,85 @@ describe("assembleDerivedFeature", () => {
 
       expect(result.result.expiresAtUnixMs).toBe(1000000020000);
     });
+
+    it("uses latest non-null selected input expiry for latest_input strategy", async () => {
+      const { assembleDerivedFeature } =
+        await import("../../../src/domain/derived-feature/assemble.js");
+      const inputs = [
+        makeNormalizedRow({
+          id: 1,
+          source: "clmm-v2-bundle",
+          observationKind: "pool_state",
+          receivedAtUnixMs: EVAL_AS_OF_MS - 4 * 3_600_000,
+          validUntilUnixMs: EVAL_AS_OF_MS - 3 * 3_600_000
+        }),
+        makeNormalizedRow({
+          id: 2,
+          source: "clmm-v2-bundle",
+          observationKind: "pool_state",
+          receivedAtUnixMs: EVAL_AS_OF_MS - 1000,
+          validUntilUnixMs: null
+        }),
+        makeNormalizedRow({
+          id: 3,
+          source: "clmm-v2-bundle",
+          observationKind: "pool_state",
+          receivedAtUnixMs: EVAL_AS_OF_MS,
+          validUntilUnixMs: EVAL_AS_OF_MS + 900_000
+        })
+      ];
+      const input = makeAssembleInput({
+        featureKind: "oi_trend_4h",
+        status: "AVAILABLE",
+        value: -30,
+        inputObservationIds: [1, 2, 3]
+      });
+
+      const result = await assembleDerivedFeature({
+        input,
+        selectedRows: inputs,
+        rejectedRows: [],
+        evaluationAsOfUnixMs: EVAL_AS_OF_MS,
+        runId: RUN_ID,
+        codeVersion: CODE_VERSION,
+        expiryStrategy: "latest_input"
+      });
+
+      expect(result.result.expiresAtUnixMs).toBe(EVAL_AS_OF_MS + 900_000);
+      expect(result.result.expiresAtUnixMs).toBeGreaterThan(result.result.asOfUnixMs);
+    });
+
+    it("falls back to evaluation time when latest_input has no non-null expiry", async () => {
+      const { assembleDerivedFeature } =
+        await import("../../../src/domain/derived-feature/assemble.js");
+      const inputs = [
+        makeNormalizedRow({
+          id: 1,
+          source: "clmm-v2-bundle",
+          observationKind: "pool_state",
+          receivedAtUnixMs: EVAL_AS_OF_MS,
+          validUntilUnixMs: null
+        })
+      ];
+      const input = makeAssembleInput({
+        featureKind: "oi_trend_4h",
+        status: "PARTIAL",
+        value: -30,
+        inputObservationIds: [1]
+      });
+
+      const result = await assembleDerivedFeature({
+        input,
+        selectedRows: inputs,
+        rejectedRows: [],
+        evaluationAsOfUnixMs: EVAL_AS_OF_MS,
+        runId: RUN_ID,
+        codeVersion: CODE_VERSION,
+        expiryStrategy: "latest_input"
+      });
+
+      expect(result.result.expiresAtUnixMs).toBe(EVAL_AS_OF_MS);
+    });
   });
 
   describe("lineage contains every outcome-determining selected or rejected row", () => {
