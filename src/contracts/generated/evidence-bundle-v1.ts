@@ -1,4 +1,4 @@
-export const SCHEMA_SHA256 = "74b5c974bd945f63c4f5d8948a8040542b2f89d6d697a4008543be1a89ba33af";
+export const SCHEMA_SHA256 = "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17";
 
 /* eslint-disable */
 /**
@@ -982,14 +982,7 @@ export interface SupportResistanceClaim {
 }
 export interface FlowClaim {
   evidenceId: Identifier128;
-  kind:
-    | "spot_flow"
-    | "stablecoin_flow"
-    | "exchange_flow"
-    | "whale_transfer"
-    | "whale_swap"
-    | "dex_net_flow"
-    | "cex_flow_proxy";
+  kind: "spot_flow" | "stablecoin_flow" | "exchange_flow";
   claim: string;
   direction: "bullish" | "bearish" | "neutral" | "mixed" | "unknown";
   confidenceBps: ConfidenceBps;
