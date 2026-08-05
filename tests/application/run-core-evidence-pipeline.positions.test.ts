@@ -8,10 +8,13 @@ import type { CoreEvidencePipelineConfig } from "../../src/application/load-core
 import type { Clock } from "../../src/ports/clock.js";
 import type { DbConnection } from "../../src/ports/db.js";
 import type { DerivedFeatureRow } from "../../src/ports/feature-repo.js";
-import type { ResearchBriefRow } from "../../src/ports/brief-repo.js";
+import type { ResearchBriefRepo, ResearchBriefRow } from "../../src/ports/brief-repo.js";
 import type { PersistedResearchBrief } from "../../src/contracts/research-brief.js";
-import type { AssembleEvidenceBundleResult } from "../../src/application/assemble-evidence-bundle.js";
-import type { GenerateAndPersistResearchBriefOutcome as GenerateResearchBriefOutcome } from "../../src/application/generate-research-brief.js";
+import type { PrepareEvidenceBundleResult } from "../../src/application/assemble-evidence-bundle.js";
+import type {
+  GenerateResearchBriefOutcome,
+  GenerateResearchBriefParams
+} from "../../src/application/generate-research-brief.js";
 import type { PublishEvidenceBundleResult } from "../../src/application/publish-evidence-bundle.js";
 import { FakePipelineRunLock } from "../fakes/fake-pipeline-run-lock.js";
 import { FakeRunIdFactory } from "../fakes/fake-run-id-factory.js";
@@ -110,6 +113,103 @@ function createDefaultConfig(
 const dummyBriefRow = { id: 1 } as unknown as ResearchBriefRow;
 const dummyBrief = {} as unknown as PersistedResearchBrief;
 
+import type { PreparedEvidenceBundle } from "../../src/application/assemble-evidence-bundle.js";
+import type { PreparedPairEvidenceBundle } from "../../src/application/assemble-pair-evidence-bundle.js";
+import type { EvidenceBundleV1 } from "../../src/contracts/generated/evidence-bundle-v1.js";
+import type { CanonicalEvidenceBundle } from "../../src/ports/evidence-bundle-contract.js";
+
+const dummyPreparedBundle: PreparedEvidenceBundle = {
+  slots: [],
+  lineage: { rawObservationIds: [], normalizedObservationIds: [], sourceReferences: [] },
+  selectedContextEvents: [],
+  selectedSupportResistance: [],
+  selectedNewsEvidence: [],
+  qualityInputFacts: {
+    createdAt: 0,
+    asOf: 0,
+    freshUntil: 0,
+    expiresAt: 0,
+    hasSupportResistance: true,
+    hasFlows: true,
+    hasDerivatives: true,
+    hasEvents: true,
+    hasNewsRegulatory: true
+  },
+  requestMeta: {
+    pair: "SOL/USDC",
+    poolId: "pool-1",
+    positionId: "pos-1",
+    walletId: "wallet-1",
+    pipelineRunId: "run-1",
+    correlationId: "corr-1",
+    evaluationTimeUnixMs: 0,
+    createdAtUnixMs: 0,
+    codeVersion: "1.0.0",
+    gitCommit: "commit",
+    environment: "test"
+  },
+  nullBriefCandidate: {
+    requestMeta: {
+      pair: "SOL/USDC",
+      poolId: "pool-1",
+      positionId: "pos-1",
+      walletId: "wallet-1",
+      pipelineRunId: "run-1",
+      correlationId: "corr-1",
+      evaluationTimeUnixMs: 0,
+      createdAtUnixMs: 0,
+      codeVersion: "1.0.0",
+      gitCommit: "commit",
+      environment: "test"
+    }
+  } as unknown as EvidenceBundleV1,
+  canonical: {} as CanonicalEvidenceBundle
+};
+
+const dummyPreparedPairBundle: PreparedPairEvidenceBundle = {
+  slots: [],
+  lineage: { rawObservationIds: [], normalizedObservationIds: [], sourceReferences: [] },
+  selectedContextEvents: [],
+  selectedSupportResistance: [],
+  selectedNewsEvidence: [],
+  qualityInputFacts: {
+    createdAt: 0,
+    asOf: 0,
+    freshUntil: 0,
+    expiresAt: 0,
+    hasSupportResistance: true,
+    hasFlows: true,
+    hasDerivatives: true,
+    hasEvents: true,
+    hasNewsRegulatory: true
+  },
+  requestMeta: {
+    pair: "SOL/USDC",
+    poolId: "pool-1",
+    pipelineRunId: "run-1",
+    correlationId: "corr-1",
+    evaluationTimeUnixMs: 0,
+    createdAtUnixMs: 0,
+    codeVersion: "1.0.0",
+    gitCommit: "commit",
+    environment: "test"
+  },
+  nullBriefCandidate: {
+    requestMeta: {
+      pair: "SOL/USDC",
+      poolId: "pool-1",
+      pipelineRunId: "run-1",
+      correlationId: "corr-1",
+      evaluationTimeUnixMs: 0,
+      createdAtUnixMs: 0,
+      codeVersion: "1.0.0",
+      gitCommit: "commit",
+      environment: "test"
+    }
+  } as unknown as EvidenceBundleV1,
+  canonical: {} as CanonicalEvidenceBundle
+};
+
 function createBaseServices(evalTime: number): CoreEvidencePipelineServices {
   return {
     collect: async (ctx) => ({
@@ -191,8 +291,27 @@ function createBaseServices(evalTime: number): CoreEvidencePipelineServices {
       counts: { AVAILABLE: 6, PARTIAL: 0, UNAVAILABLE: 0, REJECTED: 0 },
       warnings: []
     }),
-    assemble: async (req) => {
-      const rowId = req.positionId === "pos-1" ? 101 : 102;
+    prepare: async (req) => ({
+      outcome: "prepared",
+      prepared: {
+        ...dummyPreparedBundle,
+        requestMeta: { ...dummyPreparedBundle.requestMeta, positionId: req.positionId },
+        nullBriefCandidate: {
+          ...dummyPreparedBundle.nullBriefCandidate,
+          requestMeta: {
+            ...(
+              dummyPreparedBundle.nullBriefCandidate as unknown as {
+                requestMeta?: { positionId?: string };
+              }
+            ).requestMeta,
+            positionId: req.positionId
+          }
+        }
+      }
+    }),
+    preparePair: async () => ({ outcome: "prepared", prepared: dummyPreparedPairBundle }),
+    finalize: async (prep) => {
+      const rowId = prep.requestMeta.positionId === "pos-1" ? 101 : 102;
       return {
         outcome: "persisted",
         rowId,
@@ -201,18 +320,19 @@ function createBaseServices(evalTime: number): CoreEvidencePipelineServices {
         warnings: []
       };
     },
-    assemblePair: async () => ({
+    finalizePair: async () => ({
       outcome: "persisted",
       rowId: 500,
       payloadHash: "hash-500",
       slotCount: 16,
       warnings: []
     }),
-    generateBrief: async (req) => ({
+    generateBrief: async () => ({
       outcome: "generated_complete",
-      row: { id: req.evidenceBundleId } as unknown as ResearchBriefRow,
       brief: dummyBrief
     }),
+    persistBrief: async (params) =>
+      ({ id: 1, evidenceBundleId: params.bundleId }) as ResearchBriefRow,
     publish: async (req) => ({
       outcome: "created",
       bundleId: req.evidenceBundleId,
@@ -222,6 +342,246 @@ function createBaseServices(evalTime: number): CoreEvidencePipelineServices {
 }
 
 describe("runCoreEvidencePipeline - Per-Position Targeting", () => {
+  it("exact replay skips brief generation and repairs missing lineage", async () => {
+    const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
+    let generateCalled = false;
+    let finalizeCalled = false;
+    let persistBriefCalled = false;
+    let published = false;
+
+    const base = createBaseServices(evalTime);
+    const services: CoreEvidencePipelineServices = {
+      ...base,
+      prepare: async () => ({
+        outcome: "identical_replay",
+        rowId: 101,
+        payloadHash: "hash-pos-101",
+        slotCount: 3,
+        warnings: [],
+        embeddedBrief: dummyBrief
+      }),
+      generateBrief: async (req) => {
+        if (
+          (req.evidenceBundlePayload as unknown as { requestMeta?: { positionId?: string } })
+            ?.requestMeta?.positionId === "pos-1"
+        ) {
+          generateCalled = true;
+        }
+        return { outcome: "generated_complete", brief: dummyBrief };
+      },
+      finalize: async () => {
+        finalizeCalled = true;
+        return {
+          outcome: "persisted",
+          rowId: 101,
+          payloadHash: "hash-pos-101",
+          slotCount: 3,
+          warnings: []
+        };
+      },
+      persistBrief: async (params) => {
+        if (params.bundleId === 101) {
+          persistBriefCalled = true;
+        }
+        return { id: 1, evidenceBundleId: params.bundleId } as ResearchBriefRow;
+      },
+      publish: async (req) => {
+        if (req.evidenceBundleId === 101) {
+          published = true;
+        }
+        return { outcome: "created", bundleId: req.evidenceBundleId, attemptCount: 1 };
+      }
+    };
+
+    const briefRepo = {
+      insert: async () => ({ id: 1 }) as ResearchBriefRow,
+      findByBundleId: async () => [],
+      findByHash: async () => undefined
+    };
+
+    const deps: RunCoreEvidencePipelineDeps = {
+      clock: new QueuedClock(["2026-07-30T12:00:00.000Z", "2026-07-30T12:00:05.000Z"]),
+      runIdFactory: new FakeRunIdFactory(["run-replay-pos"]),
+      lock: new FakePipelineRunLock(),
+      openResources: async () => ({
+        connection: new FakeDbConnection(),
+        briefRepo: briefRepo as unknown as ResearchBriefRepo,
+        services
+      })
+    };
+
+    const result = await runCoreEvidencePipeline(deps, createDefaultConfig(["pos-1"]));
+
+    expect(generateCalled).toBe(false);
+    expect(finalizeCalled).toBe(false);
+    expect(persistBriefCalled).toBe(true);
+    expect(published).toBe(true);
+    expect(result.positions[0]?.briefOutcome).toBe("reused");
+    expect(result.positions[0]?.assemblyOutcome).toBe("identical_replay");
+    expect(result.positions[0]?.status).toBe("complete");
+  });
+
+  it("final bundle and linked brief are ordered before publish", async () => {
+    const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
+    const callLog: string[] = [];
+
+    const base = createBaseServices(evalTime);
+    const services: CoreEvidencePipelineServices = {
+      ...base,
+      prepare: async () => {
+        callLog.push("prepare");
+        return { outcome: "prepared", prepared: dummyPreparedBundle };
+      },
+      generateBrief: async (req) => {
+        if (
+          (req.evidenceBundlePayload as unknown as { requestMeta?: { positionId?: string } })
+            ?.requestMeta?.positionId === "pos-1"
+        ) {
+          callLog.push("generate");
+        }
+        return { outcome: "generated_complete", brief: dummyBrief };
+      },
+      finalize: async () => {
+        callLog.push("finalize");
+        return {
+          outcome: "persisted",
+          rowId: 101,
+          payloadHash: "h101",
+          slotCount: 3,
+          warnings: []
+        };
+      },
+      persistBrief: async (p) => {
+        if (p.bundleId === 101) {
+          callLog.push("persistBrief");
+        }
+        return { id: 1, evidenceBundleId: p.bundleId } as ResearchBriefRow;
+      },
+      publish: async (r) => {
+        if (r.evidenceBundleId === 101) {
+          callLog.push("publish");
+        }
+        return { outcome: "created", bundleId: r.evidenceBundleId, attemptCount: 1 };
+      }
+    };
+
+    const deps: RunCoreEvidencePipelineDeps = {
+      clock: new QueuedClock(["2026-07-30T12:00:00.000Z", "2026-07-30T12:00:05.000Z"]),
+      runIdFactory: new FakeRunIdFactory(["run-order-pos"]),
+      lock: new FakePipelineRunLock(),
+      openResources: async () => ({ connection: new FakeDbConnection(), services })
+    };
+
+    await runCoreEvidencePipeline(deps, createDefaultConfig(["pos-1"]));
+
+    expect(callLog).toEqual(["prepare", "generate", "finalize", "persistBrief", "publish"]);
+  });
+
+  it("degraded generated brief is finalized and published as degraded", async () => {
+    const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
+    let finalizeReceivedBrief: PersistedResearchBrief | undefined;
+    let published = false;
+
+    const base = createBaseServices(evalTime);
+    const services: CoreEvidencePipelineServices = {
+      ...base,
+      generateBrief: async () => ({ outcome: "generated_degraded", brief: dummyBrief }),
+      finalize: async (_, brief) => {
+        finalizeReceivedBrief = brief;
+        return {
+          outcome: "persisted",
+          rowId: 101,
+          payloadHash: "hash-101",
+          slotCount: 3,
+          warnings: []
+        };
+      },
+      publish: async (req) => {
+        published = true;
+        return { outcome: "created", bundleId: req.evidenceBundleId, attemptCount: 1 };
+      }
+    };
+
+    const deps: RunCoreEvidencePipelineDeps = {
+      clock: new QueuedClock(["2026-07-30T12:00:00.000Z", "2026-07-30T12:00:05.000Z"]),
+      runIdFactory: new FakeRunIdFactory(["run-deg-pos"]),
+      lock: new FakePipelineRunLock(),
+      openResources: async () => ({ connection: new FakeDbConnection(), services })
+    };
+
+    const result = await runCoreEvidencePipeline(deps, createDefaultConfig(["pos-1"]));
+
+    expect(finalizeReceivedBrief).toBe(dummyBrief);
+    expect(published).toBe(true);
+    expect(result.positions[0]?.briefOutcome).toBe("generated_degraded");
+    expect(result.positions[0]?.status).toBe("degraded");
+  });
+
+  it("brief persistence failure stops publish after bundle finalization", async () => {
+    const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
+    let publishCalled = false;
+
+    const base = createBaseServices(evalTime);
+    const services: CoreEvidencePipelineServices = {
+      ...base,
+      persistBrief: async () => {
+        throw new Error("DB insert brief row failed for position");
+      },
+      publish: async () => {
+        publishCalled = true;
+        return { outcome: "created", bundleId: 101, attemptCount: 1 };
+      }
+    };
+
+    const deps: RunCoreEvidencePipelineDeps = {
+      clock: new QueuedClock(["2026-07-30T12:00:00.000Z", "2026-07-30T12:00:05.000Z"]),
+      runIdFactory: new FakeRunIdFactory(["run-brief-persist-fail-pos"]),
+      lock: new FakePipelineRunLock(),
+      openResources: async () => ({ connection: new FakeDbConnection(), services })
+    };
+
+    const result = await runCoreEvidencePipeline(deps, createDefaultConfig(["pos-1"]));
+
+    expect(publishCalled).toBe(false);
+    expect(result.positions[0]?.status).toBe("failed");
+    expect(result.positions[0]?.briefOutcome).toBe("error");
+    expect(result.positions[0]?.publishOutcome).toBeNull();
+    expect(result.positions[0]?.diagnostic?.stage).toBe("brief");
+  });
+
+  it("target failure is isolated", async () => {
+    const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
+    const base = createBaseServices(evalTime);
+
+    const services: CoreEvidencePipelineServices = {
+      ...base,
+      prepare: async (req) => {
+        if (req.positionId === "pos-1") {
+          throw new Error("Position 1 prepare crash");
+        }
+        return { outcome: "prepared", prepared: dummyPreparedBundle };
+      }
+    };
+
+    const deps: RunCoreEvidencePipelineDeps = {
+      clock: new QueuedClock([
+        "2026-07-30T12:00:00.000Z",
+        "2026-07-30T12:00:05.000Z",
+        "2026-07-30T12:00:06.000Z"
+      ]),
+      runIdFactory: new FakeRunIdFactory(["run-pos-iso"]),
+      lock: new FakePipelineRunLock(),
+      openResources: async () => ({ connection: new FakeDbConnection(), services })
+    };
+
+    const result = await runCoreEvidencePipeline(deps, createDefaultConfig(["pos-1", "pos-2"]));
+
+    expect(result.positions[0]?.positionId).toBe("pos-1");
+    expect(result.positions[0]?.status).toBe("failed");
+    expect(result.positions[1]?.positionId).toBe("pos-2");
+    expect(result.positions[1]?.status).toBe("complete");
+  });
+
   it("publishes two positions with their independently returned bundle IDs", async () => {
     const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
     const publishedBundleIds: number[] = [];
@@ -307,20 +667,29 @@ describe("runCoreEvidencePipeline - Per-Position Targeting", () => {
     const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
     const base = createBaseServices(evalTime);
 
-    const outcomes: AssembleEvidenceBundleResult[] = [
-      { outcome: "persisted", rowId: 201, payloadHash: "h", slotCount: 3, warnings: [] },
-      { outcome: "identical_replay", rowId: 202, payloadHash: "h", slotCount: 3, warnings: [] },
-      { outcome: "conflict", rowId: 203, incomingPayloadHash: "h2" },
-      { outcome: "no_bundle" },
-      { code: "VALIDATION_ERROR", errors: ["bad"] },
-      { code: "LINEAGE_ERROR", message: "lineage failed" },
-      { code: "PERSISTENCE_ERROR", message: "db failed" }
+    const outcomes = [
+      { outcome: "prepared" as const },
+      {
+        outcome: "identical_replay" as const,
+        rowId: 202,
+        payloadHash: "h",
+        slotCount: 3,
+        warnings: [],
+        embeddedBrief: dummyBrief
+      },
+      { outcome: "no_bundle" as const },
+      { code: "VALIDATION_ERROR" as const, errors: ["bad"] }
     ];
 
-    for (const assemblyOutcome of outcomes) {
+    for (const prepOutcome of outcomes) {
       const services: CoreEvidencePipelineServices = {
         ...base,
-        assemble: async () => assemblyOutcome
+        prepare: async () => {
+          if ("outcome" in prepOutcome && prepOutcome.outcome === "prepared") {
+            return { outcome: "prepared", prepared: dummyPreparedBundle };
+          }
+          return prepOutcome as unknown as PrepareEvidenceBundleResult;
+        }
       };
 
       const deps: RunCoreEvidencePipelineDeps = {
@@ -336,14 +705,11 @@ describe("runCoreEvidencePipeline - Per-Position Targeting", () => {
 
       const result = await runCoreEvidencePipeline(deps, createDefaultConfig(["pos-1"]));
 
-      const isSuccess =
-        "outcome" in assemblyOutcome &&
-        (assemblyOutcome.outcome === "persisted" || assemblyOutcome.outcome === "identical_replay");
-      if (isSuccess) {
+      if (
+        "outcome" in prepOutcome &&
+        (prepOutcome.outcome === "prepared" || prepOutcome.outcome === "identical_replay")
+      ) {
         expect(result.positions[0]?.status).toBe("complete");
-        expect(result.positions[0]?.bundleId).toBe(
-          "rowId" in assemblyOutcome ? assemblyOutcome.rowId : null
-        );
       } else {
         expect(result.positions[0]?.status).toBe("failed");
         expect(result.positions[0]?.bundleId).toBeNull();
@@ -357,20 +723,16 @@ describe("runCoreEvidencePipeline - Per-Position Targeting", () => {
     const base = createBaseServices(evalTime);
 
     const briefOutcomes: GenerateResearchBriefOutcome[] = [
-      { outcome: "generated_complete", row: dummyBriefRow, brief: dummyBrief },
-      { outcome: "reused", row: dummyBriefRow, brief: dummyBrief }
+      { outcome: "generated_complete", brief: dummyBrief },
+      { outcome: "reused", brief: dummyBrief, reusedRow: dummyBriefRow }
     ];
 
     for (const briefOutcome of briefOutcomes) {
-      let briefTargetId: number | null = null;
       let publishTargetId: number | null = null;
 
       const services: CoreEvidencePipelineServices = {
         ...base,
-        generateBrief: async (req) => {
-          briefTargetId = req.evidenceBundleId;
-          return briefOutcome;
-        },
+        generateBrief: async () => briefOutcome,
         publish: async (req) => {
           publishTargetId = req.evidenceBundleId;
           return { outcome: "created", bundleId: req.evidenceBundleId, attemptCount: 1 };
@@ -391,7 +753,6 @@ describe("runCoreEvidencePipeline - Per-Position Targeting", () => {
       const result = await runCoreEvidencePipeline(deps, createDefaultConfig(["pos-1"]));
 
       expect(result.positions[0]?.status).toBe("complete");
-      expect(briefTargetId).toBe(101);
       expect(publishTargetId).toBe(101);
     }
   });
@@ -406,7 +767,6 @@ describe("runCoreEvidencePipeline - Per-Position Targeting", () => {
       ...base,
       generateBrief: async () => ({
         outcome: "generated_degraded",
-        row: dummyBriefRow,
         brief: dummyBrief
       }),
       publish: async (req) => {
@@ -586,15 +946,17 @@ describe("runCoreEvidencePipeline - Per-Position Targeting", () => {
     {
       const services = {
         ...base,
-        generateBrief: async (req: { evidenceBundleId: number }) => {
-          if (req.evidenceBundleId === 102) {
+        generateBrief: async (req: GenerateResearchBriefParams) => {
+          if (
+            (req.evidenceBundlePayload as unknown as { requestMeta?: { positionId?: string } })
+              ?.requestMeta?.positionId === "pos-2"
+          ) {
             return {
               outcome: "generated_degraded" as const,
-              row: dummyBriefRow,
               brief: dummyBrief
             };
           }
-          return { outcome: "generated_complete" as const, row: dummyBriefRow, brief: dummyBrief };
+          return { outcome: "generated_complete" as const, brief: dummyBrief };
         }
       };
       const deps: RunCoreEvidencePipelineDeps = {
@@ -616,11 +978,14 @@ describe("runCoreEvidencePipeline - Per-Position Targeting", () => {
     {
       const services = {
         ...base,
-        generateBrief: async (req: { evidenceBundleId: number }) => {
-          if (req.evidenceBundleId === 102) {
+        generateBrief: async (req: GenerateResearchBriefParams) => {
+          if (
+            (req.evidenceBundlePayload as unknown as { requestMeta?: { positionId?: string } })
+              ?.requestMeta?.positionId === "pos-2"
+          ) {
             return { outcome: "no_brief" as const, reason: "no_bundle" as const };
           }
-          return { outcome: "generated_complete" as const, row: dummyBriefRow, brief: dummyBrief };
+          return { outcome: "generated_complete" as const, brief: dummyBrief };
         }
       };
       const deps: RunCoreEvidencePipelineDeps = {
@@ -642,8 +1007,8 @@ describe("runCoreEvidencePipeline - Per-Position Targeting", () => {
     {
       const services = {
         ...base,
-        assemble: async () => ({ outcome: "no_bundle" as const }),
-        assemblePair: async () => ({ outcome: "no_bundle" as const })
+        prepare: async () => ({ outcome: "no_bundle" as const }),
+        preparePair: async () => ({ outcome: "no_bundle" as const })
       };
       const deps: RunCoreEvidencePipelineDeps = {
         clock: new QueuedClock([

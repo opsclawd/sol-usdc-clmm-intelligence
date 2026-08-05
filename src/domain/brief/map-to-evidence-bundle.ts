@@ -31,7 +31,7 @@ export function mapPersistedBriefToCanonicalBrief(
 
   const sourceEvidenceIds = artifact.llmOutput.sourceEvidenceIds;
   if (sourceEvidenceIds.length === 0) {
-    throw new Error("Complete research brief must have at least 1 source evidence ID.");
+    throw new Error("Research brief must have at least 1 source evidence ID.");
   }
 
   const unresolvedIds: string[] = [];

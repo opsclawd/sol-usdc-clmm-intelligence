@@ -140,6 +140,7 @@ export type PreparePairEvidenceBundleSuccess =
       readonly payloadHash: string;
       readonly slotCount: number;
       readonly warnings: readonly string[];
+      readonly embeddedBrief?: PersistedResearchBrief;
     }
   | { readonly outcome: "conflict"; readonly rowId: number; readonly incomingPayloadHash: string }
   | { readonly outcome: "no_bundle" };

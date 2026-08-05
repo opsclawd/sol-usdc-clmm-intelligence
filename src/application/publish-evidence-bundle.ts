@@ -355,7 +355,12 @@ export async function publishEvidenceBundle(
         .filter((r) => {
           if (!r.structuredOutput) return false;
           const artifact = r.structuredOutput as PersistedResearchBrief;
-          if (artifact.generationStatus !== "complete") return false;
+          if (
+            artifact.generationStatus !== "complete" &&
+            artifact.generationStatus !== "degraded"
+          ) {
+            return false;
+          }
           if (
             artifact.sourceBundleRef?.bundleId !== targetBundle.id ||
             artifact.sourceBundleRef?.bundleHash !== targetBundle.payloadHash

@@ -390,6 +390,51 @@ describe("publishEvidenceBundle", () => {
     });
   }
 
+  async function insertDegradedBrief(
+    bundle: EvidenceBundleRow,
+    sourceEvidenceIds: readonly string[]
+  ) {
+    const artifact: PersistedResearchBrief = {
+      briefId: `brief-${bundle.id}`,
+      pair: "SOL/USDC",
+      generationStatus: "degraded",
+      llmOutput: {
+        summary: "Degraded brief summary",
+        keyTakeaways: ["Partial price evidence available"],
+        supportsCurrentRegime: "unclear",
+        regimeAssessmentReasoning: "Degraded data quality.",
+        confidenceScore: 0.4,
+        confidenceReasoning: "Inputs are partially degraded.",
+        sourceEvidenceIds,
+        unsupportedOrMissingInputs: ["volatility"],
+        degradationReason: "missing_inputs"
+      },
+      sourceRefs: [],
+      providerMetadata: { provider: "openai", model: "gpt-4o" },
+      sourceBundleRef: {
+        bundleId: bundle.id,
+        bundleHash: bundle.payloadHash
+      },
+      inputContextHash: "context-hash",
+      priorBriefRef: null,
+      generatedAt: EPOCH,
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+    };
+
+    return briefRepo.insert({
+      evidenceBundleId: bundle.id,
+      promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+      modelProvider: "openai",
+      structuredOutput: artifact,
+      signalClass: "contextual",
+      confidence: DEFAULT_CONFIDENCE,
+      provenance: DEFAULT_PROVENANCE,
+      payloadHash: `brief-hash-${sourceEvidenceIds.join("-") || "empty"}`,
+      receivedAtUnixMs: EVAL_MS - 30_000,
+      validUntilUnixMs: EVAL_MS + 3_600_000
+    });
+  }
+
   describe("brief composition selection and fallback", () => {
     it("emits brief_composition_failed and publishes the base bundle when a complete brief has no evidence IDs", async () => {
       const bundle = makeBundleRow({});
@@ -412,7 +457,7 @@ describe("publishEvidenceBundle", () => {
         type: "brief_composition_failed",
         bundleId: bundle.id,
         researchBriefId: briefRow.id,
-        reason: "Complete research brief must have at least 1 source evidence ID."
+        reason: "Research brief must have at least 1 source evidence ID."
       });
     });
 
@@ -422,6 +467,29 @@ describe("publishEvidenceBundle", () => {
       const bundle = makeBundleRow({ payload });
       bundleRepo.store.push(bundle);
       const briefRow = await insertCompleteBrief(bundle, ["feat-1"]);
+      http.nextResponse = {
+        status: 201,
+        ok: true,
+        body: { id: "new-123" },
+        headers: {}
+      };
+
+      const { result, events } = await publish();
+
+      expect(result.outcome).toBe("created");
+      const sent = http.callLog[0]!.body as EvidenceBundleV1;
+      expect(sent).not.toBe(bundle.payload);
+      expect(sent.researchBrief?.briefId).toBe(`brief-${bundle.id}`);
+      expect(publishAttemptRepo.store[0]!.researchBriefId).toBe(briefRow.id);
+      expect(events.some((event) => event.type === "brief_composition_failed")).toBe(false);
+    });
+
+    it("publishes a valid degraded brief without emitting brief_composition_failed", async () => {
+      const payload = JSON.parse(JSON.stringify(DEFAULT_PAYLOAD)) as EvidenceBundleV1;
+      payload.deterministicFeatures[0]!.featureId = "feat-1";
+      const bundle = makeBundleRow({ payload });
+      bundleRepo.store.push(bundle);
+      const briefRow = await insertDegradedBrief(bundle, ["feat-1"]);
       http.nextResponse = {
         status: 201,
         ok: true,
