@@ -331,26 +331,47 @@ function buildNewsRegulatoryClaims(
   return claims;
 }
 
+function mapOnChainFlowKindToPublishedKind(
+  kind: OnChainFlowPayloadV1["eventType"]
+): FlowClaim["kind"] | null {
+  switch (kind) {
+    case "dex_net_flow":
+    case "whale_swap":
+      return "spot_flow";
+    case "cex_flow_proxy":
+      return "exchange_flow";
+    case "stablecoin_flow":
+      return "stablecoin_flow";
+    case "whale_transfer":
+      return null;
+  }
+}
+
+interface ContextualEvidenceBuildResult {
+  readonly evidence: ContextualEvidence;
+  readonly droppedFlowKinds: readonly OnChainFlowPayloadV1["eventType"][];
+}
+
 function buildContextualEvidence(
   contextualEvents: readonly SelectedContextEvent[],
   selectedSupportResistance: readonly SelectedSupportResistance[] = [],
   selectedNewsEvidence: readonly SelectedNewsEvidence[] = [],
   slots: readonly SelectedFeatureSlot[] = []
-): ContextualEvidence {
+): ContextualEvidenceBuildResult {
   const events: EventClaim[] = [];
   const flows: FlowClaim[] = [];
+  const droppedFlowKinds: OnChainFlowPayloadV1["eventType"][] = [];
 
   for (const selectedEvent of contextualEvents) {
     const { row, payload, eventFamily } = selectedEvent;
 
     if (eventFamily === "on_chain_flow") {
       const flowPayload = payload as OnChainFlowPayloadV1;
-      const onChainFlowKind = flowPayload.eventType as
-        | "whale_transfer"
-        | "whale_swap"
-        | "stablecoin_flow"
-        | "dex_net_flow"
-        | "cex_flow_proxy";
+      const mappedKind = mapOnChainFlowKindToPublishedKind(flowPayload.eventType);
+      if (mappedKind === null) {
+        droppedFlowKinds.push(flowPayload.eventType);
+        continue;
+      }
 
       let direction: "bullish" | "bearish" | "neutral" | "mixed" | "unknown" = "unknown";
       if (flowPayload.direction === "inbound") {
@@ -359,11 +380,11 @@ function buildContextualEvidence(
         direction = "bearish";
       }
 
-      const claim = `${onChainFlowKind}: ${flowPayload.amountUsdc} USDC ${flowPayload.direction} for ${flowPayload.venue}`;
+      const claim = `${flowPayload.eventType}: ${flowPayload.amountUsdc} USDC ${flowPayload.direction} for ${flowPayload.venue}`;
 
       flows.push({
         evidenceId: `normalized-${row.id}` as Identifier128,
-        kind: onChainFlowKind,
+        kind: mappedKind,
         claim,
         direction,
         confidenceBps: confidenceFractionToBps(row.confidence.compositeScore),
@@ -412,11 +433,14 @@ function buildContextualEvidence(
   const newsRegulatory = buildNewsRegulatoryClaims(selectedNewsEvidence);
 
   return {
-    supportResistance,
-    flows,
-    derivatives: buildDerivativeClaims(slots),
-    events,
-    newsRegulatory
+    evidence: {
+      supportResistance,
+      flows,
+      derivatives: buildDerivativeClaims(slots),
+      events,
+      newsRegulatory
+    },
+    droppedFlowKinds
   };
 }
 
@@ -444,16 +468,51 @@ function buildSourceReferences(lineage: VerifiedEvidenceLineage["lineage"]): Sou
   return refs;
 }
 
-function buildBundleAssessment(quality: EvidenceBundleQuality) {
+function buildBundleAssessment(
+  quality: EvidenceBundleQuality,
+  contextualResult: ContextualEvidenceBuildResult
+) {
+  let coverage = quality.coverage;
+  const warnings = quality.warnings.map((w) => ({
+    code: w.code as Identifier128,
+    message: w.message,
+    affectedFamilies: [...w.affectedFamilies]
+  }));
+
+  const { evidence, droppedFlowKinds } = contextualResult;
+
+  if (droppedFlowKinds.length > 0) {
+    const uniqueDroppedKinds = [...new Set(droppedFlowKinds)].sort();
+    for (const droppedKind of uniqueDroppedKinds) {
+      warnings.push({
+        code: "unmappable_flow_kind" as Identifier128,
+        message: `Dropped unmappable on-chain flow kind: ${droppedKind}`,
+        affectedFamilies: ["flows"]
+      });
+    }
+
+    if (evidence.flows.length === 0) {
+      coverage = {
+        ...coverage,
+        flows: "unavailable"
+      };
+
+      const hasFlowsUnavailable = warnings.some((w) => w.code === "FLOWS_UNAVAILABLE");
+      if (!hasFlowsUnavailable) {
+        warnings.push({
+          code: "FLOWS_UNAVAILABLE" as Identifier128,
+          message: "On-chain flows evidence family is unavailable",
+          affectedFamilies: ["flows"]
+        });
+      }
+    }
+  }
+
   return {
     overallConfidenceBps: quality.overallConfidenceBps,
     quality: quality.quality,
-    coverage: quality.coverage,
-    warnings: quality.warnings.map((w) => ({
-      code: w.code as Identifier128,
-      message: w.message,
-      affectedFamilies: [...w.affectedFamilies]
-    }))
+    coverage,
+    warnings
   };
 }
 
@@ -529,7 +588,7 @@ export function assembleEvidenceBundleCandidate(
     sourceVersion: "1.0.0" as Identifier128
   };
 
-  const contextualEvidence = buildContextualEvidence(
+  const contextualResult = buildContextualEvidence(
     contextualEvents,
     selectedSupportResistance,
     selectedNewsEvidence,
@@ -553,10 +612,10 @@ export function assembleEvidenceBundleCandidate(
       DeterministicFeature,
       ...DeterministicFeature[]
     ],
-    contextualEvidence,
+    contextualEvidence: contextualResult.evidence,
     researchBrief,
     sourceReferences: sourceReferences as [SourceReference, ...SourceReference[]],
-    assessment: buildBundleAssessment(quality),
+    assessment: buildBundleAssessment(quality, contextualResult),
     provenance: buildBundleProvenance(input, lineage)
   };
 }

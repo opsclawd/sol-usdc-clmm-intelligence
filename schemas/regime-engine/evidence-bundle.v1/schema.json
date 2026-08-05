@@ -633,15 +633,7 @@
           "$ref": "#/$defs/identifier128"
         },
         "kind": {
-          "enum": [
-            "spot_flow",
-            "stablecoin_flow",
-            "exchange_flow",
-            "whale_transfer",
-            "whale_swap",
-            "dex_net_flow",
-            "cex_flow_proxy"
-          ]
+          "enum": ["spot_flow", "stablecoin_flow", "exchange_flow"]
         },
         "claim": {
           "type": "string",
