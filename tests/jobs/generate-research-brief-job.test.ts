@@ -5,28 +5,28 @@ import {
 } from "../../src/jobs/generate-research-brief-job.js";
 import type { DbConnection } from "../../src/ports/db.js";
 import type {
-  GenerateResearchBriefParams,
-  GenerateResearchBriefOutcome
+  GenerateAndPersistResearchBriefParams,
+  GenerateAndPersistResearchBriefOutcome
 } from "../../src/application/generate-research-brief.js";
 import type { EvidenceBundleRepo } from "../../src/ports/bundle-repo.js";
 import type { ResearchBriefRepo } from "../../src/ports/brief-repo.js";
 import type { LlmProvider } from "../../src/ports/llm-provider.js";
 
-const mockGenerateResearchBrief = vi.fn();
+const mockGenerateAndPersistResearchBrief = vi.fn();
 vi.mock("../../src/application/generate-research-brief.js", () => {
   return {
-    generateResearchBrief: (deps: unknown, params: unknown) =>
-      mockGenerateResearchBrief(deps, params)
+    generateAndPersistResearchBrief: (deps: unknown, params: unknown) =>
+      mockGenerateAndPersistResearchBrief(deps, params)
   };
 });
 
 describe("generateResearchBriefJob", () => {
-  it("invokes generateResearchBrief and closes db connection on success", async () => {
-    const mockOutcome: GenerateResearchBriefOutcome = {
+  it("invokes generateAndPersistResearchBrief and closes db connection on success", async () => {
+    const mockOutcome: GenerateAndPersistResearchBriefOutcome = {
       outcome: "no_brief",
       reason: "no_bundle"
     };
-    mockGenerateResearchBrief.mockResolvedValueOnce(mockOutcome);
+    mockGenerateAndPersistResearchBrief.mockResolvedValueOnce(mockOutcome);
 
     const closeMock = vi.fn().mockResolvedValue(undefined);
     const fakeDbConnection = { close: closeMock } as unknown as DbConnection;
@@ -38,7 +38,7 @@ describe("generateResearchBriefJob", () => {
       dbConnection: fakeDbConnection
     };
 
-    const params: GenerateResearchBriefParams = {
+    const params: GenerateAndPersistResearchBriefParams = {
       evidenceBundleId: 1,
       pair: "SOL/USDC",
       evaluationTimeUnixMs: 1700000000000,
@@ -48,14 +48,14 @@ describe("generateResearchBriefJob", () => {
     const job = generateResearchBriefJob(fakeDeps);
     const result = await job(params);
 
-    expect(mockGenerateResearchBrief).toHaveBeenCalledWith(fakeDeps, params);
+    expect(mockGenerateAndPersistResearchBrief).toHaveBeenCalledWith(fakeDeps, params);
     expect(result).toBe(mockOutcome);
     expect(closeMock).toHaveBeenCalledTimes(1);
   });
 
-  it("closes db connection when generateResearchBrief throws an unhandled error", async () => {
+  it("closes db connection when generateAndPersistResearchBrief throws an unhandled error", async () => {
     const error = new Error("DB connection failure");
-    mockGenerateResearchBrief.mockRejectedValueOnce(error);
+    mockGenerateAndPersistResearchBrief.mockRejectedValueOnce(error);
 
     const closeMock = vi.fn().mockResolvedValue(undefined);
     const fakeDbConnection = { close: closeMock } as unknown as DbConnection;
@@ -67,7 +67,7 @@ describe("generateResearchBriefJob", () => {
       dbConnection: fakeDbConnection
     };
 
-    const params: GenerateResearchBriefParams = {
+    const params: GenerateAndPersistResearchBriefParams = {
       evidenceBundleId: 1,
       pair: "SOL/USDC",
       evaluationTimeUnixMs: 1700000000000,

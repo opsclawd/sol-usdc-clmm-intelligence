@@ -21,7 +21,7 @@ import {
   type AssemblePairEvidenceBundleDeps
 } from "../../src/application/assemble-pair-evidence-bundle.js";
 import {
-  generateResearchBrief,
+  generateAndPersistResearchBrief,
   type GenerateResearchBriefDeps
 } from "../../src/application/generate-research-brief.js";
 import {
@@ -139,7 +139,7 @@ export async function runCoreEvidencePipelineScript(runtime: NodeRuntime): Promi
             derive: (request) => deriveMvpFeatures(deriveDeps, request),
             assemble: (request) => assembleEvidenceBundle(assembleDeps, request),
             assemblePair: (request) => assemblePairEvidenceBundle(pairDeps, request),
-            generateBrief: (request) => generateResearchBrief(briefDeps, request),
+            generateBrief: (request) => generateAndPersistResearchBrief(briefDeps, request),
             publish: (request) => publishEvidenceBundle(publishDeps, request)
           }
         };

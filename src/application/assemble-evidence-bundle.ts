@@ -8,7 +8,7 @@ import type {
   EvidenceBundleInsert,
   NormalizedObservationCandidateQuery
 } from "../ports/index.js";
-import type { EvidenceBundleInsertOutcome } from "../ports/bundle-repo.js";
+import type { EvidenceBundleInsertOutcome, EvidenceBundleRow } from "../ports/bundle-repo.js";
 import type { BundleFeatureCandidateQuery } from "../ports/feature-repo.js";
 import type {
   FeatureKind,
@@ -28,7 +28,8 @@ import {
 } from "../domain/evidence-bundle/select.js";
 import {
   verifyEvidenceLineage,
-  type VerifyEvidenceLineageInput
+  type VerifyEvidenceLineageInput,
+  type VerifiedEvidenceLineage
 } from "../domain/evidence-bundle/lineage.js";
 import {
   classifyEvidenceBundleQuality,
@@ -53,6 +54,9 @@ import {
   confidenceBpsToFraction
 } from "../domain/evidence-bundle/index.js";
 import { buildPositionRunId } from "./core-evidence-pipeline-policy.js";
+import type { EvidenceBundleV1 } from "../contracts/generated/evidence-bundle-v1.js";
+import type { PersistedResearchBrief } from "../contracts/research-brief.js";
+import { mapPersistedBriefToCanonicalBundle } from "../domain/brief/map-to-evidence-bundle.js";
 
 export interface AssembleEvidenceBundleRequest {
   readonly pair: "SOL/USDC";
@@ -99,6 +103,59 @@ export type AssembleEvidenceBundleError =
 
 export type AssembleEvidenceBundleResult =
   | AssembleEvidenceBundleSuccess
+  | AssembleEvidenceBundleError;
+
+export interface PreparedEvidenceBundle {
+  readonly slots: readonly SelectedFeatureSlot[];
+  readonly lineage: VerifiedEvidenceLineage["lineage"];
+  readonly selectedContextEvents: readonly SelectedContextEvent[];
+  readonly selectedSupportResistance: readonly SelectedSupportResistance[];
+  readonly selectedNewsEvidence: readonly SelectedNewsEvidence[];
+  readonly qualityInputFacts: {
+    readonly createdAt: number;
+    readonly asOf: number;
+    readonly freshUntil: number;
+    readonly expiresAt: number;
+    readonly hasSupportResistance: boolean;
+    readonly hasFlows: boolean;
+    readonly hasDerivatives: boolean;
+    readonly hasEvents: boolean;
+    readonly hasNewsRegulatory: boolean;
+  };
+  readonly requestMeta: {
+    readonly pair: "SOL/USDC";
+    readonly poolId: string;
+    readonly positionId: string;
+    readonly walletId: string;
+    readonly pipelineRunId: string;
+    readonly correlationId: string;
+    readonly evaluationTimeUnixMs: number;
+    readonly createdAtUnixMs: number;
+    readonly codeVersion: string;
+    readonly gitCommit: string;
+    readonly environment: "production" | "staging" | "development" | "test";
+  };
+  readonly nullBriefCandidate: EvidenceBundleV1;
+  readonly canonical: CanonicalEvidenceBundle;
+}
+
+export type PrepareEvidenceBundleSuccess =
+  | {
+      readonly outcome: "prepared";
+      readonly prepared: PreparedEvidenceBundle;
+    }
+  | {
+      readonly outcome: "identical_replay";
+      readonly rowId: number;
+      readonly payloadHash: string;
+      readonly slotCount: number;
+      readonly warnings: readonly string[];
+    }
+  | { readonly outcome: "conflict"; readonly rowId: number; readonly incomingPayloadHash: string }
+  | { readonly outcome: "no_bundle" };
+
+export type PrepareEvidenceBundleResult =
+  | PrepareEvidenceBundleSuccess
   | AssembleEvidenceBundleError;
 
 export interface AssembleEvidenceBundleDeps {
@@ -262,16 +319,10 @@ function collectLineageIds(slots: readonly SelectedFeatureSlot[]): {
   return { rawObservationIds, normalizedObservationIds };
 }
 
-export async function assembleEvidenceBundle(
+export async function prepareEvidenceBundle(
   deps: AssembleEvidenceBundleDeps,
   request: AssembleEvidenceBundleRequest
-): Promise<AssembleEvidenceBundleResult> {
-  const clockNow = deps.clock.now();
-  const receivedAtUnixMs = new Date(clockNow).getTime();
-  if (Number.isNaN(receivedAtUnixMs)) {
-    throw new Error(`Invalid clock.now() value: ${clockNow}`);
-  }
-
+): Promise<PrepareEvidenceBundleResult> {
   try {
     validateRequest(request);
   } catch (err) {
@@ -469,9 +520,20 @@ export async function assembleEvidenceBundle(
   const hasDerivatives = hasUsableDerivativeSlots(slots);
   const hasEvents = selectedContextEvents.some((item) => item.eventFamily !== "on_chain_flow");
   const hasNewsRegulatory = selectedNewsEvidence.length > 0;
-  const hasResearchBrief = false;
 
-  const qualityInput = {
+  const qualityInputFacts = {
+    createdAt: request.createdAtUnixMs,
+    asOf: evaluationTimeUnixMs,
+    freshUntil,
+    expiresAt,
+    hasSupportResistance,
+    hasFlows,
+    hasDerivatives,
+    hasEvents,
+    hasNewsRegulatory
+  };
+
+  const quality: EvidenceBundleQuality = classifyEvidenceBundleQuality({
     slots,
     runId: request.pipelineRunId,
     correlationId: request.correlationId,
@@ -484,11 +546,9 @@ export async function assembleEvidenceBundle(
     hasDerivatives,
     hasEvents,
     hasNewsRegulatory,
-    hasResearchBrief,
+    hasResearchBrief: false,
     allowNoUsableFeatures: false
-  };
-
-  const quality: EvidenceBundleQuality = classifyEvidenceBundleQuality(qualityInput);
+  });
 
   const assembleInput: AssembleEvidenceBundleInput = {
     slots,
@@ -516,11 +576,11 @@ export async function assembleEvidenceBundle(
     selectedNewsEvidence
   };
 
-  const assembledCandidate = assembleEvidenceBundleCandidate(assembleInput);
+  const nullBriefCandidate = assembleEvidenceBundleCandidate(assembleInput);
 
   let canonical: CanonicalEvidenceBundle;
   try {
-    canonical = await contract.validateCanonicalizeAndHash(assembledCandidate);
+    canonical = await contract.validateCanonicalizeAndHash(nullBriefCandidate);
   } catch (err) {
     if (typeof err === "object" && err !== null && "code" in err) {
       return { code: "CONTRACT_ERROR", error: err as EvidenceBundleContractError };
@@ -528,10 +588,145 @@ export async function assembleEvidenceBundle(
     return { code: "CONTRACT_ERROR", error: { code: "VALIDATION_ERROR", errors: [String(err)] } };
   }
 
+  let existingRows: EvidenceBundleRow[] = [];
+  try {
+    existingRows = (await bundleRepo.findByPair(request.pair, evaluationTimeUnixMs)) ?? [];
+  } catch (err) {
+    // If bundleRepo lookup throws, proceed
+  }
+
+  const matchingRow = (existingRows ?? []).find(
+    (row) => row.idempotencyKey === canonical.idempotencyKey
+  );
+
+  if (matchingRow) {
+    const payloadObj = matchingRow.payload as EvidenceBundleV1 | undefined | null;
+    const hasEmbeddedBrief =
+      payloadObj !== null &&
+      typeof payloadObj === "object" &&
+      "researchBrief" in payloadObj &&
+      payloadObj.researchBrief !== null &&
+      payloadObj.researchBrief !== undefined;
+
+    if (hasEmbeddedBrief) {
+      const warnings =
+        payloadObj &&
+        typeof payloadObj === "object" &&
+        "assessment" in payloadObj &&
+        payloadObj.assessment &&
+        Array.isArray(payloadObj.assessment.warnings)
+          ? payloadObj.assessment.warnings.map((w: { message: string }) => w.message)
+          : [];
+      return {
+        outcome: "identical_replay",
+        rowId: matchingRow.id,
+        payloadHash: matchingRow.payloadHash,
+        slotCount: slots.length,
+        warnings
+      };
+    } else {
+      return {
+        outcome: "conflict",
+        rowId: matchingRow.id,
+        incomingPayloadHash: canonical.payloadHash
+      };
+    }
+  }
+
+  const prepared: PreparedEvidenceBundle = {
+    slots,
+    lineage: lineageResult.lineage,
+    selectedContextEvents,
+    selectedSupportResistance,
+    selectedNewsEvidence,
+    qualityInputFacts,
+    requestMeta: {
+      pair: request.pair,
+      poolId: request.poolId,
+      positionId: request.positionId,
+      walletId: request.walletId,
+      pipelineRunId: request.pipelineRunId,
+      correlationId: request.correlationId,
+      evaluationTimeUnixMs: request.evaluationTimeUnixMs,
+      createdAtUnixMs: request.createdAtUnixMs,
+      codeVersion: request.codeVersion,
+      gitCommit: request.gitCommit,
+      environment: request.environment
+    },
+    nullBriefCandidate,
+    canonical
+  };
+
+  return {
+    outcome: "prepared",
+    prepared
+  };
+}
+
+export async function finalizeEvidenceBundle(
+  deps: AssembleEvidenceBundleDeps,
+  prepared: PreparedEvidenceBundle,
+  researchBrief?: PersistedResearchBrief
+): Promise<AssembleEvidenceBundleResult> {
+  const clockNow = deps.clock.now();
+  const receivedAtUnixMs = new Date(clockNow).getTime();
+  if (Number.isNaN(receivedAtUnixMs)) {
+    throw new Error(`Invalid clock.now() value: ${clockNow}`);
+  }
+
+  const { bundleRepo, contract } = deps;
+  const hasResearchBrief = researchBrief !== undefined;
+
+  const qualityInput = {
+    slots: prepared.slots,
+    runId: prepared.requestMeta.pipelineRunId,
+    correlationId: prepared.requestMeta.correlationId,
+    createdAt: prepared.qualityInputFacts.createdAt,
+    asOf: prepared.qualityInputFacts.asOf,
+    freshUntil: prepared.qualityInputFacts.freshUntil,
+    expiresAt: prepared.qualityInputFacts.expiresAt,
+    hasSupportResistance: prepared.qualityInputFacts.hasSupportResistance,
+    hasFlows: prepared.qualityInputFacts.hasFlows,
+    hasDerivatives: prepared.qualityInputFacts.hasDerivatives,
+    hasEvents: prepared.qualityInputFacts.hasEvents,
+    hasNewsRegulatory: prepared.qualityInputFacts.hasNewsRegulatory,
+    hasResearchBrief,
+    allowNoUsableFeatures: false
+  };
+
+  const quality: EvidenceBundleQuality = classifyEvidenceBundleQuality(qualityInput);
+
+  let canonical: CanonicalEvidenceBundle;
+  if (researchBrief !== undefined) {
+    let finalCandidate: EvidenceBundleV1;
+    try {
+      finalCandidate = mapPersistedBriefToCanonicalBundle(
+        prepared.nullBriefCandidate,
+        researchBrief,
+        researchBrief.briefId
+      );
+      finalCandidate.assessment.overallConfidenceBps = quality.overallConfidenceBps;
+      finalCandidate.assessment.quality = quality.quality;
+    } catch (err) {
+      return { code: "CONTRACT_ERROR", error: { code: "VALIDATION_ERROR", errors: [String(err)] } };
+    }
+
+    try {
+      canonical = await contract.validateCanonicalizeAndHash(finalCandidate);
+    } catch (err) {
+      if (typeof err === "object" && err !== null && "code" in err) {
+        return { code: "CONTRACT_ERROR", error: err as EvidenceBundleContractError };
+      }
+      return { code: "CONTRACT_ERROR", error: { code: "VALIDATION_ERROR", errors: [String(err)] } };
+    }
+  } else {
+    canonical = prepared.canonical;
+  }
+
   const bundleInsert = buildBundleInsert(
     canonical,
     quality,
-    evaluationTimeUnixMs,
+    prepared.qualityInputFacts.asOf,
     receivedAtUnixMs
   );
 
@@ -547,7 +742,7 @@ export async function assembleEvidenceBundle(
       outcome: "persisted",
       rowId: insertOutcome.row.id,
       payloadHash: insertOutcome.row.payloadHash,
-      slotCount: slots.length,
+      slotCount: prepared.slots.length,
       warnings: quality.warnings.map((w) => w.message)
     };
   }
@@ -557,7 +752,7 @@ export async function assembleEvidenceBundle(
       outcome: "identical_replay",
       rowId: insertOutcome.row.id,
       payloadHash: insertOutcome.row.payloadHash,
-      slotCount: slots.length,
+      slotCount: prepared.slots.length,
       warnings: quality.warnings.map((w) => w.message)
     };
   }
@@ -571,4 +766,18 @@ export async function assembleEvidenceBundle(
   }
 
   return { outcome: "no_bundle" };
+}
+
+export async function assembleEvidenceBundle(
+  deps: AssembleEvidenceBundleDeps,
+  request: AssembleEvidenceBundleRequest
+): Promise<AssembleEvidenceBundleResult> {
+  const preparedResult = await prepareEvidenceBundle(deps, request);
+  if ("code" in preparedResult) {
+    return preparedResult;
+  }
+  if (preparedResult.outcome !== "prepared") {
+    return preparedResult;
+  }
+  return finalizeEvidenceBundle(deps, preparedResult.prepared, undefined);
 }

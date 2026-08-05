@@ -2,7 +2,10 @@ import { describe, expect, test } from "vitest";
 import calmFixture from "../../fixtures/research-brief/calm.json" with { type: "json" };
 import type { EvidenceBundleV1 } from "../../../src/contracts/generated/evidence-bundle-v1.js";
 import type { PersistedResearchBrief } from "../../../src/contracts/research-brief.js";
-import { mapPersistedBriefToCanonicalBundle } from "../../../src/domain/brief/map-to-evidence-bundle.js";
+import {
+  mapPersistedBriefToCanonicalBrief,
+  mapPersistedBriefToCanonicalBundle
+} from "../../../src/domain/brief/map-to-evidence-bundle.js";
 
 const calmBundle = calmFixture as unknown as EvidenceBundleV1;
 
@@ -87,17 +90,31 @@ describe("map-to-evidence-bundle", () => {
       }
     });
 
-    test("throws if brief references evidence ID not present in source bundle", () => {
-      const ungroundedBrief: PersistedResearchBrief = {
+    test("unresolved brief evidence is rejected for every generation status", () => {
+      const ungroundedComplete: PersistedResearchBrief = {
         ...validPersistedBrief,
+        generationStatus: "complete",
         llmOutput: {
           ...validPersistedBrief.llmOutput,
           sourceEvidenceIds: ["feat-sol-price", "non-existent-feature"]
         }
       };
 
+      const ungroundedDegraded: PersistedResearchBrief = {
+        ...degradedPersistedBrief,
+        generationStatus: "degraded",
+        llmOutput: {
+          ...degradedPersistedBrief.llmOutput,
+          sourceEvidenceIds: ["feat-sol-price", "non-existent-feature"]
+        }
+      };
+
       expect(() =>
-        mapPersistedBriefToCanonicalBundle(calmBundle, ungroundedBrief, "brief-complete-1")
+        mapPersistedBriefToCanonicalBundle(calmBundle, ungroundedComplete, "brief-complete-1")
+      ).toThrowError(/unresolved evidence IDs/i);
+
+      expect(() =>
+        mapPersistedBriefToCanonicalBundle(calmBundle, ungroundedDegraded, "brief-degraded-1")
       ).toThrowError(/unresolved evidence IDs/i);
     });
   });
@@ -108,10 +125,33 @@ describe("map-to-evidence-bundle", () => {
     expect(JSON.stringify(calmBundle)).toBe(originalJson);
   });
 
-  test("rejects degraded persisted briefs", () => {
-    expect(() =>
-      mapPersistedBriefToCanonicalBundle(calmBundle, degradedPersistedBrief, "brief-degraded-1")
-    ).toThrowError(/degraded/i);
+  test("degraded brief maps with grounded fallback evidence and available coverage", () => {
+    const mappedBundle = mapPersistedBriefToCanonicalBundle(
+      calmBundle,
+      degradedPersistedBrief,
+      "brief-degraded-1"
+    );
+
+    expect(mappedBundle.researchBrief).not.toBeNull();
+    expect(mappedBundle.researchBrief?.briefId).toBe("brief-degraded-1");
+    expect(mappedBundle.assessment.coverage.researchBrief).toBe("available");
+    expect(
+      mappedBundle.assessment.warnings.some((w) => w.code === "RESEARCH_BRIEF_UNAVAILABLE")
+    ).toBe(false);
+  });
+
+  test("mapPersistedBriefToCanonicalBrief maps persisted brief to ResearchBrief struct", () => {
+    const brief = mapPersistedBriefToCanonicalBrief(
+      calmBundle,
+      degradedPersistedBrief,
+      "brief-degraded-1"
+    );
+    expect(brief.briefId).toBe("brief-degraded-1");
+    expect(brief.model).toEqual({
+      provider: "openai",
+      modelId: "gpt-4o-mini",
+      modelVersion: "research-brief/v1"
+    });
   });
 
   test("updates coverage to available and removes RESEARCH_BRIEF_UNAVAILABLE warning", () => {

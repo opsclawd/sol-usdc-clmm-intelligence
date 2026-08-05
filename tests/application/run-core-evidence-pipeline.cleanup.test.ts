@@ -10,6 +10,8 @@ import type { DbConnection } from "../../src/ports/db.js";
 import type { DerivedFeatureRow } from "../../src/ports/feature-repo.js";
 import type { ResearchBriefRow } from "../../src/ports/brief-repo.js";
 import type { PersistedResearchBrief } from "../../src/contracts/research-brief.js";
+import type { EvidenceBundleV1 } from "../../src/contracts/generated/evidence-bundle-v1.js";
+import type { CanonicalEvidenceBundle } from "../../src/ports/evidence-bundle-contract.js";
 import { FakePipelineRunLock } from "../fakes/fake-pipeline-run-lock.js";
 import { FakeRunIdFactory } from "../fakes/fake-run-id-factory.js";
 
@@ -110,7 +112,6 @@ function createDefaultConfig(): CoreEvidencePipelineConfig {
   };
 }
 
-const dummyBriefRow = { id: 1 } as unknown as ResearchBriefRow;
 const dummyBrief = {} as unknown as PersistedResearchBrief;
 
 function createSuccessfulServices(evalTime: number): CoreEvidencePipelineServices {
@@ -191,14 +192,84 @@ function createSuccessfulServices(evalTime: number): CoreEvidencePipelineService
       counts: { AVAILABLE: 3, PARTIAL: 0, UNAVAILABLE: 0, REJECTED: 0 },
       warnings: []
     }),
-    assemble: async () => ({
+    prepare: async () => ({
+      outcome: "prepared",
+      prepared: {
+        slots: [],
+        lineage: { rawObservationIds: [], normalizedObservationIds: [], sourceReferences: [] },
+        selectedContextEvents: [],
+        selectedSupportResistance: [],
+        selectedNewsEvidence: [],
+        qualityInputFacts: {
+          createdAt: 0,
+          asOf: 0,
+          freshUntil: 0,
+          expiresAt: 0,
+          hasSupportResistance: true,
+          hasFlows: true,
+          hasDerivatives: true,
+          hasEvents: true,
+          hasNewsRegulatory: true
+        },
+        requestMeta: {
+          pair: "SOL/USDC",
+          poolId: "pool-1",
+          positionId: "pos-1",
+          walletId: "wallet-1",
+          pipelineRunId: "run-1",
+          correlationId: "corr-1",
+          evaluationTimeUnixMs: 0,
+          createdAtUnixMs: 0,
+          codeVersion: "1.0.0",
+          gitCommit: "commit",
+          environment: "test"
+        },
+        nullBriefCandidate: {} as unknown as EvidenceBundleV1,
+        canonical: {} as unknown as CanonicalEvidenceBundle
+      }
+    }),
+    preparePair: async () => ({
+      outcome: "prepared",
+      prepared: {
+        slots: [],
+        lineage: { rawObservationIds: [], normalizedObservationIds: [], sourceReferences: [] },
+        selectedContextEvents: [],
+        selectedSupportResistance: [],
+        selectedNewsEvidence: [],
+        qualityInputFacts: {
+          createdAt: 0,
+          asOf: 0,
+          freshUntil: 0,
+          expiresAt: 0,
+          hasSupportResistance: true,
+          hasFlows: true,
+          hasDerivatives: true,
+          hasEvents: true,
+          hasNewsRegulatory: true
+        },
+        requestMeta: {
+          pair: "SOL/USDC",
+          poolId: "pool-1",
+          pipelineRunId: "run-1",
+          correlationId: "corr-1",
+          evaluationTimeUnixMs: 0,
+          createdAtUnixMs: 0,
+          codeVersion: "1.0.0",
+          gitCommit: "commit",
+          environment: "test"
+        },
+        nullBriefCandidate: {} as unknown as EvidenceBundleV1,
+        canonical: {} as unknown as CanonicalEvidenceBundle
+      }
+    }),
+    finalize: async () => ({
       outcome: "persisted",
       rowId: 999,
       payloadHash: "h",
       slotCount: 3,
       warnings: []
     }),
-    assemblePair: async () => ({
+    finalizePair: async () => ({
       outcome: "persisted",
       rowId: 500,
       payloadHash: "hash-500",
@@ -207,9 +278,9 @@ function createSuccessfulServices(evalTime: number): CoreEvidencePipelineService
     }),
     generateBrief: async () => ({
       outcome: "generated_complete",
-      row: dummyBriefRow,
       brief: dummyBrief
     }),
+    persistBrief: async (p) => ({ id: 1, evidenceBundleId: p.bundleId }) as ResearchBriefRow,
     publish: async () => ({ outcome: "created", bundleId: 999, attemptCount: 1 })
   };
 }

@@ -4,17 +4,11 @@ import type {
 } from "../../contracts/generated/evidence-bundle-v1.js";
 import type { PersistedResearchBrief } from "../../contracts/research-brief.js";
 
-export function mapPersistedBriefToCanonicalBundle(
+export function mapPersistedBriefToCanonicalBrief(
   base: EvidenceBundleV1,
   artifact: PersistedResearchBrief,
   briefId: string
-): EvidenceBundleV1 {
-  if (artifact.generationStatus !== "complete") {
-    throw new Error(
-      `Cannot map degraded research brief (briefId: ${briefId}) to canonical bundle.`
-    );
-  }
-
+): ResearchBrief {
   // Validate that sourceEvidenceIds reference features/claims present in the base bundle
   const availableEvidenceIds = new Set<string>();
   for (const f of base.deterministicFeatures) {
@@ -35,8 +29,13 @@ export function mapPersistedBriefToCanonicalBundle(
     }
   }
 
+  const sourceEvidenceIds = artifact.llmOutput.sourceEvidenceIds;
+  if (sourceEvidenceIds.length === 0) {
+    throw new Error("Research brief must have at least 1 source evidence ID.");
+  }
+
   const unresolvedIds: string[] = [];
-  for (const id of artifact.llmOutput.sourceEvidenceIds) {
+  for (const id of sourceEvidenceIds) {
     if (!availableEvidenceIds.has(id)) {
       unresolvedIds.push(id);
     }
@@ -52,12 +51,7 @@ export function mapPersistedBriefToCanonicalBundle(
   const keyFindings = artifact.llmOutput.keyTakeaways.slice(0, 32);
   const uncertainties = artifact.llmOutput.unsupportedOrMissingInputs.slice(0, 32);
 
-  const sourceEvidenceIds = artifact.llmOutput.sourceEvidenceIds;
-  if (sourceEvidenceIds.length === 0) {
-    throw new Error("Complete research brief must have at least 1 source evidence ID.");
-  }
-
-  const canonicalBrief: ResearchBrief = {
+  return {
     briefId,
     generatedAt: artifact.generatedAt,
     summary: artifact.llmOutput.summary,
@@ -71,6 +65,14 @@ export function mapPersistedBriefToCanonicalBundle(
     promptVersion: artifact.promptVersion,
     sourceEvidenceIds: sourceEvidenceIds as [string, ...string[]]
   };
+}
+
+export function mapPersistedBriefToCanonicalBundle(
+  base: EvidenceBundleV1,
+  artifact: PersistedResearchBrief,
+  briefId: string
+): EvidenceBundleV1 {
+  const canonicalBrief = mapPersistedBriefToCanonicalBrief(base, artifact, briefId);
 
   // Deep copy base bundle to ensure no mutation
   const bundleCopy: EvidenceBundleV1 = JSON.parse(JSON.stringify(base));

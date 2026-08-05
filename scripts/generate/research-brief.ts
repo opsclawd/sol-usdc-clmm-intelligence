@@ -1,9 +1,10 @@
 import { createNodeRuntime, type NodeRuntime } from "../../src/adapters/node/composition-root.js";
 import { generateResearchBriefJob } from "../../src/jobs/generate-research-brief-job.js";
 import type {
-  GenerateResearchBriefParams,
-  GenerateResearchBriefOutcome
+  GenerateAndPersistResearchBriefParams,
+  GenerateAndPersistResearchBriefOutcome
 } from "../../src/application/generate-research-brief.js";
+import { redactSecretMentions } from "../../src/domain/redact-secrets.js";
 
 export interface RedactedBriefOutcome {
   outcome: string;
@@ -15,10 +16,10 @@ export interface RedactedBriefOutcome {
   reason?: string;
 }
 
-function redactOutcome(result: GenerateResearchBriefOutcome): RedactedBriefOutcome {
+function redactOutcome(result: GenerateAndPersistResearchBriefOutcome): RedactedBriefOutcome {
   switch (result.outcome) {
     case "no_brief":
-      return { outcome: "no_brief", reason: result.reason };
+      return { outcome: "no_brief", reason: redactSecretMentions(result.reason) };
     case "reused":
       return {
         outcome: "reused",
@@ -26,7 +27,7 @@ function redactOutcome(result: GenerateResearchBriefOutcome): RedactedBriefOutco
         sourceBundleId: result.row.evidenceBundleId,
         generationStatus: result.brief.generationStatus,
         promptVersion: result.brief.promptVersion,
-        warnings: result.brief.llmOutput.unsupportedOrMissingInputs
+        warnings: result.brief.llmOutput.unsupportedOrMissingInputs.map(redactSecretMentions)
       };
     case "generated_complete":
       return {
@@ -35,7 +36,7 @@ function redactOutcome(result: GenerateResearchBriefOutcome): RedactedBriefOutco
         sourceBundleId: result.row.evidenceBundleId,
         generationStatus: result.brief.generationStatus,
         promptVersion: result.brief.promptVersion,
-        warnings: result.brief.llmOutput.unsupportedOrMissingInputs
+        warnings: result.brief.llmOutput.unsupportedOrMissingInputs.map(redactSecretMentions)
       };
     case "generated_degraded":
       return {
@@ -44,7 +45,7 @@ function redactOutcome(result: GenerateResearchBriefOutcome): RedactedBriefOutco
         sourceBundleId: result.row.evidenceBundleId,
         generationStatus: result.brief.generationStatus,
         promptVersion: result.brief.promptVersion,
-        warnings: result.brief.llmOutput.unsupportedOrMissingInputs
+        warnings: result.brief.llmOutput.unsupportedOrMissingInputs.map(redactSecretMentions)
       };
   }
 }
@@ -59,10 +60,10 @@ export async function runGenerateResearchBriefScript(
     return { outcome: "error", reason: "request_required" };
   }
 
-  let parsedParams: GenerateResearchBriefParams;
+  let parsedParams: GenerateAndPersistResearchBriefParams;
 
   if (typeof requestInput === "object") {
-    parsedParams = requestInput as GenerateResearchBriefParams;
+    parsedParams = requestInput as GenerateAndPersistResearchBriefParams;
   } else if (typeof requestInput === "string") {
     const raw = requestInput.trim();
     if (raw === "") {
@@ -74,21 +75,19 @@ export async function runGenerateResearchBriefScript(
       try {
         parsedParams = JSON.parse(raw);
       } catch (err) {
-        console.error(
-          "Failed to parse request JSON string:",
-          err instanceof Error ? err.message : String(err)
-        );
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("Failed to parse request JSON string:", redactSecretMentions(message));
         process.exitCode = 1;
         return { outcome: "error", reason: "request_parse_failed" };
       }
     } else {
       try {
-        parsedParams = (await runtime.jsonStore.readJson(raw)) as GenerateResearchBriefParams;
+        parsedParams = (await runtime.jsonStore.readJson(
+          raw
+        )) as GenerateAndPersistResearchBriefParams;
       } catch (err) {
-        console.error(
-          "Failed to read request JSON file:",
-          err instanceof Error ? err.message : String(err)
-        );
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("Failed to read request JSON file:", redactSecretMentions(message));
         process.exitCode = 1;
         return { outcome: "error", reason: "request_read_failed" };
       }
@@ -156,16 +155,17 @@ export async function runGenerateResearchBriefScript(
     dbConnection: connection
   });
 
-  let result: GenerateResearchBriefOutcome;
+  let result: GenerateAndPersistResearchBriefOutcome;
   try {
     result = await job(parsedParams);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error("Research brief generation job failed:", err);
+    const redactedMsg = redactSecretMentions(message);
+    console.error("Research brief generation job failed:", redactedMsg);
     process.exitCode = 1;
     return {
       outcome: "error",
-      reason: message
+      reason: redactedMsg
     };
   }
 
@@ -187,7 +187,8 @@ async function main(): Promise<void> {
   try {
     await runGenerateResearchBriefScript(runtime, input);
   } catch (error) {
-    console.error("Research brief generation script failed:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("Research brief generation script failed:", redactSecretMentions(message));
     process.exitCode = 1;
     process.exit(1);
   }

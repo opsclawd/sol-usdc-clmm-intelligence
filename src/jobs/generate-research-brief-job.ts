@@ -1,23 +1,23 @@
 import type {
   GenerateResearchBriefDeps,
-  GenerateResearchBriefParams,
-  GenerateResearchBriefOutcome
+  GenerateAndPersistResearchBriefParams,
+  GenerateAndPersistResearchBriefOutcome
 } from "../application/generate-research-brief.js";
-import { generateResearchBrief } from "../application/generate-research-brief.js";
+import { generateAndPersistResearchBrief } from "../application/generate-research-brief.js";
 import type { DbConnection } from "../ports/db.js";
 
 export interface GenerateResearchBriefJobDeps extends GenerateResearchBriefDeps {
   readonly dbConnection?: DbConnection;
 }
 
-export type GenerateResearchBriefJobResult = GenerateResearchBriefOutcome;
+export type GenerateResearchBriefJobResult = GenerateAndPersistResearchBriefOutcome;
 
 export function generateResearchBriefJob(
   deps: GenerateResearchBriefJobDeps
-): (params: GenerateResearchBriefParams) => Promise<GenerateResearchBriefJobResult> {
-  return async (params: GenerateResearchBriefParams) => {
+): (params: GenerateAndPersistResearchBriefParams) => Promise<GenerateResearchBriefJobResult> {
+  return async (params: GenerateAndPersistResearchBriefParams) => {
     try {
-      const result = await generateResearchBrief(deps, params);
+      const result = await generateAndPersistResearchBrief(deps, params);
       return result;
     } finally {
       if (deps.dbConnection) {

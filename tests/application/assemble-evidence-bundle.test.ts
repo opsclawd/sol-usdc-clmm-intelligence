@@ -25,8 +25,9 @@ import type { BundleFeatureCandidateQuery } from "../../src/ports/feature-repo.j
 import type { EvidenceBundleV1 } from "../../src/contracts/generated/evidence-bundle-v1.js";
 import type {
   AssembleEvidenceBundleRequest,
-  AssembleEvidenceBundleSuccess,
-  AssembleEvidenceBundleResult
+  AssembleEvidenceBundleResult,
+  PrepareEvidenceBundleResult,
+  AssembleEvidenceBundleError
 } from "../../src/application/assemble-evidence-bundle.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 import type { ProvenanceRef, Source, ObservationKind } from "../../src/contracts/taxonomy.js";
@@ -169,12 +170,14 @@ function makeRawRow(
   };
 }
 
-function assertSuccess(result: AssembleEvidenceBundleResult): AssembleEvidenceBundleSuccess {
+function assertSuccess<T extends AssembleEvidenceBundleResult | PrepareEvidenceBundleResult>(
+  result: T
+): Exclude<T, AssembleEvidenceBundleError> {
   if ("code" in result) {
     const msg = "message" in result ? result.message : JSON.stringify(result);
     throw new Error(`Unexpected error result: ${result.code}: ${msg}`);
   }
-  return result;
+  return result as Exclude<T, AssembleEvidenceBundleError>;
 }
 
 class RecordingClock implements Clock {
@@ -749,6 +752,18 @@ describe("assembleEvidenceBundle", () => {
 
       const originalRowId = result1.rowId;
 
+      // Attach brief to persisted row so it represents a complete brief-bearing bundle
+      (bundleRepo.store[0]!.payload as EvidenceBundleV1).researchBrief = {
+        briefId: "brief-1",
+        generatedAt: EPOCH,
+        summary: "summary",
+        keyFindings: ["finding"],
+        uncertainties: [],
+        model: { provider: "anthropic", modelId: "claude-3-5-sonnet-20241022", modelVersion: "v1" },
+        promptVersion: "v1",
+        sourceEvidenceIds: ["feat-range_location-1"]
+      };
+
       const result2 = assertSuccess(
         await assembleEvidenceBundle(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
@@ -1013,6 +1028,262 @@ describe("assembleEvidenceBundle", () => {
       );
 
       expect(result.outcome).toBe("persisted");
+    });
+  });
+
+  describe("prepare and finalize position evidence assembly", () => {
+    it("prepare does not persist and finalize persists exactly once", async () => {
+      const { prepareEvidenceBundle, finalizeEvidenceBundle } =
+        await import("../../src/application/assemble-evidence-bundle.js");
+
+      const rawRow = makeRawRow({ id: 1 });
+      seedRaw([rawRow]);
+
+      const featureRow = makeDerivedFeatureRow({
+        id: 1,
+        featureKind: "range_location",
+        positionId: "pos-1",
+        poolId: "pool-abc",
+        inputObservationIds: [1],
+        rawRefs: [makeRawRef(1, "clmm-v2-bundle", "raw-hash-1")]
+      });
+      seedFeature([featureRow]);
+
+      const request = makeRequest();
+
+      const prepareResult = assertSuccess(
+        await prepareEvidenceBundle(
+          { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+          request
+        )
+      );
+
+      expect(prepareResult.outcome).toBe("prepared");
+      if (prepareResult.outcome !== "prepared") return;
+
+      expect(bundleRepo.store).toHaveLength(0);
+      expect(executionLog).not.toContain("bundle.insertOrClassify");
+
+      const finalizeResult = assertSuccess(
+        await finalizeEvidenceBundle(
+          { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+          prepareResult.prepared
+        )
+      );
+
+      expect(finalizeResult.outcome).toBe("persisted");
+      expect(bundleRepo.store).toHaveLength(1);
+      expect(executionLog.filter((c) => c === "bundle.insertOrClassify")).toHaveLength(1);
+    });
+
+    it("position exact replay returns the existing brief-bearing row before generation", async () => {
+      const { prepareEvidenceBundle } =
+        await import("../../src/application/assemble-evidence-bundle.js");
+
+      const rawRow = makeRawRow({ id: 1 });
+      seedRaw([rawRow]);
+
+      const featureRow = makeDerivedFeatureRow({
+        id: 1,
+        featureKind: "range_location",
+        positionId: "pos-1",
+        poolId: "pool-abc",
+        inputObservationIds: [1],
+        rawRefs: [makeRawRef(1, "clmm-v2-bundle", "raw-hash-1")]
+      });
+      seedFeature([featureRow]);
+
+      const request = makeRequest();
+
+      const mockPayloadWithBrief: EvidenceBundleV1 = {
+        schemaVersion: "evidence-bundle.v1",
+        pair: "SOL/USDC",
+        scope: {
+          kind: "position",
+          network: "solana-mainnet",
+          walletAddress: "wallet-123",
+          whirlpoolAddress: "pool-abc",
+          positionId: "pos-1"
+        },
+        source: {
+          publisher: "sol-usdc-clmm-intelligence",
+          sourceId: "source-001",
+          sourceVersion: "1.0.0"
+        },
+        runId: "run-123:pos-1",
+        correlationId: "corr-123",
+        createdAt: "2024-01-01T00:00:00.000Z",
+        asOf: "2024-01-01T00:00:00.000Z",
+        freshUntil: "2024-01-01T01:00:00.000Z",
+        expiresAt: "2024-01-01T02:00:00.000Z",
+        deterministicFeatures: [] as unknown as EvidenceBundleV1["deterministicFeatures"],
+        contextualEvidence: {
+          supportResistance: [],
+          flows: [],
+          derivatives: [],
+          events: [],
+          newsRegulatory: []
+        },
+        researchBrief: {
+          briefId: "brief-123",
+          generatedAt: "2024-01-01T00:00:00.000Z",
+          summary: "test summary",
+          keyFindings: ["finding"],
+          uncertainties: [],
+          model: { provider: "anthropic", modelId: "claude-3", modelVersion: "v1" },
+          promptVersion: "v1",
+          sourceEvidenceIds: ["feat-range_location-1"]
+        },
+        sourceReferences: [] as unknown as EvidenceBundleV1["sourceReferences"],
+        assessment: {
+          overallConfidenceBps: 10000,
+          quality: "complete",
+          coverage: {} as unknown as EvidenceBundleV1["assessment"]["coverage"],
+          warnings: []
+        },
+        provenance: {
+          pipelineVersion: "1.0.0",
+          gitCommit: "abc123",
+          environment: "development",
+          upstreamRunIds: []
+        }
+      };
+
+      bundleRepo.store.push({
+        id: 42,
+        schemaVersion: "evidence-bundle.v1",
+        pair: "SOL/USDC",
+        asOfUnixMs: EVAL_MS,
+        expiresAtUnixMs: EVAL_MS + 3600000,
+        payload: mockPayloadWithBrief,
+        payloadHash: "hash-brief-bearing",
+        payloadCanonical: JSON.stringify(mockPayloadWithBrief),
+        idempotencyKey: "fixed-idempotency-key",
+        taxonomySummary: null,
+        dominantSignalClass: "deterministic",
+        confidence: DEFAULT_CONFIDENCE,
+        confidenceComposite: 1,
+        confidenceLevel: "high",
+        validUntilUnixMs: EVAL_MS + 3600000,
+        isStale: false,
+        staleBehavior: null,
+        provenance: DEFAULT_PROVENANCE,
+        version: 1,
+        receivedAtUnixMs: EVAL_MS
+      });
+
+      const prepareResult = assertSuccess(
+        await prepareEvidenceBundle(
+          { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+          request
+        )
+      );
+
+      expect(prepareResult.outcome).toBe("identical_replay");
+      if (prepareResult.outcome === "identical_replay") {
+        expect(prepareResult.rowId).toBe(42);
+        expect(prepareResult.payloadHash).toBe("hash-brief-bearing");
+      }
+    });
+
+    it("position legacy replay without an embedded brief is not accepted as complete", async () => {
+      const { prepareEvidenceBundle } =
+        await import("../../src/application/assemble-evidence-bundle.js");
+
+      const rawRow = makeRawRow({ id: 1 });
+      seedRaw([rawRow]);
+
+      const featureRow = makeDerivedFeatureRow({
+        id: 1,
+        featureKind: "range_location",
+        positionId: "pos-1",
+        poolId: "pool-abc",
+        inputObservationIds: [1],
+        rawRefs: [makeRawRef(1, "clmm-v2-bundle", "raw-hash-1")]
+      });
+      seedFeature([featureRow]);
+
+      const request = makeRequest();
+
+      const mockPayloadLegacyNullBrief: EvidenceBundleV1 = {
+        schemaVersion: "evidence-bundle.v1",
+        pair: "SOL/USDC",
+        scope: {
+          kind: "position",
+          network: "solana-mainnet",
+          walletAddress: "wallet-123",
+          whirlpoolAddress: "pool-abc",
+          positionId: "pos-1"
+        },
+        source: {
+          publisher: "sol-usdc-clmm-intelligence",
+          sourceId: "source-001",
+          sourceVersion: "1.0.0"
+        },
+        runId: "run-123:pos-1",
+        correlationId: "corr-123",
+        createdAt: "2024-01-01T00:00:00.000Z",
+        asOf: "2024-01-01T00:00:00.000Z",
+        freshUntil: "2024-01-01T01:00:00.000Z",
+        expiresAt: "2024-01-01T02:00:00.000Z",
+        deterministicFeatures: [] as unknown as EvidenceBundleV1["deterministicFeatures"],
+        contextualEvidence: {
+          supportResistance: [],
+          flows: [],
+          derivatives: [],
+          events: [],
+          newsRegulatory: []
+        },
+        researchBrief: null,
+        sourceReferences: [] as unknown as EvidenceBundleV1["sourceReferences"],
+        assessment: {
+          overallConfidenceBps: 10000,
+          quality: "complete",
+          coverage: {} as unknown as EvidenceBundleV1["assessment"]["coverage"],
+          warnings: []
+        },
+        provenance: {
+          pipelineVersion: "1.0.0",
+          gitCommit: "abc123",
+          environment: "development",
+          upstreamRunIds: []
+        }
+      };
+
+      bundleRepo.store.push({
+        id: 99,
+        schemaVersion: "evidence-bundle.v1",
+        pair: "SOL/USDC",
+        asOfUnixMs: EVAL_MS,
+        expiresAtUnixMs: EVAL_MS + 3600000,
+        payload: mockPayloadLegacyNullBrief,
+        payloadHash: "hash-legacy-null-brief",
+        payloadCanonical: JSON.stringify(mockPayloadLegacyNullBrief),
+        idempotencyKey: "fixed-idempotency-key",
+        taxonomySummary: null,
+        dominantSignalClass: "deterministic",
+        confidence: DEFAULT_CONFIDENCE,
+        confidenceComposite: 1,
+        confidenceLevel: "high",
+        validUntilUnixMs: EVAL_MS + 3600000,
+        isStale: false,
+        staleBehavior: null,
+        provenance: DEFAULT_PROVENANCE,
+        version: 1,
+        receivedAtUnixMs: EVAL_MS
+      });
+
+      const prepareResult = assertSuccess(
+        await prepareEvidenceBundle(
+          { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+          request
+        )
+      );
+
+      expect(prepareResult.outcome).toBe("conflict");
+      if (prepareResult.outcome === "conflict") {
+        expect(prepareResult.rowId).toBe(99);
+      }
     });
   });
 });

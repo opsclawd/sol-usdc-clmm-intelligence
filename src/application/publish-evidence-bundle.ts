@@ -344,14 +344,23 @@ export async function publishEvidenceBundle(
   let selectedResearchBriefId: number | null = null;
   let briefCompositionFailed = false;
 
-  if (deps.briefRepo) {
+  const targetPayload = targetBundle.payload as EvidenceBundleV1;
+  const hasEmbeddedBrief =
+    targetPayload.researchBrief !== null && targetPayload.researchBrief !== undefined;
+
+  if (!hasEmbeddedBrief && deps.briefRepo) {
     try {
       const briefRows = await deps.briefRepo.findByBundleId(targetBundle.id);
       const eligibleRows = briefRows
         .filter((r) => {
           if (!r.structuredOutput) return false;
           const artifact = r.structuredOutput as PersistedResearchBrief;
-          if (artifact.generationStatus !== "complete") return false;
+          if (
+            artifact.generationStatus !== "complete" &&
+            artifact.generationStatus !== "degraded"
+          ) {
+            return false;
+          }
           if (
             artifact.sourceBundleRef?.bundleId !== targetBundle.id ||
             artifact.sourceBundleRef?.bundleHash !== targetBundle.payloadHash

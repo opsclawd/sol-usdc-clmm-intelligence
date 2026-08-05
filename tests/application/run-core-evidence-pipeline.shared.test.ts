@@ -107,8 +107,181 @@ function createDefaultConfig(): CoreEvidencePipelineConfig {
   };
 }
 
-const dummyBriefRow = { id: 10 } as unknown as ResearchBriefRow;
 const dummyBrief = { briefId: "b-1" } as unknown as PersistedResearchBrief;
+import type { PreparedEvidenceBundle } from "../../src/application/assemble-evidence-bundle.js";
+import type { PreparedPairEvidenceBundle } from "../../src/application/assemble-pair-evidence-bundle.js";
+import type { EvidenceBundleV1 } from "../../src/contracts/generated/evidence-bundle-v1.js";
+import type { CanonicalEvidenceBundle } from "../../src/ports/evidence-bundle-contract.js";
+
+const dummyPreparedBundle: PreparedEvidenceBundle = {
+  slots: [],
+  lineage: { rawObservationIds: [], normalizedObservationIds: [], sourceReferences: [] },
+  selectedContextEvents: [],
+  selectedSupportResistance: [],
+  selectedNewsEvidence: [],
+  qualityInputFacts: {
+    createdAt: 0,
+    asOf: 0,
+    freshUntil: 0,
+    expiresAt: 0,
+    hasSupportResistance: true,
+    hasFlows: true,
+    hasDerivatives: true,
+    hasEvents: true,
+    hasNewsRegulatory: true
+  },
+  requestMeta: {
+    pair: "SOL/USDC",
+    poolId: "pool-1",
+    positionId: "pos-1",
+    walletId: "wallet-1",
+    pipelineRunId: "run-1",
+    correlationId: "corr-1",
+    evaluationTimeUnixMs: 0,
+    createdAtUnixMs: 0,
+    codeVersion: "1.0.0",
+    gitCommit: "commit",
+    environment: "test"
+  },
+  nullBriefCandidate: {} as EvidenceBundleV1,
+  canonical: {} as CanonicalEvidenceBundle
+};
+
+const dummyPreparedPairBundle: PreparedPairEvidenceBundle = {
+  slots: [],
+  lineage: { rawObservationIds: [], normalizedObservationIds: [], sourceReferences: [] },
+  selectedContextEvents: [],
+  selectedSupportResistance: [],
+  selectedNewsEvidence: [],
+  qualityInputFacts: {
+    createdAt: 0,
+    asOf: 0,
+    freshUntil: 0,
+    expiresAt: 0,
+    hasSupportResistance: true,
+    hasFlows: true,
+    hasDerivatives: true,
+    hasEvents: true,
+    hasNewsRegulatory: true
+  },
+  requestMeta: {
+    pair: "SOL/USDC",
+    poolId: "pool-1",
+    pipelineRunId: "run-1",
+    correlationId: "corr-1",
+    evaluationTimeUnixMs: 0,
+    createdAtUnixMs: 0,
+    codeVersion: "1.0.0",
+    gitCommit: "commit",
+    environment: "test"
+  },
+  nullBriefCandidate: {} as EvidenceBundleV1,
+  canonical: {} as CanonicalEvidenceBundle
+};
+
+function createBaseServices(evalTime: number): CoreEvidencePipelineServices {
+  return {
+    collect: async (ctx) => ({
+      context: ctx,
+      clmmV2: {
+        sourceKey: "clmm-v2",
+        source: "clmm-v2-bundle",
+        status: "accepted",
+        hasUsableEvidence: true,
+        rawObservationId: 1,
+        normalizedCount: 1,
+        warnings: [],
+        freshness: null,
+        confidenceLevel: null,
+        diagnostic: null
+      },
+      pyth: {
+        sourceKey: "pyth",
+        source: "pyth-hermes",
+        status: "accepted",
+        hasUsableEvidence: true,
+        rawObservationId: 2,
+        normalizedCount: 1,
+        warnings: [],
+        freshness: null,
+        confidenceLevel: null,
+        diagnostic: null
+      },
+      jupiter: {
+        sourceKey: "jupiter",
+        source: "jupiter-quote",
+        status: "accepted",
+        hasUsableEvidence: true,
+        rawObservationId: 3,
+        normalizedCount: 1,
+        warnings: [],
+        freshness: null,
+        confidenceLevel: null,
+        diagnostic: null
+      },
+      orca: {
+        sourceKey: "orca",
+        source: "orca-public-api",
+        status: "accepted",
+        hasUsableEvidence: true,
+        rawObservationId: 4,
+        normalizedCount: 1,
+        warnings: [],
+        freshness: null,
+        confidenceLevel: null,
+        diagnostic: null
+      },
+      solana: {
+        sourceKey: "solana",
+        source: "solana-rpc",
+        status: "accepted",
+        hasUsableEvidence: true,
+        rawObservationId: 5,
+        normalizedCount: 1,
+        warnings: [],
+        freshness: null,
+        confidenceLevel: null,
+        diagnostic: null
+      },
+      warnings: [],
+      counts: { complete: 5, partial: 0, stale: 0, absentOrFailed: 0 },
+      status: "COMPLETE",
+      shouldFailCommand: false
+    }),
+    derive: async () => ({
+      rows: [
+        createDummyPositionFeature("range_location", "pool-1", "pos-1", evalTime),
+        createDummyPositionFeature("distance_to_lower", "pool-1", "pos-1", evalTime),
+        createDummyPositionFeature("distance_to_upper", "pool-1", "pos-1", evalTime)
+      ],
+      counts: { AVAILABLE: 3, PARTIAL: 0, UNAVAILABLE: 0, REJECTED: 0 },
+      warnings: []
+    }),
+    prepare: async () => ({ outcome: "prepared", prepared: dummyPreparedBundle }),
+    preparePair: async () => ({ outcome: "prepared", prepared: dummyPreparedPairBundle }),
+    finalize: async () => ({
+      outcome: "persisted",
+      rowId: 42,
+      payloadHash: "hash42",
+      slotCount: 3,
+      warnings: []
+    }),
+    finalizePair: async () => ({
+      outcome: "persisted",
+      rowId: 50,
+      payloadHash: "hash50",
+      slotCount: 16,
+      warnings: []
+    }),
+    generateBrief: async () => ({ outcome: "generated_complete", brief: dummyBrief }),
+    persistBrief: async (p) => ({ id: 1, evidenceBundleId: p.bundleId }) as ResearchBriefRow,
+    publish: async (req) => ({
+      outcome: "created",
+      bundleId: req.evidenceBundleId,
+      attemptCount: 1
+    })
+  };
+}
 
 describe("runCoreEvidencePipeline - Shared Stages", () => {
   it("returns skipped_already_running without opening resources or invoking stages", async () => {
@@ -138,102 +311,39 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
     expect(result.cleanupErrors).toEqual([]);
   });
 
-  it("shares one run ID from collection through derivation assembly brief and result", async () => {
+  it("final bundle and linked brief are ordered before publish", async () => {
     const lock = new FakePipelineRunLock();
     const connection = new FakeDbConnection();
-
-    let collectedRunId: string | null = null;
-    let derivedRunId: string | null = null;
-    let assembledRunId: string | null = null;
-    let briefRunId: string | null = null;
-
     const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
+    const callLog: string[] = [];
 
+    const base = createBaseServices(evalTime);
     const services: CoreEvidencePipelineServices = {
-      collect: async (ctx) => {
-        collectedRunId = ctx.runId;
-        return {
-          context: ctx,
-          clmmV2: {
-            sourceKey: "clmm-v2",
-            source: "clmm-v2-bundle",
-            status: "accepted",
-            hasUsableEvidence: true,
-            rawObservationId: 1,
-            normalizedCount: 1,
-            warnings: [],
-            freshness: null,
-            confidenceLevel: null,
-            diagnostic: null
-          },
-          pyth: {
-            sourceKey: "pyth",
-            source: "pyth-hermes",
-            status: "accepted",
-            hasUsableEvidence: true,
-            rawObservationId: 2,
-            normalizedCount: 1,
-            warnings: [],
-            freshness: null,
-            confidenceLevel: null,
-            diagnostic: null
-          },
-          jupiter: {
-            sourceKey: "jupiter",
-            source: "jupiter-quote",
-            status: "accepted",
-            hasUsableEvidence: true,
-            rawObservationId: 3,
-            normalizedCount: 1,
-            warnings: [],
-            freshness: null,
-            confidenceLevel: null,
-            diagnostic: null
-          },
-          orca: {
-            sourceKey: "orca",
-            source: "orca-public-api",
-            status: "accepted",
-            hasUsableEvidence: true,
-            rawObservationId: 4,
-            normalizedCount: 1,
-            warnings: [],
-            freshness: null,
-            confidenceLevel: null,
-            diagnostic: null
-          },
-          solana: {
-            sourceKey: "solana",
-            source: "solana-rpc",
-            status: "accepted",
-            hasUsableEvidence: true,
-            rawObservationId: 5,
-            normalizedCount: 1,
-            warnings: [],
-            freshness: null,
-            confidenceLevel: null,
-            diagnostic: null
-          },
-          warnings: [],
-          counts: { complete: 5, partial: 0, stale: 0, absentOrFailed: 0 },
-          status: "COMPLETE",
-          shouldFailCommand: false
-        };
+      ...base,
+      preparePair: async () => {
+        callLog.push("preparePair");
+        return { outcome: "prepared", prepared: dummyPreparedPairBundle };
       },
-      derive: async (req) => {
-        derivedRunId = req.pipelineRunId;
+      prepare: async () => {
+        callLog.push("prepare");
+        return { outcome: "prepared", prepared: dummyPreparedBundle };
+      },
+      generateBrief: async () => {
+        callLog.push("generate");
+        return { outcome: "generated_complete", brief: dummyBrief };
+      },
+      finalizePair: async () => {
+        callLog.push("finalizePair");
         return {
-          rows: [
-            createDummyPositionFeature("range_location", "pool-1", "pos-1", evalTime),
-            createDummyPositionFeature("distance_to_lower", "pool-1", "pos-1", evalTime),
-            createDummyPositionFeature("distance_to_upper", "pool-1", "pos-1", evalTime)
-          ],
-          counts: { AVAILABLE: 3, PARTIAL: 0, UNAVAILABLE: 0, REJECTED: 0 },
+          outcome: "persisted",
+          rowId: 50,
+          payloadHash: "hash50",
+          slotCount: 16,
           warnings: []
         };
       },
-      assemble: async (req) => {
-        assembledRunId = req.pipelineRunId;
+      finalize: async () => {
+        callLog.push("finalize");
         return {
           outcome: "persisted",
           rowId: 42,
@@ -242,23 +352,72 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
           warnings: []
         };
       },
-      assemblePair: async () => ({
-        outcome: "persisted",
-        rowId: 50,
-        payloadHash: "hash50",
-        slotCount: 16,
-        warnings: []
-      }),
+      persistBrief: async (p) => {
+        callLog.push("persistBrief");
+        return { id: 1, evidenceBundleId: p.bundleId } as ResearchBriefRow;
+      },
+      publish: async (r) => {
+        callLog.push("publish");
+        return { outcome: "created", bundleId: r.evidenceBundleId, attemptCount: 1 };
+      }
+    };
+
+    const deps: RunCoreEvidencePipelineDeps = {
+      clock: new QueuedClock(["2026-07-30T12:00:00.000Z", "2026-07-30T12:00:05.000Z"]),
+      runIdFactory: new FakeRunIdFactory(["run-order"]),
+      lock,
+      openResources: async () => ({ connection, services })
+    };
+
+    const result = await runCoreEvidencePipeline(deps, createDefaultConfig());
+
+    expect(result.status).toBe("complete");
+    expect(callLog).toEqual([
+      "preparePair",
+      "generate",
+      "finalizePair",
+      "persistBrief",
+      "publish",
+      "prepare",
+      "generate",
+      "finalize",
+      "persistBrief",
+      "publish"
+    ]);
+  });
+
+  it("shares one run ID from collection through derivation assembly brief and result", async () => {
+    const lock = new FakePipelineRunLock();
+    const connection = new FakeDbConnection();
+
+    let collectedRunId: string | null = null;
+    let derivedRunId: string | null = null;
+    let preparedRunId: string | null = null;
+    let briefRunId: string | null = null;
+
+    const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
+    const base = createBaseServices(evalTime);
+
+    const services: CoreEvidencePipelineServices = {
+      ...base,
+      collect: async (ctx) => {
+        collectedRunId = ctx.runId;
+        return await base.collect(ctx);
+      },
+      derive: async (req) => {
+        derivedRunId = req.pipelineRunId;
+        return await base.derive(req);
+      },
+      prepare: async (req) => {
+        preparedRunId = req.pipelineRunId;
+        return { outcome: "prepared", prepared: dummyPreparedBundle };
+      },
       generateBrief: async (req) => {
         briefRunId = req.runId ?? null;
         return {
           outcome: "generated_complete",
-          row: dummyBriefRow,
           brief: dummyBrief
         };
-      },
-      publish: async () => {
-        return { outcome: "created", bundleId: 42, attemptCount: 1 };
       }
     };
 
@@ -278,7 +437,7 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
     expect(result.pipelineRunId).toBe("shared-run-999");
     expect(collectedRunId).toBe("shared-run-999");
     expect(derivedRunId).toBe("shared-run-999");
-    expect(assembledRunId).toBe("shared-run-999");
+    expect(preparedRunId).toBe("shared-run-999");
     expect(briefRunId).toBe("shared-run-999");
     expect(result.positions[0]?.correlationId).toBe("run:shared-run-999:position:pos-1");
   });
@@ -293,122 +452,24 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
     const t2Ms = new Date(t2).getTime();
 
     let derivedEvalTime: number | null = null;
-    let assembleEvalTime: number | null = null;
+    let prepareEvalTime: number | null = null;
     let briefEvalTime: number | null = null;
 
+    const base = createBaseServices(t2Ms);
     const services: CoreEvidencePipelineServices = {
-      collect: async (ctx) => {
-        return {
-          context: ctx,
-          clmmV2: {
-            sourceKey: "clmm-v2",
-            source: "clmm-v2-bundle",
-            status: "accepted",
-            hasUsableEvidence: true,
-            rawObservationId: 1,
-            normalizedCount: 1,
-            warnings: [],
-            freshness: null,
-            confidenceLevel: null,
-            diagnostic: null
-          },
-          pyth: {
-            sourceKey: "pyth",
-            source: "pyth-hermes",
-            status: "accepted",
-            hasUsableEvidence: true,
-            rawObservationId: 2,
-            normalizedCount: 1,
-            warnings: [],
-            freshness: null,
-            confidenceLevel: null,
-            diagnostic: null
-          },
-          jupiter: {
-            sourceKey: "jupiter",
-            source: "jupiter-quote",
-            status: "accepted",
-            hasUsableEvidence: true,
-            rawObservationId: 3,
-            normalizedCount: 1,
-            warnings: [],
-            freshness: null,
-            confidenceLevel: null,
-            diagnostic: null
-          },
-          orca: {
-            sourceKey: "orca",
-            source: "orca-public-api",
-            status: "accepted",
-            hasUsableEvidence: true,
-            rawObservationId: 4,
-            normalizedCount: 1,
-            warnings: [],
-            freshness: null,
-            confidenceLevel: null,
-            diagnostic: null
-          },
-          solana: {
-            sourceKey: "solana",
-            source: "solana-rpc",
-            status: "accepted",
-            hasUsableEvidence: true,
-            rawObservationId: 5,
-            normalizedCount: 1,
-            warnings: [],
-            freshness: null,
-            confidenceLevel: null,
-            diagnostic: null
-          },
-          warnings: [],
-          counts: { complete: 5, partial: 0, stale: 0, absentOrFailed: 0 },
-          status: "COMPLETE",
-          shouldFailCommand: false
-        };
-      },
+      ...base,
       derive: async (req) => {
         derivedEvalTime = req.evaluationTimeUnixMs;
-        return {
-          rows: [
-            createDummyPositionFeature(
-              "range_location",
-              "pool-1",
-              "pos-1",
-              req.evaluationTimeUnixMs
-            ),
-            createDummyPositionFeature(
-              "distance_to_lower",
-              "pool-1",
-              "pos-1",
-              req.evaluationTimeUnixMs
-            ),
-            createDummyPositionFeature(
-              "distance_to_upper",
-              "pool-1",
-              "pos-1",
-              req.evaluationTimeUnixMs
-            )
-          ],
-          counts: { AVAILABLE: 3, PARTIAL: 0, UNAVAILABLE: 0, REJECTED: 0 },
-          warnings: []
-        };
+        return await base.derive(req);
       },
-      assemble: async (req) => {
-        assembleEvalTime = req.evaluationTimeUnixMs;
-        return { outcome: "persisted", rowId: 100, payloadHash: "h", slotCount: 3, warnings: [] };
+      prepare: async (req) => {
+        prepareEvalTime = req.evaluationTimeUnixMs;
+        return { outcome: "prepared", prepared: dummyPreparedBundle };
       },
-      assemblePair: async () => ({
-        outcome: "persisted",
-        rowId: 50,
-        payloadHash: "hash50",
-        slotCount: 16,
-        warnings: []
-      }),
       generateBrief: async (req) => {
         briefEvalTime = req.evaluationTimeUnixMs;
-        return { outcome: "generated_complete", row: dummyBriefRow, brief: dummyBrief };
-      },
-      publish: async () => ({ outcome: "created", bundleId: 100, attemptCount: 1 })
+        return { outcome: "generated_complete", brief: dummyBrief };
+      }
     };
 
     const deps: RunCoreEvidencePipelineDeps = {
@@ -423,7 +484,7 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
     expect(result.collectionStartedAtUnixMs).toBe(new Date(t1).getTime());
     expect(result.evaluationTimeUnixMs).toBe(t2Ms);
     expect(derivedEvalTime).toBe(t2Ms);
-    expect(assembleEvalTime).toBe(t2Ms);
+    expect(prepareEvalTime).toBe(t2Ms);
     expect(briefEvalTime).toBe(t2Ms);
   });
 
@@ -431,8 +492,10 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
     const lock = new FakePipelineRunLock();
     const connection = new FakeDbConnection();
     const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
+    const base = createBaseServices(evalTime);
 
     const services: CoreEvidencePipelineServices = {
+      ...base,
       collect: async (ctx) => ({
         context: ctx,
         clmmV2: {
@@ -499,36 +562,7 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
         counts: { complete: 4, partial: 1, stale: 0, absentOrFailed: 0 },
         status: "PARTIAL",
         shouldFailCommand: false
-      }),
-      derive: async () => ({
-        rows: [
-          createDummyPositionFeature("range_location", "pool-1", "pos-1", evalTime),
-          createDummyPositionFeature("distance_to_lower", "pool-1", "pos-1", evalTime),
-          createDummyPositionFeature("distance_to_upper", "pool-1", "pos-1", evalTime)
-        ],
-        counts: { AVAILABLE: 3, PARTIAL: 0, UNAVAILABLE: 0, REJECTED: 0 },
-        warnings: []
-      }),
-      assemble: async () => ({
-        outcome: "persisted",
-        rowId: 55,
-        payloadHash: "h",
-        slotCount: 3,
-        warnings: []
-      }),
-      assemblePair: async () => ({
-        outcome: "persisted",
-        rowId: 50,
-        payloadHash: "hash50",
-        slotCount: 16,
-        warnings: []
-      }),
-      generateBrief: async () => ({
-        outcome: "generated_complete",
-        row: dummyBriefRow,
-        brief: dummyBrief
-      }),
-      publish: async () => ({ outcome: "created", bundleId: 55, attemptCount: 1 })
+      })
     };
 
     const deps: RunCoreEvidencePipelineDeps = {
@@ -632,9 +666,12 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
             warnings: []
           };
         },
-        assemble: async () => ({ outcome: "no_bundle" }),
-        assemblePair: async () => ({ outcome: "no_bundle" }),
+        prepare: async () => ({ outcome: "no_bundle" }),
+        preparePair: async () => ({ outcome: "no_bundle" }),
+        finalize: async () => ({ outcome: "no_bundle" }),
+        finalizePair: async () => ({ outcome: "no_bundle" }),
         generateBrief: async () => ({ outcome: "no_brief", reason: "no_bundle" }),
+        persistBrief: async () => ({ id: 1 }) as ResearchBriefRow,
         publish: async () => ({ outcome: "bundle_not_found" })
       };
 
@@ -667,75 +704,10 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
     };
 
     const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
+    const base = createBaseServices(evalTime);
 
     const services: CoreEvidencePipelineServices = {
-      collect: async (ctx) => ({
-        context: ctx,
-        clmmV2: {
-          sourceKey: "clmm-v2",
-          source: "clmm-v2-bundle",
-          status: "accepted",
-          hasUsableEvidence: true,
-          rawObservationId: 1,
-          normalizedCount: 1,
-          warnings: [],
-          freshness: null,
-          confidenceLevel: null,
-          diagnostic: null
-        },
-        pyth: {
-          sourceKey: "pyth",
-          source: "pyth-hermes",
-          status: "accepted",
-          hasUsableEvidence: true,
-          rawObservationId: 2,
-          normalizedCount: 1,
-          warnings: [],
-          freshness: null,
-          confidenceLevel: null,
-          diagnostic: null
-        },
-        jupiter: {
-          sourceKey: "jupiter",
-          source: "jupiter-quote",
-          status: "accepted",
-          hasUsableEvidence: true,
-          rawObservationId: 3,
-          normalizedCount: 1,
-          warnings: [],
-          freshness: null,
-          confidenceLevel: null,
-          diagnostic: null
-        },
-        orca: {
-          sourceKey: "orca",
-          source: "orca-public-api",
-          status: "accepted",
-          hasUsableEvidence: true,
-          rawObservationId: 4,
-          normalizedCount: 1,
-          warnings: [],
-          freshness: null,
-          confidenceLevel: null,
-          diagnostic: null
-        },
-        solana: {
-          sourceKey: "solana",
-          source: "solana-rpc",
-          status: "accepted",
-          hasUsableEvidence: true,
-          rawObservationId: 5,
-          normalizedCount: 1,
-          warnings: [],
-          freshness: null,
-          confidenceLevel: null,
-          diagnostic: null
-        },
-        warnings: [],
-        counts: { complete: 5, partial: 0, stale: 0, absentOrFailed: 0 },
-        status: "COMPLETE",
-        shouldFailCommand: false
-      }),
+      ...base,
       derive: async (req) => {
         deriveCount++;
         derivePositions = req.positionIds;
@@ -751,28 +723,7 @@ describe("runCoreEvidencePipeline - Shared Stages", () => {
           counts: { AVAILABLE: 6, PARTIAL: 0, UNAVAILABLE: 0, REJECTED: 0 },
           warnings: []
         };
-      },
-      assemble: async (req) => {
-        const id = req.positionId === "pos-1" ? 101 : 102;
-        return { outcome: "persisted", rowId: id, payloadHash: "h", slotCount: 3, warnings: [] };
-      },
-      assemblePair: async () => ({
-        outcome: "persisted",
-        rowId: 50,
-        payloadHash: "hash50",
-        slotCount: 16,
-        warnings: []
-      }),
-      generateBrief: async () => ({
-        outcome: "generated_complete",
-        row: dummyBriefRow,
-        brief: dummyBrief
-      }),
-      publish: async (req) => ({
-        outcome: "created",
-        bundleId: req.evidenceBundleId,
-        attemptCount: 1
-      })
+      }
     };
 
     const deps: RunCoreEvidencePipelineDeps = {

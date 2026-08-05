@@ -25,14 +25,16 @@ import type { BundleFeatureCandidateQuery } from "../../src/ports/feature-repo.j
 import type { EvidenceBundleV1 } from "../../src/contracts/generated/evidence-bundle-v1.js";
 import type {
   AssembleEvidenceBundleRequest,
-  AssembleEvidenceBundleSuccess,
-  AssembleEvidenceBundleResult
+  AssembleEvidenceBundleResult,
+  PrepareEvidenceBundleResult,
+  AssembleEvidenceBundleError
 } from "../../src/application/assemble-evidence-bundle.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 import type { ProvenanceRef, Source } from "../../src/contracts/taxonomy.js";
 import { makeClmmBundle, makePoolData, makePositionData } from "../fixtures/clmm-bundle.js";
 import type { SupportResistancePayloadV1 } from "../../src/contracts/support-resistance.js";
 import type { NewsPayloadV1, RegulatoryPayloadV1 } from "../../src/contracts/news-events.js";
+import type { PersistedResearchBrief } from "../../src/contracts/research-brief.js";
 
 const EPOCH = "2024-01-01T00:00:00.000Z";
 const EVAL_MS = new Date(EPOCH).getTime();
@@ -260,12 +262,14 @@ function makeRegulatoryPayload(overrides?: Partial<RegulatoryPayloadV1>): Regula
   };
 }
 
-function assertSuccess(result: AssembleEvidenceBundleResult): AssembleEvidenceBundleSuccess {
+function assertSuccess<T extends AssembleEvidenceBundleResult | PrepareEvidenceBundleResult>(
+  result: T
+): Exclude<T, AssembleEvidenceBundleError> {
   if ("code" in result) {
     const msg = "message" in result ? result.message : JSON.stringify(result);
     throw new Error(`Unexpected error result: ${result.code}: ${msg}`);
   }
-  return result;
+  return result as Exclude<T, AssembleEvidenceBundleError>;
 }
 
 class RecordingClock implements Clock {
@@ -1145,5 +1149,87 @@ describe("assembleEvidenceBundle contextual integration", () => {
     expect(bundle.assessment.coverage.derivatives).toBe("unavailable");
     const warningCodes = bundle.assessment.warnings.map((w) => w.code);
     expect(warningCodes).toContain("DERIVATIVES_UNAVAILABLE");
+  });
+
+  it("position finalization derives research brief coverage from actual attachment", async () => {
+    const { prepareEvidenceBundle, finalizeEvidenceBundle } =
+      await import("../../src/application/assemble-evidence-bundle.js");
+
+    rawRepo.store.push(makeRawRow({ id: 1 }));
+    featureRepo.store.push(
+      makeDerivedFeatureRow({
+        id: 1,
+        featureKind: "range_location",
+        positionId: "pos-1",
+        poolId: "pool-abc",
+        inputObservationIds: [1],
+        rawRefs: [makeRawRef(1, "clmm-v2-bundle", "raw-hash-1")]
+      })
+    );
+
+    const request = makeRequest();
+
+    const prepareResult = assertSuccess(
+      await prepareEvidenceBundle(
+        { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+        request
+      )
+    );
+    expect(prepareResult.outcome).toBe("prepared");
+    if (prepareResult.outcome !== "prepared") return;
+
+    // Case A: finalize without researchBrief
+    const finalizeNoBrief = assertSuccess(
+      await finalizeEvidenceBundle(
+        { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+        prepareResult.prepared
+      )
+    );
+
+    expect(finalizeNoBrief.outcome).toBe("persisted");
+    const savedNoBrief = bundleRepo.store[0]?.payload as EvidenceBundleV1;
+    expect(savedNoBrief.researchBrief).toBeNull();
+    expect(savedNoBrief.assessment.coverage.researchBrief).toBe("unavailable");
+
+    // Reset repo store for second test
+    bundleRepo.store = [];
+
+    // Case B: finalize with researchBrief
+    const mockPersistedBrief: PersistedResearchBrief = {
+      briefId: "brief-001",
+      pair: "SOL/USDC",
+      generationStatus: "complete",
+      llmOutput: {
+        summary: "Factual summary of position state",
+        keyTakeaways: ["Takeaway 1"],
+        supportsCurrentRegime: "supports",
+        regimeAssessmentReasoning: "Reasoning",
+        confidenceScore: 0.9,
+        confidenceReasoning: "High confidence",
+        sourceEvidenceIds: ["feat-range_location-1"],
+        unsupportedOrMissingInputs: []
+      },
+      sourceRefs: [],
+      providerMetadata: { provider: "anthropic", model: "claude-3-5-sonnet-20241022" },
+      sourceBundleRef: { bundleId: 1, bundleHash: "hash-1" },
+      inputContextHash: "ctx-hash-1",
+      priorBriefRef: null,
+      generatedAt: "2024-01-01T00:00:00.000Z",
+      promptVersion: "v1"
+    };
+
+    const finalizeWithBrief = assertSuccess(
+      await finalizeEvidenceBundle(
+        { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+        prepareResult.prepared,
+        mockPersistedBrief
+      )
+    );
+
+    expect(finalizeWithBrief.outcome).toBe("persisted");
+    const savedWithBrief = bundleRepo.store[0]?.payload as EvidenceBundleV1;
+    expect(savedWithBrief.researchBrief).not.toBeNull();
+    expect(savedWithBrief.researchBrief?.briefId).toBe("brief-001");
+    expect(savedWithBrief.assessment.coverage.researchBrief).toBe("available");
   });
 });

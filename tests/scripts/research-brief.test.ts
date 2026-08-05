@@ -157,4 +157,32 @@ describe("runGenerateResearchBriefScript", () => {
       expect(mockRuntime.getPersistence).not.toHaveBeenCalled();
     }
   );
+
+  it("redacts secret mentions in job error logs and outcome reason", async () => {
+    const spyConsoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const secretValue = "sk-proj-1234567890abcdef1234567890";
+    mockGenerateResearchBriefJob.mockImplementationOnce(() => {
+      throw new Error(`LLM call failed with api_key=${secretValue}`);
+    });
+
+    const result = await runGenerateResearchBriefScript(mockRuntime, {
+      evidenceBundleId: 5,
+      pair: "SOL/USDC",
+      evaluationTimeUnixMs: 1700000000000,
+      codeVersion: "1.0.0"
+    });
+
+    expect(result.outcome).toBe("error");
+    expect(result.reason).not.toContain(secretValue);
+    expect(result.reason).toContain("[REDACTED]");
+    expect(spyConsoleError).toHaveBeenCalledWith(
+      "Research brief generation job failed:",
+      expect.stringContaining("[REDACTED]")
+    );
+    expect(spyConsoleError).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining(secretValue)
+    );
+    spyConsoleError.mockRestore();
+  });
 });
