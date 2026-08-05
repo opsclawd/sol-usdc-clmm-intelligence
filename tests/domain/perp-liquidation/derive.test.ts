@@ -191,7 +191,7 @@ describe("perp-liquidation derive", () => {
     expect(new Set(Object.values(versionsByKind)).size).toBe(4);
   });
 
-  it("derives positive BPS for rising OI and negative BPS for falling OI", async () => {
+  it("derives signed OI trend and keeps it valid from the newest selected observation", async () => {
     // Rising OI: earliest = 1000, latest = 1100 => +1000 BPS
     const oi1 = makeNormalizedRow(
       1,
@@ -244,6 +244,8 @@ describe("perp-liquidation derive", () => {
     expect(oiFeature).toBeDefined();
     expect(oiFeature?.status).toBe("AVAILABLE");
     expect(oiFeature?.value).toBe(1000); // (1100 - 1000)*10000 / 1000
+    expect(oiFeature!.validUntilUnixMs).toBe(asOf + 3_600_000);
+    expect(oiFeature!.validUntilUnixMs!).toBeGreaterThan(oiFeature!.asOfUnixMs);
 
     // Falling OI: earliest = 1000, latest = 900 => -1000 BPS
     const oi3 = makeNormalizedRow(
@@ -268,8 +270,11 @@ describe("perp-liquidation derive", () => {
     });
 
     const oiFeatureFalling = resultsFalling.find((r) => r.featureKind === "oi_trend_4h");
+    expect(oiFeatureFalling).toBeDefined();
     expect(oiFeatureFalling?.status).toBe("AVAILABLE");
     expect(oiFeatureFalling?.value).toBe(-1000);
+    expect(oiFeatureFalling!.validUntilUnixMs).toBe(asOf + 3_600_000);
+    expect(oiFeatureFalling!.validUntilUnixMs!).toBeGreaterThan(oiFeatureFalling!.asOfUnixMs);
   });
 
   it("preserves positive and negative funding rates through normalization and annualization", async () => {
@@ -621,7 +626,7 @@ describe("perp-liquidation derive", () => {
     expect(negFeature?.value).toBe(-100);
   });
 
-  it("aggregates mixed long and short liquidations in 1h liquidation cluster", async () => {
+  it("aggregates mixed liquidations and keeps expiry anchored to the newest selected observation", async () => {
     const oi = makeNormalizedRow(
       50,
       150,
@@ -689,9 +694,12 @@ describe("perp-liquidation derive", () => {
     });
 
     const liqFeature = results.find((r) => r.featureKind === "liquidation_cluster_1h");
+    expect(liqFeature).toBeDefined();
     expect(liqFeature?.status).toBe("AVAILABLE");
     // total notional = 3000 + 2000 = 5000 USDC. OI = 100,000 USDC. (5000 * 10000) / 100,000 = 500 BPS
     expect(liqFeature?.value).toBe(500);
+    expect(liqFeature!.validUntilUnixMs).toBe(asOf + 3_600_000);
+    expect(liqFeature!.validUntilUnixMs!).toBeGreaterThan(liqFeature!.asOfUnixMs);
   });
 
   it("handles stale inputs by degrading feature status to PARTIAL and adding stale warning", async () => {
