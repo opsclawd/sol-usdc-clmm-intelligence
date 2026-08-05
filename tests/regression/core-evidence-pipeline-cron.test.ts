@@ -16,7 +16,12 @@ const PRE_EXISTING_JOB_NAMES = [
   "support-resistance"
 ];
 
-const PERP_FEATURE_KINDS = ["oi_trend_4h"] as const;
+const PERP_FEATURE_KINDS = [
+  "oi_trend_4h",
+  "liquidation_cluster_1h",
+  "funding_rate_annualized",
+  "basis_spread_bps"
+] as const;
 
 function parseCronIntervalMs(expression: string): number {
   const minuteMatch = /^\*\/([1-9]\d*) \* \* \* \*$/.exec(expression);
