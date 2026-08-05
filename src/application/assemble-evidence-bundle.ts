@@ -590,12 +590,14 @@ export async function prepareEvidenceBundle(
 
   let existingRows: EvidenceBundleRow[] = [];
   try {
-    existingRows = await bundleRepo.findByPair(request.pair, evaluationTimeUnixMs);
+    existingRows = (await bundleRepo.findByPair(request.pair, evaluationTimeUnixMs)) ?? [];
   } catch (err) {
     // If bundleRepo lookup throws, proceed
   }
 
-  const matchingRow = existingRows.find((row) => row.idempotencyKey === canonical.idempotencyKey);
+  const matchingRow = (existingRows ?? []).find(
+    (row) => row.idempotencyKey === canonical.idempotencyKey
+  );
 
   if (matchingRow) {
     const payloadObj = matchingRow.payload as EvidenceBundleV1 | undefined | null;
