@@ -100,7 +100,8 @@ async function assembleAvailableFeature(
   rejectedRows: readonly NormalizedObservationRow[],
   evaluationAsOfUnixMs: number,
   runId: string,
-  codeVersion: string
+  codeVersion: string,
+  expiryStrategy?: "earliest_input" | "latest_input"
 ): Promise<AssembledFeature> {
   const input: AssembleFeatureInput = {
     featureKind,
@@ -149,7 +150,8 @@ async function assembleAvailableFeature(
     rejectedRows,
     evaluationAsOfUnixMs,
     runId,
-    codeVersion
+    codeVersion,
+    ...(expiryStrategy && { expiryStrategy })
   });
 }
 
@@ -168,7 +170,8 @@ async function assembleUnavailableFeature(
   rejectedRows: readonly NormalizedObservationRow[],
   evaluationAsOfUnixMs: number,
   runId: string,
-  codeVersion: string
+  codeVersion: string,
+  expiryStrategy?: "earliest_input" | "latest_input"
 ): Promise<AssembledFeature> {
   const input: AssembleFeatureInput = {
     featureKind,
@@ -217,7 +220,8 @@ async function assembleUnavailableFeature(
     rejectedRows,
     evaluationAsOfUnixMs,
     runId,
-    codeVersion
+    codeVersion,
+    ...(expiryStrategy && { expiryStrategy })
   });
 }
 
@@ -272,7 +276,7 @@ async function derivePositionFeatures(
     structuredPayload: rangeCalc.metadata,
     asOfUnixMs: evaluationAsOfUnixMs,
     confidence: buildDefaultConfidence(),
-    validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
+    validUntilUnixMs: rangeKey.result.expiresAtUnixMs,
     isStale: false,
     staleBehavior: null,
     provenance: rangeKey.result.provenance as Provenance,
@@ -323,7 +327,7 @@ async function derivePositionFeatures(
     structuredPayload: distLowerCalc.metadata,
     asOfUnixMs: evaluationAsOfUnixMs,
     confidence: buildDefaultConfidence(),
-    validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
+    validUntilUnixMs: distLowerKey.result.expiresAtUnixMs,
     isStale: false,
     staleBehavior: null,
     provenance: distLowerKey.result.provenance as Provenance,
@@ -374,7 +378,7 @@ async function derivePositionFeatures(
     structuredPayload: distUpperCalc.metadata,
     asOfUnixMs: evaluationAsOfUnixMs,
     confidence: buildDefaultConfidence(),
-    validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
+    validUntilUnixMs: distUpperKey.result.expiresAtUnixMs,
     isStale: false,
     staleBehavior: null,
     provenance: distUpperKey.result.provenance as Provenance,
@@ -436,7 +440,7 @@ async function deriveOracleDivergence(
       structuredPayload: { reasons },
       asOfUnixMs: evaluationAsOfUnixMs,
       confidence: buildDefaultConfidence(),
-      validUntilUnixMs: evaluationAsOfUnixMs,
+      validUntilUnixMs: assembled.result.expiresAtUnixMs,
       isStale: false,
       staleBehavior: null,
       provenance: assembled.result.provenance as Provenance,
@@ -494,7 +498,7 @@ async function deriveOracleDivergence(
     structuredPayload: calc.metadata,
     asOfUnixMs: evaluationAsOfUnixMs,
     confidence: buildDefaultConfidence(),
-    validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
+    validUntilUnixMs: divKey.result.expiresAtUnixMs,
     isStale: false,
     staleBehavior: null,
     provenance: divKey.result.provenance as Provenance,
@@ -551,7 +555,7 @@ async function deriveOracleConfidenceWidth(
       structuredPayload: { reasons },
       asOfUnixMs: evaluationAsOfUnixMs,
       confidence: buildDefaultConfidence(),
-      validUntilUnixMs: evaluationAsOfUnixMs,
+      validUntilUnixMs: assembled.result.expiresAtUnixMs,
       isStale: false,
       staleBehavior: null,
       provenance: assembled.result.provenance as Provenance,
@@ -609,7 +613,7 @@ async function deriveOracleConfidenceWidth(
     structuredPayload: calc.metadata,
     asOfUnixMs: evaluationAsOfUnixMs,
     confidence: buildDefaultConfidence(),
-    validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
+    validUntilUnixMs: cwKey.result.expiresAtUnixMs,
     isStale: false,
     staleBehavior: null,
     provenance: cwKey.result.provenance as Provenance,
@@ -655,7 +659,8 @@ async function deriveRealizedVolatility(
       rejectedRows,
       evaluationAsOfUnixMs,
       runId,
-      codeVersion
+      codeVersion,
+      "latest_input"
     );
 
     return {
@@ -666,7 +671,7 @@ async function deriveRealizedVolatility(
       structuredPayload: { reasons },
       asOfUnixMs: evaluationAsOfUnixMs,
       confidence: buildDefaultConfidence(),
-      validUntilUnixMs: evaluationAsOfUnixMs,
+      validUntilUnixMs: assembled.result.expiresAtUnixMs,
       isStale: false,
       staleBehavior: null,
       provenance: assembled.result.provenance as Provenance,
@@ -725,7 +730,8 @@ async function deriveRealizedVolatility(
     rejectedRows,
     evaluationAsOfUnixMs,
     runId,
-    codeVersion
+    codeVersion,
+    "latest_input"
   );
 
   return {
@@ -736,7 +742,7 @@ async function deriveRealizedVolatility(
     structuredPayload: calc.metadata,
     asOfUnixMs: evaluationAsOfUnixMs,
     confidence: buildDefaultConfidence(),
-    validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
+    validUntilUnixMs: volKey.result.expiresAtUnixMs,
     isStale: false,
     staleBehavior: null,
     provenance: volKey.result.provenance as Provenance,
@@ -783,7 +789,8 @@ async function deriveVolumeRatio(
       rejectedRows,
       evaluationAsOfUnixMs,
       runId,
-      codeVersion
+      codeVersion,
+      "latest_input"
     );
 
     return {
@@ -794,7 +801,7 @@ async function deriveVolumeRatio(
       structuredPayload: { reasons },
       asOfUnixMs: evaluationAsOfUnixMs,
       confidence: buildDefaultConfidence(),
-      validUntilUnixMs: evaluationAsOfUnixMs,
+      validUntilUnixMs: assembled.result.expiresAtUnixMs,
       isStale: false,
       staleBehavior: null,
       provenance: assembled.result.provenance as Provenance,
@@ -840,7 +847,8 @@ async function deriveVolumeRatio(
     rejectedRows,
     evaluationAsOfUnixMs,
     runId,
-    codeVersion
+    codeVersion,
+    "latest_input"
   );
 
   return {
@@ -851,7 +859,7 @@ async function deriveVolumeRatio(
     structuredPayload: calc.metadata,
     asOfUnixMs: evaluationAsOfUnixMs,
     confidence: buildDefaultConfidence(),
-    validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
+    validUntilUnixMs: vrKey.result.expiresAtUnixMs,
     isStale: false,
     staleBehavior: null,
     provenance: vrKey.result.provenance as Provenance,
@@ -945,7 +953,7 @@ async function deriveUnavailablePositionFeatures(
       structuredPayload: { reasons },
       asOfUnixMs: evaluationAsOfUnixMs,
       confidence: buildDefaultConfidence(),
-      validUntilUnixMs: evaluationAsOfUnixMs,
+      validUntilUnixMs: rangeAssembled.result.expiresAtUnixMs,
       isStale: false,
       staleBehavior: null,
       provenance: rangeAssembled.result.provenance as Provenance,
@@ -972,7 +980,7 @@ async function deriveUnavailablePositionFeatures(
       structuredPayload: { reasons },
       asOfUnixMs: evaluationAsOfUnixMs,
       confidence: buildDefaultConfidence(),
-      validUntilUnixMs: evaluationAsOfUnixMs,
+      validUntilUnixMs: distLowerAssembled.result.expiresAtUnixMs,
       isStale: false,
       staleBehavior: null,
       provenance: distLowerAssembled.result.provenance as Provenance,
@@ -999,7 +1007,7 @@ async function deriveUnavailablePositionFeatures(
       structuredPayload: { reasons },
       asOfUnixMs: evaluationAsOfUnixMs,
       confidence: buildDefaultConfidence(),
-      validUntilUnixMs: evaluationAsOfUnixMs,
+      validUntilUnixMs: distUpperAssembled.result.expiresAtUnixMs,
       isStale: false,
       staleBehavior: null,
       provenance: distUpperAssembled.result.provenance as Provenance,

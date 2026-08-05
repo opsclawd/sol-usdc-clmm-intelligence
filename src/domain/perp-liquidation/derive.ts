@@ -12,7 +12,11 @@ import type {
   Provenance,
   DerivedFeatureInsert
 } from "../../contracts/index.js";
-import { assembleDerivedFeature, type FeatureCalculation } from "../derived-feature/assemble.js";
+import {
+  assembleDerivedFeature,
+  type AssembleDerivedFeatureOptions,
+  type FeatureCalculation
+} from "../derived-feature/assemble.js";
 import {
   parseDecimal,
   add,
@@ -384,7 +388,8 @@ export async function derivePerpLiquidationFeatures(
     calcResult: FeatureCalculation,
     selectedRows: NormalizedObservationRow[],
     rejectedRows: NormalizedObservationRow[],
-    coverageRecord?: PerpCoverageRecordV1
+    coverageRecord?: PerpCoverageRecordV1,
+    expiryStrategy: AssembleDerivedFeatureOptions["expiryStrategy"] = "earliest_input"
   ) {
     let finalStatus = calcResult.status;
     const finalReasons = [...calcResult.reasons];
@@ -482,7 +487,8 @@ export async function derivePerpLiquidationFeatures(
       rejectedRows: effectiveRejectedRows,
       evaluationAsOfUnixMs,
       runId,
-      codeVersion
+      codeVersion,
+      expiryStrategy
     });
 
     results.push(
@@ -526,7 +532,14 @@ export async function derivePerpLiquidationFeatures(
       rejectedOiRows = [];
     }
     const calcOi = calculateOiTrend4h(oiObs);
-    await assembleAndPush("oi_trend_4h", calcOi, selectedOiRows, rejectedOiRows, oiCoverage);
+    await assembleAndPush(
+      "oi_trend_4h",
+      calcOi,
+      selectedOiRows,
+      rejectedOiRows,
+      oiCoverage,
+      "latest_input"
+    );
 
     // 2. Annualized Funding per venue
     const fundingObs = venueCandidates.funding;
@@ -575,7 +588,14 @@ export async function derivePerpLiquidationFeatures(
       }
     }
 
-    await assembleAndPush("liquidation_cluster_1h", calcLiq, selectedLiqRows, [], liqCoverage);
+    await assembleAndPush(
+      "liquidation_cluster_1h",
+      calcLiq,
+      selectedLiqRows,
+      [],
+      liqCoverage,
+      "latest_input"
+    );
   }
 
   return results;
