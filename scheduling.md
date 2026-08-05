@@ -24,9 +24,9 @@ Hermes has no per-job model/thinking/agent override and no per-job timezone (it 
 | `news-evidence`             | Every 2 hours    | Collect ecosystem and regulatory news evidence.                                                               |
 | `context-events`            | Every 4 hours    | Collect contextual events (scheduled macro events, protocol incidents).                                       |
 | `support-resistance`        | Every 4 hours    | Collect support/resistance levels from technical analysis providers.                                          |
-| `core-evidence-pipeline`    | Every 15 minutes | Collect core observations, derive features, assemble evidence, generate briefs, and publish the exact bundle. |
+| `core-evidence-pipeline`    | Every 4 hours    | Collect core observations, derive features, assemble evidence, generate briefs, and publish the exact bundle. |
 
-The synthesis cadence is 15 minutes (`*/15 * * * *`), matching the core evidence pipeline schedule. The five-minute sampler remains a separate job because historical telemetry density and synthesis have different cadence and cost requirements.
+The synthesis cadence is 4 hours (`0 */4 * * *`), matching the core evidence pipeline schedule. The five-minute sampler remains a separate job because historical telemetry density and synthesis have different cadence and cost requirements.
 
 Specifically, for `on-chain-flow` (15-minute cadence):
 
@@ -41,7 +41,7 @@ Specifically, for five-minute sampling:
 - A missing/delayed tick that creates a gap over ten minutes returns the feature to `UNAVAILABLE` with `insufficient_coverage` or `excessive_gap`, never fabricated zero volatility.
 - Concurrent price collection near each quarter hour is accepted but source rate-limit/command failures must remain visible to operators.
 
-At the ungated MVP cadence, maximum brief attempts are `96 runs/day × configured position count`; two positions can therefore produce up to 192 attempts per day. Pipeline duration approaching 15 minutes is an overlap/capacity warning. Confirm the deployed LLM model, provider rate limits, and budget can sustain the configured position count before registration. Material-change gating and a slower brief-only cadence remain future work.
+At the ungated MVP cadence, maximum brief attempts are `6 runs/day × configured position count`; two positions can therefore produce up to 12 attempts per day. Pipeline duration approaching 4 hours is an overlap/capacity warning. Confirm the deployed LLM model, provider rate limits, and budget can sustain the configured position count before registration. Material-change gating and a slower brief-only cadence remain future work.
 
 This repository change declares desired state only and does not register the job on Hermes (issue #96 remains the live-registration boundary).
 

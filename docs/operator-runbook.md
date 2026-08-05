@@ -51,9 +51,9 @@ Repeated runs of `pnpm cron:sync -- --apply` operate as **create-or-edit** by ex
 Before registering scheduled jobs:
 
 - Confirm `pnpm run:core-evidence-pipeline` is present before registration.
-- Deploy both the five-minute #104 telemetry schedule (`price-observations`) and the 15-minute synthesis schedule (`core-evidence-pipeline`) before declaring the seven-feature pipeline scheduling-complete.
-- Calculate the brief-attempt ceiling with `96 × configured position count` (e.g. two positions produce up to 192 daily attempts) and verify deployed model, provider rate-limit, and budget assumptions.
-- Treat a synthesis duration approaching 15 minutes as an overlap/capacity warning, without adding scheduler retry or concurrency policy.
+- Deploy both the five-minute #104 telemetry schedule (`price-observations`) and the 4-hour synthesis schedule (`core-evidence-pipeline`) before declaring the seven-feature pipeline scheduling-complete.
+- Calculate the brief-attempt ceiling with `6 × configured position count` (e.g. two positions produce up to 12 daily attempts) and verify deployed model, provider rate-limit, and budget assumptions.
+- Treat a synthesis duration approaching 4 hours as an overlap/capacity warning, without adding scheduler retry or concurrency policy.
 
 Use `pnpm cron:render` to inspect and verify job generation without creating jobs on Hermes.
 
