@@ -7,10 +7,12 @@ import { FakeTextReader, FakeEnv } from "../fakes/index.js";
 import { getFeatureKindEntry } from "../../src/domain/taxonomy/index.js";
 
 const PRE_EXISTING_JOB_NAMES = [
+  "clmm-bundle",
   "context-events",
   "news-evidence",
   "on-chain-flow",
   "perp-liquidation",
+  "price-observations",
   "support-resistance"
 ];
 
@@ -48,19 +50,6 @@ describe("core evidence pipeline cron schedule regression", () => {
     ]);
   });
 
-  it("declares the synthetic core evidence pipeline job configuration at the fifteen-minute cadence", () => {
-    const syntheticJob: CronJob = {
-      name: "core-evidence-pipeline",
-      cron: "*/15 * * * *",
-      messageFile: "cron/routines/core-evidence-pipeline.md"
-    };
-    expect(syntheticJob).toEqual({
-      name: "core-evidence-pipeline",
-      cron: "*/15 * * * *",
-      messageFile: "cron/routines/core-evidence-pipeline.md"
-    });
-  });
-
   it("keeps the assembly interval within perp feature validity windows", async () => {
     const config = await loadCronConfig();
     const job = config.jobs.find(({ name }) => name === "core-evidence-pipeline");
@@ -86,7 +75,9 @@ describe("core evidence pipeline cron schedule regression", () => {
       ["news-evidence", "0 */2 * * *", "cron/routines/news-evidence.md"],
       ["on-chain-flow", "*/15 * * * *", "cron/routines/on-chain-flow.md"],
       ["perp-liquidation", "*/5 * * * *", "cron/routines/perp-liquidation.md"],
-      ["support-resistance", "15 */4 * * *", "cron/routines/support-resistance.md"]
+      ["price-observations", "*/5 * * * *", "cron/routines/price-observations.md"],
+      ["support-resistance", "15 */4 * * *", "cron/routines/support-resistance.md"],
+      ["clmm-bundle", "* * * * *", "cron/routines/clmm-bundle.md"]
     ]);
   });
 
