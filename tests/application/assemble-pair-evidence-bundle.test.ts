@@ -37,7 +37,8 @@ import {
   preparePairEvidenceBundle,
   finalizePairEvidenceBundle,
   type AssemblePairEvidenceBundleRequest,
-  type AssemblePairEvidenceBundleDeps
+  type AssemblePairEvidenceBundleDeps,
+  type AssemblePairEvidenceBundleResult
 } from "../../src/application/assemble-pair-evidence-bundle.js";
 import { createEvidenceBundleContract } from "../../src/adapters/node/evidence-bundle-v1-contract.js";
 
@@ -405,6 +406,15 @@ function makeMockBrief(overrides: Partial<PersistedResearchBrief> = {}): Persist
   };
 }
 
+async function prepareAndFinalizePairWithoutBriefForTest(
+  deps: AssemblePairEvidenceBundleDeps,
+  request: AssemblePairEvidenceBundleRequest
+): Promise<AssemblePairEvidenceBundleResult> {
+  const prepared = await preparePairEvidenceBundle(deps, request);
+  if ("code" in prepared || prepared.outcome !== "prepared") return prepared;
+  return finalizePairEvidenceBundle(deps, prepared.prepared, undefined);
+}
+
 describe("assemblePairEvidenceBundle", () => {
   it("queries pair-applicable deterministic features for the canonical pool with no position filter", async () => {
     let capturedQuery: BundleFeatureCandidateQuery | null = null;
@@ -453,7 +463,7 @@ describe("assemblePairEvidenceBundle", () => {
       (kind) => !["range_location", "distance_to_lower", "distance_to_upper"].includes(kind)
     );
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
     expect("outcome" in result && result.outcome).toBe("persisted");
 
     expect(capturedQuery).not.toBeNull();
@@ -539,7 +549,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
     expect("outcome" in result && result.outcome).toBe("persisted");
 
     const candidateObj = capturedCandidate as {
@@ -632,7 +642,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
     expect("outcome" in result && result.outcome).toBe("persisted");
 
     const candidateObj = capturedCandidate as {
@@ -729,7 +739,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(
+    const result = await prepareAndFinalizePairWithoutBriefForTest(
       deps,
       makeDefaultRequest({ gitCommit: "a".repeat(64) })
     );
@@ -786,7 +796,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
 
     expect("outcome" in result && result.outcome).toBe("persisted");
     expect(persistenceCalledTimes).toBe(1);
