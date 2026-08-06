@@ -1,0 +1,104 @@
+import { readFile } from "node:fs/promises";
+import { describe, expect, it } from "vitest";
+
+describe("clock skew diagnostics SQL script", () => {
+  it("keeps the production diagnostic read only", async () => {
+    const sql = await readFile(
+      new URL("../../scripts/diagnostics/clock-skew.sql", import.meta.url),
+      "utf8"
+    );
+
+    expect(sql).toContain("BEGIN TRANSACTION READ ONLY");
+    expect(sql).toContain("ROLLBACK");
+
+    const strippedSql = sql.replace(/--.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+
+    const statements = strippedSql
+      .split(";")
+      .map((stmt) => stmt.trim())
+      .filter((stmt) => stmt.length > 0);
+
+    const mutationTokens = [
+      "INSERT",
+      "UPDATE",
+      "DELETE",
+      "MERGE",
+      "ALTER",
+      "DROP",
+      "TRUNCATE",
+      "CREATE",
+      "GRANT",
+      "REVOKE",
+      "CALL",
+      "COPY"
+    ];
+
+    for (const stmt of statements) {
+      const cleanStmt = stmt.replace(/^\\.*$/gm, "").trim();
+      if (!cleanStmt) continue;
+
+      const firstToken = cleanStmt.split(/\s+/)[0]?.toUpperCase();
+      expect(mutationTokens).not.toContain(firstToken);
+      if (firstToken === "COPY") {
+        expect(cleanStmt.toUpperCase()).not.toContain("FROM");
+      }
+    }
+  });
+
+  it("matches all three computeFreshness clock-skew predicates at five seconds", async () => {
+    const sql = await readFile(
+      new URL("../../scripts/diagnostics/clock-skew.sql", import.meta.url),
+      "utf8"
+    );
+
+    expect(sql).toMatch(/\\set\s+tolerance_ms\s+5000/);
+
+    const hasObservedFutureDelta =
+      sql.includes("observed_at_unix_ms - received_at_unix_ms") ||
+      sql.includes("observed_future_ms");
+    const hasFetchBeforeObservedDelta =
+      sql.includes("observed_at_unix_ms - fetched_at_unix_ms") ||
+      sql.includes("fetch_before_observed_ms");
+    const hasReceiveBeforeFetchDelta =
+      sql.includes("fetched_at_unix_ms - received_at_unix_ms") ||
+      sql.includes("receive_before_fetch_ms");
+
+    expect(hasObservedFutureDelta).toBe(true);
+    expect(hasFetchBeforeObservedDelta).toBe(true);
+    expect(hasReceiveBeforeFetchDelta).toBe(true);
+
+    const hasObservedFutureComp =
+      sql.includes("observed_future_ms > :tolerance_ms") ||
+      sql.includes("observed_at_unix_ms - received_at_unix_ms > :tolerance_ms");
+    const hasFetchBeforeObservedComp =
+      sql.includes("fetch_before_observed_ms > :tolerance_ms") ||
+      sql.includes("observed_at_unix_ms - fetched_at_unix_ms > :tolerance_ms");
+    const hasReceiveBeforeFetchComp =
+      sql.includes("receive_before_fetch_ms > :tolerance_ms") ||
+      sql.includes("fetched_at_unix_ms - received_at_unix_ms > :tolerance_ms");
+
+    expect(hasObservedFutureComp).toBe(true);
+    expect(hasFetchBeforeObservedComp).toBe(true);
+    expect(hasReceiveBeforeFetchComp).toBe(true);
+  });
+
+  it("reports skew failures separately from unrelated parse failures", async () => {
+    const sql = await readFile(
+      new URL("../../scripts/diagnostics/clock-skew.sql", import.meta.url),
+      "utf8"
+    );
+
+    expect(sql).toContain("skew_failed_rows");
+    expect(sql).toContain("non_skew_failed_rows");
+    expect(sql).toContain("is_any_skew IS NOT TRUE");
+  });
+
+  it("orders newest failed rows by received_at_unix_ms DESC", async () => {
+    const sql = await readFile(
+      new URL("../../scripts/diagnostics/clock-skew.sql", import.meta.url),
+      "utf8"
+    );
+
+    expect(sql).toContain("ORDER BY received_at_unix_ms DESC");
+  });
+});
