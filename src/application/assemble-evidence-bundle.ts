@@ -152,6 +152,7 @@ export type PrepareEvidenceBundleSuccess =
       readonly payloadHash: string;
       readonly slotCount: number;
       readonly warnings: readonly string[];
+      readonly prepared: PreparedEvidenceBundle;
       readonly embeddedBrief?: PersistedResearchBrief;
     }
   | { readonly outcome: "conflict"; readonly rowId: number; readonly incomingPayloadHash: string }
@@ -592,60 +593,6 @@ export async function prepareEvidenceBundle(
     return { code: "CONTRACT_ERROR", error: { code: "VALIDATION_ERROR", errors: [String(err)] } };
   }
 
-  let existingRows: EvidenceBundleRow[] = [];
-  try {
-    existingRows = (await bundleRepo.findByPair(request.pair, evaluationTimeUnixMs)) ?? [];
-  } catch (err) {
-    // If bundleRepo lookup throws, proceed
-  }
-
-  const matchingRow = (existingRows ?? []).find(
-    (row) => row.idempotencyKey === canonical.idempotencyKey
-  );
-
-  if (matchingRow) {
-    const payloadObj = matchingRow.payload as EvidenceBundleV1 | undefined | null;
-    const hasEmbeddedBrief =
-      payloadObj !== null &&
-      typeof payloadObj === "object" &&
-      "researchBrief" in payloadObj &&
-      payloadObj.researchBrief !== null &&
-      payloadObj.researchBrief !== undefined;
-
-    if (hasEmbeddedBrief) {
-      const warnings =
-        payloadObj &&
-        typeof payloadObj === "object" &&
-        "assessment" in payloadObj &&
-        payloadObj.assessment &&
-        Array.isArray(payloadObj.assessment.warnings)
-          ? payloadObj.assessment.warnings.map((w: { message: string }) => w.message)
-          : [];
-      const embeddedBrief = deps.briefRepo
-        ? await findPersistedBriefForBundle(
-            deps.briefRepo,
-            matchingRow.id,
-            matchingRow.payloadHash,
-            new Date(deps.clock.now()).getTime()
-          )
-        : undefined;
-      return {
-        outcome: "identical_replay",
-        rowId: matchingRow.id,
-        payloadHash: matchingRow.payloadHash,
-        slotCount: slots.length,
-        warnings,
-        ...(embeddedBrief !== undefined ? { embeddedBrief } : {})
-      };
-    } else {
-      return {
-        outcome: "conflict",
-        rowId: matchingRow.id,
-        incomingPayloadHash: canonical.payloadHash
-      };
-    }
-  }
-
   const prepared: PreparedEvidenceBundle = {
     slots,
     lineage: lineageResult.lineage,
@@ -669,6 +616,61 @@ export async function prepareEvidenceBundle(
     nullBriefCandidate,
     canonical
   };
+
+  let existingRows: EvidenceBundleRow[] = [];
+  try {
+    existingRows = (await bundleRepo.findByPair(request.pair, evaluationTimeUnixMs)) ?? [];
+  } catch (err) {
+    // If bundleRepo lookup throws, proceed
+  }
+
+  const matchingRow = (existingRows ?? []).find(
+    (row) => row.idempotencyKey === canonical.idempotencyKey
+  );
+
+  if (matchingRow) {
+    const payloadObj = matchingRow.payload as EvidenceBundleV1 | undefined | null;
+    const hasEmbeddedBrief =
+      payloadObj !== null &&
+      typeof payloadObj === "object" &&
+      "researchBrief" in payloadObj &&
+      payloadObj.researchBrief !== null &&
+      payloadObj.researchBrief !== undefined;
+
+    if (hasEmbeddedBrief || matchingRow.payloadHash === canonical.payloadHash) {
+      const warnings =
+        payloadObj &&
+        typeof payloadObj === "object" &&
+        "assessment" in payloadObj &&
+        payloadObj.assessment &&
+        Array.isArray(payloadObj.assessment.warnings)
+          ? payloadObj.assessment.warnings.map((w: { message: string }) => w.message)
+          : [];
+      const embeddedBrief = deps.briefRepo
+        ? await findPersistedBriefForBundle(
+            deps.briefRepo,
+            matchingRow.id,
+            matchingRow.payloadHash,
+            new Date(deps.clock.now()).getTime()
+          )
+        : undefined;
+      return {
+        outcome: "identical_replay",
+        rowId: matchingRow.id,
+        payloadHash: matchingRow.payloadHash,
+        slotCount: slots.length,
+        warnings,
+        prepared,
+        ...(embeddedBrief !== undefined ? { embeddedBrief } : {})
+      };
+    } else {
+      return {
+        outcome: "conflict",
+        rowId: matchingRow.id,
+        incomingPayloadHash: canonical.payloadHash
+      };
+    }
+  }
 
   return {
     outcome: "prepared",

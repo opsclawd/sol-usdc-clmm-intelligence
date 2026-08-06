@@ -1318,7 +1318,7 @@ describe("assembleEvidenceBundle", () => {
       }
     });
 
-    it("position legacy replay without an embedded brief is not accepted as complete", async () => {
+    it("position legacy replay without an embedded brief returns identical_replay with prepared structure to allow brief generation", async () => {
       const { prepareEvidenceBundle } =
         await import("../../src/application/assemble-evidence-bundle.js");
 
@@ -1382,6 +1382,8 @@ describe("assembleEvidenceBundle", () => {
         }
       };
 
+      contract.overridePayloadHash = "hash-legacy-null-brief";
+
       bundleRepo.store.push({
         id: 99,
         schemaVersion: "evidence-bundle.v1",
@@ -1412,9 +1414,11 @@ describe("assembleEvidenceBundle", () => {
         )
       );
 
-      expect(prepareResult.outcome).toBe("conflict");
-      if (prepareResult.outcome === "conflict") {
+      expect(prepareResult.outcome).toBe("identical_replay");
+      if (prepareResult.outcome === "identical_replay") {
         expect(prepareResult.rowId).toBe(99);
+        expect(prepareResult.prepared).toBeDefined();
+        expect(prepareResult.embeddedBrief).toBeUndefined();
       }
     });
 

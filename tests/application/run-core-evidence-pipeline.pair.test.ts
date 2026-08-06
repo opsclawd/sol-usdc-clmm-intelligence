@@ -331,6 +331,7 @@ describe("runCoreEvidencePipeline - Pair Orchestration", () => {
         payloadHash: "hash-pair-500",
         slotCount: 16,
         warnings: [],
+        prepared: dummyPreparedPairBundle,
         embeddedBrief: dummyBrief
       }),
       generateBrief: async () => {
@@ -1191,5 +1192,53 @@ describe("runCoreEvidencePipeline - Pair Orchestration", () => {
     expect(result.pair?.bundleId).toBeNull();
     expect(result.pair?.diagnostic?.code).toBe("ASSEMBLY_FAILED");
     expect(publishCalled).toBe(false);
+  });
+
+  it("invokes brief generation and publishes when preparePair returns identical_replay without an embeddedBrief", async () => {
+    const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
+    let generateCalled = false;
+    let persistBriefCalled = false;
+    let published = false;
+
+    const base = createBaseServices(evalTime);
+    const services: CoreEvidencePipelineServices = {
+      ...base,
+      preparePair: async () => ({
+        outcome: "identical_replay",
+        rowId: 500,
+        payloadHash: "hash-pair-500",
+        slotCount: 16,
+        warnings: [],
+        prepared: dummyPreparedPairBundle
+      }),
+      generateBrief: async () => {
+        generateCalled = true;
+        return { outcome: "generated_complete", brief: dummyBrief };
+      },
+      persistBrief: async (params) => {
+        persistBriefCalled = true;
+        return { id: 1, evidenceBundleId: params.bundleId } as ResearchBriefRow;
+      },
+      publish: async (req) => {
+        published = true;
+        return { outcome: "created", bundleId: req.evidenceBundleId, attemptCount: 1 };
+      }
+    };
+
+    const deps: RunCoreEvidencePipelineDeps = {
+      clock: new QueuedClock(["2026-07-30T12:00:00.000Z", "2026-07-30T12:00:05.000Z"]),
+      runIdFactory: new FakeRunIdFactory(["run-unbriefed-replay"]),
+      lock: new FakePipelineRunLock(),
+      openResources: async () => ({ connection: new FakeDbConnection(), services })
+    };
+
+    const result = await runCoreEvidencePipeline(deps, createDefaultConfig([]));
+
+    expect(generateCalled).toBe(true);
+    expect(persistBriefCalled).toBe(true);
+    expect(published).toBe(true);
+    expect(result.pair?.briefOutcome).toBe("generated_complete");
+    expect(result.pair?.assemblyOutcome).toBe("identical_replay");
+    expect(result.pair?.status).toBe("complete");
   });
 });

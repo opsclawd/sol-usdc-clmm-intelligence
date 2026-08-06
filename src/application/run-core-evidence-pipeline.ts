@@ -345,9 +345,63 @@ export async function runCoreEvidencePipeline(
                 const assemblyWarnings = Array.isArray(prep.warnings)
                   ? prep.warnings.map(redactSecretMentions)
                   : [];
-                const briefArtifact = prep.embeddedBrief ?? null;
-                const briefOutcomeStr = briefArtifact ? "reused" : null;
-                if (briefArtifact) {
+                let briefArtifact = prep.embeddedBrief ?? null;
+                let briefOutcomeStr: string | null = briefArtifact ? "reused" : null;
+
+                if (!briefArtifact && prep.prepared) {
+                  let pairBrief: GenerateResearchBriefOutcome | null = null;
+                  try {
+                    pairBrief = await resources.services.generateBrief({
+                      evidenceBundlePayload: prep.prepared.nullBriefCandidate,
+                      pair: "SOL/USDC",
+                      evaluationTimeUnixMs,
+                      codeVersion: config.codeVersion,
+                      runId: pipelineRunId
+                    });
+                  } catch (err) {
+                    pairResult = {
+                      correlationId: pairCorrelationId,
+                      bundleId,
+                      assemblyOutcome: prep.outcome,
+                      briefOutcome: "error",
+                      publishOutcome: null,
+                      status: "failed",
+                      warnings: Object.freeze(assemblyWarnings),
+                      diagnostic: {
+                        stage: "brief",
+                        code: "BRIEF_FAILED",
+                        message: redactSecretMentions(
+                          err instanceof Error ? err.message : String(err)
+                        )
+                      }
+                    };
+                  }
+                  if (!pairResult && pairBrief) {
+                    briefOutcomeStr = pairBrief.outcome;
+                    if (pairBrief.outcome === "no_brief") {
+                      pairResult = {
+                        correlationId: pairCorrelationId,
+                        bundleId,
+                        assemblyOutcome: prep.outcome,
+                        briefOutcome: briefOutcomeStr,
+                        publishOutcome: null,
+                        status: "failed",
+                        warnings: Object.freeze(assemblyWarnings),
+                        diagnostic: {
+                          stage: "brief",
+                          code: "NO_BRIEF",
+                          message: redactSecretMentions(
+                            `Brief generation returned no_brief (${pairBrief.reason})`
+                          )
+                        }
+                      };
+                    } else {
+                      briefArtifact = pairBrief.brief;
+                    }
+                  }
+                }
+
+                if (!pairResult && briefArtifact) {
                   try {
                     await resources.services.persistBrief({
                       bundleId,
@@ -378,6 +432,7 @@ export async function runCoreEvidencePipeline(
                     };
                   }
                 }
+
                 if (!pairResult) {
                   let pairPub: PublishEvidenceBundleResult | null = null;
                   try {
@@ -427,7 +482,10 @@ export async function runCoreEvidencePipeline(
                       };
                     } else {
                       const isPairDegraded =
-                        collectionStatus === "PARTIAL" || pairPub.outcome === "created_degraded";
+                        collectionStatus === "PARTIAL" ||
+                        briefOutcomeStr === "generated_degraded" ||
+                        pairPub.outcome === "created_degraded" ||
+                        !briefArtifact;
                       pairResult = {
                         correlationId: pairCorrelationId,
                         bundleId,
@@ -774,8 +832,62 @@ export async function runCoreEvidencePipeline(
                 const assemblyWarnings = Array.isArray(prep.warnings)
                   ? prep.warnings.map(redactSecretMentions)
                   : [];
-                const briefArtifact = prep.embeddedBrief ?? null;
-                const briefOutcomeStr = briefArtifact ? "reused" : null;
+                let briefArtifact = prep.embeddedBrief ?? null;
+                let briefOutcomeStr: string | null = briefArtifact ? "reused" : null;
+
+                if (!briefArtifact && prep.prepared) {
+                  let brief: GenerateResearchBriefOutcome | null = null;
+                  try {
+                    brief = await activeResources.services.generateBrief({
+                      evidenceBundlePayload: prep.prepared.nullBriefCandidate,
+                      pair: "SOL/USDC",
+                      evaluationTimeUnixMs: activeEvaluationTimeUnixMs,
+                      codeVersion: config.codeVersion,
+                      runId: pipelineRunId
+                    });
+                  } catch (err) {
+                    return {
+                      positionId,
+                      correlationId,
+                      bundleId,
+                      assemblyOutcome: prep.outcome,
+                      briefOutcome: "error",
+                      publishOutcome: null,
+                      status: "failed",
+                      warnings: Object.freeze(assemblyWarnings),
+                      diagnostic: {
+                        stage: "brief",
+                        code: "BRIEF_FAILED",
+                        message: redactSecretMentions(
+                          err instanceof Error ? err.message : String(err)
+                        )
+                      }
+                    };
+                  }
+
+                  briefOutcomeStr = brief.outcome;
+                  if (brief.outcome === "no_brief") {
+                    return {
+                      positionId,
+                      correlationId,
+                      bundleId,
+                      assemblyOutcome: prep.outcome,
+                      briefOutcome: briefOutcomeStr,
+                      publishOutcome: null,
+                      status: "failed",
+                      warnings: Object.freeze(assemblyWarnings),
+                      diagnostic: {
+                        stage: "brief",
+                        code: "NO_BRIEF",
+                        message: redactSecretMentions(
+                          `Brief generation returned no_brief (${brief.reason})`
+                        )
+                      }
+                    };
+                  }
+                  briefArtifact = brief.brief;
+                }
+
                 if (briefArtifact) {
                   try {
                     await activeResources.services.persistBrief({
@@ -808,6 +920,7 @@ export async function runCoreEvidencePipeline(
                     };
                   }
                 }
+
                 let publication: PublishEvidenceBundleResult;
                 try {
                   publication = await activeResources.services.publish({
@@ -859,7 +972,10 @@ export async function runCoreEvidencePipeline(
                 }
 
                 const isPositionDegraded =
-                  collectionStatus === "PARTIAL" || publication.outcome === "created_degraded";
+                  collectionStatus === "PARTIAL" ||
+                  briefOutcomeStr === "generated_degraded" ||
+                  publication.outcome === "created_degraded" ||
+                  !briefArtifact;
                 const positionStatus: PositionPipelineStatus = isPositionDegraded
                   ? "degraded"
                   : "complete";

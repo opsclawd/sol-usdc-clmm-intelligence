@@ -1281,7 +1281,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     });
 
-    it("pair legacy replay without an embedded brief is not accepted as complete", async () => {
+    it("pair legacy replay without an embedded brief returns identical_replay with prepared structure to allow brief generation", async () => {
       const { detRaw, detNorm, featureRow } = makeValidPairFeatureFixture();
 
       const legacyRowNoBrief = makeBundleRow({
@@ -1319,10 +1319,11 @@ describe("assemblePairEvidenceBundle", () => {
       };
 
       const prepareResult = await preparePairEvidenceBundle(deps, makeDefaultRequest());
-      expect("outcome" in prepareResult && prepareResult.outcome).toBe("conflict");
-      if ("outcome" in prepareResult && prepareResult.outcome === "conflict") {
+      expect("outcome" in prepareResult && prepareResult.outcome).toBe("identical_replay");
+      if ("outcome" in prepareResult && prepareResult.outcome === "identical_replay") {
         expect(prepareResult.rowId).toBe(600);
-        expect(prepareResult.incomingPayloadHash).toBe("canonical-hash-1");
+        expect(prepareResult.prepared).toBeDefined();
+        expect(prepareResult.embeddedBrief).toBeUndefined();
       }
     });
   });

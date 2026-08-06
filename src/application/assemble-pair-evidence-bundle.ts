@@ -142,6 +142,7 @@ export type PreparePairEvidenceBundleSuccess =
       readonly payloadHash: string;
       readonly slotCount: number;
       readonly warnings: readonly string[];
+      readonly prepared: PreparedPairEvidenceBundle;
       readonly embeddedBrief?: PersistedResearchBrief;
     }
   | { readonly outcome: "conflict"; readonly rowId: number; readonly incomingPayloadHash: string }
@@ -555,6 +556,28 @@ export async function preparePairEvidenceBundle(
     return { code: "CONTRACT_ERROR", error: { code: "VALIDATION_ERROR", errors: [String(err)] } };
   }
 
+  const prepared: PreparedPairEvidenceBundle = {
+    slots,
+    lineage: lineageResult.lineage,
+    selectedContextEvents,
+    selectedSupportResistance,
+    selectedNewsEvidence,
+    qualityInputFacts,
+    requestMeta: {
+      pair: request.pair,
+      poolId: request.poolId,
+      pipelineRunId: request.pipelineRunId,
+      correlationId: request.correlationId,
+      evaluationTimeUnixMs: request.evaluationTimeUnixMs,
+      createdAtUnixMs: request.createdAtUnixMs,
+      codeVersion: request.codeVersion,
+      gitCommit: request.gitCommit,
+      environment: request.environment
+    },
+    nullBriefCandidate,
+    canonical
+  };
+
   let existingRows: EvidenceBundleRow[] = [];
   try {
     existingRows = (await bundleRepo.findByPair(request.pair, evaluationTimeUnixMs)) ?? [];
@@ -575,7 +598,7 @@ export async function preparePairEvidenceBundle(
       payloadObj.researchBrief !== null &&
       payloadObj.researchBrief !== undefined;
 
-    if (hasEmbeddedBrief) {
+    if (hasEmbeddedBrief || matchingRow.payloadHash === canonical.payloadHash) {
       const warnings =
         payloadObj &&
         typeof payloadObj === "object" &&
@@ -598,6 +621,7 @@ export async function preparePairEvidenceBundle(
         payloadHash: matchingRow.payloadHash,
         slotCount: slots.length,
         warnings,
+        prepared,
         ...(embeddedBrief !== undefined ? { embeddedBrief } : {})
       };
     } else {
@@ -608,28 +632,6 @@ export async function preparePairEvidenceBundle(
       };
     }
   }
-
-  const prepared: PreparedPairEvidenceBundle = {
-    slots,
-    lineage: lineageResult.lineage,
-    selectedContextEvents,
-    selectedSupportResistance,
-    selectedNewsEvidence,
-    qualityInputFacts,
-    requestMeta: {
-      pair: request.pair,
-      poolId: request.poolId,
-      pipelineRunId: request.pipelineRunId,
-      correlationId: request.correlationId,
-      evaluationTimeUnixMs: request.evaluationTimeUnixMs,
-      createdAtUnixMs: request.createdAtUnixMs,
-      codeVersion: request.codeVersion,
-      gitCommit: request.gitCommit,
-      environment: request.environment
-    },
-    nullBriefCandidate,
-    canonical
-  };
 
   return {
     outcome: "prepared",
