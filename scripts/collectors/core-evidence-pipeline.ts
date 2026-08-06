@@ -106,7 +106,8 @@ export async function runCoreEvidencePipelineScript(runtime: NodeRuntime): Promi
           normalizedRepo: persistence.normalizedObservationRepo,
           rawRepo: persistence.rawObservationRepo,
           bundleRepo: persistence.bundleRepo,
-          contract
+          contract,
+          briefRepo: persistence.briefRepo
         };
 
         const pairDeps: AssemblePairEvidenceBundleDeps = {
@@ -115,7 +116,8 @@ export async function runCoreEvidencePipelineScript(runtime: NodeRuntime): Promi
           normalizedRepo: persistence.normalizedObservationRepo,
           rawRepo: persistence.rawObservationRepo,
           bundleRepo: persistence.bundleRepo,
-          contract
+          contract,
+          briefRepo: persistence.briefRepo
         };
 
         const briefDeps: GenerateResearchBriefDeps = {

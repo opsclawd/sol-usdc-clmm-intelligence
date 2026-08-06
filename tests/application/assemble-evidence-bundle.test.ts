@@ -37,6 +37,9 @@ import {
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 import type { ProvenanceRef, Source, ObservationKind } from "../../src/contracts/taxonomy.js";
 import { makeClmmBundle, makePoolData, makePositionData } from "../fixtures/clmm-bundle.js";
+import { FakeBriefRepo } from "../fakes/fake-brief-repo.js";
+import { RESEARCH_BRIEF_PROMPT_VERSION } from "../../src/domain/brief/prompts.js";
+import type { PersistedResearchBrief } from "../../src/contracts/research-brief.js";
 
 async function prepareAndFinalizePositionWithoutBriefForTest(
   deps: AssembleEvidenceBundleDeps,
@@ -1163,6 +1166,155 @@ describe("assembleEvidenceBundle", () => {
       if (prepareResult.outcome === "identical_replay") {
         expect(prepareResult.rowId).toBe(42);
         expect(prepareResult.payloadHash).toBe("hash-brief-bearing");
+      }
+    });
+
+    it("position exact replay via real prepareEvidenceBundle loads the persisted brief through briefRepo", async () => {
+      const { prepareEvidenceBundle } =
+        await import("../../src/application/assemble-evidence-bundle.js");
+
+      const rawRow = makeRawRow({ id: 1 });
+      seedRaw([rawRow]);
+
+      const featureRow = makeDerivedFeatureRow({
+        id: 1,
+        featureKind: "range_location",
+        positionId: "pos-1",
+        poolId: "pool-abc",
+        inputObservationIds: [1],
+        rawRefs: [makeRawRef(1, "clmm-v2-bundle", "raw-hash-1")]
+      });
+      seedFeature([featureRow]);
+
+      const request = makeRequest();
+
+      const mockPayloadWithBrief: EvidenceBundleV1 = {
+        schemaVersion: "evidence-bundle.v1",
+        pair: "SOL/USDC",
+        scope: {
+          kind: "position",
+          network: "solana-mainnet",
+          walletAddress: "wallet-123",
+          whirlpoolAddress: "pool-abc",
+          positionId: "pos-1"
+        },
+        source: {
+          publisher: "sol-usdc-clmm-intelligence",
+          sourceId: "source-001",
+          sourceVersion: "1.0.0"
+        },
+        runId: "run-123:pos-1",
+        correlationId: "corr-123",
+        createdAt: "2024-01-01T00:00:00.000Z",
+        asOf: "2024-01-01T00:00:00.000Z",
+        freshUntil: "2024-01-01T01:00:00.000Z",
+        expiresAt: "2024-01-01T02:00:00.000Z",
+        deterministicFeatures: [] as unknown as EvidenceBundleV1["deterministicFeatures"],
+        contextualEvidence: {
+          supportResistance: [],
+          flows: [],
+          derivatives: [],
+          events: [],
+          newsRegulatory: []
+        },
+        researchBrief: {
+          briefId: "brief-real-42",
+          generatedAt: "2024-01-01T00:00:00.000Z",
+          summary: "test summary",
+          keyFindings: ["finding"],
+          uncertainties: [],
+          model: { provider: "anthropic", modelId: "claude-3", modelVersion: "v1" },
+          promptVersion: "v1",
+          sourceEvidenceIds: ["feat-range_location-1"]
+        },
+        sourceReferences: [] as unknown as EvidenceBundleV1["sourceReferences"],
+        assessment: {
+          overallConfidenceBps: 10000,
+          quality: "complete",
+          coverage: {} as unknown as EvidenceBundleV1["assessment"]["coverage"],
+          warnings: []
+        },
+        provenance: {
+          pipelineVersion: "1.0.0",
+          gitCommit: "abc123",
+          environment: "development",
+          upstreamRunIds: []
+        }
+      };
+
+      bundleRepo.store.push({
+        id: 42,
+        schemaVersion: "evidence-bundle.v1",
+        pair: "SOL/USDC",
+        asOfUnixMs: EVAL_MS,
+        expiresAtUnixMs: EVAL_MS + 3600000,
+        payload: mockPayloadWithBrief,
+        payloadHash: "hash-brief-bearing",
+        payloadCanonical: JSON.stringify(mockPayloadWithBrief),
+        idempotencyKey: "fixed-idempotency-key",
+        taxonomySummary: null,
+        dominantSignalClass: "deterministic",
+        confidence: DEFAULT_CONFIDENCE,
+        confidenceComposite: 1,
+        confidenceLevel: "high",
+        validUntilUnixMs: EVAL_MS + 3600000,
+        isStale: false,
+        staleBehavior: null,
+        provenance: DEFAULT_PROVENANCE,
+        version: 1,
+        receivedAtUnixMs: EVAL_MS
+      });
+
+      const briefRepo = new FakeBriefRepo();
+      const persistedBrief: PersistedResearchBrief = {
+        briefId: "brief-real-42",
+        pair: "SOL/USDC",
+        generationStatus: "complete",
+        llmOutput: {
+          summary: "Grounded brief",
+          keyTakeaways: ["Price evidence is available"],
+          supportsCurrentRegime: "supports",
+          regimeAssessmentReasoning: "The cited feature supports the assessment.",
+          confidenceScore: 0.9,
+          confidenceReasoning: "The brief cites source-bundle evidence.",
+          sourceEvidenceIds: ["feat-range_location-1"],
+          unsupportedOrMissingInputs: []
+        },
+        sourceRefs: [],
+        providerMetadata: { provider: "openai", model: "gpt-4o" },
+        sourceBundleRef: {
+          bundleId: 42,
+          bundleHash: "hash-brief-bearing"
+        },
+        inputContextHash: "context-hash",
+        priorBriefRef: null,
+        generatedAt: EPOCH,
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+      };
+      await briefRepo.insert({
+        evidenceBundleId: 42,
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+        modelProvider: "openai",
+        structuredOutput: persistedBrief,
+        signalClass: "contextual",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        payloadHash: "brief-payload-hash",
+        receivedAtUnixMs: EVAL_MS - 30_000,
+        validUntilUnixMs: EVAL_MS + 3_600_000
+      });
+
+      const prepareResult = assertSuccess(
+        await prepareEvidenceBundle(
+          { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract, briefRepo },
+          request
+        )
+      );
+
+      expect(prepareResult.outcome).toBe("identical_replay");
+      if (prepareResult.outcome === "identical_replay") {
+        expect(prepareResult.rowId).toBe(42);
+        expect(prepareResult.embeddedBrief).toEqual(persistedBrief);
       }
     });
 

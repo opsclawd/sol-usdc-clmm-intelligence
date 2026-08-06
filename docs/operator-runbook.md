@@ -440,100 +440,95 @@ The system uses `derivation_key` as a idempotency key. Re-running derivation wit
 
 ## Evidence Bundle Assembly
 
-Evidence bundle assembly executes as part of `pnpm run:core-evidence-pipeline` using the two-phase sequence: `prepare -> generate/reuse brief -> finalize -> persist brief link -> publish`.
+There is no standalone assembly command. Evidence bundle assembly (both the per-position and
+the pair bundle) runs only inside `pnpm run:core-evidence-pipeline`, as one stage of a single
+in-process run: `collect -> derive -> prepare -> generate/reuse brief -> finalize -> persist
+brief link -> publish`. The two-phase `prepare`/`finalize` split lets the pipeline generate (or
+reuse) a research brief between assembling the bundle and persisting it, so a bundle is never
+finalized without an attached brief outcome.
 
 ```bash
 pnpm run:core-evidence-pipeline
 ```
 
-### Request File Format
+### Configuration
+
+Required environment variables (see `.env.example`):
+
+- `INTELLIGENCE_POSITION_IDS`: comma-separated (or JSON array) list of position IDs to run the
+  per-position pipeline for.
+- `WHIRLPOOL_ADDRESS`: the SOL/USDC pool address used for both the pair bundle and every
+  position bundle.
+- `WALLET_PUBLIC_KEY`: wallet address attached to position-scoped bundles.
+- `INTELLIGENCE_CODE_VERSION`: code version stamped into bundle provenance.
+- `INTELLIGENCE_GIT_COMMIT`: 64-character lowercase hex git commit stamped into bundle
+  provenance.
+- `INTELLIGENCE_ENVIRONMENT`: one of `production`, `staging`, `development`, `test`.
+- `DATABASE_URL`, `REGIME_ENGINE_BASE_URL`, `REGIME_ENGINE_AUTH_TOKEN`, and the LLM provider
+  credentials required by `generate:brief` (see that section) — the pipeline drives collection,
+  derivation, assembly, brief generation, and publishing in one run, so it needs every
+  downstream stage's credentials up front.
+
+If any required variable is missing or malformed, the command fails closed before touching the
+database: it prints a single-line JSON result with `status: "failed"` and a
+`diagnostics[0].code: "CONFIG_INVALID"` entry, and exits `1`. No lock is acquired and no bundle
+is assembled.
+
+### Result Shape
+
+The command prints one redacted JSON object to stdout — never wallet IDs, canonical payloads,
+or full provenance:
 
 ```json
 {
-  "pair": "SOL/USDC",
-  "poolId": "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
-  "positionId": "Pos11111111111111111111111111111111111111111",
-  "walletId": "Wallet1234567890abcdef",
-  "pipelineRunId": "run-456",
-  "correlationId": "corr-789",
+  "pipelineRunId": "run-...",
+  "collectionStartedAtUnixMs": 1700000000000,
   "evaluationTimeUnixMs": 1700000000000,
-  "createdAtUnixMs": 1700000000000,
-  "acceptedCalculatorVersions": {
-    "range_location": "range-location/v2",
-    "distance_to_lower": "distance-to-lower/v2",
-    "distance_to_upper": "distance-to-upper/v2",
-    "oracle_dex_divergence": "oracle-dex-divergence/v1",
-    "oracle_confidence_width": "oracle-confidence-width/v1",
-    "realized_volatility_1h": "realized-volatility-1h/v1",
-    "volume_liquidity_ratio_24h": "volume-liquidity-ratio-24h/v2",
-    "oi_trend_4h": "oi-trend-4h/v1",
-    "funding_rate_annualized": "funding-rate-annualized/v1",
-    "liquidation_cluster_1h": "liquidation-cluster-1h/v1",
-    "basis_spread_bps": "basis-spread-bps/v1"
+  "collectionStatus": "complete",
+  "pair": {
+    "correlationId": "corr-...",
+    "bundleId": 99,
+    "assemblyOutcome": "persisted",
+    "briefOutcome": "generated",
+    "publishOutcome": "created",
+    "status": "complete",
+    "warnings": [],
+    "diagnostic": null
   },
-  "schemaVersion": "evidence-bundle.v1",
-  "assemblySelectionVersion": "selection/v1",
-  "codeVersion": "1.0.0",
-  "gitCommit": "abc123def456",
-  "environment": "test"
+  "positions": [
+    {
+      "positionId": "Pos1...",
+      "correlationId": "corr-...",
+      "bundleId": 101,
+      "assemblyOutcome": "persisted",
+      "briefOutcome": "generated",
+      "publishOutcome": "created",
+      "status": "complete",
+      "warnings": [],
+      "diagnostic": null
+    }
+  ],
+  "status": "complete",
+  "warnings": [],
+  "diagnostics": [],
+  "cleanupErrors": []
 }
 ```
 
-`acceptedCalculatorVersions` must include all eleven `MVP_FEATURE_KINDS` entries (the seven canonical kinds plus the four Pack C perp/liquidation kinds), or assembly fails closed with `REQUEST_VALIDATION_ERROR` naming the first missing kind.
+`assemblyOutcome` reflects the `prepare`/`finalize` result (`persisted`, `identical_replay`,
+`conflict`, `no_bundle`, or an error code) for the pair and for each position independently.
+`briefOutcome` is `generated`, `reused` (an eligible persisted brief already existed for an
+`identical_replay` bundle and was reused instead of re-calling the LLM), `degraded`, or `null`
+when no brief attempt applies. `status` (top-level and per-pair/position) is one of `complete`,
+`degraded`, `skipped_already_running`, or `failed`.
 
-### Successful Response Example
-
-```json
-{
-  "outcome": "persisted",
-  "rowId": 99,
-  "payloadHash": "hash-abc",
-  "slotCount": 7,
-  "warnings": []
-}
-```
-
-### Identical Replay Response
-
-```json
-{
-  "outcome": "identical_replay",
-  "rowId": 42,
-  "payloadHash": "identical-hash",
-  "slotCount": 7,
-  "warnings": []
-}
-```
-
-### No Bundle Response (Exit Code 1)
-
-When no usable features or valid CLMM lineage are available, the command emits the typed
-result to stdout and fails closed:
-
-```json
-{
-  "outcome": "no_bundle",
-  "warnings": []
-}
-```
-
-Callers that need to distinguish this condition from other failures must parse `outcome`;
-all failure classes intentionally use exit code `1`.
-
-### Conflict Response (Exit Code 1)
-
-```json
-{
-  "outcome": "conflict",
-  "rowId": 1,
-  "incomingPayloadHash": "new-different-hash",
-  "warnings": []
-}
-```
+Deterministic orchestration must inspect these typed fields, not the process exit code, to
+decide what happened to each bundle. The process exit code (`0` for `complete`/`degraded`/
+`skipped_already_running`, `1` otherwise) exists only to drive cron/Hermes alerting.
 
 ### Pre-flight Checks
 
-Before running assembly, verify:
+Before the first run, verify:
 
 ```sql
 -- Verify no existing evidence bundle rows (migration precondition)
@@ -560,32 +555,40 @@ The assembler selects up to seven canonical feature slots:
 | realized_volatility_1h     | pool-independent | BPS          |
 | volume_liquidity_ratio_24h | pool only        | percent ×100 |
 
-### Exit Codes
-
-| Outcome / failure class                                        | Exit code | Stdout contract                                                          | Operator meaning                                                           |
-| -------------------------------------------------------------- | --------: | ------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| `persisted`                                                    |         0 | Redacted typed JSON                                                      | A new bundle was persisted.                                                |
-| `identical_replay`                                             |         0 | Redacted typed JSON                                                      | The identical bundle already exists; no new row was created.               |
-| `no_bundle`                                                    |         1 | `{"outcome":"no_bundle","warnings":[]}` (pretty-printed)                 | No eligible bundle was produced; stop downstream standalone commands.      |
-| `conflict`                                                     |         1 | Redacted typed JSON                                                      | The logical identity exists with different canonical content; fail closed. |
-| Structured validation, lineage, contract, or persistence error |         1 | `{"outcome":"error","warnings":["<CODE>"]}` (pretty-printed)             | Assembly failed before a usable new outcome was produced.                  |
-| Malformed request or uncaught runtime error                    |         1 | Diagnostic on stderr; structured return where the runner can provide one | Fix the request or infrastructure failure before retrying.                 |
-
-Deterministic orchestration must inspect typed assembly results and must not use CLI exit codes as a substitute for outcome handling.
-
 ### Replay Behavior
 
-The idempotency key is derived from request identity fields. Re-running with identical inputs produces `identical_replay` with the same `rowId` and `payloadHash`. The system permits identical replay — no new row is created.
+The idempotency key is derived from request identity fields. Re-running with identical inputs
+produces `identical_replay` with the same `bundleId` and payload hash — no new row is created.
+When the matched row already carries an embedded research brief, `prepare` looks up the
+matching persisted brief (same bundle ID and payload hash, `complete` or `degraded`, not
+expired) via the brief repo and reuses it instead of calling the LLM again; this is reported as
+`briefOutcome: "reused"`.
 
-### Redacted Output
+### Verifying Real Publication
 
-The script never outputs:
+To confirm a run actually assembled a bundle with a brief and published it (rather than
+short-circuiting on missing config or stale data), query the database directly with `psql`
+rather than an ad hoc Node/tsx script — the ESM pipeline modules cannot be `require`d from a
+one-off `-e` script:
 
-- Wallet ID
-- Canonical payload
-- Full provenance details
+```bash
+psql "$DATABASE_URL" -c "
+SELECT eb.id,
+       eb.received_at_unix_ms,
+       (eb.payload -> 'researchBrief') IS NOT NULL AS has_embedded_brief,
+       eb.payload -> 'assessment' ->> 'quality' AS quality,
+       pa.status AS publish_status,
+       pa.http_status
+FROM intelligence.evidence_bundles eb
+LEFT JOIN intelligence.publish_attempts pa ON pa.evidence_bundle_id = eb.id
+ORDER BY eb.received_at_unix_ms DESC
+LIMIT 10;
+"
+```
 
-Only operational summary fields are printed: outcome, row ID, payload hash, slot count, and warnings.
+A healthy run shows `has_embedded_brief = true` and a `publish_status` of `created` or
+`idempotent_replay` for the most recent rows. See the Evidence Bundle Publishing section below
+for the full set of publish-attempt audit queries.
 
 ### Migration Precondition
 

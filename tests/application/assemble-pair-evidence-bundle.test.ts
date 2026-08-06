@@ -40,6 +40,8 @@ import {
   type AssemblePairEvidenceBundleResult
 } from "../../src/application/assemble-pair-evidence-bundle.js";
 import { createEvidenceBundleContract } from "../../src/adapters/node/evidence-bundle-v1-contract.js";
+import { FakeBriefRepo } from "../fakes/fake-brief-repo.js";
+import { RESEARCH_BRIEF_PROMPT_VERSION } from "../../src/domain/brief/prompts.js";
 
 const DEFAULT_CONFIDENCE: Confidence = {
   components: {
@@ -1191,6 +1193,91 @@ describe("assemblePairEvidenceBundle", () => {
       if ("outcome" in prepareResult && prepareResult.outcome === "identical_replay") {
         expect(prepareResult.rowId).toBe(500);
         expect(prepareResult.payloadHash).toBe("canonical-hash-1");
+      }
+    });
+
+    it("pair exact replay via real preparePairEvidenceBundle loads the persisted brief through briefRepo", async () => {
+      const { detRaw, detNorm, featureRow } = makeValidPairFeatureFixture();
+
+      const existingRowWithBrief = makeBundleRow({
+        id: 500,
+        payloadHash: "canonical-hash-1",
+        idempotencyKey: "canonical-idemp-1",
+        payload: {
+          researchBrief: { briefId: "brief-existing" },
+          assessment: { warnings: [{ message: "Existing warning" }] }
+        }
+      });
+
+      const briefRepo = new FakeBriefRepo();
+      const persistedBrief: PersistedResearchBrief = {
+        briefId: "brief-existing",
+        pair: "SOL/USDC",
+        generationStatus: "complete",
+        llmOutput: {
+          summary: "Grounded pair brief",
+          keyTakeaways: ["Pair evidence is available"],
+          supportsCurrentRegime: "supports",
+          regimeAssessmentReasoning: "The cited feature supports the assessment.",
+          confidenceScore: 0.9,
+          confidenceReasoning: "The brief cites source-bundle evidence.",
+          sourceEvidenceIds: [],
+          unsupportedOrMissingInputs: []
+        },
+        sourceRefs: [],
+        providerMetadata: { provider: "openai", model: "gpt-4o" },
+        sourceBundleRef: {
+          bundleId: 500,
+          bundleHash: "canonical-hash-1"
+        },
+        inputContextHash: "context-hash",
+        priorBriefRef: null,
+        generatedAt: "2026-05-10T12:00:00.000Z",
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+      };
+      await briefRepo.insert({
+        evidenceBundleId: 500,
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+        modelProvider: "openai",
+        structuredOutput: persistedBrief,
+        signalClass: "contextual",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        payloadHash: "brief-payload-hash",
+        receivedAtUnixMs: new Date("2026-05-10T12:00:00.000Z").getTime() - 30_000,
+        validUntilUnixMs: new Date("2026-05-10T12:00:00.000Z").getTime() + 3_600_000
+      });
+
+      const deps: AssemblePairEvidenceBundleDeps = {
+        clock: { now: () => "2026-05-10T12:00:00.000Z" },
+        featureRepo: makeMockFeatureRepo({
+          listBundleCandidates: async () => [featureRow]
+        }),
+        normalizedRepo: makeMockNormalizedRepo({
+          listCandidates: async () => [],
+          findByIds: async () => [detNorm]
+        }),
+        rawRepo: makeMockRawRepo({
+          findByIds: async () => [detRaw],
+          findById: async () => detRaw
+        }),
+        contract: {
+          validateCanonicalizeAndHash: async () => makeCanonicalBundle()
+        },
+        bundleRepo: {
+          insertOrClassify: async () => ({ outcome: "inserted", row: makeBundleRow() }),
+          findById: async () => undefined,
+          findByPair: async () => [existingRowWithBrief],
+          findLatestByPair: async () => undefined
+        },
+        briefRepo
+      };
+
+      const prepareResult = await preparePairEvidenceBundle(deps, makeDefaultRequest());
+      expect("outcome" in prepareResult && prepareResult.outcome).toBe("identical_replay");
+      if ("outcome" in prepareResult && prepareResult.outcome === "identical_replay") {
+        expect(prepareResult.rowId).toBe(500);
+        expect(prepareResult.embeddedBrief).toEqual(persistedBrief);
       }
     });
 

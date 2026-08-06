@@ -51,6 +51,8 @@ import { buildPairRunId } from "./core-evidence-pipeline-policy.js";
 import type { EvidenceBundleV1 } from "../contracts/generated/evidence-bundle-v1.js";
 import type { PersistedResearchBrief } from "../contracts/research-brief.js";
 import { mapPersistedBriefToCanonicalBundle } from "../domain/brief/map-to-evidence-bundle.js";
+import { findPersistedBriefForBundle } from "./find-persisted-brief.js";
+import type { ResearchBriefRepo } from "../ports/brief-repo.js";
 
 export interface AssemblePairEvidenceBundleRequest {
   readonly pair: "SOL/USDC";
@@ -156,6 +158,7 @@ export interface AssemblePairEvidenceBundleDeps {
   readonly rawRepo: RawObservationRepo;
   readonly bundleRepo: EvidenceBundleRepo;
   readonly contract: EvidenceBundleContract;
+  readonly briefRepo?: ResearchBriefRepo;
 }
 
 const SUPPORTED_SCHEMA_VERSION = "evidence-bundle.v1";
@@ -581,12 +584,21 @@ export async function preparePairEvidenceBundle(
         Array.isArray(payloadObj.assessment.warnings)
           ? payloadObj.assessment.warnings.map((w: { message: string }) => w.message)
           : [];
+      const embeddedBrief = deps.briefRepo
+        ? await findPersistedBriefForBundle(
+            deps.briefRepo,
+            matchingRow.id,
+            matchingRow.payloadHash,
+            new Date(deps.clock.now()).getTime()
+          )
+        : undefined;
       return {
         outcome: "identical_replay",
         rowId: matchingRow.id,
         payloadHash: matchingRow.payloadHash,
         slotCount: slots.length,
-        warnings
+        warnings,
+        ...(embeddedBrief !== undefined ? { embeddedBrief } : {})
       };
     } else {
       return {
