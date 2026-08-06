@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildCronCreateArgs, buildCronEditArgs } from "../../src/domain/cron-command.js";
+import {
+  buildCronCreateArgs,
+  buildCronEditArgs,
+  READ_ONLY_CRON_CONSTRAINTS
+} from "../../src/domain/cron-command.js";
 
 const WORKING_DIRECTORY = "/opt/apps/sol-usdc-clmm-intelligence";
 
@@ -18,7 +22,7 @@ describe("buildCronCreateArgs", () => {
       "cron",
       "create",
       "0 7 * * *",
-      `Working directory for this task: ${WORKING_DIRECTORY} — run all shell commands from there (cd into it first).\n\nhello`,
+      `Working directory for this task: ${WORKING_DIRECTORY} — run all shell commands from there (cd into it first).\n\nhello\n\n${READ_ONLY_CRON_CONSTRAINTS}`,
       "--name",
       "clmm-daily",
       "--deliver",
@@ -74,7 +78,8 @@ describe("buildCronCreateArgs", () => {
     });
     const prompt = result.args[3]!;
     expect(prompt.startsWith("Working directory for this task: /opt/apps/example")).toBe(true);
-    expect(prompt.endsWith("do the thing")).toBe(true);
+    expect(prompt).toContain("do the thing");
+    expect(prompt.endsWith(READ_ONLY_CRON_CONSTRAINTS)).toBe(true);
   });
 
   it("formats delivery as channel:to when both delivery values are present", () => {
@@ -136,7 +141,7 @@ describe("buildCronEditArgs", () => {
         "edit",
         "job-123",
         "--prompt",
-        `Working directory for this task: ${WORKING_DIRECTORY} — run all shell commands from there (cd into it first).\n\nhello`,
+        `Working directory for this task: ${WORKING_DIRECTORY} — run all shell commands from there (cd into it first).\n\nhello\n\n${READ_ONLY_CRON_CONSTRAINTS}`,
         "--schedule",
         "0 7 * * *",
         "--deliver",

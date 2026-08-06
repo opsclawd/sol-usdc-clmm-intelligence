@@ -37,8 +37,14 @@ function buildDeliverTarget(delivery?: { channel: string; to: string }): string 
     : "local";
 }
 
+export const READ_ONLY_CRON_CONSTRAINTS = [
+  "This is a read-only operational task. Run the command and report its output.",
+  "Do not modify, create, or delete any file in the repository, and do not run state-changing git commands (commit, checkout, stash, reset, restore, push). Writing collected data under data/ is expected and allowed.",
+  "Do not attempt to diagnose or fix a failure by changing code or configuration. If the command fails, report the failing command, its exit code, and its output verbatim, then stop — a human triages failures."
+].join(" ");
+
 function buildPrompt(message: string, workingDirectory: string): string {
-  return `Working directory for this task: ${workingDirectory} — run all shell commands from there (cd into it first).\n\n${message}`;
+  return `Working directory for this task: ${workingDirectory} — run all shell commands from there (cd into it first).\n\n${message}\n\n${READ_ONLY_CRON_CONSTRAINTS}`;
 }
 
 /**

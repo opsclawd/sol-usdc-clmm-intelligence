@@ -1,3 +1,5 @@
 hermes cron create '0 7 * * *' 'Working directory for this task: /opt/apps/sol-usdc-clmm-intelligence — run all shell commands from there (cd into it first).
 
-Daily routine.' --name 'clmm-daily' --deliver 'local'
+Daily routine.
+
+This is a read-only operational task. Run the command and report its output. Do not modify, create, or delete any file in the repository, and do not run state-changing git commands (commit, checkout, stash, reset, restore, push). Writing collected data under data/ is expected and allowed. Do not attempt to diagnose or fix a failure by changing code or configuration. If the command fails, report the failing command, its exit code, and its output verbatim, then stop — a human triages failures.' --name 'clmm-daily' --deliver 'local'
