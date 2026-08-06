@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { syncCron } from "../../src/application/sync-cron.js";
+import { READ_ONLY_CRON_CONSTRAINTS } from "../../src/domain/cron-command.js";
 import { FakeTextReader, FakeEnv, FakeCommandRunner } from "../fakes/index.js";
 
 const HOME = "/home/hermes";
@@ -45,7 +46,8 @@ describe("syncCron", () => {
         "edit",
         "existing-a",
         "--prompt",
-        "Working directory for this task: /opt/apps/sol-usdc-clmm-intelligence — run all shell commands from there (cd into it first).\n\nmsg",
+        "Working directory for this task: /opt/apps/sol-usdc-clmm-intelligence — run all shell commands from there (cd into it first).\n\nmsg\n\n" +
+          READ_ONLY_CRON_CONSTRAINTS,
         "--schedule",
         "0 7 * * *",
         "--deliver",
@@ -58,7 +60,8 @@ describe("syncCron", () => {
         "cron",
         "create",
         "0 18 * * 0",
-        "Working directory for this task: /opt/apps/sol-usdc-clmm-intelligence — run all shell commands from there (cd into it first).\n\nmsg",
+        "Working directory for this task: /opt/apps/sol-usdc-clmm-intelligence — run all shell commands from there (cd into it first).\n\nmsg\n\n" +
+          READ_ONLY_CRON_CONSTRAINTS,
         "--name",
         "b",
         "--deliver",
