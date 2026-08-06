@@ -347,30 +347,27 @@ All seven canonical features are derived by code from normalized source observat
 
 ## Evidence Bundle Assembly
 
-The evidence bundle assembly layer combines derived features, raw observations, and contextual evidence into a canonical, signable payload for regime-engine.
+The evidence bundle assembly layer combines derived features, raw observations, and contextual evidence into a canonical, signable payload for regime-engine following the two-phase production sequence: `prepare -> generate/reuse brief -> finalize -> persist brief link -> publish`. Operators execute `pnpm run:core-evidence-pipeline` for end-to-end assembly and publication.
 
 ### Architecture
 
 ```text
-derived_features ──────────────────>│
-                                   │
-raw_observations ──────────────────>├──> selectEvidenceFeatureSlots()
-                                   │
-normalized_observations ───────────>│
-                                   v
-                           classifyEvidenceBundleQuality()
-                                   │
-                                   v
-                           verifyEvidenceLineage()
-                                   │
-                                   v
-                    assembleEvidenceBundleCandidate()
-                                   │
-                                   v
-              contract.validateCanonicalizeAndHash()
-                                   │
-                                   v
-                           bundleRepo.insertOrClassify()
+derived_features ────────┐
+raw_observations ────────┼──> prepareEvidenceBundle()
+normalized_observations ─┘       (select slots -> classify quality -> verify lineage -> contract validate)
+                                 │
+                                 v
+                         generate / reuse brief
+                                 │
+                                 v
+                         finalizeEvidenceBundle()
+                                 (embed brief -> validate canonical -> bundleRepo.insertOrClassify)
+                                 │
+                                 v
+                         persist brief link
+                                 │
+                                 v
+                         publish payload to regime-engine
 ```
 
 ### Persistence Contract
