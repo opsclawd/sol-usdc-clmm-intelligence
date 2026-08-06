@@ -102,3 +102,160 @@ describe("clock skew diagnostics SQL script", () => {
     expect(sql).toContain("ORDER BY received_at_unix_ms DESC");
   });
 });
+
+export interface ClockSkewEvidence {
+  db: {
+    skewFailedRows: number;
+    providerCount: number;
+  } | null;
+  logs: {
+    matchingErrorsPresent: boolean;
+    confirmedWindowAndService: boolean;
+    providersWithLogErrors: string[];
+  } | null;
+  hostClock: {
+    ntpSynchronized: boolean;
+    ntpHealthy: boolean;
+  } | null;
+}
+
+export type ClockSkewDisposition =
+  | "NO_SKEW"
+  | "HOST_CLOCK_DRIFT"
+  | "PROVIDER_TIMESTAMP_SEMANTICS"
+  | "INCONCLUSIVE";
+
+export function classifyClockSkewEvidence(evidence: ClockSkewEvidence): ClockSkewDisposition {
+  if (!evidence.db || !evidence.logs || !evidence.hostClock) {
+    return "INCONCLUSIVE";
+  }
+
+  if (!evidence.logs.confirmedWindowAndService) {
+    return "INCONCLUSIVE";
+  }
+
+  const { db, logs, hostClock } = evidence;
+
+  if (
+    db.skewFailedRows === 0 &&
+    !logs.matchingErrorsPresent &&
+    hostClock.ntpSynchronized &&
+    hostClock.ntpHealthy
+  ) {
+    return "NO_SKEW";
+  }
+
+  if (
+    db.skewFailedRows > 0 &&
+    db.providerCount >= 2 &&
+    logs.matchingErrorsPresent &&
+    logs.providersWithLogErrors.length >= 2 &&
+    (!hostClock.ntpSynchronized || !hostClock.ntpHealthy)
+  ) {
+    return "HOST_CLOCK_DRIFT";
+  }
+
+  if (
+    db.skewFailedRows > 0 &&
+    db.providerCount === 1 &&
+    logs.matchingErrorsPresent &&
+    logs.providersWithLogErrors.length === 1 &&
+    hostClock.ntpSynchronized &&
+    hostClock.ntpHealthy
+  ) {
+    return "PROVIDER_TIMESTAMP_SEMANTICS";
+  }
+
+  return "INCONCLUSIVE";
+}
+
+describe("clock skew fail-closed decision table", () => {
+  it("classifies healthy zero-violation evidence as NO_SKEW", () => {
+    const evidence: ClockSkewEvidence = {
+      db: { skewFailedRows: 0, providerCount: 0 },
+      logs: {
+        matchingErrorsPresent: false,
+        confirmedWindowAndService: true,
+        providersWithLogErrors: []
+      },
+      hostClock: { ntpSynchronized: true, ntpHealthy: true }
+    };
+    expect(classifyClockSkewEvidence(evidence)).toBe("NO_SKEW");
+  });
+
+  it("classifies cross-provider skew with unhealthy NTP as HOST_CLOCK_DRIFT", () => {
+    const evidence: ClockSkewEvidence = {
+      db: { skewFailedRows: 15, providerCount: 2 },
+      logs: {
+        matchingErrorsPresent: true,
+        confirmedWindowAndService: true,
+        providersWithLogErrors: ["pyth-hermes", "jupiter-quote"]
+      },
+      hostClock: { ntpSynchronized: false, ntpHealthy: false }
+    };
+    expect(classifyClockSkewEvidence(evidence)).toBe("HOST_CLOCK_DRIFT");
+  });
+
+  it("classifies isolated skew with healthy NTP as PROVIDER_TIMESTAMP_SEMANTICS", () => {
+    const evidence: ClockSkewEvidence = {
+      db: { skewFailedRows: 5, providerCount: 1 },
+      logs: {
+        matchingErrorsPresent: true,
+        confirmedWindowAndService: true,
+        providersWithLogErrors: ["pyth-hermes"]
+      },
+      hostClock: { ntpSynchronized: true, ntpHealthy: true }
+    };
+    expect(classifyClockSkewEvidence(evidence)).toBe("PROVIDER_TIMESTAMP_SEMANTICS");
+  });
+
+  it("classifies incomplete, unhandled, or conflicting evidence as INCONCLUSIVE", () => {
+    expect(
+      classifyClockSkewEvidence({
+        db: null,
+        logs: {
+          matchingErrorsPresent: false,
+          confirmedWindowAndService: true,
+          providersWithLogErrors: []
+        },
+        hostClock: { ntpSynchronized: true, ntpHealthy: true }
+      })
+    ).toBe("INCONCLUSIVE");
+
+    expect(
+      classifyClockSkewEvidence({
+        db: { skewFailedRows: 0, providerCount: 0 },
+        logs: {
+          matchingErrorsPresent: false,
+          confirmedWindowAndService: true,
+          providersWithLogErrors: []
+        },
+        hostClock: { ntpSynchronized: false, ntpHealthy: false }
+      })
+    ).toBe("INCONCLUSIVE");
+
+    expect(
+      classifyClockSkewEvidence({
+        db: { skewFailedRows: 10, providerCount: 1 },
+        logs: {
+          matchingErrorsPresent: false,
+          confirmedWindowAndService: true,
+          providersWithLogErrors: []
+        },
+        hostClock: { ntpSynchronized: true, ntpHealthy: true }
+      })
+    ).toBe("INCONCLUSIVE");
+
+    expect(
+      classifyClockSkewEvidence({
+        db: { skewFailedRows: 20, providerCount: 2 },
+        logs: {
+          matchingErrorsPresent: true,
+          confirmedWindowAndService: true,
+          providersWithLogErrors: ["pyth-hermes", "jupiter-quote"]
+        },
+        hostClock: { ntpSynchronized: true, ntpHealthy: true }
+      })
+    ).toBe("INCONCLUSIVE");
+  });
+});
