@@ -26,7 +26,12 @@ import type { EvidenceBundleV1 } from "../../src/contracts/generated/evidence-bu
 import type {
   AssembleEvidenceBundleRequest,
   AssembleEvidenceBundleSuccess,
-  AssembleEvidenceBundleResult
+  AssembleEvidenceBundleResult,
+  AssembleEvidenceBundleDeps
+} from "../../src/application/assemble-evidence-bundle.js";
+import {
+  prepareEvidenceBundle,
+  finalizeEvidenceBundle
 } from "../../src/application/assemble-evidence-bundle.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 import type { ProvenanceRef, Source, ObservationKind } from "../../src/contracts/taxonomy.js";
@@ -170,6 +175,15 @@ function assertSuccess(result: AssembleEvidenceBundleResult): AssembleEvidenceBu
     throw new Error(`Unexpected error result: ${result.code}: ${msg}`);
   }
   return result;
+}
+
+async function prepareAndFinalizePositionWithoutBriefForTest(
+  deps: AssembleEvidenceBundleDeps,
+  request: AssembleEvidenceBundleRequest
+): Promise<AssembleEvidenceBundleResult> {
+  const prepared = await prepareEvidenceBundle(deps, request);
+  if ("code" in prepared || prepared.outcome !== "prepared") return prepared;
+  return finalizeEvidenceBundle(deps, prepared.prepared, undefined);
 }
 
 class RecordingClock implements Clock {
@@ -537,9 +551,6 @@ describe("assembleEvidenceBundle with contextual events", () => {
 
   describe("normalizedRepo.listCandidates is called with correct query", () => {
     it("requests exactly macro-calendar-api scheduled_event and solana-status-api protocol_incident", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -577,7 +588,7 @@ describe("assembleEvidenceBundle with contextual events", () => {
       seedRaw([scheduledRawRow, incidentRawRow]);
 
       const request = makeRequest();
-      await assembleEvidenceBundle(
+      await prepareAndFinalizePositionWithoutBriefForTest(
         { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
         request
       );
@@ -632,9 +643,6 @@ describe("assembleEvidenceBundle with contextual events", () => {
     });
 
     it("requests receivedAtOrAfterUnixMs as evaluationTimeUnixMs minus 7 days", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -649,7 +657,7 @@ describe("assembleEvidenceBundle with contextual events", () => {
       seedFeature([featureRow]);
 
       const request = makeRequest({ evaluationTimeUnixMs: EVAL_MS });
-      await assembleEvidenceBundle(
+      await prepareAndFinalizePositionWithoutBriefForTest(
         { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
         request
       );
@@ -663,9 +671,6 @@ describe("assembleEvidenceBundle with contextual events", () => {
 
   describe("contextual raw/normalized rows are loaded into lineage", () => {
     it("contextual normalized observations are included in lineage before contract validation", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -694,7 +699,7 @@ describe("assembleEvidenceBundle with contextual events", () => {
 
       const request = makeRequest();
       const result = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -709,9 +714,6 @@ describe("assembleEvidenceBundle with contextual events", () => {
 
   describe("context supplement only", () => {
     it("does not emit a bundle from contextual events alone", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       seedRaw([]);
 
       const scheduledPayload = makeScheduledEventPayload({ status: "SCHEDULED" });
@@ -729,7 +731,7 @@ describe("assembleEvidenceBundle with contextual events", () => {
 
       const request = makeRequest();
       const result = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -743,9 +745,6 @@ describe("assembleEvidenceBundle with contextual events", () => {
 
   describe("query degradation", () => {
     it("degrades contextual query failure to an empty event list", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -763,7 +762,7 @@ describe("assembleEvidenceBundle with contextual events", () => {
 
       const request = makeRequest();
       const result = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
