@@ -1161,4 +1161,35 @@ describe("runCoreEvidencePipeline - Pair Orchestration", () => {
     expect(posReq.correlationId).toBe("run:shared-run-abc:position:pos-1");
     expect(pairReq.correlationId).not.toEqual(posReq.correlationId);
   });
+
+  it("does not fall back to single-phase pair assembly when pair preparation fails", async () => {
+    let publishCalled = false;
+
+    const base = createBaseServices(1770000000000);
+    const services: CoreEvidencePipelineServices = {
+      ...base,
+      preparePair: async () => {
+        throw new Error("pair prepare failed");
+      },
+      publish: async () => {
+        publishCalled = true;
+        return { outcome: "created", bundleId: 999, attemptCount: 1 };
+      }
+    };
+
+    const deps: RunCoreEvidencePipelineDeps = {
+      clock: new QueuedClock(["2026-07-30T12:00:00.000Z"]),
+      runIdFactory: new FakeRunIdFactory(["run-123"]),
+      lock: new FakePipelineRunLock(),
+      openResources: async () => ({ connection: new FakeDbConnection(), services })
+    };
+
+    const result = await runCoreEvidencePipeline(deps, createDefaultConfig([]));
+
+    expect(result.pair).toBeDefined();
+    expect(result.pair?.status).toBe("failed");
+    expect(result.pair?.bundleId).toBeNull();
+    expect(result.pair?.diagnostic?.code).toBe("ASSEMBLY_FAILED");
+    expect(publishCalled).toBe(false);
+  });
 });

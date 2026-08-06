@@ -1,5 +1,6 @@
 import {
-  assembleEvidenceBundle,
+  prepareEvidenceBundle,
+  finalizeEvidenceBundle,
   type AssembleEvidenceBundleDeps,
   type AssembleEvidenceBundleRequest,
   type AssembleEvidenceBundleResult
@@ -19,8 +20,14 @@ export function assembleEvidenceBundleJob(
 ): (request: AssembleEvidenceBundleJobRequest) => Promise<AssembleEvidenceBundleJobResult> {
   return async (request) => {
     try {
-      const result = await assembleEvidenceBundle(deps, request);
-      return result;
+      const preparedResult = await prepareEvidenceBundle(deps, request);
+      if ("code" in preparedResult) {
+        return preparedResult;
+      }
+      if (preparedResult.outcome === "prepared") {
+        return await finalizeEvidenceBundle(deps, preparedResult.prepared);
+      }
+      return preparedResult;
     } catch (err) {
       throw new Error(`Evidence bundle assembly failed: ${err}`);
     }

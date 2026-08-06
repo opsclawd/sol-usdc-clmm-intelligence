@@ -1025,4 +1025,36 @@ describe("runCoreEvidencePipeline - Per-Position Targeting", () => {
       expect(res.status).toBe("failed");
     }
   });
+
+  it("does not fall back to single-phase position assembly when position preparation fails", async () => {
+    let publishCalled = false;
+
+    const base = createBaseServices(new Date("2026-07-30T12:00:00.000Z").getTime());
+    const services: CoreEvidencePipelineServices = {
+      ...base,
+      preparePair: async () => ({ outcome: "no_bundle" }),
+      prepare: async () => {
+        throw new Error("position prepare failed");
+      },
+      publish: async () => {
+        publishCalled = true;
+        return { outcome: "created", bundleId: 999, attemptCount: 1 };
+      }
+    };
+
+    const deps: RunCoreEvidencePipelineDeps = {
+      clock: new QueuedClock(["2026-07-30T12:00:00.000Z"]),
+      runIdFactory: new FakeRunIdFactory(["run-123"]),
+      lock: new FakePipelineRunLock(),
+      openResources: async () => ({ connection: new FakeDbConnection(), services })
+    };
+
+    const result = await runCoreEvidencePipeline(deps, createDefaultConfig(["pos-1"]));
+
+    expect(result.positions).toHaveLength(1);
+    expect(result.positions[0]?.status).toBe("failed");
+    expect(result.positions[0]?.bundleId).toBeNull();
+    expect(result.positions[0]?.diagnostic?.code).toBe("ASSEMBLY_FAILED");
+    expect(publishCalled).toBe(false);
+  });
 });

@@ -33,6 +33,15 @@ import {
   type AssembleEvidenceBundleError
 } from "../../src/application/assemble-evidence-bundle.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
+
+async function assembleEvidenceBundle(
+  deps: AssembleEvidenceBundleDeps,
+  request: AssembleEvidenceBundleRequest
+): Promise<AssembleEvidenceBundleResult> {
+  const prepared = await prepareEvidenceBundle(deps, request);
+  if ("code" in prepared || prepared.outcome !== "prepared") return prepared;
+  return finalizeEvidenceBundle(deps, prepared.prepared, undefined);
+}
 import type { ProvenanceRef, Source } from "../../src/contracts/taxonomy.js";
 import { makeClmmBundle, makePoolData, makePositionData } from "../fixtures/clmm-bundle.js";
 import type { SupportResistancePayloadV1 } from "../../src/contracts/support-resistance.js";
@@ -866,9 +875,6 @@ describe("assembleEvidenceBundle contextual integration", () => {
   });
 
   it("returns a lineage error when selected contextual source or hash provenance mismatches", async () => {
-    const { assembleEvidenceBundle } =
-      await import("../../src/application/assemble-evidence-bundle.js");
-
     const clmmRawRow = makeRawRow({ id: 1 });
     const srRawRow: RawObservationRow = {
       id: 100,
@@ -931,9 +937,6 @@ describe("assembleEvidenceBundle contextual integration", () => {
   });
 
   it("continues with empty contextual arrays when contextual querying fails", async () => {
-    const { assembleEvidenceBundle } =
-      await import("../../src/application/assemble-evidence-bundle.js");
-
     const clmmRawRow = makeRawRow({ id: 1 });
     rawRepo.store.push(clmmRawRow);
 
@@ -964,9 +967,6 @@ describe("assembleEvidenceBundle contextual integration", () => {
   });
 
   it("persists a contract-valid position bundle with derivative claims", async () => {
-    const { assembleEvidenceBundle } =
-      await import("../../src/application/assemble-evidence-bundle.js");
-
     const clmmRawRow = makeRawRow({ id: 1 });
     const fundingRawRow = makeRawRow({
       id: 101,
@@ -1101,9 +1101,6 @@ describe("assembleEvidenceBundle contextual integration", () => {
   });
 
   it("marks derivative coverage present exactly when a derivative claim is eligible", async () => {
-    const { assembleEvidenceBundle } =
-      await import("../../src/application/assemble-evidence-bundle.js");
-
     const clmmRawRow = makeRawRow({ id: 1 });
     const basisRawRow = makeRawRow({
       id: 104,

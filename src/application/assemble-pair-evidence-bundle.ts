@@ -730,17 +730,3 @@ export async function finalizePairEvidenceBundle(
 
   return { outcome: "no_bundle" };
 }
-
-export async function assemblePairEvidenceBundle(
-  deps: AssemblePairEvidenceBundleDeps,
-  request: AssemblePairEvidenceBundleRequest
-): Promise<AssemblePairEvidenceBundleResult> {
-  const preparedResult = await preparePairEvidenceBundle(deps, request);
-  if ("code" in preparedResult) {
-    return preparedResult;
-  }
-  if (preparedResult.outcome !== "prepared") {
-    return preparedResult;
-  }
-  return finalizePairEvidenceBundle(deps, preparedResult.prepared, undefined);
-}

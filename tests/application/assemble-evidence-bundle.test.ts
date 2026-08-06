@@ -26,12 +26,26 @@ import type { EvidenceBundleV1 } from "../../src/contracts/generated/evidence-bu
 import type {
   AssembleEvidenceBundleRequest,
   AssembleEvidenceBundleResult,
+  AssembleEvidenceBundleDeps,
   PrepareEvidenceBundleResult,
   AssembleEvidenceBundleError
+} from "../../src/application/assemble-evidence-bundle.js";
+import {
+  prepareEvidenceBundle,
+  finalizeEvidenceBundle
 } from "../../src/application/assemble-evidence-bundle.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 import type { ProvenanceRef, Source, ObservationKind } from "../../src/contracts/taxonomy.js";
 import { makeClmmBundle, makePoolData, makePositionData } from "../fixtures/clmm-bundle.js";
+
+async function prepareAndFinalizePositionWithoutBriefForTest(
+  deps: AssembleEvidenceBundleDeps,
+  request: AssembleEvidenceBundleRequest
+): Promise<AssembleEvidenceBundleResult> {
+  const prepared = await prepareEvidenceBundle(deps, request);
+  if ("code" in prepared || prepared.outcome !== "prepared") return prepared;
+  return finalizeEvidenceBundle(deps, prepared.prepared, undefined);
+}
 
 const EPOCH = "2024-01-01T00:00:00.000Z";
 const EVAL_MS = new Date(EPOCH).getTime();
@@ -540,9 +554,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("persists one schema-valid complete deterministic bundle", () => {
     it("selection, lineage, quality, assembly, contract validation, and insert occur in that order", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -558,7 +569,7 @@ describe("assembleEvidenceBundle", () => {
 
       const request = makeRequest();
       const result = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -581,9 +592,6 @@ describe("assembleEvidenceBundle", () => {
     });
 
     it("gives bundles from different positions in the same pipeline run distinct runIds", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       seedRaw([makeRawRow({ id: 1 }), makeRawRow({ id: 2, positionId: "pos-2" })]);
       seedFeature([
         makeDerivedFeatureRow({
@@ -617,13 +625,13 @@ describe("assembleEvidenceBundle", () => {
       };
 
       assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract: capturingContract },
           requestPos1
         )
       );
       assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract: capturingContract },
           requestPos2
         )
@@ -653,9 +661,6 @@ describe("assembleEvidenceBundle", () => {
     });
 
     it("insertOrClassify is called exactly once on successful assembly", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -670,7 +675,7 @@ describe("assembleEvidenceBundle", () => {
       seedFeature([featureRow]);
 
       const request = makeRequest();
-      await assembleEvidenceBundle(
+      await prepareAndFinalizePositionWithoutBriefForTest(
         { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
         request
       );
@@ -681,9 +686,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("queries the configured contextual source matrix", () => {
     it("queries Birdeye whale swaps and preserves the contextual source matrix", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       seedRaw([makeRawRow({ id: 1 })]);
       seedFeature([
         makeDerivedFeatureRow({
@@ -696,7 +698,7 @@ describe("assembleEvidenceBundle", () => {
         })
       ]);
 
-      await assembleEvidenceBundle(
+      await prepareAndFinalizePositionWithoutBriefForTest(
         { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
         makeRequest()
       );
@@ -722,9 +724,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("returns identical_replay without rebuilding mutable run context", () => {
     it("an explicit repeated request returns the original persisted row", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -741,7 +740,7 @@ describe("assembleEvidenceBundle", () => {
       const request = makeRequest();
 
       const result1 = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -765,7 +764,7 @@ describe("assembleEvidenceBundle", () => {
       };
 
       const result2 = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -780,9 +779,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("returns a typed conflict for same logical identity and different canonical content", () => {
     it("the use case never retries, overwrites, or hides the repository conflict", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -799,7 +795,7 @@ describe("assembleEvidenceBundle", () => {
       const request = makeRequest();
 
       const result1 = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -810,7 +806,7 @@ describe("assembleEvidenceBundle", () => {
       contract.overridePayloadHash = "different-payload-hash-value";
 
       const result2 = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -825,9 +821,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("persists nothing on invalid request lineage schema or canonicalization", () => {
     it("every hard failure occurs before insertOrClassify", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -846,7 +839,7 @@ describe("assembleEvidenceBundle", () => {
 
       const request = makeRequest();
 
-      const result = await assembleEvidenceBundle(
+      const result = await prepareAndFinalizePositionWithoutBriefForTest(
         { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
         request
       );
@@ -858,9 +851,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("loads only lineage ids referenced by the selected slots", () => {
     it("bulk reads are bounded and unrelated observations do not enter the bundle", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const normRow = makeNormalizedRow({ id: 10, rawObservationId: 20 });
       seedNormalized([normRow]);
 
@@ -880,7 +870,7 @@ describe("assembleEvidenceBundle", () => {
 
       const request = makeRequest();
 
-      await assembleEvidenceBundle(
+      await prepareAndFinalizePositionWithoutBriefForTest(
         { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
         request
       );
@@ -896,9 +886,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("does not call HTTP LLM publisher or policy dependencies", () => {
     it("the dependency object contains only feature, normalized, raw, bundle, and contract ports", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -923,7 +910,9 @@ describe("assembleEvidenceBundle", () => {
         contract
       };
 
-      const result = assertSuccess(await assembleEvidenceBundle(deps, request));
+      const result = assertSuccess(
+        await prepareAndFinalizePositionWithoutBriefForTest(deps, request)
+      );
 
       expect(result.outcome).toBeDefined();
       expect(result.outcome).toBe("persisted");
@@ -932,9 +921,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("returns no_bundle when no feature is usable", () => {
     it("no contract or bundle repository write occurs unless the pinned contract explicitly mandates a durable unavailable bundle", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       seedRaw([]);
 
       const unavailableFeature = makeDerivedFeatureRow({
@@ -952,7 +938,7 @@ describe("assembleEvidenceBundle", () => {
       const request = makeRequest();
 
       const result = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -966,9 +952,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("persists a schema-valid partial bundle with explicit missing warnings", () => {
     it("one and multiple missing features never become zero and still persist when at least one usable feature exists and the contract permits it", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -987,7 +970,7 @@ describe("assembleEvidenceBundle", () => {
       const request = makeRequest();
 
       const result = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -999,9 +982,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("preserves partial unavailable stale and nullable-brief semantics", () => {
     it("each acceptance-criteria case reaches the contract service with the exact canonical representation", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -1021,7 +1001,7 @@ describe("assembleEvidenceBundle", () => {
       const request = makeRequest();
 
       const result = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -1284,6 +1264,23 @@ describe("assembleEvidenceBundle", () => {
       if (prepareResult.outcome === "conflict") {
         expect(prepareResult.rowId).toBe(99);
       }
+    });
+
+    it("returns prepare error directly without invoking finalize or persisting when prepare fails", async () => {
+      const { prepareEvidenceBundle } =
+        await import("../../src/application/assemble-evidence-bundle.js");
+
+      const request = makeRequest();
+
+      const prepareResult = await prepareEvidenceBundle(
+        { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+        request
+      );
+
+      expect("outcome" in prepareResult && prepareResult.outcome).toBe("no_bundle");
+      expect(bundleRepo.store).toHaveLength(0);
+      expect(executionLog).not.toContain("contract.validateCanonicalizeAndHash");
+      expect(executionLog).not.toContain("bundle.insertOrClassify");
     });
   });
 });

@@ -438,16 +438,12 @@ Each derived feature row is stored in `intelligence.derived_features` with:
 
 The system uses `derivation_key` as a idempotency key. Re-running derivation with identical inputs produces a replay result with the same `derivation_key` — no duplicate rows are created. The transaction conflict recovery preserves caller order.
 
-## Evidence Bundle Assembly (`pnpm assemble:bundle`)
+## Evidence Bundle Assembly
 
-The `assemble:bundle` command assembles deterministic evidence bundles from derived features and observations. It is a pure function: identical inputs produce bit-for-bit identical outputs.
-
-### Required Request File
-
-The script accepts one argument: a path to a JSON request file.
+Evidence bundle assembly executes as part of `pnpm run:core-evidence-pipeline` using the two-phase sequence: `prepare -> generate/reuse brief -> finalize -> persist brief link -> publish`.
 
 ```bash
-pnpm assemble:bundle data/assembly-request.json
+pnpm run:core-evidence-pipeline
 ```
 
 ### Request File Format
@@ -575,7 +571,7 @@ The assembler selects up to seven canonical feature slots:
 | Structured validation, lineage, contract, or persistence error |         1 | `{"outcome":"error","warnings":["<CODE>"]}` (pretty-printed)             | Assembly failed before a usable new outcome was produced.                  |
 | Malformed request or uncaught runtime error                    |         1 | Diagnostic on stderr; structured return where the runner can provide one | Fix the request or infrastructure failure before retrying.                 |
 
-Deterministic orchestration must inspect the typed `assembleEvidenceBundle` result and must not use the CLI exit code as a substitute for outcome handling.
+Deterministic orchestration must inspect typed assembly results and must not use CLI exit codes as a substitute for outcome handling.
 
 ### Replay Behavior
 
@@ -1163,9 +1159,9 @@ To produce bounded live acceptance proof:
    ```
 2. Record the sanitized run ID, execution status, and event counts from stdout. Never log provider API keys.
 3. Query the database to verify a new `helius-api` / `whale_transfer` normalized observation row exists with `received_at_unix_ms` at or after the recorded run start time.
-4. Run the evidence bundle assembly workflow:
+4. Run the core evidence pipeline workflow:
    ```bash
-   pnpm assemble:bundle data/assembly-request.json
+   pnpm run:core-evidence-pipeline
    ```
 5. Verify the latest assembled payload reports `assessment.coverage.flows` as `partial` or `available`.
 

@@ -150,6 +150,7 @@ export type PrepareEvidenceBundleSuccess =
       readonly payloadHash: string;
       readonly slotCount: number;
       readonly warnings: readonly string[];
+      readonly embeddedBrief?: PersistedResearchBrief;
     }
   | { readonly outcome: "conflict"; readonly rowId: number; readonly incomingPayloadHash: string }
   | { readonly outcome: "no_bundle" };
@@ -766,18 +767,4 @@ export async function finalizeEvidenceBundle(
   }
 
   return { outcome: "no_bundle" };
-}
-
-export async function assembleEvidenceBundle(
-  deps: AssembleEvidenceBundleDeps,
-  request: AssembleEvidenceBundleRequest
-): Promise<AssembleEvidenceBundleResult> {
-  const preparedResult = await prepareEvidenceBundle(deps, request);
-  if ("code" in preparedResult) {
-    return preparedResult;
-  }
-  if (preparedResult.outcome !== "prepared") {
-    return preparedResult;
-  }
-  return finalizeEvidenceBundle(deps, preparedResult.prepared, undefined);
 }

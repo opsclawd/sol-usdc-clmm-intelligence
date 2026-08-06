@@ -1296,5 +1296,35 @@ describe("assemblePairEvidenceBundle", () => {
         expect(withBriefPayload.researchBrief?.briefId).toBe("brief-1");
       }
     });
+
+    it("returns prepare error directly without invoking finalize or persisting when pair prepare fails", async () => {
+      const featureRepo = makeMockFeatureRepo({
+        listBundleCandidates: async () => []
+      });
+      const normalizedRepo = makeMockNormalizedRepo({
+        listCandidates: async () => []
+      });
+      const rawRepo = makeMockRawRepo();
+      let insertCalled = false;
+      const bundleRepo: EvidenceBundleRepo = {
+        insertOrClassify: async () => {
+          insertCalled = true;
+          return { outcome: "inserted", row: makeBundleRow() };
+        },
+        findById: async () => undefined,
+        findByPair: async () => [],
+        findLatestByPair: async () => undefined
+      };
+      const contract: EvidenceBundleContract = {
+        validateCanonicalizeAndHash: async () => makeCanonicalBundle()
+      };
+      const clock: Clock = { now: () => "2026-05-10T12:00:00.000Z" };
+
+      const deps = { featureRepo, normalizedRepo, rawRepo, bundleRepo, contract, clock };
+
+      const prepareResult = await preparePairEvidenceBundle(deps, makeDefaultRequest());
+      expect("outcome" in prepareResult && prepareResult.outcome).toBe("no_bundle");
+      expect(insertCalled).toBe(false);
+    });
   });
 });
