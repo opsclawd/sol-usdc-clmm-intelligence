@@ -73,13 +73,13 @@ function makeQualityInput(
 
 describe("classifyEvidenceBundleQuality", () => {
   describe("classifies all seven fresh available slots as complete deterministic coverage", () => {
-    it("seven fresh available slots = partial while context and brief are absent overall", () => {
+    it("seven fresh available slots = complete even when context and brief are absent overall", () => {
       const slots = makeSlotsAllAvailable();
       const input = makeQualityInput(slots);
 
       const result = classifyEvidenceBundleQuality(input);
 
-      expect(result.quality).toBe("partial");
+      expect(result.quality).toBe("complete");
       expect(result.coverage.deterministic).toBe("available");
       expect(result.coverage.supportResistance).toBe("unavailable");
       expect(result.coverage.flows).toBe("unavailable");
@@ -116,7 +116,7 @@ describe("classifyEvidenceBundleQuality", () => {
     ] as const;
 
     it.each(contextualFamilyCases)(
-      "caps complete deterministic quality at partial when %s is unavailable",
+      "keeps complete quality even when %s is unavailable",
       (coverageFamily, inputFlag) => {
         const input = makeQualityInput(makeSlotsAllAvailable(), {
           hasSupportResistance: true,
@@ -130,7 +130,7 @@ describe("classifyEvidenceBundleQuality", () => {
 
         const result = classifyEvidenceBundleQuality(input);
 
-        expect(result.quality).toBe("partial");
+        expect(result.quality).toBe("complete");
         expect(result.coverage.deterministic).toBe("available");
         expect(result.coverage[coverageFamily]).toBe("unavailable");
       }

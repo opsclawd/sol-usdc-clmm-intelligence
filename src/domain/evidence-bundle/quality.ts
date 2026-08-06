@@ -136,17 +136,6 @@ function computeQualityLevel(
   return "complete";
 }
 
-function hasCompleteContextualCoverage(input: EvidenceQualityInput): boolean {
-  return (
-    input.hasSupportResistance &&
-    input.hasFlows &&
-    input.hasDerivatives &&
-    input.hasEvents &&
-    input.hasNewsRegulatory &&
-    input.hasResearchBrief
-  );
-}
-
 function buildWarnings(
   summaries: readonly SlotQualitySummary[],
   input: EvidenceQualityInput,
@@ -310,11 +299,7 @@ export function classifyEvidenceBundleQuality(input: EvidenceQualityInput): Evid
   ).length;
   const noUsableFeatures = usableCount === 0;
 
-  const deterministicQuality = computeQualityLevel(slotQualitySummaries, allowNoUsableFeatures);
-  const quality =
-    deterministicQuality === "complete" && !hasCompleteContextualCoverage(input)
-      ? "partial"
-      : deterministicQuality;
+  const quality = computeQualityLevel(slotQualitySummaries, allowNoUsableFeatures);
   const overallConfidenceBps = computeOverallConfidence(slotQualitySummaries);
   const warnings = buildWarnings(slotQualitySummaries, input, noUsableFeatures);
 
