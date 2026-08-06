@@ -33,7 +33,6 @@ import type { PersistedResearchBrief } from "../../src/contracts/research-brief.
 import { MVP_ACCEPTED_CALCULATOR_VERSIONS } from "../../src/domain/derived-feature/constants.js";
 import { EVIDENCE_BUNDLE_SELECTION_VERSION } from "../../src/domain/evidence-bundle/select.js";
 import {
-  assemblePairEvidenceBundle,
   preparePairEvidenceBundle,
   finalizePairEvidenceBundle,
   type AssemblePairEvidenceBundleRequest,
@@ -879,7 +878,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
 
     expect("outcome" in result && result.outcome).toBe("no_bundle");
     expect(contractCalled).toBe(false);
@@ -944,7 +943,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
 
     expect("code" in result && result.code).toBe("LINEAGE_ERROR");
     expect(contractCalled).toBe(false);
@@ -981,7 +980,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
 
     expect("outcome" in result && result.outcome).toBe("identical_replay");
     if ("outcome" in result && result.outcome === "identical_replay") {
@@ -1021,7 +1020,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
 
     expect("outcome" in result && result.outcome).toBe("conflict");
     if ("outcome" in result && result.outcome === "conflict") {
@@ -1065,7 +1064,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const contractResult = await assemblePairEvidenceBundle(
+    const contractResult = await prepareAndFinalizePairWithoutBriefForTest(
       contractErrorDeps,
       makeDefaultRequest()
     );
@@ -1099,7 +1098,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const persistenceResult = await assemblePairEvidenceBundle(
+    const persistenceResult = await prepareAndFinalizePairWithoutBriefForTest(
       persistenceErrorDeps,
       makeDefaultRequest()
     );
