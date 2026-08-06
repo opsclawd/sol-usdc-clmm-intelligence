@@ -23,11 +23,14 @@ import type { RawInsertOutcome } from "../../src/ports/observation-repo.js";
 import type { EvidenceBundleInsertOutcome } from "../../src/ports/bundle-repo.js";
 import type { BundleFeatureCandidateQuery } from "../../src/ports/feature-repo.js";
 import type { EvidenceBundleV1 } from "../../src/contracts/generated/evidence-bundle-v1.js";
-import type {
-  AssembleEvidenceBundleRequest,
-  AssembleEvidenceBundleResult,
-  PrepareEvidenceBundleResult,
-  AssembleEvidenceBundleError
+import {
+  prepareEvidenceBundle,
+  finalizeEvidenceBundle,
+  type AssembleEvidenceBundleDeps,
+  type AssembleEvidenceBundleRequest,
+  type AssembleEvidenceBundleResult,
+  type PrepareEvidenceBundleResult,
+  type AssembleEvidenceBundleError
 } from "../../src/application/assemble-evidence-bundle.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 import type { ProvenanceRef, Source } from "../../src/contracts/taxonomy.js";
@@ -270,6 +273,15 @@ function assertSuccess<T extends AssembleEvidenceBundleResult | PrepareEvidenceB
     throw new Error(`Unexpected error result: ${result.code}: ${msg}`);
   }
   return result as Exclude<T, AssembleEvidenceBundleError>;
+}
+
+async function prepareAndFinalizePositionWithoutBriefForTest(
+  deps: AssembleEvidenceBundleDeps,
+  request: AssembleEvidenceBundleRequest
+): Promise<AssembleEvidenceBundleResult> {
+  const prepared = await prepareEvidenceBundle(deps, request);
+  if ("code" in prepared || prepared.outcome !== "prepared") return prepared;
+  return finalizeEvidenceBundle(deps, prepared.prepared, undefined);
 }
 
 class RecordingClock implements Clock {
@@ -562,9 +574,6 @@ describe("assembleEvidenceBundle contextual integration", () => {
   }
 
   it("queries the complete contextual source matrix including support resistance and news", async () => {
-    const { assembleEvidenceBundle } =
-      await import("../../src/application/assemble-evidence-bundle.js");
-
     rawRepo.store.push(makeRawRow({ id: 1 }));
     featureRepo.store.push(
       makeDerivedFeatureRow({
@@ -577,7 +586,7 @@ describe("assembleEvidenceBundle contextual integration", () => {
       })
     );
 
-    await assembleEvidenceBundle(
+    await prepareAndFinalizePositionWithoutBriefForTest(
       { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
       makeRequest()
     );
@@ -601,9 +610,6 @@ describe("assembleEvidenceBundle contextual integration", () => {
   });
 
   it("assembles selected support resistance and news with raw and normalized lineage", async () => {
-    const { assembleEvidenceBundle } =
-      await import("../../src/application/assemble-evidence-bundle.js");
-
     const clmmRawRow = makeRawRow({ id: 1 });
 
     const srRawRow: RawObservationRow = {
@@ -726,7 +732,7 @@ describe("assembleEvidenceBundle contextual integration", () => {
     normalizedRepo.store.push(srNormRow, newsNormRow, regNormRow);
 
     const result = assertSuccess(
-      await assembleEvidenceBundle(
+      await prepareAndFinalizePositionWithoutBriefForTest(
         { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
         makeRequest()
       )
@@ -759,9 +765,6 @@ describe("assembleEvidenceBundle contextual integration", () => {
   });
 
   it("excludes stale expired corrected away and ineligible contextual candidates", async () => {
-    const { assembleEvidenceBundle } =
-      await import("../../src/application/assemble-evidence-bundle.js");
-
     const clmmRawRow = makeRawRow({ id: 1 });
     const staleRawRow = makeRawRow({ id: 100, source: "technical-analysis-api" });
     rawRepo.store.push(clmmRawRow, staleRawRow);
@@ -802,7 +805,7 @@ describe("assembleEvidenceBundle contextual integration", () => {
     normalizedRepo.store.push(staleSrRow);
 
     const result = assertSuccess(
-      await assembleEvidenceBundle(
+      await prepareAndFinalizePositionWithoutBriefForTest(
         { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
         makeRequest()
       )
@@ -813,9 +816,6 @@ describe("assembleEvidenceBundle contextual integration", () => {
   });
 
   it("returns a lineage error when a selected contextual raw parent is missing", async () => {
-    const { assembleEvidenceBundle } =
-      await import("../../src/application/assemble-evidence-bundle.js");
-
     const clmmRawRow = makeRawRow({ id: 1 });
     rawRepo.store.push(clmmRawRow);
 
@@ -854,7 +854,7 @@ describe("assembleEvidenceBundle contextual integration", () => {
 
     normalizedRepo.store.push(srNormRow);
 
-    const result = await assembleEvidenceBundle(
+    const result = await prepareAndFinalizePositionWithoutBriefForTest(
       { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
       makeRequest()
     );
