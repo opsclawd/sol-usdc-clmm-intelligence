@@ -73,39 +73,20 @@ function makeQualityInput(
 
 describe("classifyEvidenceBundleQuality", () => {
   describe("classifies all seven fresh available slots as complete deterministic coverage", () => {
-    describe("classifies all seven fresh available slots as complete deterministic coverage", () => {
-      it("seven fresh available slots = complete deterministic coverage while context and brief absent overall", () => {
-        const slots = makeSlotsAllAvailable();
-        const input = makeQualityInput(slots);
+    it("seven fresh available slots = partial while context and brief are absent overall", () => {
+      const slots = makeSlotsAllAvailable();
+      const input = makeQualityInput(slots);
 
-        const result = classifyEvidenceBundleQuality(input);
+      const result = classifyEvidenceBundleQuality(input);
 
-        expect(result.quality).toBe("complete");
-        expect(result.coverage.deterministic).toBe("available");
-        expect(result.coverage.supportResistance).toBe("unavailable");
-        expect(result.coverage.flows).toBe("unavailable");
-        expect(result.coverage.derivatives).toBe("unavailable");
-        expect(result.coverage.events).toBe("unavailable");
-        expect(result.coverage.newsRegulatory).toBe("unavailable");
-        expect(result.coverage.researchBrief).toBe("unavailable");
-      });
-
-      it("seven fresh available slots = complete even when context and brief are present", () => {
-        const slots = makeSlotsAllAvailable();
-        const input = makeQualityInput(slots, {
-          hasSupportResistance: true,
-          hasFlows: true,
-          hasDerivatives: true,
-          hasEvents: true,
-          hasNewsRegulatory: true,
-          hasResearchBrief: true
-        });
-
-        const result = classifyEvidenceBundleQuality(input);
-
-        expect(result.quality).toBe("complete");
-        expect(result.coverage.deterministic).toBe("available");
-      });
+      expect(result.quality).toBe("partial");
+      expect(result.coverage.deterministic).toBe("available");
+      expect(result.coverage.supportResistance).toBe("unavailable");
+      expect(result.coverage.flows).toBe("unavailable");
+      expect(result.coverage.derivatives).toBe("unavailable");
+      expect(result.coverage.events).toBe("unavailable");
+      expect(result.coverage.newsRegulatory).toBe("unavailable");
+      expect(result.coverage.researchBrief).toBe("unavailable");
     });
 
     it("seven fresh available slots = complete even when context and brief are present", () => {
@@ -124,6 +105,36 @@ describe("classifyEvidenceBundleQuality", () => {
       expect(result.quality).toBe("complete");
       expect(result.coverage.deterministic).toBe("available");
     });
+
+    const contextualFamilyCases = [
+      ["supportResistance", "hasSupportResistance"],
+      ["flows", "hasFlows"],
+      ["derivatives", "hasDerivatives"],
+      ["events", "hasEvents"],
+      ["newsRegulatory", "hasNewsRegulatory"],
+      ["researchBrief", "hasResearchBrief"]
+    ] as const;
+
+    it.each(contextualFamilyCases)(
+      "caps complete deterministic quality at partial when %s is unavailable",
+      (coverageFamily, inputFlag) => {
+        const input = makeQualityInput(makeSlotsAllAvailable(), {
+          hasSupportResistance: true,
+          hasFlows: true,
+          hasDerivatives: true,
+          hasEvents: true,
+          hasNewsRegulatory: true,
+          hasResearchBrief: true,
+          [inputFlag]: false
+        });
+
+        const result = classifyEvidenceBundleQuality(input);
+
+        expect(result.quality).toBe("partial");
+        expect(result.coverage.deterministic).toBe("available");
+        expect(result.coverage[coverageFamily]).toBe("unavailable");
+      }
+    );
   });
 
   describe("classifies one or multiple missing slots as partial without zero values", () => {
