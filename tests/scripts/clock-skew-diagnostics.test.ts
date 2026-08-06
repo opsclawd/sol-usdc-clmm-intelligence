@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   type ClockSkewEvidence,
   classifyClockSkewEvidence
-} from "../../scripts/diagnostics/classify-evidence.js";
+} from "../../src/domain/diagnostics/classify-evidence.js";
 
 describe("clock skew diagnostics SQL script", () => {
   it("keeps the production diagnostic read only", async () => {
