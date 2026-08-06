@@ -1,5 +1,5 @@
 import type { PersistedResearchBrief } from "../contracts/research-brief.js";
-import type { EvidenceBundleV1 } from "../contracts/generated/evidence-bundle-v1.js";
+import type { ResearchBriefRow } from "../ports/brief-repo.js";
 import type {
   CollectionRunContext,
   CoreCollectionResult,
@@ -9,12 +9,21 @@ import type { CoreEvidencePipelineConfig } from "./load-core-evidence-pipeline-c
 import type { DeriveMvpFeaturesRequest, DeriveMvpFeaturesResult } from "./derive-mvp-features.js";
 import type {
   AssembleEvidenceBundleRequest,
-  AssembleEvidenceBundleResult
+  AssembleEvidenceBundleResult,
+  PreparedEvidenceBundle,
+  PrepareEvidenceBundleResult
 } from "./assemble-evidence-bundle.js";
 import type {
   AssemblePairEvidenceBundleRequest,
-  AssemblePairEvidenceBundleResult
+  AssemblePairEvidenceBundleResult,
+  PreparedPairEvidenceBundle,
+  PreparePairEvidenceBundleResult
 } from "./assemble-pair-evidence-bundle.js";
+import type {
+  GenerateResearchBriefParams,
+  GenerateResearchBriefOutcome,
+  PersistResearchBriefParams
+} from "./generate-research-brief.js";
 import type {
   PublishEvidenceBundleRequest,
   PublishEvidenceBundleResult
@@ -38,24 +47,24 @@ import {
 export interface CoreEvidencePipelineServices {
   readonly collect: (context: CollectionRunContext) => Promise<CoreCollectionResult>;
   readonly derive: (request: DeriveMvpFeaturesRequest) => Promise<DeriveMvpFeaturesResult>;
-  readonly assemble?: (
+  readonly prepare: (
     request: AssembleEvidenceBundleRequest
+  ) => Promise<PrepareEvidenceBundleResult>;
+  readonly finalize: (
+    prepared: PreparedEvidenceBundle,
+    brief?: PersistedResearchBrief
   ) => Promise<AssembleEvidenceBundleResult>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly prepare?: (request: AssembleEvidenceBundleRequest) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly finalize?: (prepared: any, brief?: PersistedResearchBrief) => Promise<any>;
-  readonly assemblePair?: (
+  readonly preparePair: (
     request: AssemblePairEvidenceBundleRequest
+  ) => Promise<PreparePairEvidenceBundleResult>;
+  readonly finalizePair: (
+    prepared: PreparedPairEvidenceBundle,
+    brief?: PersistedResearchBrief
   ) => Promise<AssemblePairEvidenceBundleResult>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly preparePair?: (request: AssemblePairEvidenceBundleRequest) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly finalizePair?: (prepared: any, brief?: PersistedResearchBrief) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly generateBrief: (request: any) => Promise<any>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  readonly persistBrief?: (params: any) => Promise<any>;
+  readonly generateBrief: (
+    request: GenerateResearchBriefParams
+  ) => Promise<GenerateResearchBriefOutcome>;
+  readonly persistBrief: (params: PersistResearchBriefParams) => Promise<ResearchBriefRow>;
   readonly publish: (request: PublishEvidenceBundleRequest) => Promise<PublishEvidenceBundleResult>;
 }
 
@@ -291,19 +300,32 @@ export async function runCoreEvidencePipeline(
               environment: config.environment
             };
 
-            let pairAssembly: AssemblePairEvidenceBundleResult | null = null;
-            if (resources.services.preparePair && resources.services.finalizePair) {
-              let prep: Record<string, unknown> | null = null;
-              try {
-                prep = (await resources.services.preparePair(pairAssemblyReq)) as Record<
-                  string,
-                  unknown
-                >;
-              } catch (err) {
+            let prep: PreparePairEvidenceBundleResult | null = null;
+            try {
+              prep = await resources.services.preparePair(pairAssemblyReq);
+            } catch (err) {
+              pairResult = {
+                correlationId: pairCorrelationId,
+                bundleId: null,
+                assemblyOutcome: "error",
+                briefOutcome: null,
+                publishOutcome: null,
+                status: "failed",
+                warnings: [],
+                diagnostic: {
+                  stage: "assembly",
+                  code: "ASSEMBLY_FAILED",
+                  message: redactSecretMentions(err instanceof Error ? err.message : String(err))
+                }
+              };
+            }
+            if (!pairResult && prep) {
+              if (!("outcome" in prep)) {
+                const assemblyOutcomeStr = prep.code;
                 pairResult = {
                   correlationId: pairCorrelationId,
                   bundleId: null,
-                  assemblyOutcome: "error",
+                  assemblyOutcome: assemblyOutcomeStr,
                   briefOutcome: null,
                   publishOutcome: null,
                   status: "failed",
@@ -311,398 +333,26 @@ export async function runCoreEvidencePipeline(
                   diagnostic: {
                     stage: "assembly",
                     code: "ASSEMBLY_FAILED",
-                    message: redactSecretMentions(err instanceof Error ? err.message : String(err))
+                    message: redactSecretMentions(
+                      "message" in prep
+                        ? prep.message
+                        : `Assembly failed with error code: ${prep.code}`
+                    )
                   }
                 };
-              }
-              if (!pairResult && prep) {
-                const assemblyOutcomeStr =
-                  typeof prep.outcome === "string" ? prep.outcome : String(prep.code ?? "error");
-                if (prep.outcome === "persisted" || prep.outcome === "identical_replay") {
-                  const bundleId = prep.rowId as number;
-                  const assemblyWarnings = Array.isArray(prep.warnings)
-                    ? (prep.warnings as string[]).map(redactSecretMentions)
-                    : [];
-                  const briefArtifact = prep.embeddedBrief ?? null;
-                  const briefOutcomeStr = briefArtifact ? "reused" : null;
-                  if (resources.services.persistBrief && briefArtifact) {
-                    try {
-                      await resources.services.persistBrief({
-                        bundleId,
-                        bundleHash: prep.payloadHash as string,
-                        brief: briefArtifact as PersistedResearchBrief,
-                        pair: "SOL/USDC",
-                        evaluationTimeUnixMs,
-                        codeVersion: config.codeVersion,
-                        runId: pipelineRunId,
-                        expiresAtUnixMs: evaluationTimeUnixMs + 3600000
-                      });
-                    } catch (err) {
-                      pairResult = {
-                        correlationId: pairCorrelationId,
-                        bundleId,
-                        assemblyOutcome: assemblyOutcomeStr,
-                        briefOutcome: "error",
-                        publishOutcome: null,
-                        status: "failed",
-                        warnings: Object.freeze(assemblyWarnings),
-                        diagnostic: {
-                          stage: "brief",
-                          code: "BRIEF_FAILED",
-                          message: redactSecretMentions(
-                            err instanceof Error ? err.message : String(err)
-                          )
-                        }
-                      };
-                    }
-                  }
-                  if (!pairResult) {
-                    let pairPub: Record<string, unknown> | null = null;
-                    try {
-                      pairPub = (await resources.services.publish({
-                        evidenceBundleId: bundleId
-                      })) as Record<string, unknown>;
-                    } catch (err) {
-                      pairResult = {
-                        correlationId: pairCorrelationId,
-                        bundleId,
-                        assemblyOutcome: assemblyOutcomeStr,
-                        briefOutcome: briefOutcomeStr,
-                        publishOutcome: "error",
-                        status: "failed",
-                        warnings: Object.freeze(assemblyWarnings),
-                        diagnostic: {
-                          stage: "publish",
-                          code: "PUBLISH_FAILED",
-                          message: redactSecretMentions(
-                            err instanceof Error ? err.message : String(err)
-                          )
-                        }
-                      };
-                    }
-                    if (!pairResult && pairPub) {
-                      const publishOutcomeStr = pairPub.outcome as string;
-                      const isPublishSuccess =
-                        pairPub.outcome === "created" ||
-                        pairPub.outcome === "created_degraded" ||
-                        pairPub.outcome === "idempotent_replay";
-                      if (!isPublishSuccess) {
-                        pairResult = {
-                          correlationId: pairCorrelationId,
-                          bundleId,
-                          assemblyOutcome: assemblyOutcomeStr,
-                          briefOutcome: briefOutcomeStr,
-                          publishOutcome: publishOutcomeStr,
-                          status: "failed",
-                          warnings: Object.freeze(assemblyWarnings),
-                          diagnostic: {
-                            stage: "publish",
-                            code: "PUBLISH_FAILED",
-                            message: redactSecretMentions(
-                              `Publish failed with outcome: ${publishOutcomeStr}`
-                            )
-                          }
-                        };
-                      } else {
-                        const isPairDegraded =
-                          collectionStatus === "PARTIAL" || pairPub.outcome === "created_degraded";
-                        pairResult = {
-                          correlationId: pairCorrelationId,
-                          bundleId,
-                          assemblyOutcome: assemblyOutcomeStr,
-                          briefOutcome: briefOutcomeStr,
-                          publishOutcome: publishOutcomeStr,
-                          status: isPairDegraded ? "degraded" : "complete",
-                          warnings: Object.freeze(assemblyWarnings),
-                          diagnostic: null
-                        };
-                      }
-                    }
-                  }
-                } else if (prep.outcome !== "prepared") {
-                  pairResult = {
-                    correlationId: pairCorrelationId,
-                    bundleId: null,
-                    assemblyOutcome: assemblyOutcomeStr,
-                    briefOutcome: null,
-                    publishOutcome: null,
-                    status: "failed",
-                    warnings: [],
-                    diagnostic: {
-                      stage: "assembly",
-                      code: "ASSEMBLY_FAILED",
-                      message: redactSecretMentions(
-                        `Assembly failed with outcome: ${assemblyOutcomeStr}`
-                      )
-                    }
-                  };
-                } else {
-                  const preparedPayload = prep.prepared;
-                  let pairBrief: Record<string, unknown> | null = null;
-                  try {
-                    pairBrief = (await resources.services.generateBrief({
-                      evidenceBundlePayload: preparedPayload as EvidenceBundleV1,
-                      pair: "SOL/USDC",
-                      evaluationTimeUnixMs,
-                      codeVersion: config.codeVersion,
-                      runId: pipelineRunId
-                    })) as Record<string, unknown>;
-                  } catch (err) {
-                    pairResult = {
-                      correlationId: pairCorrelationId,
-                      bundleId: null,
-                      assemblyOutcome: assemblyOutcomeStr,
-                      briefOutcome: "error",
-                      publishOutcome: null,
-                      status: "failed",
-                      warnings: [],
-                      diagnostic: {
-                        stage: "brief",
-                        code: "BRIEF_FAILED",
-                        message: redactSecretMentions(
-                          err instanceof Error ? err.message : String(err)
-                        )
-                      }
-                    };
-                  }
-                  if (!pairResult && pairBrief) {
-                    const briefOutcomeStr = pairBrief.outcome as string;
-                    if (pairBrief.outcome === "no_brief") {
-                      pairResult = {
-                        correlationId: pairCorrelationId,
-                        bundleId: null,
-                        assemblyOutcome: assemblyOutcomeStr,
-                        briefOutcome: briefOutcomeStr,
-                        publishOutcome: null,
-                        status: "failed",
-                        warnings: [],
-                        diagnostic: {
-                          stage: "brief",
-                          code: "NO_BRIEF",
-                          message: redactSecretMentions(
-                            `Brief generation returned no_brief (${pairBrief.reason})`
-                          )
-                        }
-                      };
-                    } else {
-                      const briefArtifact = pairBrief.brief;
-                      let fin: Record<string, unknown> | null = null;
-                      try {
-                        fin = (await resources.services.finalizePair(
-                          preparedPayload,
-                          briefArtifact as PersistedResearchBrief
-                        )) as Record<string, unknown>;
-                      } catch (err) {
-                        pairResult = {
-                          correlationId: pairCorrelationId,
-                          bundleId: null,
-                          assemblyOutcome: assemblyOutcomeStr,
-                          briefOutcome: briefOutcomeStr,
-                          publishOutcome: null,
-                          status: "failed",
-                          warnings: [],
-                          diagnostic: {
-                            stage: "assembly",
-                            code: "ASSEMBLY_FAILED",
-                            message: redactSecretMentions(
-                              err instanceof Error ? err.message : String(err)
-                            )
-                          }
-                        };
-                      }
-                      if (!pairResult && fin) {
-                        const finOutcomeStr =
-                          typeof fin.outcome === "string"
-                            ? fin.outcome
-                            : String(fin.code ?? "error");
-                        const isFinSuccess =
-                          fin.outcome === "persisted" || fin.outcome === "identical_replay";
-                        if (!isFinSuccess || !("rowId" in fin)) {
-                          pairResult = {
-                            correlationId: pairCorrelationId,
-                            bundleId: null,
-                            assemblyOutcome: finOutcomeStr,
-                            briefOutcome: briefOutcomeStr,
-                            publishOutcome: null,
-                            status: "failed",
-                            warnings: [],
-                            diagnostic: {
-                              stage: "assembly",
-                              code: "ASSEMBLY_FAILED",
-                              message: redactSecretMentions(
-                                `Finalize failed with outcome: ${finOutcomeStr}`
-                              )
-                            }
-                          };
-                        } else {
-                          const bundleId = fin.rowId as number;
-                          const assemblyWarnings = Array.isArray(fin.warnings)
-                            ? (fin.warnings as string[]).map(redactSecretMentions)
-                            : [];
-                          if (resources.services.persistBrief && briefArtifact) {
-                            try {
-                              await resources.services.persistBrief({
-                                bundleId,
-                                bundleHash: fin.payloadHash as string,
-                                brief: briefArtifact as PersistedResearchBrief,
-                                pair: "SOL/USDC",
-                                evaluationTimeUnixMs,
-                                codeVersion: config.codeVersion,
-                                runId: pipelineRunId,
-                                expiresAtUnixMs: evaluationTimeUnixMs + 3600000
-                              });
-                            } catch (err) {
-                              pairResult = {
-                                correlationId: pairCorrelationId,
-                                bundleId,
-                                assemblyOutcome: assemblyOutcomeStr,
-                                briefOutcome: "error",
-                                publishOutcome: null,
-                                status: "failed",
-                                warnings: Object.freeze(assemblyWarnings),
-                                diagnostic: {
-                                  stage: "brief",
-                                  code: "BRIEF_FAILED",
-                                  message: redactSecretMentions(
-                                    err instanceof Error ? err.message : String(err)
-                                  )
-                                }
-                              };
-                            }
-                          }
-                          if (!pairResult) {
-                            let pairPub: Record<string, unknown> | null = null;
-                            try {
-                              pairPub = (await resources.services.publish({
-                                evidenceBundleId: bundleId
-                              })) as Record<string, unknown>;
-                            } catch (err) {
-                              pairResult = {
-                                correlationId: pairCorrelationId,
-                                bundleId,
-                                assemblyOutcome: assemblyOutcomeStr,
-                                briefOutcome: briefOutcomeStr,
-                                publishOutcome: "error",
-                                status: "failed",
-                                warnings: Object.freeze(assemblyWarnings),
-                                diagnostic: {
-                                  stage: "publish",
-                                  code: "PUBLISH_FAILED",
-                                  message: redactSecretMentions(
-                                    err instanceof Error ? err.message : String(err)
-                                  )
-                                }
-                              };
-                            }
-                            if (!pairResult && pairPub) {
-                              const publishOutcomeStr = pairPub.outcome as string;
-                              const isPublishSuccess =
-                                pairPub.outcome === "created" ||
-                                pairPub.outcome === "created_degraded" ||
-                                pairPub.outcome === "idempotent_replay";
-                              if (!isPublishSuccess) {
-                                pairResult = {
-                                  correlationId: pairCorrelationId,
-                                  bundleId,
-                                  assemblyOutcome: assemblyOutcomeStr,
-                                  briefOutcome: briefOutcomeStr,
-                                  publishOutcome: publishOutcomeStr,
-                                  status: "failed",
-                                  warnings: Object.freeze(assemblyWarnings),
-                                  diagnostic: {
-                                    stage: "publish",
-                                    code: "PUBLISH_FAILED",
-                                    message: redactSecretMentions(
-                                      `Publish failed with outcome: ${publishOutcomeStr}`
-                                    )
-                                  }
-                                };
-                              } else {
-                                const isPairDegraded =
-                                  collectionStatus === "PARTIAL" ||
-                                  pairBrief.outcome === "generated_degraded" ||
-                                  pairPub.outcome === "created_degraded";
-                                pairResult = {
-                                  correlationId: pairCorrelationId,
-                                  bundleId,
-                                  assemblyOutcome: assemblyOutcomeStr,
-                                  briefOutcome: briefOutcomeStr,
-                                  publishOutcome: publishOutcomeStr,
-                                  status: isPairDegraded ? "degraded" : "complete",
-                                  warnings: Object.freeze(assemblyWarnings),
-                                  diagnostic: null
-                                };
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            } else {
-              try {
-                if (!resources.services.assemblePair) {
-                  throw new Error(
-                    "CoreEvidencePipelineServices: missing assemblePair or preparePair service"
-                  );
-                }
-                pairAssembly = await resources.services.assemblePair(pairAssemblyReq);
-              } catch (err) {
-                pairResult = {
-                  correlationId: pairCorrelationId,
-                  bundleId: null,
-                  assemblyOutcome: "error",
-                  briefOutcome: null,
-                  publishOutcome: null,
-                  status: "failed",
-                  warnings: [],
-                  diagnostic: {
-                    stage: "assembly",
-                    code: "ASSEMBLY_FAILED",
-                    message: redactSecretMentions(err instanceof Error ? err.message : String(err))
-                  }
-                };
-              }
+              } else if (prep.outcome === "identical_replay") {
+                const bundleId = prep.rowId;
+                const assemblyWarnings = Array.isArray(prep.warnings)
+                  ? prep.warnings.map(redactSecretMentions)
+                  : [];
+                let briefArtifact = prep.embeddedBrief ?? null;
+                let briefOutcomeStr: string | null = briefArtifact ? "reused" : null;
 
-              if (!pairResult && pairAssembly) {
-                const assemblyOutcomeStr =
-                  "outcome" in pairAssembly ? pairAssembly.outcome : pairAssembly.code;
-                const isAssemblySuccess =
-                  "outcome" in pairAssembly &&
-                  (pairAssembly.outcome === "persisted" ||
-                    pairAssembly.outcome === "identical_replay");
-
-                if (!isAssemblySuccess || !("rowId" in pairAssembly)) {
-                  pairResult = {
-                    correlationId: pairCorrelationId,
-                    bundleId: null,
-                    assemblyOutcome: assemblyOutcomeStr,
-                    briefOutcome: null,
-                    publishOutcome: null,
-                    status: "failed",
-                    warnings: [],
-                    diagnostic: {
-                      stage: "assembly",
-                      code: "ASSEMBLY_FAILED",
-                      message: redactSecretMentions(
-                        `Assembly failed with outcome: ${assemblyOutcomeStr}`
-                      )
-                    }
-                  };
-                } else {
-                  const bundleId = pairAssembly.rowId;
-                  const assemblyWarnings =
-                    "warnings" in pairAssembly && Array.isArray(pairAssembly.warnings)
-                      ? pairAssembly.warnings.map(redactSecretMentions)
-                      : [];
-
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  let pairBrief: any = null;
+                if (!briefArtifact && prep.prepared) {
+                  let pairBrief: GenerateResearchBriefOutcome | null = null;
                   try {
                     pairBrief = await resources.services.generateBrief({
-                      evidenceBundleId: bundleId,
+                      evidenceBundlePayload: prep.prepared.nullBriefCandidate,
                       pair: "SOL/USDC",
                       evaluationTimeUnixMs,
                       codeVersion: config.codeVersion,
@@ -712,7 +362,7 @@ export async function runCoreEvidencePipeline(
                     pairResult = {
                       correlationId: pairCorrelationId,
                       bundleId,
-                      assemblyOutcome: assemblyOutcomeStr,
+                      assemblyOutcome: prep.outcome,
                       briefOutcome: "error",
                       publishOutcome: null,
                       status: "failed",
@@ -726,14 +376,13 @@ export async function runCoreEvidencePipeline(
                       }
                     };
                   }
-
                   if (!pairResult && pairBrief) {
-                    const briefOutcomeStr = pairBrief.outcome;
+                    briefOutcomeStr = pairBrief.outcome;
                     if (pairBrief.outcome === "no_brief") {
                       pairResult = {
                         correlationId: pairCorrelationId,
                         bundleId,
-                        assemblyOutcome: assemblyOutcomeStr,
+                        assemblyOutcome: prep.outcome,
                         briefOutcome: briefOutcomeStr,
                         publishOutcome: null,
                         status: "failed",
@@ -747,73 +396,336 @@ export async function runCoreEvidencePipeline(
                         }
                       };
                     } else {
-                      let pairPublication: PublishEvidenceBundleResult | null = null;
-                      try {
-                        pairPublication = await resources.services.publish({
-                          evidenceBundleId: bundleId
-                        });
-                      } catch (err) {
+                      briefArtifact = pairBrief.brief;
+                    }
+                  }
+                }
+
+                if (!pairResult && briefArtifact) {
+                  try {
+                    await resources.services.persistBrief({
+                      bundleId,
+                      bundleHash: prep.payloadHash,
+                      brief: briefArtifact,
+                      pair: "SOL/USDC",
+                      evaluationTimeUnixMs,
+                      codeVersion: config.codeVersion,
+                      runId: pipelineRunId,
+                      expiresAtUnixMs: evaluationTimeUnixMs + 3600000
+                    });
+                  } catch (err) {
+                    pairResult = {
+                      correlationId: pairCorrelationId,
+                      bundleId,
+                      assemblyOutcome: prep.outcome,
+                      briefOutcome: "error",
+                      publishOutcome: null,
+                      status: "failed",
+                      warnings: Object.freeze(assemblyWarnings),
+                      diagnostic: {
+                        stage: "brief",
+                        code: "BRIEF_FAILED",
+                        message: redactSecretMentions(
+                          err instanceof Error ? err.message : String(err)
+                        )
+                      }
+                    };
+                  }
+                }
+
+                if (!pairResult) {
+                  let pairPub: PublishEvidenceBundleResult | null = null;
+                  try {
+                    pairPub = await resources.services.publish({
+                      evidenceBundleId: bundleId
+                    });
+                  } catch (err) {
+                    pairResult = {
+                      correlationId: pairCorrelationId,
+                      bundleId,
+                      assemblyOutcome: prep.outcome,
+                      briefOutcome: briefOutcomeStr,
+                      publishOutcome: "error",
+                      status: "failed",
+                      warnings: Object.freeze(assemblyWarnings),
+                      diagnostic: {
+                        stage: "publish",
+                        code: "PUBLISH_FAILED",
+                        message: redactSecretMentions(
+                          err instanceof Error ? err.message : String(err)
+                        )
+                      }
+                    };
+                  }
+                  if (!pairResult && pairPub) {
+                    const publishOutcomeStr = pairPub.outcome;
+                    const isPublishSuccess =
+                      pairPub.outcome === "created" ||
+                      pairPub.outcome === "created_degraded" ||
+                      pairPub.outcome === "idempotent_replay";
+                    if (!isPublishSuccess) {
+                      pairResult = {
+                        correlationId: pairCorrelationId,
+                        bundleId,
+                        assemblyOutcome: prep.outcome,
+                        briefOutcome: briefOutcomeStr,
+                        publishOutcome: publishOutcomeStr,
+                        status: "failed",
+                        warnings: Object.freeze(assemblyWarnings),
+                        diagnostic: {
+                          stage: "publish",
+                          code: "PUBLISH_FAILED",
+                          message: redactSecretMentions(
+                            `Publish failed with outcome: ${publishOutcomeStr}`
+                          )
+                        }
+                      };
+                    } else {
+                      const isPairDegraded =
+                        collectionStatus === "PARTIAL" ||
+                        briefOutcomeStr === "generated_degraded" ||
+                        pairPub.outcome === "created_degraded" ||
+                        !briefArtifact;
+                      pairResult = {
+                        correlationId: pairCorrelationId,
+                        bundleId,
+                        assemblyOutcome: prep.outcome,
+                        briefOutcome: briefOutcomeStr,
+                        publishOutcome: publishOutcomeStr,
+                        status: isPairDegraded ? "degraded" : "complete",
+                        warnings: Object.freeze(assemblyWarnings),
+                        diagnostic: null
+                      };
+                    }
+                  }
+                }
+              } else if (prep.outcome !== "prepared") {
+                pairResult = {
+                  correlationId: pairCorrelationId,
+                  bundleId: null,
+                  assemblyOutcome: prep.outcome,
+                  briefOutcome: null,
+                  publishOutcome: null,
+                  status: "failed",
+                  warnings: [],
+                  diagnostic: {
+                    stage: "assembly",
+                    code: "ASSEMBLY_FAILED",
+                    message: redactSecretMentions(`Assembly failed with outcome: ${prep.outcome}`)
+                  }
+                };
+              } else {
+                const preparedPayload = prep.prepared;
+                let pairBrief: GenerateResearchBriefOutcome | null = null;
+                try {
+                  pairBrief = await resources.services.generateBrief({
+                    evidenceBundlePayload: preparedPayload.nullBriefCandidate,
+                    pair: "SOL/USDC",
+                    evaluationTimeUnixMs,
+                    codeVersion: config.codeVersion,
+                    runId: pipelineRunId
+                  });
+                } catch (err) {
+                  pairResult = {
+                    correlationId: pairCorrelationId,
+                    bundleId: null,
+                    assemblyOutcome: "prepared",
+                    briefOutcome: "error",
+                    publishOutcome: null,
+                    status: "failed",
+                    warnings: [],
+                    diagnostic: {
+                      stage: "brief",
+                      code: "BRIEF_FAILED",
+                      message: redactSecretMentions(
+                        err instanceof Error ? err.message : String(err)
+                      )
+                    }
+                  };
+                }
+                if (!pairResult && pairBrief) {
+                  const briefOutcomeStr = pairBrief.outcome;
+                  if (pairBrief.outcome === "no_brief") {
+                    pairResult = {
+                      correlationId: pairCorrelationId,
+                      bundleId: null,
+                      assemblyOutcome: "prepared",
+                      briefOutcome: briefOutcomeStr,
+                      publishOutcome: null,
+                      status: "failed",
+                      warnings: [],
+                      diagnostic: {
+                        stage: "brief",
+                        code: "NO_BRIEF",
+                        message: redactSecretMentions(
+                          `Brief generation returned no_brief (${pairBrief.reason})`
+                        )
+                      }
+                    };
+                  } else {
+                    const briefArtifact = pairBrief.brief;
+                    let fin: AssemblePairEvidenceBundleResult | null = null;
+                    try {
+                      fin = await resources.services.finalizePair(preparedPayload, briefArtifact);
+                    } catch (err) {
+                      pairResult = {
+                        correlationId: pairCorrelationId,
+                        bundleId: null,
+                        assemblyOutcome: "prepared",
+                        briefOutcome: briefOutcomeStr,
+                        publishOutcome: null,
+                        status: "failed",
+                        warnings: [],
+                        diagnostic: {
+                          stage: "assembly",
+                          code: "ASSEMBLY_FAILED",
+                          message: redactSecretMentions(
+                            err instanceof Error ? err.message : String(err)
+                          )
+                        }
+                      };
+                    }
+                    if (!pairResult && fin) {
+                      if (!("outcome" in fin)) {
+                        const finOutcomeStr = fin.code;
                         pairResult = {
                           correlationId: pairCorrelationId,
-                          bundleId,
-                          assemblyOutcome: assemblyOutcomeStr,
+                          bundleId: null,
+                          assemblyOutcome: finOutcomeStr,
                           briefOutcome: briefOutcomeStr,
-                          publishOutcome: "error",
+                          publishOutcome: null,
                           status: "failed",
-                          warnings: Object.freeze(assemblyWarnings),
+                          warnings: [],
                           diagnostic: {
-                            stage: "publish",
-                            code: "PUBLISH_FAILED",
+                            stage: "assembly",
+                            code: "ASSEMBLY_FAILED",
                             message: redactSecretMentions(
-                              err instanceof Error ? err.message : String(err)
+                              "message" in fin
+                                ? fin.message
+                                : `Finalize failed with outcome: ${fin.code}`
                             )
                           }
                         };
-                      }
-
-                      if (!pairResult && pairPublication) {
-                        const publishOutcomeStr = pairPublication.outcome;
-                        const isPublishSuccess =
-                          pairPublication.outcome === "created" ||
-                          pairPublication.outcome === "created_degraded" ||
-                          pairPublication.outcome === "idempotent_replay";
-
-                        if (!isPublishSuccess) {
-                          pairResult = {
-                            correlationId: pairCorrelationId,
-                            bundleId,
-                            assemblyOutcome: assemblyOutcomeStr,
-                            briefOutcome: briefOutcomeStr,
-                            publishOutcome: publishOutcomeStr,
-                            status: "failed",
-                            warnings: Object.freeze(assemblyWarnings),
-                            diagnostic: {
-                              stage: "publish",
-                              code: "PUBLISH_FAILED",
-                              message: redactSecretMentions(
-                                `Publish failed with outcome: ${publishOutcomeStr}`
-                              )
+                      } else if (
+                        fin.outcome !== "persisted" &&
+                        fin.outcome !== "identical_replay"
+                      ) {
+                        pairResult = {
+                          correlationId: pairCorrelationId,
+                          bundleId: null,
+                          assemblyOutcome: fin.outcome,
+                          briefOutcome: briefOutcomeStr,
+                          publishOutcome: null,
+                          status: "failed",
+                          warnings: [],
+                          diagnostic: {
+                            stage: "assembly",
+                            code: "ASSEMBLY_FAILED",
+                            message: redactSecretMentions(
+                              `Finalize failed with outcome: ${fin.outcome}`
+                            )
+                          }
+                        };
+                      } else {
+                        const bundleId = fin.rowId;
+                        const assemblyWarnings = Array.isArray(fin.warnings)
+                          ? fin.warnings.map(redactSecretMentions)
+                          : [];
+                        if (briefArtifact) {
+                          try {
+                            await resources.services.persistBrief({
+                              bundleId,
+                              bundleHash: fin.payloadHash,
+                              brief: briefArtifact,
+                              pair: "SOL/USDC",
+                              evaluationTimeUnixMs,
+                              codeVersion: config.codeVersion,
+                              runId: pipelineRunId,
+                              expiresAtUnixMs: evaluationTimeUnixMs + 3600000
+                            });
+                          } catch (err) {
+                            pairResult = {
+                              correlationId: pairCorrelationId,
+                              bundleId,
+                              assemblyOutcome: fin.outcome,
+                              briefOutcome: "error",
+                              publishOutcome: null,
+                              status: "failed",
+                              warnings: Object.freeze(assemblyWarnings),
+                              diagnostic: {
+                                stage: "brief",
+                                code: "BRIEF_FAILED",
+                                message: redactSecretMentions(
+                                  err instanceof Error ? err.message : String(err)
+                                )
+                              }
+                            };
+                          }
+                        }
+                        if (!pairResult) {
+                          let pairPub: PublishEvidenceBundleResult | null = null;
+                          try {
+                            pairPub = await resources.services.publish({
+                              evidenceBundleId: bundleId
+                            });
+                          } catch (err) {
+                            pairResult = {
+                              correlationId: pairCorrelationId,
+                              bundleId,
+                              assemblyOutcome: fin.outcome,
+                              briefOutcome: briefOutcomeStr,
+                              publishOutcome: "error",
+                              status: "failed",
+                              warnings: Object.freeze(assemblyWarnings),
+                              diagnostic: {
+                                stage: "publish",
+                                code: "PUBLISH_FAILED",
+                                message: redactSecretMentions(
+                                  err instanceof Error ? err.message : String(err)
+                                )
+                              }
+                            };
+                          }
+                          if (!pairResult && pairPub) {
+                            const publishOutcomeStr = pairPub.outcome;
+                            const isPublishSuccess =
+                              pairPub.outcome === "created" ||
+                              pairPub.outcome === "created_degraded" ||
+                              pairPub.outcome === "idempotent_replay";
+                            if (!isPublishSuccess) {
+                              pairResult = {
+                                correlationId: pairCorrelationId,
+                                bundleId,
+                                assemblyOutcome: fin.outcome,
+                                briefOutcome: briefOutcomeStr,
+                                publishOutcome: publishOutcomeStr,
+                                status: "failed",
+                                warnings: Object.freeze(assemblyWarnings),
+                                diagnostic: {
+                                  stage: "publish",
+                                  code: "PUBLISH_FAILED",
+                                  message: redactSecretMentions(
+                                    `Publish failed with outcome: ${publishOutcomeStr}`
+                                  )
+                                }
+                              };
+                            } else {
+                              const isPairDegraded =
+                                collectionStatus === "PARTIAL" ||
+                                pairBrief.outcome === "generated_degraded" ||
+                                pairPub.outcome === "created_degraded";
+                              pairResult = {
+                                correlationId: pairCorrelationId,
+                                bundleId,
+                                assemblyOutcome: fin.outcome,
+                                briefOutcome: briefOutcomeStr,
+                                publishOutcome: publishOutcomeStr,
+                                status: isPairDegraded ? "degraded" : "complete",
+                                warnings: Object.freeze(assemblyWarnings),
+                                diagnostic: null
+                              };
                             }
-                          };
-                        } else {
-                          const isPairDegraded =
-                            collectionStatus === "PARTIAL" ||
-                            pairBrief.outcome === "generated_degraded" ||
-                            pairPublication.outcome === "created_degraded";
-                          const pairStatus: PositionPipelineStatus = isPairDegraded
-                            ? "degraded"
-                            : "complete";
-
-                          pairResult = {
-                            correlationId: pairCorrelationId,
-                            bundleId,
-                            assemblyOutcome: assemblyOutcomeStr,
-                            briefOutcome: briefOutcomeStr,
-                            publishOutcome: publishOutcomeStr,
-                            status: pairStatus,
-                            warnings: Object.freeze(assemblyWarnings),
-                            diagnostic: null
-                          };
+                          }
                         }
                       }
                     }
@@ -874,274 +786,114 @@ export async function runCoreEvidencePipeline(
                 environment: config.environment
               };
 
-              let assembly: AssembleEvidenceBundleResult;
-              if (activeResources.services.prepare && activeResources.services.finalize) {
-                let prep: Record<string, unknown> | null = null;
-                try {
-                  prep = (await activeResources.services.prepare(assemblyReq)) as Record<
-                    string,
-                    unknown
-                  >;
-                } catch (err) {
-                  return {
-                    positionId,
-                    correlationId,
-                    bundleId: null,
-                    assemblyOutcome: "error",
-                    briefOutcome: null,
-                    publishOutcome: null,
-                    status: "failed",
-                    warnings: [],
-                    diagnostic: {
-                      stage: "assembly",
-                      code: "ASSEMBLY_FAILED",
-                      message: redactSecretMentions(
-                        err instanceof Error ? err.message : String(err)
-                      )
-                    }
-                  };
-                }
-                const assemblyOutcomeStr =
-                  typeof prep.outcome === "string" ? prep.outcome : String(prep.code ?? "error");
-                if (prep.outcome === "persisted" || prep.outcome === "identical_replay") {
-                  const bundleId = prep.rowId as number;
-                  const assemblyWarnings = Array.isArray(prep.warnings)
-                    ? (prep.warnings as string[]).map(redactSecretMentions)
-                    : [];
-                  const briefArtifact = prep.embeddedBrief ?? null;
-                  const briefOutcomeStr = briefArtifact ? "reused" : null;
-                  if (activeResources.services.persistBrief && briefArtifact) {
-                    try {
-                      await activeResources.services.persistBrief({
-                        bundleId,
-                        bundleHash: prep.payloadHash as string,
-                        brief: briefArtifact as PersistedResearchBrief,
-                        pair: "SOL/USDC",
-                        evaluationTimeUnixMs: activeEvaluationTimeUnixMs,
-                        codeVersion: config.codeVersion,
-                        runId: pipelineRunId,
-                        expiresAtUnixMs: activeEvaluationTimeUnixMs + 3600000
-                      });
-                    } catch (err) {
-                      return {
-                        positionId,
-                        correlationId,
-                        bundleId,
-                        assemblyOutcome: assemblyOutcomeStr,
-                        briefOutcome: "error",
-                        publishOutcome: null,
-                        status: "failed",
-                        warnings: Object.freeze(assemblyWarnings),
-                        diagnostic: {
-                          stage: "brief",
-                          code: "BRIEF_FAILED",
-                          message: redactSecretMentions(
-                            err instanceof Error ? err.message : String(err)
-                          )
-                        }
-                      };
-                    }
+              let prep: PrepareEvidenceBundleResult | null = null;
+              try {
+                prep = await activeResources.services.prepare(assemblyReq);
+              } catch (err) {
+                return {
+                  positionId,
+                  correlationId,
+                  bundleId: null,
+                  assemblyOutcome: "error",
+                  briefOutcome: null,
+                  publishOutcome: null,
+                  status: "failed",
+                  warnings: [],
+                  diagnostic: {
+                    stage: "assembly",
+                    code: "ASSEMBLY_FAILED",
+                    message: redactSecretMentions(err instanceof Error ? err.message : String(err))
                   }
-                  let publication: PublishEvidenceBundleResult;
+                };
+              }
+              if (!("outcome" in prep)) {
+                const assemblyOutcomeStr = prep.code;
+                return {
+                  positionId,
+                  correlationId,
+                  bundleId: null,
+                  assemblyOutcome: assemblyOutcomeStr,
+                  briefOutcome: null,
+                  publishOutcome: null,
+                  status: "failed",
+                  warnings: [],
+                  diagnostic: {
+                    stage: "assembly",
+                    code: "ASSEMBLY_FAILED",
+                    message: redactSecretMentions(
+                      "message" in prep
+                        ? prep.message
+                        : `Assembly failed with error code: ${prep.code}`
+                    )
+                  }
+                };
+              } else if (prep.outcome === "identical_replay") {
+                const bundleId = prep.rowId;
+                const assemblyWarnings = Array.isArray(prep.warnings)
+                  ? prep.warnings.map(redactSecretMentions)
+                  : [];
+                let briefArtifact = prep.embeddedBrief ?? null;
+                let briefOutcomeStr: string | null = briefArtifact ? "reused" : null;
+
+                if (!briefArtifact && prep.prepared) {
+                  let brief: GenerateResearchBriefOutcome | null = null;
                   try {
-                    publication = await activeResources.services.publish({
-                      evidenceBundleId: bundleId
+                    brief = await activeResources.services.generateBrief({
+                      evidenceBundlePayload: prep.prepared.nullBriefCandidate,
+                      pair: "SOL/USDC",
+                      evaluationTimeUnixMs: activeEvaluationTimeUnixMs,
+                      codeVersion: config.codeVersion,
+                      runId: pipelineRunId
                     });
                   } catch (err) {
                     return {
                       positionId,
                       correlationId,
                       bundleId,
-                      assemblyOutcome: assemblyOutcomeStr,
-                      briefOutcome: briefOutcomeStr,
-                      publishOutcome: "error",
+                      assemblyOutcome: prep.outcome,
+                      briefOutcome: "error",
+                      publishOutcome: null,
                       status: "failed",
                       warnings: Object.freeze(assemblyWarnings),
                       diagnostic: {
-                        stage: "publish",
-                        code: "PUBLISH_FAILED",
+                        stage: "brief",
+                        code: "BRIEF_FAILED",
                         message: redactSecretMentions(
                           err instanceof Error ? err.message : String(err)
                         )
                       }
                     };
                   }
-                  const publishOutcomeStr = publication.outcome;
-                  const isPublishSuccess =
-                    publication.outcome === "created" ||
-                    publication.outcome === "created_degraded" ||
-                    publication.outcome === "idempotent_replay";
 
-                  if (!isPublishSuccess) {
+                  briefOutcomeStr = brief.outcome;
+                  if (brief.outcome === "no_brief") {
                     return {
                       positionId,
                       correlationId,
                       bundleId,
-                      assemblyOutcome: assemblyOutcomeStr,
+                      assemblyOutcome: prep.outcome,
                       briefOutcome: briefOutcomeStr,
-                      publishOutcome: publishOutcomeStr,
+                      publishOutcome: null,
                       status: "failed",
                       warnings: Object.freeze(assemblyWarnings),
                       diagnostic: {
-                        stage: "publish",
-                        code: "PUBLISH_FAILED",
+                        stage: "brief",
+                        code: "NO_BRIEF",
                         message: redactSecretMentions(
-                          `Publish failed with outcome: ${publishOutcomeStr}`
+                          `Brief generation returned no_brief (${brief.reason})`
                         )
                       }
                     };
                   }
-
-                  const isPositionDegraded =
-                    collectionStatus === "PARTIAL" || publication.outcome === "created_degraded";
-                  const positionStatus: PositionPipelineStatus = isPositionDegraded
-                    ? "degraded"
-                    : "complete";
-
-                  return {
-                    positionId,
-                    correlationId,
-                    bundleId,
-                    assemblyOutcome: assemblyOutcomeStr,
-                    briefOutcome: briefOutcomeStr,
-                    publishOutcome: publishOutcomeStr,
-                    status: positionStatus,
-                    warnings: Object.freeze(assemblyWarnings),
-                    diagnostic: null
-                  };
-                } else if (prep.outcome !== "prepared") {
-                  return {
-                    positionId,
-                    correlationId,
-                    bundleId: null,
-                    assemblyOutcome: assemblyOutcomeStr,
-                    briefOutcome: null,
-                    publishOutcome: null,
-                    status: "failed",
-                    warnings: [],
-                    diagnostic: {
-                      stage: "assembly",
-                      code: "ASSEMBLY_FAILED",
-                      message: redactSecretMentions(
-                        `Assembly failed with outcome: ${assemblyOutcomeStr}`
-                      )
-                    }
-                  };
+                  briefArtifact = brief.brief;
                 }
 
-                const preparedPayload = prep.prepared;
-                let brief: Record<string, unknown> | null = null;
-                try {
-                  brief = (await activeResources.services.generateBrief({
-                    evidenceBundlePayload: preparedPayload as EvidenceBundleV1,
-                    pair: "SOL/USDC",
-                    evaluationTimeUnixMs: activeEvaluationTimeUnixMs,
-                    codeVersion: config.codeVersion,
-                    runId: pipelineRunId
-                  })) as Record<string, unknown>;
-                } catch (err) {
-                  return {
-                    positionId,
-                    correlationId,
-                    bundleId: null,
-                    assemblyOutcome: assemblyOutcomeStr,
-                    briefOutcome: "error",
-                    publishOutcome: null,
-                    status: "failed",
-                    warnings: [],
-                    diagnostic: {
-                      stage: "brief",
-                      code: "BRIEF_FAILED",
-                      message: redactSecretMentions(
-                        err instanceof Error ? err.message : String(err)
-                      )
-                    }
-                  };
-                }
-
-                const briefOutcomeStr = brief.outcome as string;
-                if (brief.outcome === "no_brief") {
-                  return {
-                    positionId,
-                    correlationId,
-                    bundleId: null,
-                    assemblyOutcome: assemblyOutcomeStr,
-                    briefOutcome: briefOutcomeStr,
-                    publishOutcome: null,
-                    status: "failed",
-                    warnings: [],
-                    diagnostic: {
-                      stage: "brief",
-                      code: "NO_BRIEF",
-                      message: redactSecretMentions(
-                        `Brief generation returned no_brief (${brief.reason as string})`
-                      )
-                    }
-                  };
-                }
-
-                const briefArtifact = brief.brief;
-                let fin: Record<string, unknown> | null = null;
-                try {
-                  fin = (await activeResources.services.finalize(
-                    preparedPayload,
-                    briefArtifact as PersistedResearchBrief
-                  )) as Record<string, unknown>;
-                } catch (err) {
-                  return {
-                    positionId,
-                    correlationId,
-                    bundleId: null,
-                    assemblyOutcome: assemblyOutcomeStr,
-                    briefOutcome: briefOutcomeStr,
-                    publishOutcome: null,
-                    status: "failed",
-                    warnings: [],
-                    diagnostic: {
-                      stage: "assembly",
-                      code: "ASSEMBLY_FAILED",
-                      message: redactSecretMentions(
-                        err instanceof Error ? err.message : String(err)
-                      )
-                    }
-                  };
-                }
-
-                const finOutcomeStr =
-                  typeof fin.outcome === "string" ? fin.outcome : String(fin.code ?? "error");
-                const isFinSuccess =
-                  fin.outcome === "persisted" || fin.outcome === "identical_replay";
-                if (!isFinSuccess || !("rowId" in fin)) {
-                  return {
-                    positionId,
-                    correlationId,
-                    bundleId: null,
-                    assemblyOutcome: finOutcomeStr,
-                    briefOutcome: briefOutcomeStr,
-                    publishOutcome: null,
-                    status: "failed",
-                    warnings: [],
-                    diagnostic: {
-                      stage: "assembly",
-                      code: "ASSEMBLY_FAILED",
-                      message: redactSecretMentions(
-                        `Finalize failed with outcome: ${finOutcomeStr}`
-                      )
-                    }
-                  };
-                }
-
-                const bundleId = fin.rowId as number;
-                const assemblyWarnings = Array.isArray(fin.warnings)
-                  ? (fin.warnings as string[]).map(redactSecretMentions)
-                  : [];
-
-                if (activeResources.services.persistBrief && briefArtifact) {
+                if (briefArtifact) {
                   try {
                     await activeResources.services.persistBrief({
                       bundleId,
-                      bundleHash: fin.payloadHash as string,
-                      brief: briefArtifact as PersistedResearchBrief,
+                      bundleHash: prep.payloadHash,
+                      brief: briefArtifact,
                       pair: "SOL/USDC",
                       evaluationTimeUnixMs: activeEvaluationTimeUnixMs,
                       codeVersion: config.codeVersion,
@@ -1153,7 +905,7 @@ export async function runCoreEvidencePipeline(
                       positionId,
                       correlationId,
                       bundleId,
-                      assemblyOutcome: assemblyOutcomeStr,
+                      assemblyOutcome: prep.outcome,
                       briefOutcome: "error",
                       publishOutcome: null,
                       status: "failed",
@@ -1179,7 +931,7 @@ export async function runCoreEvidencePipeline(
                     positionId,
                     correlationId,
                     bundleId,
-                    assemblyOutcome: assemblyOutcomeStr,
+                    assemblyOutcome: prep.outcome,
                     briefOutcome: briefOutcomeStr,
                     publishOutcome: "error",
                     status: "failed",
@@ -1193,7 +945,6 @@ export async function runCoreEvidencePipeline(
                     }
                   };
                 }
-
                 const publishOutcomeStr = publication.outcome;
                 const isPublishSuccess =
                   publication.outcome === "created" ||
@@ -1205,7 +956,7 @@ export async function runCoreEvidencePipeline(
                     positionId,
                     correlationId,
                     bundleId,
-                    assemblyOutcome: assemblyOutcomeStr,
+                    assemblyOutcome: prep.outcome,
                     briefOutcome: briefOutcomeStr,
                     publishOutcome: publishOutcomeStr,
                     status: "failed",
@@ -1222,8 +973,9 @@ export async function runCoreEvidencePipeline(
 
                 const isPositionDegraded =
                   collectionStatus === "PARTIAL" ||
-                  brief.outcome === "generated_degraded" ||
-                  publication.outcome === "created_degraded";
+                  briefOutcomeStr === "generated_degraded" ||
+                  publication.outcome === "created_degraded" ||
+                  !briefArtifact;
                 const positionStatus: PositionPipelineStatus = isPositionDegraded
                   ? "degraded"
                   : "complete";
@@ -1232,28 +984,19 @@ export async function runCoreEvidencePipeline(
                   positionId,
                   correlationId,
                   bundleId,
-                  assemblyOutcome: assemblyOutcomeStr,
+                  assemblyOutcome: prep.outcome,
                   briefOutcome: briefOutcomeStr,
                   publishOutcome: publishOutcomeStr,
                   status: positionStatus,
                   warnings: Object.freeze(assemblyWarnings),
                   diagnostic: null
                 };
-              }
-
-              try {
-                if (!activeResources.services.assemble) {
-                  throw new Error(
-                    "CoreEvidencePipelineServices: missing assemble or prepare service"
-                  );
-                }
-                assembly = await activeResources.services.assemble(assemblyReq);
-              } catch (err) {
+              } else if (prep.outcome !== "prepared") {
                 return {
                   positionId,
                   correlationId,
                   bundleId: null,
-                  assemblyOutcome: "error",
+                  assemblyOutcome: prep.outcome,
                   briefOutcome: null,
                   publishOutcome: null,
                   status: "failed",
@@ -1261,47 +1004,16 @@ export async function runCoreEvidencePipeline(
                   diagnostic: {
                     stage: "assembly",
                     code: "ASSEMBLY_FAILED",
-                    message: redactSecretMentions(err instanceof Error ? err.message : String(err))
+                    message: redactSecretMentions(`Assembly failed with outcome: ${prep.outcome}`)
                   }
                 };
               }
 
-              const assemblyOutcomeStr = "outcome" in assembly ? assembly.outcome : assembly.code;
-              const isAssemblySuccess =
-                "outcome" in assembly &&
-                (assembly.outcome === "persisted" || assembly.outcome === "identical_replay");
-
-              if (!isAssemblySuccess || !("rowId" in assembly)) {
-                return {
-                  positionId,
-                  correlationId,
-                  bundleId: null,
-                  assemblyOutcome: assemblyOutcomeStr,
-                  briefOutcome: null,
-                  publishOutcome: null,
-                  status: "failed",
-                  warnings: [],
-                  diagnostic: {
-                    stage: "assembly",
-                    code: "ASSEMBLY_FAILED",
-                    message: redactSecretMentions(
-                      `Assembly failed with outcome: ${assemblyOutcomeStr}`
-                    )
-                  }
-                };
-              }
-
-              const bundleId = assembly.rowId;
-              const assemblyWarnings =
-                "warnings" in assembly && Array.isArray(assembly.warnings)
-                  ? assembly.warnings.map(redactSecretMentions)
-                  : [];
-
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              let brief: any;
+              const preparedPayload = prep.prepared;
+              let brief: GenerateResearchBriefOutcome | null = null;
               try {
                 brief = await activeResources.services.generateBrief({
-                  evidenceBundleId: bundleId,
+                  evidenceBundlePayload: preparedPayload.nullBriefCandidate,
                   pair: "SOL/USDC",
                   evaluationTimeUnixMs: activeEvaluationTimeUnixMs,
                   codeVersion: config.codeVersion,
@@ -1311,12 +1023,12 @@ export async function runCoreEvidencePipeline(
                 return {
                   positionId,
                   correlationId,
-                  bundleId,
-                  assemblyOutcome: assemblyOutcomeStr,
+                  bundleId: null,
+                  assemblyOutcome: "prepared",
                   briefOutcome: "error",
                   publishOutcome: null,
                   status: "failed",
-                  warnings: Object.freeze(assemblyWarnings),
+                  warnings: [],
                   diagnostic: {
                     stage: "brief",
                     code: "BRIEF_FAILED",
@@ -1330,12 +1042,12 @@ export async function runCoreEvidencePipeline(
                 return {
                   positionId,
                   correlationId,
-                  bundleId,
-                  assemblyOutcome: assemblyOutcomeStr,
+                  bundleId: null,
+                  assemblyOutcome: "prepared",
                   briefOutcome: briefOutcomeStr,
                   publishOutcome: null,
                   status: "failed",
-                  warnings: Object.freeze(assemblyWarnings),
+                  warnings: [],
                   diagnostic: {
                     stage: "brief",
                     code: "NO_BRIEF",
@@ -1344,6 +1056,105 @@ export async function runCoreEvidencePipeline(
                     )
                   }
                 };
+              }
+
+              const briefArtifact = brief.brief;
+              let fin: AssembleEvidenceBundleResult | null = null;
+              try {
+                fin = await activeResources.services.finalize(preparedPayload, briefArtifact);
+              } catch (err) {
+                return {
+                  positionId,
+                  correlationId,
+                  bundleId: null,
+                  assemblyOutcome: "prepared",
+                  briefOutcome: briefOutcomeStr,
+                  publishOutcome: null,
+                  status: "failed",
+                  warnings: [],
+                  diagnostic: {
+                    stage: "assembly",
+                    code: "ASSEMBLY_FAILED",
+                    message: redactSecretMentions(err instanceof Error ? err.message : String(err))
+                  }
+                };
+              }
+
+              if (!("outcome" in fin)) {
+                const finOutcomeStr = fin.code;
+                return {
+                  positionId,
+                  correlationId,
+                  bundleId: null,
+                  assemblyOutcome: finOutcomeStr,
+                  briefOutcome: briefOutcomeStr,
+                  publishOutcome: null,
+                  status: "failed",
+                  warnings: [],
+                  diagnostic: {
+                    stage: "assembly",
+                    code: "ASSEMBLY_FAILED",
+                    message: redactSecretMentions(
+                      "message" in fin
+                        ? fin.message
+                        : `Finalize failed with error code: ${fin.code}`
+                    )
+                  }
+                };
+              } else if (fin.outcome !== "persisted" && fin.outcome !== "identical_replay") {
+                return {
+                  positionId,
+                  correlationId,
+                  bundleId: null,
+                  assemblyOutcome: fin.outcome,
+                  briefOutcome: briefOutcomeStr,
+                  publishOutcome: null,
+                  status: "failed",
+                  warnings: [],
+                  diagnostic: {
+                    stage: "assembly",
+                    code: "ASSEMBLY_FAILED",
+                    message: redactSecretMentions(`Finalize failed with outcome: ${fin.outcome}`)
+                  }
+                };
+              }
+
+              const bundleId = fin.rowId;
+              const assemblyWarnings = Array.isArray(fin.warnings)
+                ? fin.warnings.map(redactSecretMentions)
+                : [];
+
+              if (briefArtifact) {
+                try {
+                  await activeResources.services.persistBrief({
+                    bundleId,
+                    bundleHash: fin.payloadHash,
+                    brief: briefArtifact,
+                    pair: "SOL/USDC",
+                    evaluationTimeUnixMs: activeEvaluationTimeUnixMs,
+                    codeVersion: config.codeVersion,
+                    runId: pipelineRunId,
+                    expiresAtUnixMs: activeEvaluationTimeUnixMs + 3600000
+                  });
+                } catch (err) {
+                  return {
+                    positionId,
+                    correlationId,
+                    bundleId,
+                    assemblyOutcome: fin.outcome,
+                    briefOutcome: "error",
+                    publishOutcome: null,
+                    status: "failed",
+                    warnings: Object.freeze(assemblyWarnings),
+                    diagnostic: {
+                      stage: "brief",
+                      code: "BRIEF_FAILED",
+                      message: redactSecretMentions(
+                        err instanceof Error ? err.message : String(err)
+                      )
+                    }
+                  };
+                }
               }
 
               let publication: PublishEvidenceBundleResult;
@@ -1356,7 +1167,7 @@ export async function runCoreEvidencePipeline(
                   positionId,
                   correlationId,
                   bundleId,
-                  assemblyOutcome: assemblyOutcomeStr,
+                  assemblyOutcome: fin.outcome,
                   briefOutcome: briefOutcomeStr,
                   publishOutcome: "error",
                   status: "failed",
@@ -1380,7 +1191,7 @@ export async function runCoreEvidencePipeline(
                   positionId,
                   correlationId,
                   bundleId,
-                  assemblyOutcome: assemblyOutcomeStr,
+                  assemblyOutcome: fin.outcome,
                   briefOutcome: briefOutcomeStr,
                   publishOutcome: publishOutcomeStr,
                   status: "failed",
@@ -1407,7 +1218,7 @@ export async function runCoreEvidencePipeline(
                 positionId,
                 correlationId,
                 bundleId,
-                assemblyOutcome: assemblyOutcomeStr,
+                assemblyOutcome: fin.outcome,
                 briefOutcome: briefOutcomeStr,
                 publishOutcome: publishOutcomeStr,
                 status: positionStatus,

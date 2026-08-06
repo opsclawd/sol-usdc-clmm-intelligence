@@ -347,30 +347,27 @@ All seven canonical features are derived by code from normalized source observat
 
 ## Evidence Bundle Assembly
 
-The evidence bundle assembly layer combines derived features, raw observations, and contextual evidence into a canonical, signable payload for regime-engine.
+The evidence bundle assembly layer combines derived features, raw observations, and contextual evidence into a canonical, signable payload for regime-engine following the two-phase production sequence: `prepare -> generate/reuse brief -> finalize -> persist brief link -> publish`. Operators execute `pnpm run:core-evidence-pipeline` for end-to-end assembly and publication.
 
 ### Architecture
 
 ```text
-derived_features ──────────────────>│
-                                   │
-raw_observations ──────────────────>├──> selectEvidenceFeatureSlots()
-                                   │
-normalized_observations ───────────>│
-                                   v
-                           classifyEvidenceBundleQuality()
-                                   │
-                                   v
-                           verifyEvidenceLineage()
-                                   │
-                                   v
-                    assembleEvidenceBundleCandidate()
-                                   │
-                                   v
-              contract.validateCanonicalizeAndHash()
-                                   │
-                                   v
-                           bundleRepo.insertOrClassify()
+derived_features ────────┐
+raw_observations ────────┼──> prepareEvidenceBundle()
+normalized_observations ─┘       (select slots -> classify quality -> verify lineage -> contract validate)
+                                 │
+                                 v
+                         generate / reuse brief
+                                 │
+                                 v
+                         finalizeEvidenceBundle()
+                                 (embed brief -> validate canonical -> bundleRepo.insertOrClassify)
+                                 │
+                                 v
+                         persist brief link
+                                 │
+                                 v
+                         publish payload to regime-engine
 ```
 
 ### Persistence Contract
@@ -428,18 +425,17 @@ idempotencyKey = SHA256(identityFields.join("|"))
 
 The unique index is on `(schemaVersion, pair, idempotencyKey)`.
 
-### Script Entry Point
+### Production Assembly Sequence
 
-The `pnpm assemble:bundle` script:
+Evidence bundle assembly is executed as part of `pnpm run:core-evidence-pipeline` using the two-phase production sequence:
 
-1. Reads a JSON request file
-2. Validates request structure before database access
-3. Obtains persistence lazily
-4. Invokes `assembleEvidenceBundleJob`
-5. Emits redacted JSON (outcome, rowId, payloadHash, slotCount, warnings)
-6. Sets exit code 1 on conflict or error
+`prepare -> generate/reuse brief -> finalize -> persist brief link -> publish`
 
-**Never logs:** wallet ID, canonical payload, full provenance.
+1. `prepare`: Queries derived features and contextual evidence, selects slots, computes quality, and produces a null-brief candidate bundle.
+2. `generate/reuse brief`: Generates an LLM research brief over bounded candidate evidence or reuses a cached brief.
+3. `finalize`: Integrates the brief, validates against the canonical contract, and persists the evidence bundle row.
+4. `persist brief link`: Associates the generated research brief with the persisted bundle row ID.
+5. `publish`: Publishes the evidence bundle payload to regime-engine.
 
 ## Publish-attempt persistence
 

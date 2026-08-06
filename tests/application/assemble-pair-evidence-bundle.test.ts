@@ -33,13 +33,15 @@ import type { PersistedResearchBrief } from "../../src/contracts/research-brief.
 import { MVP_ACCEPTED_CALCULATOR_VERSIONS } from "../../src/domain/derived-feature/constants.js";
 import { EVIDENCE_BUNDLE_SELECTION_VERSION } from "../../src/domain/evidence-bundle/select.js";
 import {
-  assemblePairEvidenceBundle,
   preparePairEvidenceBundle,
   finalizePairEvidenceBundle,
   type AssemblePairEvidenceBundleRequest,
-  type AssemblePairEvidenceBundleDeps
+  type AssemblePairEvidenceBundleDeps,
+  type AssemblePairEvidenceBundleResult
 } from "../../src/application/assemble-pair-evidence-bundle.js";
 import { createEvidenceBundleContract } from "../../src/adapters/node/evidence-bundle-v1-contract.js";
+import { FakeBriefRepo } from "../fakes/fake-brief-repo.js";
+import { RESEARCH_BRIEF_PROMPT_VERSION } from "../../src/domain/brief/prompts.js";
 
 const DEFAULT_CONFIDENCE: Confidence = {
   components: {
@@ -405,6 +407,15 @@ function makeMockBrief(overrides: Partial<PersistedResearchBrief> = {}): Persist
   };
 }
 
+async function prepareAndFinalizePairWithoutBriefForTest(
+  deps: AssemblePairEvidenceBundleDeps,
+  request: AssemblePairEvidenceBundleRequest
+): Promise<AssemblePairEvidenceBundleResult> {
+  const prepared = await preparePairEvidenceBundle(deps, request);
+  if ("code" in prepared || prepared.outcome !== "prepared") return prepared;
+  return finalizePairEvidenceBundle(deps, prepared.prepared, undefined);
+}
+
 describe("assemblePairEvidenceBundle", () => {
   it("queries pair-applicable deterministic features for the canonical pool with no position filter", async () => {
     let capturedQuery: BundleFeatureCandidateQuery | null = null;
@@ -453,7 +464,7 @@ describe("assemblePairEvidenceBundle", () => {
       (kind) => !["range_location", "distance_to_lower", "distance_to_upper"].includes(kind)
     );
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
     expect("outcome" in result && result.outcome).toBe("persisted");
 
     expect(capturedQuery).not.toBeNull();
@@ -539,7 +550,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
     expect("outcome" in result && result.outcome).toBe("persisted");
 
     const candidateObj = capturedCandidate as {
@@ -632,7 +643,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
     expect("outcome" in result && result.outcome).toBe("persisted");
 
     const candidateObj = capturedCandidate as {
@@ -729,7 +740,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(
+    const result = await prepareAndFinalizePairWithoutBriefForTest(
       deps,
       makeDefaultRequest({ gitCommit: "a".repeat(64) })
     );
@@ -786,7 +797,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
 
     expect("outcome" in result && result.outcome).toBe("persisted");
     expect(persistenceCalledTimes).toBe(1);
@@ -869,7 +880,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
 
     expect("outcome" in result && result.outcome).toBe("no_bundle");
     expect(contractCalled).toBe(false);
@@ -934,7 +945,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
 
     expect("code" in result && result.code).toBe("LINEAGE_ERROR");
     expect(contractCalled).toBe(false);
@@ -971,7 +982,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
 
     expect("outcome" in result && result.outcome).toBe("identical_replay");
     if ("outcome" in result && result.outcome === "identical_replay") {
@@ -1011,7 +1022,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const result = await assemblePairEvidenceBundle(deps, makeDefaultRequest());
+    const result = await prepareAndFinalizePairWithoutBriefForTest(deps, makeDefaultRequest());
 
     expect("outcome" in result && result.outcome).toBe("conflict");
     if ("outcome" in result && result.outcome === "conflict") {
@@ -1055,7 +1066,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const contractResult = await assemblePairEvidenceBundle(
+    const contractResult = await prepareAndFinalizePairWithoutBriefForTest(
       contractErrorDeps,
       makeDefaultRequest()
     );
@@ -1089,7 +1100,7 @@ describe("assemblePairEvidenceBundle", () => {
       }
     };
 
-    const persistenceResult = await assemblePairEvidenceBundle(
+    const persistenceResult = await prepareAndFinalizePairWithoutBriefForTest(
       persistenceErrorDeps,
       makeDefaultRequest()
     );
@@ -1185,7 +1196,92 @@ describe("assemblePairEvidenceBundle", () => {
       }
     });
 
-    it("pair legacy replay without an embedded brief is not accepted as complete", async () => {
+    it("pair exact replay via real preparePairEvidenceBundle loads the persisted brief through briefRepo", async () => {
+      const { detRaw, detNorm, featureRow } = makeValidPairFeatureFixture();
+
+      const existingRowWithBrief = makeBundleRow({
+        id: 500,
+        payloadHash: "canonical-hash-1",
+        idempotencyKey: "canonical-idemp-1",
+        payload: {
+          researchBrief: { briefId: "brief-existing" },
+          assessment: { warnings: [{ message: "Existing warning" }] }
+        }
+      });
+
+      const briefRepo = new FakeBriefRepo();
+      const persistedBrief: PersistedResearchBrief = {
+        briefId: "brief-existing",
+        pair: "SOL/USDC",
+        generationStatus: "complete",
+        llmOutput: {
+          summary: "Grounded pair brief",
+          keyTakeaways: ["Pair evidence is available"],
+          supportsCurrentRegime: "supports",
+          regimeAssessmentReasoning: "The cited feature supports the assessment.",
+          confidenceScore: 0.9,
+          confidenceReasoning: "The brief cites source-bundle evidence.",
+          sourceEvidenceIds: [],
+          unsupportedOrMissingInputs: []
+        },
+        sourceRefs: [],
+        providerMetadata: { provider: "openai", model: "gpt-4o" },
+        sourceBundleRef: {
+          bundleId: 500,
+          bundleHash: "canonical-hash-1"
+        },
+        inputContextHash: "context-hash",
+        priorBriefRef: null,
+        generatedAt: "2026-05-10T12:00:00.000Z",
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+      };
+      await briefRepo.insert({
+        evidenceBundleId: 500,
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+        modelProvider: "openai",
+        structuredOutput: persistedBrief,
+        signalClass: "contextual",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        payloadHash: "brief-payload-hash",
+        receivedAtUnixMs: new Date("2026-05-10T12:00:00.000Z").getTime() - 30_000,
+        validUntilUnixMs: new Date("2026-05-10T12:00:00.000Z").getTime() + 3_600_000
+      });
+
+      const deps: AssemblePairEvidenceBundleDeps = {
+        clock: { now: () => "2026-05-10T12:00:00.000Z" },
+        featureRepo: makeMockFeatureRepo({
+          listBundleCandidates: async () => [featureRow]
+        }),
+        normalizedRepo: makeMockNormalizedRepo({
+          listCandidates: async () => [],
+          findByIds: async () => [detNorm]
+        }),
+        rawRepo: makeMockRawRepo({
+          findByIds: async () => [detRaw],
+          findById: async () => detRaw
+        }),
+        contract: {
+          validateCanonicalizeAndHash: async () => makeCanonicalBundle()
+        },
+        bundleRepo: {
+          insertOrClassify: async () => ({ outcome: "inserted", row: makeBundleRow() }),
+          findById: async () => undefined,
+          findByPair: async () => [existingRowWithBrief],
+          findLatestByPair: async () => undefined
+        },
+        briefRepo
+      };
+
+      const prepareResult = await preparePairEvidenceBundle(deps, makeDefaultRequest());
+      expect("outcome" in prepareResult && prepareResult.outcome).toBe("identical_replay");
+      if ("outcome" in prepareResult && prepareResult.outcome === "identical_replay") {
+        expect(prepareResult.rowId).toBe(500);
+        expect(prepareResult.embeddedBrief).toEqual(persistedBrief);
+      }
+    });
+
+    it("pair legacy replay without an embedded brief returns identical_replay with prepared structure to allow brief generation", async () => {
       const { detRaw, detNorm, featureRow } = makeValidPairFeatureFixture();
 
       const legacyRowNoBrief = makeBundleRow({
@@ -1223,10 +1319,11 @@ describe("assemblePairEvidenceBundle", () => {
       };
 
       const prepareResult = await preparePairEvidenceBundle(deps, makeDefaultRequest());
-      expect("outcome" in prepareResult && prepareResult.outcome).toBe("conflict");
-      if ("outcome" in prepareResult && prepareResult.outcome === "conflict") {
+      expect("outcome" in prepareResult && prepareResult.outcome).toBe("identical_replay");
+      if ("outcome" in prepareResult && prepareResult.outcome === "identical_replay") {
         expect(prepareResult.rowId).toBe(600);
-        expect(prepareResult.incomingPayloadHash).toBe("canonical-hash-1");
+        expect(prepareResult.prepared).toBeDefined();
+        expect(prepareResult.embeddedBrief).toBeUndefined();
       }
     });
   });
@@ -1286,6 +1383,36 @@ describe("assemblePairEvidenceBundle", () => {
         expect(withBriefPayload.researchBrief).not.toBeNull();
         expect(withBriefPayload.researchBrief?.briefId).toBe("brief-1");
       }
+    });
+
+    it("returns prepare error directly without invoking finalize or persisting when pair prepare fails", async () => {
+      const featureRepo = makeMockFeatureRepo({
+        listBundleCandidates: async () => []
+      });
+      const normalizedRepo = makeMockNormalizedRepo({
+        listCandidates: async () => []
+      });
+      const rawRepo = makeMockRawRepo();
+      let insertCalled = false;
+      const bundleRepo: EvidenceBundleRepo = {
+        insertOrClassify: async () => {
+          insertCalled = true;
+          return { outcome: "inserted", row: makeBundleRow() };
+        },
+        findById: async () => undefined,
+        findByPair: async () => [],
+        findLatestByPair: async () => undefined
+      };
+      const contract: EvidenceBundleContract = {
+        validateCanonicalizeAndHash: async () => makeCanonicalBundle()
+      };
+      const clock: Clock = { now: () => "2026-05-10T12:00:00.000Z" };
+
+      const deps = { featureRepo, normalizedRepo, rawRepo, bundleRepo, contract, clock };
+
+      const prepareResult = await preparePairEvidenceBundle(deps, makeDefaultRequest());
+      expect("outcome" in prepareResult && prepareResult.outcome).toBe("no_bundle");
+      expect(insertCalled).toBe(false);
     });
   });
 });

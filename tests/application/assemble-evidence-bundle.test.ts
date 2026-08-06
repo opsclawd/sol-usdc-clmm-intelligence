@@ -26,12 +26,29 @@ import type { EvidenceBundleV1 } from "../../src/contracts/generated/evidence-bu
 import type {
   AssembleEvidenceBundleRequest,
   AssembleEvidenceBundleResult,
+  AssembleEvidenceBundleDeps,
   PrepareEvidenceBundleResult,
   AssembleEvidenceBundleError
+} from "../../src/application/assemble-evidence-bundle.js";
+import {
+  prepareEvidenceBundle,
+  finalizeEvidenceBundle
 } from "../../src/application/assemble-evidence-bundle.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../helpers/taxonomy-fixtures.js";
 import type { ProvenanceRef, Source, ObservationKind } from "../../src/contracts/taxonomy.js";
 import { makeClmmBundle, makePoolData, makePositionData } from "../fixtures/clmm-bundle.js";
+import { FakeBriefRepo } from "../fakes/fake-brief-repo.js";
+import { RESEARCH_BRIEF_PROMPT_VERSION } from "../../src/domain/brief/prompts.js";
+import type { PersistedResearchBrief } from "../../src/contracts/research-brief.js";
+
+async function prepareAndFinalizePositionWithoutBriefForTest(
+  deps: AssembleEvidenceBundleDeps,
+  request: AssembleEvidenceBundleRequest
+): Promise<AssembleEvidenceBundleResult> {
+  const prepared = await prepareEvidenceBundle(deps, request);
+  if ("code" in prepared || prepared.outcome !== "prepared") return prepared;
+  return finalizeEvidenceBundle(deps, prepared.prepared, undefined);
+}
 
 const EPOCH = "2024-01-01T00:00:00.000Z";
 const EVAL_MS = new Date(EPOCH).getTime();
@@ -540,9 +557,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("persists one schema-valid complete deterministic bundle", () => {
     it("selection, lineage, quality, assembly, contract validation, and insert occur in that order", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -558,7 +572,7 @@ describe("assembleEvidenceBundle", () => {
 
       const request = makeRequest();
       const result = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -581,9 +595,6 @@ describe("assembleEvidenceBundle", () => {
     });
 
     it("gives bundles from different positions in the same pipeline run distinct runIds", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       seedRaw([makeRawRow({ id: 1 }), makeRawRow({ id: 2, positionId: "pos-2" })]);
       seedFeature([
         makeDerivedFeatureRow({
@@ -617,13 +628,13 @@ describe("assembleEvidenceBundle", () => {
       };
 
       assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract: capturingContract },
           requestPos1
         )
       );
       assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract: capturingContract },
           requestPos2
         )
@@ -653,9 +664,6 @@ describe("assembleEvidenceBundle", () => {
     });
 
     it("insertOrClassify is called exactly once on successful assembly", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -670,7 +678,7 @@ describe("assembleEvidenceBundle", () => {
       seedFeature([featureRow]);
 
       const request = makeRequest();
-      await assembleEvidenceBundle(
+      await prepareAndFinalizePositionWithoutBriefForTest(
         { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
         request
       );
@@ -681,9 +689,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("queries the configured contextual source matrix", () => {
     it("queries Birdeye whale swaps and preserves the contextual source matrix", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       seedRaw([makeRawRow({ id: 1 })]);
       seedFeature([
         makeDerivedFeatureRow({
@@ -696,7 +701,7 @@ describe("assembleEvidenceBundle", () => {
         })
       ]);
 
-      await assembleEvidenceBundle(
+      await prepareAndFinalizePositionWithoutBriefForTest(
         { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
         makeRequest()
       );
@@ -722,9 +727,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("returns identical_replay without rebuilding mutable run context", () => {
     it("an explicit repeated request returns the original persisted row", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -741,7 +743,7 @@ describe("assembleEvidenceBundle", () => {
       const request = makeRequest();
 
       const result1 = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -765,7 +767,7 @@ describe("assembleEvidenceBundle", () => {
       };
 
       const result2 = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -780,9 +782,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("returns a typed conflict for same logical identity and different canonical content", () => {
     it("the use case never retries, overwrites, or hides the repository conflict", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -799,7 +798,7 @@ describe("assembleEvidenceBundle", () => {
       const request = makeRequest();
 
       const result1 = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -810,7 +809,7 @@ describe("assembleEvidenceBundle", () => {
       contract.overridePayloadHash = "different-payload-hash-value";
 
       const result2 = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -825,9 +824,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("persists nothing on invalid request lineage schema or canonicalization", () => {
     it("every hard failure occurs before insertOrClassify", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -846,7 +842,7 @@ describe("assembleEvidenceBundle", () => {
 
       const request = makeRequest();
 
-      const result = await assembleEvidenceBundle(
+      const result = await prepareAndFinalizePositionWithoutBriefForTest(
         { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
         request
       );
@@ -858,9 +854,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("loads only lineage ids referenced by the selected slots", () => {
     it("bulk reads are bounded and unrelated observations do not enter the bundle", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const normRow = makeNormalizedRow({ id: 10, rawObservationId: 20 });
       seedNormalized([normRow]);
 
@@ -880,7 +873,7 @@ describe("assembleEvidenceBundle", () => {
 
       const request = makeRequest();
 
-      await assembleEvidenceBundle(
+      await prepareAndFinalizePositionWithoutBriefForTest(
         { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
         request
       );
@@ -896,9 +889,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("does not call HTTP LLM publisher or policy dependencies", () => {
     it("the dependency object contains only feature, normalized, raw, bundle, and contract ports", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -923,7 +913,9 @@ describe("assembleEvidenceBundle", () => {
         contract
       };
 
-      const result = assertSuccess(await assembleEvidenceBundle(deps, request));
+      const result = assertSuccess(
+        await prepareAndFinalizePositionWithoutBriefForTest(deps, request)
+      );
 
       expect(result.outcome).toBeDefined();
       expect(result.outcome).toBe("persisted");
@@ -932,9 +924,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("returns no_bundle when no feature is usable", () => {
     it("no contract or bundle repository write occurs unless the pinned contract explicitly mandates a durable unavailable bundle", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       seedRaw([]);
 
       const unavailableFeature = makeDerivedFeatureRow({
@@ -952,7 +941,7 @@ describe("assembleEvidenceBundle", () => {
       const request = makeRequest();
 
       const result = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -966,9 +955,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("persists a schema-valid partial bundle with explicit missing warnings", () => {
     it("one and multiple missing features never become zero and still persist when at least one usable feature exists and the contract permits it", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -987,7 +973,7 @@ describe("assembleEvidenceBundle", () => {
       const request = makeRequest();
 
       const result = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -999,9 +985,6 @@ describe("assembleEvidenceBundle", () => {
 
   describe("preserves partial unavailable stale and nullable-brief semantics", () => {
     it("each acceptance-criteria case reaches the contract service with the exact canonical representation", async () => {
-      const { assembleEvidenceBundle } =
-        await import("../../src/application/assemble-evidence-bundle.js");
-
       const rawRow = makeRawRow({ id: 1 });
       seedRaw([rawRow]);
 
@@ -1021,7 +1004,7 @@ describe("assembleEvidenceBundle", () => {
       const request = makeRequest();
 
       const result = assertSuccess(
-        await assembleEvidenceBundle(
+        await prepareAndFinalizePositionWithoutBriefForTest(
           { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
           request
         )
@@ -1186,7 +1169,156 @@ describe("assembleEvidenceBundle", () => {
       }
     });
 
-    it("position legacy replay without an embedded brief is not accepted as complete", async () => {
+    it("position exact replay via real prepareEvidenceBundle loads the persisted brief through briefRepo", async () => {
+      const { prepareEvidenceBundle } =
+        await import("../../src/application/assemble-evidence-bundle.js");
+
+      const rawRow = makeRawRow({ id: 1 });
+      seedRaw([rawRow]);
+
+      const featureRow = makeDerivedFeatureRow({
+        id: 1,
+        featureKind: "range_location",
+        positionId: "pos-1",
+        poolId: "pool-abc",
+        inputObservationIds: [1],
+        rawRefs: [makeRawRef(1, "clmm-v2-bundle", "raw-hash-1")]
+      });
+      seedFeature([featureRow]);
+
+      const request = makeRequest();
+
+      const mockPayloadWithBrief: EvidenceBundleV1 = {
+        schemaVersion: "evidence-bundle.v1",
+        pair: "SOL/USDC",
+        scope: {
+          kind: "position",
+          network: "solana-mainnet",
+          walletAddress: "wallet-123",
+          whirlpoolAddress: "pool-abc",
+          positionId: "pos-1"
+        },
+        source: {
+          publisher: "sol-usdc-clmm-intelligence",
+          sourceId: "source-001",
+          sourceVersion: "1.0.0"
+        },
+        runId: "run-123:pos-1",
+        correlationId: "corr-123",
+        createdAt: "2024-01-01T00:00:00.000Z",
+        asOf: "2024-01-01T00:00:00.000Z",
+        freshUntil: "2024-01-01T01:00:00.000Z",
+        expiresAt: "2024-01-01T02:00:00.000Z",
+        deterministicFeatures: [] as unknown as EvidenceBundleV1["deterministicFeatures"],
+        contextualEvidence: {
+          supportResistance: [],
+          flows: [],
+          derivatives: [],
+          events: [],
+          newsRegulatory: []
+        },
+        researchBrief: {
+          briefId: "brief-real-42",
+          generatedAt: "2024-01-01T00:00:00.000Z",
+          summary: "test summary",
+          keyFindings: ["finding"],
+          uncertainties: [],
+          model: { provider: "anthropic", modelId: "claude-3", modelVersion: "v1" },
+          promptVersion: "v1",
+          sourceEvidenceIds: ["feat-range_location-1"]
+        },
+        sourceReferences: [] as unknown as EvidenceBundleV1["sourceReferences"],
+        assessment: {
+          overallConfidenceBps: 10000,
+          quality: "complete",
+          coverage: {} as unknown as EvidenceBundleV1["assessment"]["coverage"],
+          warnings: []
+        },
+        provenance: {
+          pipelineVersion: "1.0.0",
+          gitCommit: "abc123",
+          environment: "development",
+          upstreamRunIds: []
+        }
+      };
+
+      bundleRepo.store.push({
+        id: 42,
+        schemaVersion: "evidence-bundle.v1",
+        pair: "SOL/USDC",
+        asOfUnixMs: EVAL_MS,
+        expiresAtUnixMs: EVAL_MS + 3600000,
+        payload: mockPayloadWithBrief,
+        payloadHash: "hash-brief-bearing",
+        payloadCanonical: JSON.stringify(mockPayloadWithBrief),
+        idempotencyKey: "fixed-idempotency-key",
+        taxonomySummary: null,
+        dominantSignalClass: "deterministic",
+        confidence: DEFAULT_CONFIDENCE,
+        confidenceComposite: 1,
+        confidenceLevel: "high",
+        validUntilUnixMs: EVAL_MS + 3600000,
+        isStale: false,
+        staleBehavior: null,
+        provenance: DEFAULT_PROVENANCE,
+        version: 1,
+        receivedAtUnixMs: EVAL_MS
+      });
+
+      const briefRepo = new FakeBriefRepo();
+      const persistedBrief: PersistedResearchBrief = {
+        briefId: "brief-real-42",
+        pair: "SOL/USDC",
+        generationStatus: "complete",
+        llmOutput: {
+          summary: "Grounded brief",
+          keyTakeaways: ["Price evidence is available"],
+          supportsCurrentRegime: "supports",
+          regimeAssessmentReasoning: "The cited feature supports the assessment.",
+          confidenceScore: 0.9,
+          confidenceReasoning: "The brief cites source-bundle evidence.",
+          sourceEvidenceIds: ["feat-range_location-1"],
+          unsupportedOrMissingInputs: []
+        },
+        sourceRefs: [],
+        providerMetadata: { provider: "openai", model: "gpt-4o" },
+        sourceBundleRef: {
+          bundleId: 42,
+          bundleHash: "hash-brief-bearing"
+        },
+        inputContextHash: "context-hash",
+        priorBriefRef: null,
+        generatedAt: EPOCH,
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+      };
+      await briefRepo.insert({
+        evidenceBundleId: 42,
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION,
+        modelProvider: "openai",
+        structuredOutput: persistedBrief,
+        signalClass: "contextual",
+        confidence: DEFAULT_CONFIDENCE,
+        provenance: DEFAULT_PROVENANCE,
+        payloadHash: "brief-payload-hash",
+        receivedAtUnixMs: EVAL_MS - 30_000,
+        validUntilUnixMs: EVAL_MS + 3_600_000
+      });
+
+      const prepareResult = assertSuccess(
+        await prepareEvidenceBundle(
+          { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract, briefRepo },
+          request
+        )
+      );
+
+      expect(prepareResult.outcome).toBe("identical_replay");
+      if (prepareResult.outcome === "identical_replay") {
+        expect(prepareResult.rowId).toBe(42);
+        expect(prepareResult.embeddedBrief).toEqual(persistedBrief);
+      }
+    });
+
+    it("position legacy replay without an embedded brief returns identical_replay with prepared structure to allow brief generation", async () => {
       const { prepareEvidenceBundle } =
         await import("../../src/application/assemble-evidence-bundle.js");
 
@@ -1250,6 +1382,8 @@ describe("assembleEvidenceBundle", () => {
         }
       };
 
+      contract.overridePayloadHash = "hash-legacy-null-brief";
+
       bundleRepo.store.push({
         id: 99,
         schemaVersion: "evidence-bundle.v1",
@@ -1280,10 +1414,29 @@ describe("assembleEvidenceBundle", () => {
         )
       );
 
-      expect(prepareResult.outcome).toBe("conflict");
-      if (prepareResult.outcome === "conflict") {
+      expect(prepareResult.outcome).toBe("identical_replay");
+      if (prepareResult.outcome === "identical_replay") {
         expect(prepareResult.rowId).toBe(99);
+        expect(prepareResult.prepared).toBeDefined();
+        expect(prepareResult.embeddedBrief).toBeUndefined();
       }
+    });
+
+    it("returns prepare error directly without invoking finalize or persisting when prepare fails", async () => {
+      const { prepareEvidenceBundle } =
+        await import("../../src/application/assemble-evidence-bundle.js");
+
+      const request = makeRequest();
+
+      const prepareResult = await prepareEvidenceBundle(
+        { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+        request
+      );
+
+      expect("outcome" in prepareResult && prepareResult.outcome).toBe("no_bundle");
+      expect(bundleRepo.store).toHaveLength(0);
+      expect(executionLog).not.toContain("contract.validateCanonicalizeAndHash");
+      expect(executionLog).not.toContain("bundle.insertOrClassify");
     });
   });
 });

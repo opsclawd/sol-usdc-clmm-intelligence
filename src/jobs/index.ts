@@ -6,7 +6,6 @@ export { coingeckoJob } from "./coingecko-job.js";
 export { defillamaJob } from "./defillama-job.js";
 export { coreCollectionJob, runCoreCollectionJob } from "./core-collection-job.js";
 export { deriveMvpFeaturesJob } from "./derive-mvp-features-job.js";
-export { assembleEvidenceBundleJob } from "./assemble-evidence-bundle-job.js";
 export { publishEvidenceBundleJob } from "./publish-evidence-bundle-job.js";
 export {
   supportResistanceJob,

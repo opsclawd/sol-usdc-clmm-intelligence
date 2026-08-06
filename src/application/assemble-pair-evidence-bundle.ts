@@ -51,6 +51,8 @@ import { buildPairRunId } from "./core-evidence-pipeline-policy.js";
 import type { EvidenceBundleV1 } from "../contracts/generated/evidence-bundle-v1.js";
 import type { PersistedResearchBrief } from "../contracts/research-brief.js";
 import { mapPersistedBriefToCanonicalBundle } from "../domain/brief/map-to-evidence-bundle.js";
+import { findPersistedBriefForBundle } from "./find-persisted-brief.js";
+import type { ResearchBriefRepo } from "../ports/brief-repo.js";
 
 export interface AssemblePairEvidenceBundleRequest {
   readonly pair: "SOL/USDC";
@@ -140,6 +142,7 @@ export type PreparePairEvidenceBundleSuccess =
       readonly payloadHash: string;
       readonly slotCount: number;
       readonly warnings: readonly string[];
+      readonly prepared: PreparedPairEvidenceBundle;
       readonly embeddedBrief?: PersistedResearchBrief;
     }
   | { readonly outcome: "conflict"; readonly rowId: number; readonly incomingPayloadHash: string }
@@ -156,6 +159,7 @@ export interface AssemblePairEvidenceBundleDeps {
   readonly rawRepo: RawObservationRepo;
   readonly bundleRepo: EvidenceBundleRepo;
   readonly contract: EvidenceBundleContract;
+  readonly briefRepo?: ResearchBriefRepo;
 }
 
 const SUPPORTED_SCHEMA_VERSION = "evidence-bundle.v1";
@@ -552,51 +556,6 @@ export async function preparePairEvidenceBundle(
     return { code: "CONTRACT_ERROR", error: { code: "VALIDATION_ERROR", errors: [String(err)] } };
   }
 
-  let existingRows: EvidenceBundleRow[] = [];
-  try {
-    existingRows = (await bundleRepo.findByPair(request.pair, evaluationTimeUnixMs)) ?? [];
-  } catch (err) {
-    // If bundleRepo lookup throws, proceed
-  }
-
-  const matchingRow = (existingRows ?? []).find(
-    (row) => row.idempotencyKey === canonical.idempotencyKey
-  );
-
-  if (matchingRow) {
-    const payloadObj = matchingRow.payload as EvidenceBundleV1 | undefined | null;
-    const hasEmbeddedBrief =
-      payloadObj !== null &&
-      typeof payloadObj === "object" &&
-      "researchBrief" in payloadObj &&
-      payloadObj.researchBrief !== null &&
-      payloadObj.researchBrief !== undefined;
-
-    if (hasEmbeddedBrief) {
-      const warnings =
-        payloadObj &&
-        typeof payloadObj === "object" &&
-        "assessment" in payloadObj &&
-        payloadObj.assessment &&
-        Array.isArray(payloadObj.assessment.warnings)
-          ? payloadObj.assessment.warnings.map((w: { message: string }) => w.message)
-          : [];
-      return {
-        outcome: "identical_replay",
-        rowId: matchingRow.id,
-        payloadHash: matchingRow.payloadHash,
-        slotCount: slots.length,
-        warnings
-      };
-    } else {
-      return {
-        outcome: "conflict",
-        rowId: matchingRow.id,
-        incomingPayloadHash: canonical.payloadHash
-      };
-    }
-  }
-
   const prepared: PreparedPairEvidenceBundle = {
     slots,
     lineage: lineageResult.lineage,
@@ -618,6 +577,61 @@ export async function preparePairEvidenceBundle(
     nullBriefCandidate,
     canonical
   };
+
+  let existingRows: EvidenceBundleRow[] = [];
+  try {
+    existingRows = (await bundleRepo.findByPair(request.pair, evaluationTimeUnixMs)) ?? [];
+  } catch (err) {
+    // If bundleRepo lookup throws, proceed
+  }
+
+  const matchingRow = (existingRows ?? []).find(
+    (row) => row.idempotencyKey === canonical.idempotencyKey
+  );
+
+  if (matchingRow) {
+    const payloadObj = matchingRow.payload as EvidenceBundleV1 | undefined | null;
+    const hasEmbeddedBrief =
+      payloadObj !== null &&
+      typeof payloadObj === "object" &&
+      "researchBrief" in payloadObj &&
+      payloadObj.researchBrief !== null &&
+      payloadObj.researchBrief !== undefined;
+
+    if (hasEmbeddedBrief || matchingRow.payloadHash === canonical.payloadHash) {
+      const warnings =
+        payloadObj &&
+        typeof payloadObj === "object" &&
+        "assessment" in payloadObj &&
+        payloadObj.assessment &&
+        Array.isArray(payloadObj.assessment.warnings)
+          ? payloadObj.assessment.warnings.map((w: { message: string }) => w.message)
+          : [];
+      const embeddedBrief = deps.briefRepo
+        ? await findPersistedBriefForBundle(
+            deps.briefRepo,
+            matchingRow.id,
+            matchingRow.payloadHash,
+            new Date(deps.clock.now()).getTime()
+          )
+        : undefined;
+      return {
+        outcome: "identical_replay",
+        rowId: matchingRow.id,
+        payloadHash: matchingRow.payloadHash,
+        slotCount: slots.length,
+        warnings,
+        prepared,
+        ...(embeddedBrief !== undefined ? { embeddedBrief } : {})
+      };
+    } else {
+      return {
+        outcome: "conflict",
+        rowId: matchingRow.id,
+        incomingPayloadHash: canonical.payloadHash
+      };
+    }
+  }
 
   return {
     outcome: "prepared",
@@ -729,18 +743,4 @@ export async function finalizePairEvidenceBundle(
   }
 
   return { outcome: "no_bundle" };
-}
-
-export async function assemblePairEvidenceBundle(
-  deps: AssemblePairEvidenceBundleDeps,
-  request: AssemblePairEvidenceBundleRequest
-): Promise<AssemblePairEvidenceBundleResult> {
-  const preparedResult = await preparePairEvidenceBundle(deps, request);
-  if ("code" in preparedResult) {
-    return preparedResult;
-  }
-  if (preparedResult.outcome !== "prepared") {
-    return preparedResult;
-  }
-  return finalizePairEvidenceBundle(deps, preparedResult.prepared, undefined);
 }

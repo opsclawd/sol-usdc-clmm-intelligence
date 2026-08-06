@@ -331,6 +331,7 @@ describe("runCoreEvidencePipeline - Pair Orchestration", () => {
         payloadHash: "hash-pair-500",
         slotCount: 16,
         warnings: [],
+        prepared: dummyPreparedPairBundle,
         embeddedBrief: dummyBrief
       }),
       generateBrief: async () => {
@@ -1160,5 +1161,84 @@ describe("runCoreEvidencePipeline - Pair Orchestration", () => {
     const posReq = capturedPosReq!;
     expect(posReq.correlationId).toBe("run:shared-run-abc:position:pos-1");
     expect(pairReq.correlationId).not.toEqual(posReq.correlationId);
+  });
+
+  it("does not fall back to single-phase pair assembly when pair preparation fails", async () => {
+    let publishCalled = false;
+
+    const base = createBaseServices(1770000000000);
+    const services: CoreEvidencePipelineServices = {
+      ...base,
+      preparePair: async () => {
+        throw new Error("pair prepare failed");
+      },
+      publish: async () => {
+        publishCalled = true;
+        return { outcome: "created", bundleId: 999, attemptCount: 1 };
+      }
+    };
+
+    const deps: RunCoreEvidencePipelineDeps = {
+      clock: new QueuedClock(["2026-07-30T12:00:00.000Z"]),
+      runIdFactory: new FakeRunIdFactory(["run-123"]),
+      lock: new FakePipelineRunLock(),
+      openResources: async () => ({ connection: new FakeDbConnection(), services })
+    };
+
+    const result = await runCoreEvidencePipeline(deps, createDefaultConfig([]));
+
+    expect(result.pair).toBeDefined();
+    expect(result.pair?.status).toBe("failed");
+    expect(result.pair?.bundleId).toBeNull();
+    expect(result.pair?.diagnostic?.code).toBe("ASSEMBLY_FAILED");
+    expect(publishCalled).toBe(false);
+  });
+
+  it("invokes brief generation and publishes when preparePair returns identical_replay without an embeddedBrief", async () => {
+    const evalTime = new Date("2026-07-30T12:00:05.000Z").getTime();
+    let generateCalled = false;
+    let persistBriefCalled = false;
+    let published = false;
+
+    const base = createBaseServices(evalTime);
+    const services: CoreEvidencePipelineServices = {
+      ...base,
+      preparePair: async () => ({
+        outcome: "identical_replay",
+        rowId: 500,
+        payloadHash: "hash-pair-500",
+        slotCount: 16,
+        warnings: [],
+        prepared: dummyPreparedPairBundle
+      }),
+      generateBrief: async () => {
+        generateCalled = true;
+        return { outcome: "generated_complete", brief: dummyBrief };
+      },
+      persistBrief: async (params) => {
+        persistBriefCalled = true;
+        return { id: 1, evidenceBundleId: params.bundleId } as ResearchBriefRow;
+      },
+      publish: async (req) => {
+        published = true;
+        return { outcome: "created", bundleId: req.evidenceBundleId, attemptCount: 1 };
+      }
+    };
+
+    const deps: RunCoreEvidencePipelineDeps = {
+      clock: new QueuedClock(["2026-07-30T12:00:00.000Z", "2026-07-30T12:00:05.000Z"]),
+      runIdFactory: new FakeRunIdFactory(["run-unbriefed-replay"]),
+      lock: new FakePipelineRunLock(),
+      openResources: async () => ({ connection: new FakeDbConnection(), services })
+    };
+
+    const result = await runCoreEvidencePipeline(deps, createDefaultConfig([]));
+
+    expect(generateCalled).toBe(true);
+    expect(persistBriefCalled).toBe(true);
+    expect(published).toBe(true);
+    expect(result.pair?.briefOutcome).toBe("generated_complete");
+    expect(result.pair?.assemblyOutcome).toBe("identical_replay");
+    expect(result.pair?.status).toBe("complete");
   });
 });

@@ -18,6 +18,16 @@ import type { EvidenceBundleRepo } from "../../src/ports/bundle-repo.js";
 import type { ResearchBriefRepo } from "../../src/ports/brief-repo.js";
 import type { PublishAttemptRepo } from "../../src/ports/publish-attempt-repo.js";
 import { runCoreEvidencePipelineScript } from "../../scripts/collectors/core-evidence-pipeline.js";
+import * as pipelineModule from "../../src/application/run-core-evidence-pipeline.js";
+import type {
+  PreparedEvidenceBundle,
+  AssembleEvidenceBundleRequest
+} from "../../src/application/assemble-evidence-bundle.js";
+import type {
+  PreparedPairEvidenceBundle,
+  AssemblePairEvidenceBundleRequest
+} from "../../src/application/assemble-pair-evidence-bundle.js";
+import type { PersistedResearchBrief } from "../../src/contracts/research-brief.js";
 
 const VALID_ENV_MAP: Record<string, string> = {
   INTELLIGENCE_POSITION_IDS: "pos1,pos2",
@@ -404,5 +414,114 @@ describe("core-evidence-pipeline CLI script", () => {
     expect(commandRunnerSpy.run).not.toHaveBeenCalled();
     expect(jsonStoreSpy.readJson).not.toHaveBeenCalled();
     expect(jsonStoreSpy.writeJson).not.toHaveBeenCalled();
+  });
+
+  it("wires required two-phase assemblers for pair and position scopes", async () => {
+    const { runtime } = createMockRuntime();
+    let capturedServices: pipelineModule.CoreEvidencePipelineServices | null = null;
+    const spy = vi
+      .spyOn(pipelineModule, "runCoreEvidencePipeline")
+      .mockImplementation(async (deps) => {
+        const res = await deps.openResources();
+        capturedServices = res.services;
+        return {
+          pipelineRunId: "test-run",
+          collectionStartedAtUnixMs: 0,
+          evaluationTimeUnixMs: 0,
+          collectionStatus: "COMPLETE",
+          pair: null,
+          positions: [],
+          status: "complete",
+          warnings: [],
+          diagnostics: [],
+          cleanupErrors: []
+        };
+      });
+
+    await runCoreEvidencePipelineScript(runtime);
+    expect(spy).toHaveBeenCalled();
+    expect(capturedServices).toBeDefined();
+
+    const services = capturedServices!;
+
+    expect(services.prepare).toBeDefined();
+    expect(services.finalize).toBeDefined();
+    expect(services.preparePair).toBeDefined();
+    expect(services.finalizePair).toBeDefined();
+    expect(services.generateBrief).toBeDefined();
+    expect(services.persistBrief).toBeDefined();
+
+    expect((services as unknown as Record<string, unknown>).assemble).toBeUndefined();
+    expect((services as unknown as Record<string, unknown>).assemblePair).toBeUndefined();
+
+    // Exercise pair scope prepare -> generateBrief -> finalize
+    vi.spyOn(services, "preparePair").mockResolvedValue({
+      outcome: "prepared",
+      prepared: {
+        nullBriefCandidate: { type: "pair" }
+      } as unknown as PreparedPairEvidenceBundle
+    });
+    vi.spyOn(services, "generateBrief").mockImplementation(async (params) => ({
+      outcome: "generated_complete",
+      brief: {
+        briefId: `brief-for-${(params.evidenceBundlePayload as unknown as { type: string }).type}`
+      } as unknown as PersistedResearchBrief
+    }));
+    const pairFinalSpy = vi.spyOn(services, "finalizePair").mockResolvedValue({
+      outcome: "persisted",
+      rowId: 100,
+      payloadHash: "hash-pair",
+      slotCount: 1,
+      warnings: []
+    });
+
+    const pairPrepRes = await services.preparePair(
+      {} as unknown as AssemblePairEvidenceBundleRequest
+    );
+    if ("outcome" in pairPrepRes && pairPrepRes.outcome === "prepared") {
+      const pairBriefRes = await services.generateBrief({
+        evidenceBundlePayload: pairPrepRes.prepared.nullBriefCandidate,
+        pair: "SOL/USDC",
+        evaluationTimeUnixMs: 0,
+        codeVersion: "1.0.0"
+      });
+      if (pairBriefRes.outcome === "generated_complete") {
+        await services.finalizePair(pairPrepRes.prepared, pairBriefRes.brief);
+        expect(pairFinalSpy).toHaveBeenCalledWith(pairPrepRes.prepared, {
+          briefId: "brief-for-pair"
+        });
+      }
+    }
+
+    // Exercise position scope prepare -> generateBrief -> finalize
+    vi.spyOn(services, "prepare").mockResolvedValue({
+      outcome: "prepared",
+      prepared: {
+        nullBriefCandidate: { type: "pos" }
+      } as unknown as PreparedEvidenceBundle
+    });
+    const posFinalSpy = vi.spyOn(services, "finalize").mockResolvedValue({
+      outcome: "persisted",
+      rowId: 101,
+      payloadHash: "hash-pos",
+      slotCount: 1,
+      warnings: []
+    });
+
+    const posPrepRes = await services.prepare({} as unknown as AssembleEvidenceBundleRequest);
+    if ("outcome" in posPrepRes && posPrepRes.outcome === "prepared") {
+      const posBriefRes = await services.generateBrief({
+        evidenceBundlePayload: posPrepRes.prepared.nullBriefCandidate,
+        pair: "SOL/USDC",
+        evaluationTimeUnixMs: 0,
+        codeVersion: "1.0.0"
+      });
+      if (posBriefRes.outcome === "generated_complete") {
+        await services.finalize(posPrepRes.prepared, posBriefRes.brief);
+        expect(posFinalSpy).toHaveBeenCalledWith(posPrepRes.prepared, { briefId: "brief-for-pos" });
+      }
+    }
+
+    spy.mockRestore();
   });
 });

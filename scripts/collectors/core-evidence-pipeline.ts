@@ -13,15 +13,18 @@ import {
   type DeriveMvpFeaturesDeps
 } from "../../src/application/derive-mvp-features.js";
 import {
-  assembleEvidenceBundle,
+  prepareEvidenceBundle,
+  finalizeEvidenceBundle,
   type AssembleEvidenceBundleDeps
 } from "../../src/application/assemble-evidence-bundle.js";
 import {
-  assemblePairEvidenceBundle,
+  preparePairEvidenceBundle,
+  finalizePairEvidenceBundle,
   type AssemblePairEvidenceBundleDeps
 } from "../../src/application/assemble-pair-evidence-bundle.js";
 import {
-  generateAndPersistResearchBrief,
+  generateResearchBrief,
+  persistResearchBrief,
   type GenerateResearchBriefDeps
 } from "../../src/application/generate-research-brief.js";
 import {
@@ -103,7 +106,8 @@ export async function runCoreEvidencePipelineScript(runtime: NodeRuntime): Promi
           normalizedRepo: persistence.normalizedObservationRepo,
           rawRepo: persistence.rawObservationRepo,
           bundleRepo: persistence.bundleRepo,
-          contract
+          contract,
+          briefRepo: persistence.briefRepo
         };
 
         const pairDeps: AssemblePairEvidenceBundleDeps = {
@@ -112,7 +116,8 @@ export async function runCoreEvidencePipelineScript(runtime: NodeRuntime): Promi
           normalizedRepo: persistence.normalizedObservationRepo,
           rawRepo: persistence.rawObservationRepo,
           bundleRepo: persistence.bundleRepo,
-          contract
+          contract,
+          briefRepo: persistence.briefRepo
         };
 
         const briefDeps: GenerateResearchBriefDeps = {
@@ -137,9 +142,13 @@ export async function runCoreEvidencePipelineScript(runtime: NodeRuntime): Promi
           services: {
             collect: (context) => runCoreCollectionJob(coreDeps, context),
             derive: (request) => deriveMvpFeatures(deriveDeps, request),
-            assemble: (request) => assembleEvidenceBundle(assembleDeps, request),
-            assemblePair: (request) => assemblePairEvidenceBundle(pairDeps, request),
-            generateBrief: (request) => generateAndPersistResearchBrief(briefDeps, request),
+            prepare: (request) => prepareEvidenceBundle(assembleDeps, request),
+            finalize: (prepared, brief) => finalizeEvidenceBundle(assembleDeps, prepared, brief),
+            preparePair: (request) => preparePairEvidenceBundle(pairDeps, request),
+            finalizePair: (prepared, brief) =>
+              finalizePairEvidenceBundle(pairDeps, prepared, brief),
+            generateBrief: (request) => generateResearchBrief(briefDeps, request),
+            persistBrief: (params) => persistResearchBrief(briefDeps, params),
             publish: (request) => publishEvidenceBundle(publishDeps, request)
           }
         };

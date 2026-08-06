@@ -15,7 +15,6 @@
     "collect:on-chain-flow": "tsx scripts/collectors/on-chain-flow.ts",
     "collect:perp-liquidation": "tsx scripts/collectors/perp-liquidation.ts",
     "derive:mvp": "tsx scripts/collectors/derive-mvp-features.ts",
-    "assemble:bundle": "tsx scripts/collectors/assemble-evidence-bundle.ts",
     "generate:brief": "tsx scripts/generate/research-brief.ts",
     "publish:evidence": "tsx scripts/collectors/publish-evidence-bundle.ts",
     "run:core-evidence-pipeline": "tsx scripts/collectors/core-evidence-pipeline.ts",

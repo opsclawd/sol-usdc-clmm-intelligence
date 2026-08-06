@@ -316,7 +316,7 @@ The intelligence pipeline never publishes final `PolicyInsight` or executes tran
 
 ## Evidence Bundle Assembly
 
-The `pnpm assemble:bundle` command assembles a deterministic evidence bundle from derived features and observations. It reads a JSON request file, validates it, queries the database for candidate features, assembles the bundle, validates it against the pinned contract schema, and persists the result.
+Evidence bundle assembly follows the production sequence `prepare -> generate/reuse brief -> finalize -> persist brief link -> publish`. Operators execute `pnpm run:core-evidence-pipeline` for end-to-end collection, derivation, assembly, brief generation, and publication.
 
 ### Contract Provenance and Pinned Schema
 
@@ -327,41 +327,6 @@ The evidence bundle contract is pinned at a specific schema version with verifie
 - Schema SHA-256: `74b5c974bd945f63c4f5d8948a8040542b2f89d6d697a4008543be1a89ba33af`
 
 The pinned contract (`createEvidenceBundleContract()`) verifies all asset hashes before performing validation. If any asset hash mismatches, validation aborts with `ASSET_HASH_MISMATCH`.
-
-### Request File Example
-
-```json
-{
-  "pair": "SOL/USDC",
-  "poolId": "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
-  "positionId": "Pos11111111111111111111111111111111111111111",
-  "walletId": "Wallet1234567890abcdef",
-  "pipelineRunId": "run-456",
-  "correlationId": "corr-789",
-  "evaluationTimeUnixMs": 1700000000000,
-  "createdAtUnixMs": 1700000000000,
-  "acceptedCalculatorVersions": {
-    "range_location": "range-location/v2",
-    "distance_to_lower": "distance-to-lower/v2",
-    "distance_to_upper": "distance-to-upper/v2",
-    "oracle_dex_divergence": "oracle-dex-divergence/v1",
-    "oracle_confidence_width": "oracle-confidence-width/v1",
-    "realized_volatility_1h": "realized-volatility-1h/v1",
-    "volume_liquidity_ratio_24h": "volume-liquidity-ratio-24h/v2",
-    "oi_trend_4h": "oi-trend-4h/v1",
-    "funding_rate_annualized": "funding-rate-annualized/v1",
-    "liquidation_cluster_1h": "liquidation-cluster-1h/v1",
-    "basis_spread_bps": "basis-spread-bps/v1"
-  },
-  "schemaVersion": "evidence-bundle.v1",
-  "assemblySelectionVersion": "mvp-evidence-bundle-selection/v1",
-  "codeVersion": "1.0.0",
-  "gitCommit": "abc123def456",
-  "environment": "test"
-}
-```
-
-`acceptedCalculatorVersions` must include an entry for every kind in `MVP_FEATURE_KINDS` (`src/contracts/derived-feature.ts`) — the seven canonical MVP kinds above plus the four Pack C perp/liquidation kinds (`oi_trend_4h`, `funding_rate_annualized`, `liquidation_cluster_1h`, `basis_spread_bps`). Assembly fails with `REQUEST_VALIDATION_ERROR` if any are missing, even if a given deployment doesn't populate perp features.
 
 ### Redacted Output
 
@@ -669,7 +634,6 @@ pnpm collect:news-evidence  # collects ecosystem and regulatory news from two-so
 pnpm collect:on-chain-flow    # collects on-chain flow evidence (whale transfers/swaps, DEX net flow) from Helius and Birdeye; stablecoin_flow and cex_flow_proxy are deferred
 pnpm collect:perp-liquidation # collects perp/liquidation stress evidence (funding, OI, basis, liquidation clusters) from Binance fAPI and Drift
 pnpm derive:mvp           # derives the seven canonical MVP evidence features from normalized observations
-pnpm assemble:bundle      # assembles evidence bundle from derived features and observations
 pnpm generate:brief data/brief-request.json # generates schema-constrained research brief over bounded evidence bundle
 pnpm publish:evidence 42                    # publishes a persisted evidence bundle to regime-engine's evidence-ingest endpoint
 pnpm run:core-evidence-pipeline            # executes end-to-end evidence pipeline: collect -> derive -> assemble -> brief -> publish
