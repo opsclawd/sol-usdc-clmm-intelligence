@@ -992,7 +992,7 @@ export const featureKindRegistry = {
     evidenceFamily: "perp_liquidation",
     signalClass: "deterministic",
     freshnessPolicy: {
-      maxObservedAgeMs: 3_600_000,
+      maxObservedAgeMs: 14_400_000,
       maxFetchLagMs: null,
       validForMs: null,
       clockSkewToleranceMs: 5_000,
@@ -1025,7 +1025,7 @@ export const featureKindRegistry = {
     evidenceFamily: "perp_liquidation",
     signalClass: "deterministic",
     freshnessPolicy: {
-      maxObservedAgeMs: 900_000,
+      maxObservedAgeMs: 14_400_000,
       maxFetchLagMs: null,
       validForMs: null,
       clockSkewToleranceMs: 5_000,
@@ -1058,7 +1058,7 @@ export const featureKindRegistry = {
     evidenceFamily: "perp_liquidation",
     signalClass: "deterministic",
     freshnessPolicy: {
-      maxObservedAgeMs: 900_000,
+      maxObservedAgeMs: 14_400_000,
       maxFetchLagMs: null,
       validForMs: null,
       clockSkewToleranceMs: 5_000,

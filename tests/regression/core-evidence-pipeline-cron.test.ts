@@ -4,14 +4,32 @@ import { describe, expect, it } from "vitest";
 import type { CronConfig, CronJob } from "../../src/contracts/cron-config.js";
 import { renderCronCommands } from "../../src/application/render-cron-commands.js";
 import { FakeTextReader, FakeEnv } from "../fakes/index.js";
+import { getFeatureKindEntry } from "../../src/domain/taxonomy/index.js";
 
 const PRE_EXISTING_JOB_NAMES = [
+  "clmm-bundle",
   "context-events",
   "news-evidence",
   "on-chain-flow",
   "perp-liquidation",
+  "price-observations",
   "support-resistance"
 ];
+
+const PERP_FEATURE_KINDS = [
+  "oi_trend_4h",
+  "liquidation_cluster_1h",
+  "funding_rate_annualized",
+  "basis_spread_bps"
+] as const;
+
+function parseCronIntervalMs(expression: string): number {
+  const minuteMatch = /^\*\/([1-9]\d*) \* \* \* \*$/.exec(expression);
+  if (minuteMatch) return Number(minuteMatch[1]) * 60_000;
+  const hourMatch = /^0 \*\/([1-9]\d*) \* \* \*$/.exec(expression);
+  if (hourMatch) return Number(hourMatch[1]) * 3_600_000;
+  throw new Error(`Expected supported cron expression, received: ${expression}`);
+}
 
 async function loadCronConfig(): Promise<CronConfig> {
   const content = await readFile("cron/jobs.yaml", "utf8");
@@ -23,29 +41,29 @@ function projectJobs(jobs: CronJob[], names: string[]): Array<[string, string, s
 }
 
 describe("core evidence pipeline cron schedule regression", () => {
-  it("registers core-evidence-pipeline in canonical cron/jobs.yaml at the thirty-minute cadence", async () => {
+  it("registers core-evidence-pipeline in canonical cron/jobs.yaml at the four-hour cadence", async () => {
     const config = await loadCronConfig();
     const matches = config.jobs.filter((j) => j.name === "core-evidence-pipeline");
     expect(matches).toEqual([
       {
         name: "core-evidence-pipeline",
-        cron: "*/30 * * * *",
+        cron: "0 */4 * * *",
         messageFile: "cron/routines/core-evidence-pipeline.md"
       }
     ]);
   });
 
-  it("declares the synthetic core evidence pipeline job configuration at the thirty-minute cadence", () => {
-    const syntheticJob: CronJob = {
-      name: "core-evidence-pipeline",
-      cron: "*/30 * * * *",
-      messageFile: "cron/routines/core-evidence-pipeline.md"
-    };
-    expect(syntheticJob).toEqual({
-      name: "core-evidence-pipeline",
-      cron: "*/30 * * * *",
-      messageFile: "cron/routines/core-evidence-pipeline.md"
-    });
+  it("keeps the assembly interval within perp feature validity windows", async () => {
+    const config = await loadCronConfig();
+    const job = config.jobs.find(({ name }) => name === "core-evidence-pipeline");
+    expect(job).toBeDefined();
+
+    const intervalMs = parseCronIntervalMs(job!.cron);
+    for (const kind of PERP_FEATURE_KINDS) {
+      expect(getFeatureKindEntry(kind).freshnessPolicy.maxObservedAgeMs).toBeGreaterThanOrEqual(
+        intervalMs
+      );
+    }
   });
 
   it("keeps the core evidence pipeline routine to one deterministic command", async () => {
@@ -60,11 +78,13 @@ describe("core evidence pipeline cron schedule regression", () => {
       ["news-evidence", "0 */2 * * *", "cron/routines/news-evidence.md"],
       ["on-chain-flow", "*/15 * * * *", "cron/routines/on-chain-flow.md"],
       ["perp-liquidation", "*/5 * * * *", "cron/routines/perp-liquidation.md"],
-      ["support-resistance", "15 */4 * * *", "cron/routines/support-resistance.md"]
+      ["price-observations", "*/5 * * * *", "cron/routines/price-observations.md"],
+      ["support-resistance", "15 */4 * * *", "cron/routines/support-resistance.md"],
+      ["clmm-bundle", "* * * * *", "cron/routines/clmm-bundle.md"]
     ]);
   });
 
-  it("renders the canonical five-minute sampler alongside the core pipeline", async () => {
+  it("renders the canonical four-hour core pipeline alongside the five-minute sampler", async () => {
     const rawYaml = await readFile("cron/jobs.yaml", "utf8");
     const config = YAML.parse(rawYaml) as CronConfig;
 
@@ -87,7 +107,7 @@ describe("core evidence pipeline cron schedule regression", () => {
 
     expect(coreLine).toBeDefined();
     expect(priceLine).toBeDefined();
-    expect(coreLine).toContain("hermes cron create '*/30 * * * *'");
+    expect(coreLine).toContain("hermes cron create '0 */4 * * *'");
     expect(coreLine).toContain("--name 'core-evidence-pipeline'");
     expect(coreLine).toContain("pnpm run:core-evidence-pipeline");
     expect(priceLine).toContain("hermes cron create '*/5 * * * *'");

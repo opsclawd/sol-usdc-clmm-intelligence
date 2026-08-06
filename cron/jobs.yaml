@@ -30,7 +30,7 @@ jobs:
     cron: "15 */4 * * *"
     messageFile: cron/routines/support-resistance.md
   - name: core-evidence-pipeline
-    cron: "*/30 * * * *"
+    cron: "0 */4 * * *"
     messageFile: cron/routines/core-evidence-pipeline.md
   - name: clmm-bundle
     cron: "* * * * *"

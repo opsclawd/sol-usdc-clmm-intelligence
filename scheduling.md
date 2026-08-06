@@ -20,9 +20,13 @@ Hermes has no per-job model/thinking/agent override and no per-job timezone (it 
 | --------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------- |
 | `price-observations` (#104) | Every 5 minutes  | Build historical price density for `realized_volatility_1h`.                                                  |
 | `on-chain-flow`             | Every 15 minutes | Collect SOL/USDC on-chain flow observations (Helius whale_transfer, Birdeye whale_swap and dex_net_flow).     |
-| `core-evidence-pipeline`    | Every 30 minutes | Collect core observations, derive features, assemble evidence, generate briefs, and publish the exact bundle. |
+| `perp-liquidation`          | Every 5 minutes  | Collect perp/liquidation stress evidence (funding, OI, basis, liquidation clusters).                          |
+| `news-evidence`             | Every 2 hours    | Collect ecosystem and regulatory news evidence.                                                               |
+| `context-events`            | Every 4 hours    | Collect contextual events (scheduled macro events, protocol incidents).                                       |
+| `support-resistance`        | Every 4 hours    | Collect support/resistance levels from technical analysis providers.                                          |
+| `core-evidence-pipeline`    | Every 4 hours    | Collect core observations, derive features, assemble evidence, generate briefs, and publish the exact bundle. |
 
-The synthesis cadence is shorter than the one-hour core-feature validity boundary so scheduler drift, collection latency, bounded retries, and brief generation do not consume the entire freshness window. The five-minute sampler remains a separate job because historical telemetry density and expensive synthesis have different cadence and cost requirements.
+The synthesis cadence is 4 hours (`0 */4 * * *`), matching the core evidence pipeline schedule. The five-minute sampler remains a separate job because historical telemetry density and synthesis have different cadence and cost requirements.
 
 Specifically, for `on-chain-flow` (15-minute cadence):
 
@@ -32,12 +36,12 @@ Specifically, for `on-chain-flow` (15-minute cadence):
 
 Specifically, for five-minute sampling:
 
-- The five-minute `price-observations` job supplies historical Pyth/Jupiter observation density while the 30-minute `collect:core` stage remains the fresh snapshot source for derivation/assembly.
+- The five-minute `price-observations` job supplies historical Pyth/Jupiter observation density while the `collect:core` stage remains the fresh snapshot source for derivation/assembly.
 - Ten healthy five-minute ticks require approximately 45-50 minutes after startup or prolonged downtime before `realized_volatility_1h` can satisfy coverage.
 - A missing/delayed tick that creates a gap over ten minutes returns the feature to `UNAVAILABLE` with `insufficient_coverage` or `excessive_gap`, never fabricated zero volatility.
-- Concurrent price collection near `xx:00`/`xx:30` is accepted but source rate-limit/command failures must remain visible to operators.
+- Concurrent price collection near each quarter hour is accepted but source rate-limit/command failures must remain visible to operators.
 
-At the ungated MVP cadence, maximum brief attempts are `48 runs/day × configured position count`; two positions can therefore produce up to 96 attempts per day. Confirm the deployed LLM model, provider rate limits, and budget can sustain the configured position count before registration. Material-change gating and a slower brief-only cadence remain future work.
+At the ungated MVP cadence, maximum brief attempts are `6 runs/day × configured position count`; two positions can therefore produce up to 12 attempts per day. Pipeline duration approaching 4 hours is an overlap/capacity warning. Confirm the deployed LLM model, provider rate limits, and budget can sustain the configured position count before registration. Material-change gating and a slower brief-only cadence remain future work.
 
 This repository change declares desired state only and does not register the job on Hermes (issue #96 remains the live-registration boundary).
 

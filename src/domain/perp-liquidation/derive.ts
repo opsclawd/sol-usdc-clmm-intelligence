@@ -452,11 +452,11 @@ export async function derivePerpLiquidationFeatures(
         poolId: null,
         positionId: null,
         asOfUnixMs: evaluationAsOfUnixMs,
-        expiresAtUnixMs: evaluationAsOfUnixMs + 3_600_000,
+        expiresAtUnixMs: evaluationAsOfUnixMs + 14_400_000,
         confidence: baseConfidence,
         freshness: {
           isStale,
-          validUntilUnixMs: evaluationAsOfUnixMs + 3_600_000,
+          validUntilUnixMs: evaluationAsOfUnixMs + 14_400_000,
           derivedAt: evaluationAsOfUnixMs,
           policyKind: featureKind,
           reasons: isStale ? ["stale_input_degraded"] : []
