@@ -1,5 +1,9 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import {
+  type ClockSkewEvidence,
+  classifyClockSkewEvidence
+} from "../../scripts/diagnostics/classify-evidence.js";
 
 describe("clock skew diagnostics SQL script", () => {
   it("keeps the production diagnostic read only", async () => {
@@ -103,72 +107,6 @@ describe("clock skew diagnostics SQL script", () => {
   });
 });
 
-export interface ClockSkewEvidence {
-  db: {
-    skewFailedRows: number;
-    providerCount: number;
-  } | null;
-  logs: {
-    matchingErrorsPresent: boolean;
-    confirmedWindowAndService: boolean;
-    providersWithLogErrors: string[];
-  } | null;
-  hostClock: {
-    ntpSynchronized: boolean;
-    ntpHealthy: boolean;
-  } | null;
-}
-
-export type ClockSkewDisposition =
-  | "NO_SKEW"
-  | "HOST_CLOCK_DRIFT"
-  | "PROVIDER_TIMESTAMP_SEMANTICS"
-  | "INCONCLUSIVE";
-
-export function classifyClockSkewEvidence(evidence: ClockSkewEvidence): ClockSkewDisposition {
-  if (!evidence.db || !evidence.logs || !evidence.hostClock) {
-    return "INCONCLUSIVE";
-  }
-
-  if (!evidence.logs.confirmedWindowAndService) {
-    return "INCONCLUSIVE";
-  }
-
-  const { db, logs, hostClock } = evidence;
-
-  if (
-    db.skewFailedRows === 0 &&
-    !logs.matchingErrorsPresent &&
-    hostClock.ntpSynchronized &&
-    hostClock.ntpHealthy
-  ) {
-    return "NO_SKEW";
-  }
-
-  if (
-    db.skewFailedRows > 0 &&
-    db.providerCount >= 2 &&
-    logs.matchingErrorsPresent &&
-    logs.providersWithLogErrors.length >= 2 &&
-    (!hostClock.ntpSynchronized || !hostClock.ntpHealthy)
-  ) {
-    return "HOST_CLOCK_DRIFT";
-  }
-
-  if (
-    db.skewFailedRows > 0 &&
-    db.providerCount === 1 &&
-    logs.matchingErrorsPresent &&
-    logs.providersWithLogErrors.length === 1 &&
-    hostClock.ntpSynchronized &&
-    hostClock.ntpHealthy
-  ) {
-    return "PROVIDER_TIMESTAMP_SEMANTICS";
-  }
-
-  return "INCONCLUSIVE";
-}
-
 describe("clock skew fail-closed decision table", () => {
   it("classifies healthy zero-violation evidence as NO_SKEW", () => {
     const evidence: ClockSkewEvidence = {
@@ -209,7 +147,7 @@ describe("clock skew fail-closed decision table", () => {
     expect(classifyClockSkewEvidence(evidence)).toBe("PROVIDER_TIMESTAMP_SEMANTICS");
   });
 
-  it("classifies incomplete, unhandled, or conflicting evidence as INCONCLUSIVE", () => {
+  it("classifies missing environment evidence as BLOCKED", () => {
     expect(
       classifyClockSkewEvidence({
         db: null,
@@ -220,8 +158,10 @@ describe("clock skew fail-closed decision table", () => {
         },
         hostClock: { ntpSynchronized: true, ntpHealthy: true }
       })
-    ).toBe("INCONCLUSIVE");
+    ).toBe("BLOCKED");
+  });
 
+  it("classifies incomplete, unhandled, or conflicting evidence as INCONCLUSIVE", () => {
     expect(
       classifyClockSkewEvidence({
         db: { skewFailedRows: 0, providerCount: 0 },

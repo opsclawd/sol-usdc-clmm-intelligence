@@ -98,19 +98,24 @@ If clock skew were present, the affected source-to-observation-kind mappings gov
 
 ## Disposition
 
-`INCONCLUSIVE`
+`BLOCKED (Environment Inaccessible)`
 
 ## Conclusion
 
-The evidence combination fails closed to `INCONCLUSIVE` under Step 4 decision table rules because the database diagnostic query could not be executed (`DATABASE_URL` unverified/missing) and collector journalctl logs could not be confirmed for `hermes-gateway.service`. Per repository policy invariants:
+The investigation is **BLOCKED** because required production environment access is not available in the current execution environment:
 
+1. Production `DATABASE_URL` environment variable is not configured or accessible, preventing execution of `scripts/diagnostics/clock-skew.sql`.
+2. Systemd service logs for `hermes-gateway.service` are unconfirmed / inaccessible on this execution host.
+
+Per repository policy invariants and review criteria:
+
+- The task is marked as **BLOCKED** pending operator provision of production environment access.
 - `src/domain/taxonomy/registry.ts` remains unchanged at `5_000` ms.
-- No repository policy, code, or tolerance values are modified.
-- No infrastructure mutations are permitted without complete, non-conflicting evidence across all three sources (DB, logs, host NTP).
+- No repository policy, code, or tolerance values are modified without verified production data.
 
-## Required Follow-up
+## Required Prerequisites to Unblock
 
-To perform a conclusive run, the operator must provide:
+To unblock and perform a conclusive run, the operator must provide:
 
 1. A verified production `DATABASE_URL` environment variable and run `psql "$DATABASE_URL" -X --set ON_ERROR_STOP=1 --file scripts/diagnostics/clock-skew.sql` on the production database.
 2. The exact production VPS hostname and confirmed systemd service unit name running the intelligence collector (and matching `journalctl` log output for the 90-day window).
