@@ -279,6 +279,15 @@ function makeDefaultRequest(
     codeVersion: "1.0.0",
     gitCommit: "9a0c68f4080ec2b934f44b0e3bc0f668d5255171",
     environment: "test",
+    configuredFamilies: new Set([
+      "deterministic",
+      "supportResistance",
+      "flows",
+      "derivatives",
+      "events",
+      "newsRegulatory",
+      "researchBrief"
+    ]),
     ...overrides
   };
 }
@@ -316,6 +325,7 @@ function makeMockRawRepo(overrides: Partial<RawObservationRepo> = {}): RawObserv
     updateParseStatus: async () => {
       throw new Error("not implemented");
     },
+    getLatestReceivedAt: async () => new Map(),
     ...overrides
   };
 }

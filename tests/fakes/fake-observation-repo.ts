@@ -87,4 +87,15 @@ export class FakeObservationRepo implements RawObservationRepo {
     this.identityIndex.set(`${updated.source}:${updated.sourceObservationKey}`, updated);
     return updated;
   }
+
+  async getLatestReceivedAt(): Promise<Map<Source, number>> {
+    const result = new Map<Source, number>();
+    for (const row of this.store.values()) {
+      const current = result.get(row.source);
+      if (current === undefined || row.receivedAtUnixMs > current) {
+        result.set(row.source, row.receivedAtUnixMs);
+      }
+    }
+    return result;
+  }
 }

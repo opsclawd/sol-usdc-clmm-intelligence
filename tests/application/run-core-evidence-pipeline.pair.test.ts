@@ -103,7 +103,16 @@ function createDefaultConfig(positionIds: string[] = ["pos-1"]): CoreEvidencePip
     walletId: "wallet-1",
     codeVersion: "1.0.0",
     gitCommit: "0123456789abcdef0123456789abcdef01234567",
-    environment: "test"
+    environment: "test",
+    configuredFamilies: new Set([
+      "deterministic",
+      "supportResistance",
+      "flows",
+      "derivatives",
+      "events",
+      "newsRegulatory",
+      "researchBrief"
+    ])
   };
 }
 
@@ -585,7 +594,8 @@ describe("runCoreEvidencePipeline - Pair Orchestration", () => {
       openResources: async () => ({ connection: new FakeDbConnection(), services })
     };
 
-    await runCoreEvidencePipeline(deps, createDefaultConfig(["pos-1"]));
+    const config = createDefaultConfig(["pos-1"]);
+    await runCoreEvidencePipeline(deps, config);
 
     expect(capturedPairReq).not.toBeNull();
     const pairReq = capturedPairReq!;
@@ -596,6 +606,7 @@ describe("runCoreEvidencePipeline - Pair Orchestration", () => {
     expect(pairReq.evaluationTimeUnixMs).toBe(evalTime);
     expect(pairReq.acceptedCalculatorVersions).toBe(MVP_ACCEPTED_CALCULATOR_VERSIONS);
     expect(pairReq.assemblySelectionVersion).toBe(EVIDENCE_BUNDLE_SELECTION_VERSION);
+    expect(pairReq.configuredFamilies).toBe(config.configuredFamilies);
     const pairReqObj = pairReq as unknown as Record<string, unknown>;
     expect(pairReqObj.walletId).toBeUndefined();
     expect(pairReqObj.positionId).toBeUndefined();

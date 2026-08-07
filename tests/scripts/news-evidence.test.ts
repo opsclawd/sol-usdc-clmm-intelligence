@@ -47,7 +47,8 @@ function createMockRawObservationRepo(): RawObservationRepo {
     findByIdentity: vi.fn(),
     findByHash: vi.fn(),
     findBySource: vi.fn(),
-    updateParseStatus: vi.fn()
+    updateParseStatus: vi.fn(),
+    getLatestReceivedAt: vi.fn()
   };
 }
 

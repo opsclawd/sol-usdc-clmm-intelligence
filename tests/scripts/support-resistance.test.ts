@@ -77,7 +77,8 @@ vi.mock("../../src/adapters/node/composition-root.js", () => {
               findByIdentity: vi.fn(),
               findByHash: vi.fn(),
               findBySource: vi.fn(),
-              updateParseStatus: vi.fn()
+              updateParseStatus: vi.fn(),
+              getLatestReceivedAt: vi.fn()
             },
             normalizedObservationRepo: {
               insert: vi.fn(),

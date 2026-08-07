@@ -285,7 +285,16 @@ describe("coreEvidencePipelineJob", () => {
       walletId: "wallet-1",
       codeVersion: "1.0.0",
       gitCommit: "0123456789abcdef0123456789abcdef01234567",
-      environment: "test"
+      environment: "test",
+      configuredFamilies: new Set([
+        "deterministic",
+        "supportResistance",
+        "flows",
+        "derivatives",
+        "events",
+        "newsRegulatory",
+        "researchBrief"
+      ])
     };
 
     const job = coreEvidencePipelineJob(deps);

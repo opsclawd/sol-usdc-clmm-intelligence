@@ -1,6 +1,9 @@
 import type { EnvReader } from "../ports/env.js";
+import type { FamilyCoverage } from "../contracts/generated/evidence-bundle-v1.js";
 
 export type IntelligenceEnvironment = "production" | "staging" | "development" | "test";
+
+export type BundleFamilyId = keyof FamilyCoverage;
 
 export interface CoreEvidencePipelineConfig {
   readonly positionIds: readonly string[];
@@ -9,6 +12,7 @@ export interface CoreEvidencePipelineConfig {
   readonly codeVersion: string;
   readonly gitCommit: string;
   readonly environment: IntelligenceEnvironment;
+  readonly configuredFamilies: ReadonlySet<BundleFamilyId>;
 }
 
 function requiredTrimmed(env: EnvReader, name: string): string {
@@ -30,6 +34,71 @@ function requiredTrimmed(env: EnvReader, name: string): string {
     throw new Error(`Missing or empty required environment variable: ${name}`);
   }
   return trimmed;
+}
+
+function optionalTrimmed(env: EnvReader, name: string): string | undefined {
+  let val: string | undefined;
+  try {
+    val = env.getOptional(name);
+  } catch {
+    // fallback if getOptional throws
+  }
+  if (val === undefined) {
+    try {
+      val = env.get(name);
+    } catch {
+      val = undefined;
+    }
+  }
+  const trimmed = val?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+const KNOWN_NEWS_SOURCES = new Set<string>(["crypto-news-api", "regulatory-monitor-api"]);
+
+function getNewsSourceUrlEnvVar(source: string): string {
+  return `${source.toUpperCase().replace(/-/g, "_")}_URL`;
+}
+
+function isNewsConfigured(env: EnvReader): boolean {
+  const rawAllowlist = optionalTrimmed(env, "NEWS_SOURCE_ALLOWLIST");
+  if (!rawAllowlist) {
+    return false;
+  }
+
+  const names = rawAllowlist.split(",").map((name) => name.trim());
+  if (names.length === 0) {
+    return false;
+  }
+
+  const seen = new Set<string>();
+  for (const name of names) {
+    if (name.length === 0) {
+      return false;
+    }
+    const lowerName = name.toLowerCase();
+    if (!KNOWN_NEWS_SOURCES.has(lowerName)) {
+      return false;
+    }
+    if (seen.has(lowerName)) {
+      return false;
+    }
+    seen.add(lowerName);
+  }
+
+  if (seen.size === 0) {
+    return false;
+  }
+
+  for (const sourceName of seen) {
+    const urlVar = getNewsSourceUrlEnvVar(sourceName);
+    const url = optionalTrimmed(env, urlVar);
+    if (!url) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function parsePositionIds(raw: string): readonly string[] {
@@ -149,16 +218,45 @@ export function loadCoreEvidencePipelineConfig(env: EnvReader): CoreEvidencePipe
 
   const optionalUrlVars = ["JUPITER_API_BASE", "ORCA_API_BASE"];
   for (const name of optionalUrlVars) {
-    let val: string | undefined;
-    try {
-      val = env.getOptional(name);
-    } catch {
-      // ignore
-    }
-    if (val && val.trim().length > 0) {
+    const val = optionalTrimmed(env, name);
+    if (val) {
       validateHttpUrl(name, val);
     }
   }
+
+  const configuredFamilies = new Set<BundleFamilyId>();
+
+  configuredFamilies.add("deterministic");
+
+  if (optionalTrimmed(env, "SUPPORT_RESISTANCE_API_URL")) {
+    configuredFamilies.add("supportResistance");
+  }
+
+  if (
+    optionalTrimmed(env, "BIRDEYE_FLOW_API_URL") &&
+    optionalTrimmed(env, "BIRDEYE_API_KEY") &&
+    optionalTrimmed(env, "HELIUS_FLOW_API_URL") &&
+    optionalTrimmed(env, "HELIUS_API_KEY")
+  ) {
+    configuredFamilies.add("flows");
+  }
+
+  if (
+    optionalTrimmed(env, "BINANCE_SOL_PERP_SYMBOL") &&
+    optionalTrimmed(env, "DRIFT_DATA_API_BASE_URL") &&
+    optionalTrimmed(env, "DRIFT_SOL_PERP_SYMBOL") &&
+    optionalTrimmed(env, "DRIFT_SOL_PERP_MARKET_INDEX")
+  ) {
+    configuredFamilies.add("derivatives");
+  }
+
+  configuredFamilies.add("events");
+
+  if (isNewsConfigured(env)) {
+    configuredFamilies.add("newsRegulatory");
+  }
+
+  configuredFamilies.add("researchBrief");
 
   return Object.freeze({
     positionIds,
@@ -166,6 +264,7 @@ export function loadCoreEvidencePipelineConfig(env: EnvReader): CoreEvidencePipe
     walletId,
     codeVersion,
     gitCommit,
-    environment
+    environment,
+    configuredFamilies: Object.freeze(configuredFamilies)
   });
 }

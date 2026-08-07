@@ -403,7 +403,7 @@ describe("EvidenceBundleV1 Contract", () => {
       missingLastCollected.assessment.liveness = {
         ...validLiveness,
         deterministic: { isConfigured: true }
-      } as unknown as EvidenceBundleV1["assessment"]["liveness"];
+      } as unknown as NonNullable<EvidenceBundleV1["assessment"]["liveness"]>;
       await expect(contract.validateCanonicalizeAndHash(missingLastCollected)).rejects.toThrow();
 
       // Case 2: Extra property in family entry
@@ -411,7 +411,7 @@ describe("EvidenceBundleV1 Contract", () => {
       extraProperty.assessment.liveness = {
         ...validLiveness,
         deterministic: { isConfigured: true, lastCollectedAt: null, extra: "invalid" }
-      } as unknown as EvidenceBundleV1["assessment"]["liveness"];
+      } as unknown as NonNullable<EvidenceBundleV1["assessment"]["liveness"]>;
       await expect(contract.validateCanonicalizeAndHash(extraProperty)).rejects.toThrow();
 
       // Case 3: Noncanonical timestamp (missing milliseconds)
@@ -419,7 +419,7 @@ describe("EvidenceBundleV1 Contract", () => {
       nonCanonicalTime.assessment.liveness = {
         ...validLiveness,
         deterministic: { isConfigured: true, lastCollectedAt: "2026-08-07T12:34:56Z" }
-      } as unknown as EvidenceBundleV1["assessment"]["liveness"];
+      } as unknown as NonNullable<EvidenceBundleV1["assessment"]["liveness"]>;
       await expect(contract.validateCanonicalizeAndHash(nonCanonicalTime)).rejects.toThrow();
     });
   });

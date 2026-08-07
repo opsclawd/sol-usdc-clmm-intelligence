@@ -30,4 +30,5 @@ export interface RawObservationRepo {
   findByHash(source: Source, payloadHash: string): Promise<RawObservationRow | undefined>;
   findBySource(source: Source, sinceUnixMs: number): Promise<RawObservationRow[]>;
   updateParseStatus(id: number, status: ParseStatus): Promise<RawObservationRow>;
+  getLatestReceivedAt(): Promise<Map<Source, number>>;
 }

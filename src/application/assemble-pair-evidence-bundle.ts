@@ -53,6 +53,9 @@ import type { PersistedResearchBrief } from "../contracts/research-brief.js";
 import { mapPersistedBriefToCanonicalBundle } from "../domain/brief/map-to-evidence-bundle.js";
 import { findPersistedBriefForBundle } from "./find-persisted-brief.js";
 import type { ResearchBriefRepo } from "../ports/brief-repo.js";
+import type { BundleFamilyId } from "./load-core-evidence-pipeline-config.js";
+import { FAMILY_IDS, buildFamilyLiveness } from "../domain/evidence-bundle/index.js";
+import type { Source } from "../contracts/index.js";
 
 export interface AssemblePairEvidenceBundleRequest {
   readonly pair: "SOL/USDC";
@@ -67,6 +70,7 @@ export interface AssemblePairEvidenceBundleRequest {
   readonly codeVersion: string;
   readonly gitCommit: string;
   readonly environment: "production" | "staging" | "development" | "test";
+  readonly configuredFamilies: ReadonlySet<BundleFamilyId>;
 }
 
 export type AssemblePairEvidenceBundleSuccess =
@@ -230,6 +234,21 @@ function validateRequest(request: AssemblePairEvidenceBundleRequest): void {
   }
   if (!request.environment) {
     throw { code: "REQUEST_VALIDATION_ERROR", message: "environment is required" };
+  }
+  if (!request.configuredFamilies || !(request.configuredFamilies instanceof Set)) {
+    throw {
+      code: "REQUEST_VALIDATION_ERROR",
+      message: "configuredFamilies is required and must be a Set"
+    };
+  }
+  const knownFamilies = new Set<string>(FAMILY_IDS);
+  for (const family of request.configuredFamilies) {
+    if (!knownFamilies.has(family)) {
+      throw {
+        code: "REQUEST_VALIDATION_ERROR",
+        message: `unknown family ID: ${family}`
+      };
+    }
   }
 }
 
@@ -546,7 +565,20 @@ export async function preparePairEvidenceBundle(
 
   const nullBriefCandidate = assembleEvidenceBundleCandidate(assembleInput);
 
+  let latestReceivedAt: Map<Source, number>;
+  try {
+    latestReceivedAt = await rawRepo.getLatestReceivedAt();
+  } catch (err) {
+    return { code: "LINEAGE_ERROR", message: `Failed to load collection liveness: ${err}` };
+  }
+
+  nullBriefCandidate.assessment.liveness = buildFamilyLiveness(
+    request.configuredFamilies,
+    latestReceivedAt
+  );
+
   let canonical: CanonicalEvidenceBundle;
+
   try {
     canonical = await contract.validateCanonicalizeAndHash(nullBriefCandidate);
   } catch (err) {
