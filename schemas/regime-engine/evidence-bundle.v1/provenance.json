@@ -3,12 +3,12 @@
   "commit": "ff821935acf7d7ce2844b9d667bea0bcc6f98ce8",
   "schemaPath": "contracts/evidence-bundle/v1/evidence-bundle.schema.json",
   "schemaVersion": "evidence-bundle.v1",
-  "copiedAt": "2026-07-20T19:14:48.000Z",
+  "copiedAt": "2026-08-07T12:50:00.000Z",
   "assets": [
     {
       "sourcePath": "contracts/evidence-bundle/v1/evidence-bundle.schema.json",
       "localPath": "schema.json",
-      "sha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+      "sha256": "e0ca8bae02e002b70ba74cd0c39ae2b2107c71d8b221c80cb24311a10d020d69"
     },
     {
       "sourcePath": "contracts/evidence-bundle/v1/hash-vectors.json",

@@ -1,4 +1,4 @@
-export const SCHEMA_SHA256 = "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17";
+export const SCHEMA_SHA256 = "e0ca8bae02e002b70ba74cd0c39ae2b2107c71d8b221c80cb24311a10d020d69";
 
 /* eslint-disable */
 /**
@@ -1077,6 +1077,7 @@ export interface BundleAssessment {
   overallConfidenceBps: ConfidenceBps;
   quality: QualityLevel;
   coverage: FamilyCoverage;
+  liveness?: FamilyLiveness;
   /**
    * @maxItems 64
    */
@@ -1090,6 +1091,19 @@ export interface FamilyCoverage {
   events: CoverageStatus;
   newsRegulatory: CoverageStatus;
   researchBrief: CoverageStatus;
+}
+export interface FamilyLiveness {
+  deterministic: FamilyLivenessEntry;
+  supportResistance: FamilyLivenessEntry;
+  flows: FamilyLivenessEntry;
+  derivatives: FamilyLivenessEntry;
+  events: FamilyLivenessEntry;
+  newsRegulatory: FamilyLivenessEntry;
+  researchBrief: FamilyLivenessEntry;
+}
+export interface FamilyLivenessEntry {
+  isConfigured: boolean;
+  lastCollectedAt: CanonicalTimestamp | null;
 }
 export interface BundleWarning {
   code: Identifier128;

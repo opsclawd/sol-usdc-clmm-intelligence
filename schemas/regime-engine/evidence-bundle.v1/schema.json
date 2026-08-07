@@ -1001,6 +1001,55 @@
         }
       }
     },
+    "familyLivenessEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["isConfigured", "lastCollectedAt"],
+      "properties": {
+        "isConfigured": {
+          "type": "boolean"
+        },
+        "lastCollectedAt": {
+          "anyOf": [{ "$ref": "#/$defs/canonicalTimestamp" }, { "type": "null" }]
+        }
+      }
+    },
+    "familyLiveness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deterministic",
+        "supportResistance",
+        "flows",
+        "derivatives",
+        "events",
+        "newsRegulatory",
+        "researchBrief"
+      ],
+      "properties": {
+        "deterministic": {
+          "$ref": "#/$defs/familyLivenessEntry"
+        },
+        "supportResistance": {
+          "$ref": "#/$defs/familyLivenessEntry"
+        },
+        "flows": {
+          "$ref": "#/$defs/familyLivenessEntry"
+        },
+        "derivatives": {
+          "$ref": "#/$defs/familyLivenessEntry"
+        },
+        "events": {
+          "$ref": "#/$defs/familyLivenessEntry"
+        },
+        "newsRegulatory": {
+          "$ref": "#/$defs/familyLivenessEntry"
+        },
+        "researchBrief": {
+          "$ref": "#/$defs/familyLivenessEntry"
+        }
+      }
+    },
     "bundleWarning": {
       "type": "object",
       "additionalProperties": false,
@@ -1038,6 +1087,9 @@
         },
         "coverage": {
           "$ref": "#/$defs/familyCoverage"
+        },
+        "liveness": {
+          "$ref": "#/$defs/familyLiveness"
         },
         "warnings": {
           "type": "array",

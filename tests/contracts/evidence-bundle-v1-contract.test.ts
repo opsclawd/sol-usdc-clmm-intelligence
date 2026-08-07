@@ -361,6 +361,69 @@ describe("EvidenceBundleV1 Contract", () => {
     });
   });
 
+  describe("accepts optional per-family liveness", () => {
+    it("accepts a legacy assessment without optional liveness", async () => {
+      const fixture = (await loadValidFixture("deterministic-only")) as EvidenceBundleV1;
+      const legacyBundle = JSON.parse(JSON.stringify(fixture)) as EvidenceBundleV1;
+      delete legacyBundle.assessment.liveness;
+      const result = await contract.validateCanonicalizeAndHash(legacyBundle);
+      expect(result.schemaVersion).toBe("evidence-bundle.v1");
+    });
+
+    it("accepts complete per-family liveness with canonical timestamps and nulls", async () => {
+      const fixture = (await loadValidFixture("deterministic-only")) as EvidenceBundleV1;
+      const bundleWithLiveness = JSON.parse(JSON.stringify(fixture)) as EvidenceBundleV1;
+      bundleWithLiveness.assessment.liveness = {
+        deterministic: { isConfigured: true, lastCollectedAt: "2026-08-07T12:34:56.789Z" },
+        supportResistance: { isConfigured: false, lastCollectedAt: null },
+        flows: { isConfigured: true, lastCollectedAt: "2026-08-07T12:34:56.789Z" },
+        derivatives: { isConfigured: true, lastCollectedAt: null },
+        events: { isConfigured: true, lastCollectedAt: "2026-08-07T12:34:56.789Z" },
+        newsRegulatory: { isConfigured: false, lastCollectedAt: null },
+        researchBrief: { isConfigured: true, lastCollectedAt: null }
+      };
+      const result = await contract.validateCanonicalizeAndHash(bundleWithLiveness);
+      expect(result.schemaVersion).toBe("evidence-bundle.v1");
+    });
+
+    it("rejects malformed per-family liveness entries", async () => {
+      const fixture = (await loadValidFixture("deterministic-only")) as EvidenceBundleV1;
+      const validLiveness = {
+        deterministic: { isConfigured: true, lastCollectedAt: "2026-08-07T12:34:56.789Z" },
+        supportResistance: { isConfigured: false, lastCollectedAt: null },
+        flows: { isConfigured: true, lastCollectedAt: "2026-08-07T12:34:56.789Z" },
+        derivatives: { isConfigured: true, lastCollectedAt: null },
+        events: { isConfigured: true, lastCollectedAt: "2026-08-07T12:34:56.789Z" },
+        newsRegulatory: { isConfigured: false, lastCollectedAt: null },
+        researchBrief: { isConfigured: true, lastCollectedAt: null }
+      };
+
+      // Case 1: Missing lastCollectedAt
+      const missingLastCollected = JSON.parse(JSON.stringify(fixture)) as EvidenceBundleV1;
+      missingLastCollected.assessment.liveness = {
+        ...validLiveness,
+        deterministic: { isConfigured: true }
+      } as unknown as EvidenceBundleV1["assessment"]["liveness"];
+      await expect(contract.validateCanonicalizeAndHash(missingLastCollected)).rejects.toThrow();
+
+      // Case 2: Extra property in family entry
+      const extraProperty = JSON.parse(JSON.stringify(fixture)) as EvidenceBundleV1;
+      extraProperty.assessment.liveness = {
+        ...validLiveness,
+        deterministic: { isConfigured: true, lastCollectedAt: null, extra: "invalid" }
+      } as unknown as EvidenceBundleV1["assessment"]["liveness"];
+      await expect(contract.validateCanonicalizeAndHash(extraProperty)).rejects.toThrow();
+
+      // Case 3: Noncanonical timestamp (missing milliseconds)
+      const nonCanonicalTime = JSON.parse(JSON.stringify(fixture)) as EvidenceBundleV1;
+      nonCanonicalTime.assessment.liveness = {
+        ...validLiveness,
+        deterministic: { isConfigured: true, lastCollectedAt: "2026-08-07T12:34:56Z" }
+      } as unknown as EvidenceBundleV1["assessment"]["liveness"];
+      await expect(contract.validateCanonicalizeAndHash(nonCanonicalTime)).rejects.toThrow();
+    });
+  });
+
   describe("generated contract type is deterministic and matches checked-in file", () => {
     it("should regenerate identical bytes to checked-in file", () => {
       const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
