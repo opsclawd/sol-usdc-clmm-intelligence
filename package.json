@@ -26,7 +26,7 @@
     "lint": "eslint . --ext .ts --max-warnings 0",
     "format": "prettier --check .",
     "boundaries": "depcruise --config .dependency-cruiser.cjs src",
-    "verify": "pnpm typecheck && pnpm lint && pnpm format && pnpm test && pnpm boundaries",
+    "verify": "pnpm typecheck && pnpm lint && pnpm format && pnpm contract:evidence-bundle:check && pnpm test && pnpm boundaries",
     "prepare": "husky || true",
     "db:generate": "drizzle-kit generate",
     "db:provision-roles": "tsx scripts/db-provision-roles.ts",

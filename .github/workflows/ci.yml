@@ -37,6 +37,8 @@ jobs:
 
       - run: pnpm run format
 
+      - run: pnpm run contract:evidence-bundle:check
+
       - run: pnpm run test
 
       - name: Install ripgrep for boundary check

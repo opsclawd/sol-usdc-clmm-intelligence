@@ -1,14 +1,35 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { readFile, readdir } from "node:fs/promises";
+import { join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const CONTRACT_DIR = fileURLToPath(
-  new URL("../schemas/regime-engine/evidence-bundle.v1", import.meta.url)
-);
+const CONTRACT_DIR =
+  process.env.CONTRACT_DIR ??
+  fileURLToPath(new URL("../schemas/regime-engine/evidence-bundle.v1", import.meta.url));
+const IGNORED_RELATIVE_PATHS = new Set(["provenance.json", "schema.sha256"]);
 
 function computeSha256(content: string): string {
   return createHash("sha256").update(content, "utf-8").digest("hex");
+}
+
+function normalizeRelativePath(filePath: string): string {
+  return filePath.split(sep).join("/");
+}
+
+async function listVendoredAssetPaths(): Promise<string[]> {
+  const entries = await readdir(CONTRACT_DIR, { recursive: true, withFileTypes: true });
+
+  return entries
+    .filter((entry) => entry.isFile())
+    .map((entry) => {
+      const parentDir = entry.parentPath || entry.path;
+      return normalizeRelativePath(relative(CONTRACT_DIR, join(parentDir, entry.name)));
+    })
+    .filter(
+      (assetPath) =>
+        !IGNORED_RELATIVE_PATHS.has(assetPath) && assetPath.split("/").at(-1) !== ".DS_Store"
+    )
+    .sort();
 }
 
 interface ProvenanceAsset {
@@ -26,12 +47,30 @@ async function main(): Promise<void> {
   const provenancePath = join(CONTRACT_DIR, "provenance.json");
   const provenanceContent = await readFile(provenancePath, "utf-8");
   const provenance = JSON.parse(provenanceContent) as Provenance;
+  const registeredPaths = new Set(
+    provenance.assets.map((asset) => normalizeRelativePath(asset.localPath))
+  );
 
   let allPassed = true;
 
+  for (const assetPath of await listVendoredAssetPaths()) {
+    if (!registeredPaths.has(assetPath)) {
+      console.log(`  FAIL: ${assetPath} is present on disk but not registered in provenance.json`);
+      allPassed = false;
+    }
+  }
+
   for (const asset of provenance.assets) {
     const assetPath = join(CONTRACT_DIR, asset.localPath);
-    const content = await readFile(assetPath, "utf-8");
+    let content: string;
+    try {
+      content = await readFile(assetPath, "utf-8");
+    } catch {
+      console.log(`  FAIL: ${asset.localPath}`);
+      console.log(`    File missing or unreadable on disk`);
+      allPassed = false;
+      continue;
+    }
     const actualHash = computeSha256(content);
 
     if (actualHash === asset.sha256) {
