@@ -47,21 +47,21 @@ describe("deterministic sub-family liveness", () => {
       ])
     );
 
-    expect(result.risk.lastCollectedAt).toBe("1970-01-01T00:00:00.200Z");
-    expect(result.market_state.lastCollectedAt).toBe("1970-01-01T00:00:03.000Z");
-    expect(result.price_quality.lastCollectedAt).toBe("1970-01-01T00:00:03.000Z");
-    expect(result.liquidity.lastCollectedAt).toBe("1970-01-01T00:00:05.000Z");
-    expect(result.position_state.lastCollectedAt).toBe("1970-01-01T00:00:05.000Z");
-    expect(result.clmm_economics.lastCollectedAt).toBe("1970-01-01T00:00:05.000Z");
-    expect(result.deterministic.lastCollectedAt).toBe("1970-01-01T00:00:05.000Z");
+    expect(result.risk?.lastCollectedAt).toBe("1970-01-01T00:00:00.200Z");
+    expect(result.market_state?.lastCollectedAt).toBe("1970-01-01T00:00:03.000Z");
+    expect(result.price_quality?.lastCollectedAt).toBe("1970-01-01T00:00:03.000Z");
+    expect(result.liquidity?.lastCollectedAt).toBe("1970-01-01T00:00:05.000Z");
+    expect(result.position_state?.lastCollectedAt).toBe("1970-01-01T00:00:05.000Z");
+    expect(result.clmm_economics?.lastCollectedAt).toBe("1970-01-01T00:00:05.000Z");
+    expect(result.deterministic?.lastCollectedAt).toBe("1970-01-01T00:00:05.000Z");
   });
 
   it("reports null for a deterministic sub-family whose sources never succeeded", () => {
     const result = build(new Map<Source, number>([["clmm-v2-bundle", 5_000]]));
 
-    expect(result.risk.lastCollectedAt).toBeNull();
-    expect(result.market_state.lastCollectedAt).toBeNull();
-    expect(result.deterministic.lastCollectedAt).toBe("1970-01-01T00:00:05.000Z");
+    expect(result.risk?.lastCollectedAt).toBeNull();
+    expect(result.market_state?.lastCollectedAt).toBeNull();
+    expect(result.deterministic?.lastCollectedAt).toBe("1970-01-01T00:00:05.000Z");
   });
 
   it("inherits configured state from deterministic for each deterministic sub-family", () => {
@@ -77,6 +77,6 @@ describe("deterministic sub-family liveness", () => {
     ]) {
       expect(result[family]?.isConfigured).toBe(true);
     }
-    expect(result.flows.isConfigured).toBe(false);
+    expect(result.flows?.isConfigured).toBe(false);
   });
 });
