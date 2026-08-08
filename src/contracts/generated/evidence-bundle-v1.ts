@@ -1,4 +1,4 @@
-export const SCHEMA_SHA256 = "e0ca8bae02e002b70ba74cd0c39ae2b2107c71d8b221c80cb24311a10d020d69";
+export const SCHEMA_SHA256 = "08c32eb2afda78be55d5c59417b3cd1ceaa693ff0bcd98baa66417af8c469be9";
 
 /* eslint-disable */
 /**
@@ -1077,11 +1077,19 @@ export interface BundleAssessment {
   overallConfidenceBps: ConfidenceBps;
   quality: QualityLevel;
   coverage: FamilyCoverage;
-  liveness?: FamilyLiveness;
   /**
    * @maxItems 64
    */
   warnings: BundleWarning[];
+  liveness?: {
+    deterministic?: LivenessState;
+    supportResistance?: LivenessState;
+    flows?: LivenessState;
+    derivatives?: LivenessState;
+    events?: LivenessState;
+    newsRegulatory?: LivenessState;
+    researchBrief?: LivenessState;
+  };
 }
 export interface FamilyCoverage {
   deterministic: CoverageStatus;
@@ -1092,23 +1100,14 @@ export interface FamilyCoverage {
   newsRegulatory: CoverageStatus;
   researchBrief: CoverageStatus;
 }
-export interface FamilyLiveness {
-  deterministic: FamilyLivenessEntry;
-  supportResistance: FamilyLivenessEntry;
-  flows: FamilyLivenessEntry;
-  derivatives: FamilyLivenessEntry;
-  events: FamilyLivenessEntry;
-  newsRegulatory: FamilyLivenessEntry;
-  researchBrief: FamilyLivenessEntry;
-}
-export interface FamilyLivenessEntry {
-  isConfigured: boolean;
-  lastCollectedAt: CanonicalTimestamp | null;
-}
 export interface BundleWarning {
   code: Identifier128;
   message: string;
   affectedFamilies: string[];
+}
+export interface LivenessState {
+  isConfigured: boolean;
+  lastCollectedAt: CanonicalTimestamp | null;
 }
 export interface BundleProvenance {
   pipelineVersion: Identifier128;

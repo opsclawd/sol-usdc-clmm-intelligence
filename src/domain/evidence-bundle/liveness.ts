@@ -1,9 +1,16 @@
 import type {
-  FamilyCoverage,
-  FamilyLiveness
+  BundleAssessment,
+  FamilyCoverage
 } from "../../contracts/generated/evidence-bundle-v1.js";
 import type { Source } from "../../contracts/taxonomy.js";
 import { toCanonicalTimestamp } from "./timestamp.js";
+
+/**
+ * The canonical contract inlines the liveness map on `BundleAssessment` and
+ * does not name it, so derive the alias rather than restating its shape — that
+ * keeps it in step when the vendored schema is re-synced from regime-engine.
+ */
+export type FamilyLiveness = NonNullable<BundleAssessment["liveness"]>;
 
 export type BundleFamilyId = keyof FamilyCoverage;
 
