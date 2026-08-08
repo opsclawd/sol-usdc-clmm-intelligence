@@ -94,6 +94,11 @@
       "sourcePath": "contracts/evidence-bundle/v1/fixtures/valid/liveness.json",
       "localPath": "fixtures/valid/liveness.json",
       "sha256": "31ea43c527f635ae8dffb900065b62cfb169ebafc94ba9f52da7b4533826c320"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/valid/liveness-subfamilies.json",
+      "localPath": "fixtures/valid/liveness-subfamilies.json",
+      "sha256": "f2e1f332e8ad1ac99ebbf9381b2d03db6662b737eeef4e529f17026599cee468"
     }
   ]
 }
