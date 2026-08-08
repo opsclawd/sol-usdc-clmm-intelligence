@@ -12,10 +12,20 @@ import { toCanonicalTimestamp } from "./timestamp.js";
  */
 export type FamilyLiveness = NonNullable<BundleAssessment["liveness"]>;
 
-export type BundleFamilyId = keyof FamilyCoverage;
+export type BundleFamilyId = keyof FamilyCoverage | keyof FamilyLiveness;
+
+const DETERMINISTIC_SUBFAMILY_IDS = [
+  "market_state",
+  "price_quality",
+  "clmm_economics",
+  "position_state",
+  "liquidity",
+  "risk"
+] as const satisfies readonly BundleFamilyId[];
 
 export const FAMILY_IDS: readonly BundleFamilyId[] = [
   "deterministic",
+  ...DETERMINISTIC_SUBFAMILY_IDS,
   "supportResistance",
   "flows",
   "derivatives",
@@ -32,6 +42,12 @@ export const FAMILY_SOURCES: Readonly<Record<BundleFamilyId, readonly Source[]>>
     "orca-public-api",
     "solana-rpc"
   ],
+  market_state: ["pyth-hermes", "jupiter-quote"],
+  price_quality: ["pyth-hermes", "jupiter-quote"],
+  clmm_economics: ["clmm-v2-bundle", "solana-rpc"],
+  position_state: ["clmm-v2-bundle"],
+  liquidity: ["clmm-v2-bundle", "orca-public-api"],
+  risk: ["binance-fapi", "drift-api"],
   supportResistance: ["technical-analysis-api"],
   flows: ["helius-api", "birdeye-api"],
   derivatives: ["binance-fapi", "drift-api"],
@@ -39,6 +55,18 @@ export const FAMILY_SOURCES: Readonly<Record<BundleFamilyId, readonly Source[]>>
   newsRegulatory: ["crypto-news-api", "regulatory-monitor-api"],
   researchBrief: []
 };
+
+const deterministicSubfamilies = new Set<BundleFamilyId>(DETERMINISTIC_SUBFAMILY_IDS);
+
+function isFamilyConfigured(
+  family: BundleFamilyId,
+  configuredFamilies: ReadonlySet<BundleFamilyId>
+): boolean {
+  return (
+    configuredFamilies.has(family) ||
+    (deterministicSubfamilies.has(family) && configuredFamilies.has("deterministic"))
+  );
+}
 
 export function buildFamilyLiveness(
   configuredFamilies: ReadonlySet<BundleFamilyId>,
@@ -53,7 +81,7 @@ export function buildFamilyLiveness(
       return [
         family,
         {
-          isConfigured: configuredFamilies.has(family),
+          isConfigured: isFamilyConfigured(family, configuredFamilies),
           lastCollectedAt: latest === null ? null : toCanonicalTimestamp(latest)
         }
       ];

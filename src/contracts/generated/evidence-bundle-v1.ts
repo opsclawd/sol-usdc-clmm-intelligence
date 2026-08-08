@@ -1,4 +1,4 @@
-export const SCHEMA_SHA256 = "08c32eb2afda78be55d5c59417b3cd1ceaa693ff0bcd98baa66417af8c469be9";
+export const SCHEMA_SHA256 = "42df76fa2a5b24d866c8f0a6e2f0458fe4486f65035075016f9a2b35093c7b17";
 
 /* eslint-disable */
 /**
@@ -1083,6 +1083,12 @@ export interface BundleAssessment {
   warnings: BundleWarning[];
   liveness?: {
     deterministic?: LivenessState;
+    market_state?: LivenessState;
+    price_quality?: LivenessState;
+    clmm_economics?: LivenessState;
+    position_state?: LivenessState;
+    liquidity?: LivenessState;
+    risk?: LivenessState;
     supportResistance?: LivenessState;
     flows?: LivenessState;
     derivatives?: LivenessState;

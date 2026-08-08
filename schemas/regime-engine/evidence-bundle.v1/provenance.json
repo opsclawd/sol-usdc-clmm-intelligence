@@ -1,6 +1,6 @@
 {
   "repository": "opsclawd/regime-engine",
-  "commit": "c0d233f61d0f15343bf4824a6fe5eb682843ecd2",
+  "commit": "dc79ce5",
   "schemaPath": "contracts/evidence-bundle/v1/evidence-bundle.schema.json",
   "schemaVersion": "evidence-bundle.v1",
   "copiedAt": "2026-08-08T01:09:06.000Z",
@@ -8,12 +8,12 @@
     {
       "sourcePath": "contracts/evidence-bundle/v1/evidence-bundle.schema.json",
       "localPath": "schema.json",
-      "sha256": "08c32eb2afda78be55d5c59417b3cd1ceaa693ff0bcd98baa66417af8c469be9"
+      "sha256": "42df76fa2a5b24d866c8f0a6e2f0458fe4486f65035075016f9a2b35093c7b17"
     },
     {
       "sourcePath": "contracts/evidence-bundle/v1/hash-vectors.json",
       "localPath": "hash-vectors.json",
-      "sha256": "432da8af5c929112fb7bbec9b7c296fcd2be9c5f7042003eaca21e2ecf3c4e61"
+      "sha256": "9d281c46004ed989e42cff02402b25d948a1c0682bd0e293c3c5cb5f7f70bf9c"
     },
     {
       "sourcePath": "contracts/evidence-bundle/v1/fixtures/valid/deterministic-only.json",
@@ -93,7 +93,7 @@
     {
       "sourcePath": "contracts/evidence-bundle/v1/fixtures/valid/liveness.json",
       "localPath": "fixtures/valid/liveness.json",
-      "sha256": "31ea43c527f635ae8dffb900065b62cfb169ebafc94ba9f52da7b4533826c320"
+      "sha256": "3152a4fe25717de8716f258fcfdb9d15d531c26f62099b0534e38d3ef84a5156"
     }
   ]
 }
