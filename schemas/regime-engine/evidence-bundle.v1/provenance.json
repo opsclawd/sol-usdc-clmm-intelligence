@@ -1,19 +1,19 @@
 {
   "repository": "opsclawd/regime-engine",
-  "commit": "ff821935acf7d7ce2844b9d667bea0bcc6f98ce8",
+  "commit": "c0d233f61d0f15343bf4824a6fe5eb682843ecd2",
   "schemaPath": "contracts/evidence-bundle/v1/evidence-bundle.schema.json",
   "schemaVersion": "evidence-bundle.v1",
-  "copiedAt": "2026-07-20T19:14:48.000Z",
+  "copiedAt": "2026-08-08T01:09:06.000Z",
   "assets": [
     {
       "sourcePath": "contracts/evidence-bundle/v1/evidence-bundle.schema.json",
       "localPath": "schema.json",
-      "sha256": "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17"
+      "sha256": "08c32eb2afda78be55d5c59417b3cd1ceaa693ff0bcd98baa66417af8c469be9"
     },
     {
       "sourcePath": "contracts/evidence-bundle/v1/hash-vectors.json",
       "localPath": "hash-vectors.json",
-      "sha256": "ab55c93dac26e4b8e412561099a79efa5fd7442226b5dc8a087ef3fbc297252b"
+      "sha256": "432da8af5c929112fb7bbec9b7c296fcd2be9c5f7042003eaca21e2ecf3c4e61"
     },
     {
       "sourcePath": "contracts/evidence-bundle/v1/fixtures/valid/deterministic-only.json",
@@ -89,6 +89,11 @@
       "sourcePath": "contracts/evidence-bundle/v1/fixtures/invalid/wrong-schema-version.json",
       "localPath": "fixtures/invalid/wrong-schema-version.json",
       "sha256": "ca43108f5dd35ced450b1e792fce69e63fdfa6a4b8a70f53a368d3f5ca09ff49"
+    },
+    {
+      "sourcePath": "contracts/evidence-bundle/v1/fixtures/valid/liveness.json",
+      "localPath": "fixtures/valid/liveness.json",
+      "sha256": "31ea43c527f635ae8dffb900065b62cfb169ebafc94ba9f52da7b4533826c320"
     }
   ]
 }

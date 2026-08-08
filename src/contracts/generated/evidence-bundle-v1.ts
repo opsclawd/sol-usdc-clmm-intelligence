@@ -1,4 +1,4 @@
-export const SCHEMA_SHA256 = "0146b073cc607b47e52c615f6299294b1fd8f133d8a4b128bd2a95dc20f77b17";
+export const SCHEMA_SHA256 = "08c32eb2afda78be55d5c59417b3cd1ceaa693ff0bcd98baa66417af8c469be9";
 
 /* eslint-disable */
 /**
@@ -1081,6 +1081,15 @@ export interface BundleAssessment {
    * @maxItems 64
    */
   warnings: BundleWarning[];
+  liveness?: {
+    deterministic?: LivenessState;
+    supportResistance?: LivenessState;
+    flows?: LivenessState;
+    derivatives?: LivenessState;
+    events?: LivenessState;
+    newsRegulatory?: LivenessState;
+    researchBrief?: LivenessState;
+  };
 }
 export interface FamilyCoverage {
   deterministic: CoverageStatus;
@@ -1095,6 +1104,10 @@ export interface BundleWarning {
   code: Identifier128;
   message: string;
   affectedFamilies: string[];
+}
+export interface LivenessState {
+  isConfigured: boolean;
+  lastCollectedAt: CanonicalTimestamp | null;
 }
 export interface BundleProvenance {
   pipelineVersion: Identifier128;

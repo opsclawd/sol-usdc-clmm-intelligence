@@ -297,7 +297,8 @@ export async function runCoreEvidencePipeline(
               assemblySelectionVersion: EVIDENCE_BUNDLE_SELECTION_VERSION,
               codeVersion: config.codeVersion,
               gitCommit: config.gitCommit,
-              environment: config.environment
+              environment: config.environment,
+              configuredFamilies: config.configuredFamilies
             };
 
             let prep: PreparePairEvidenceBundleResult | null = null;

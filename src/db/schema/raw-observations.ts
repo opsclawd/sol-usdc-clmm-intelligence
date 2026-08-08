@@ -18,7 +18,8 @@ export const rawObservations = intelligence.table(
   (t) => [
     uniqueIndex("uniq_raw_obs_source_observation_key").on(t.source, t.sourceObservationKey),
     index("idx_raw_obs_source_payload_hash").on(t.source, t.payloadHash),
-    index("idx_raw_obs_source_observed").on(t.source, t.observedAtUnixMs, t.id)
+    index("idx_raw_obs_source_observed").on(t.source, t.observedAtUnixMs, t.id),
+    index("idx_raw_obs_source_received").on(t.source, t.receivedAtUnixMs)
   ]
 );
 

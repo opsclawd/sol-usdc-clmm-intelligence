@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
-import { eq, and, gte } from "drizzle-orm";
+import { eq, and, gte, inArray } from "drizzle-orm";
 import { rawObservations } from "../../../src/db/schema/raw-observations.js";
 import { normalizedObservations } from "../../../src/db/schema/normalized-observations.js";
 import { DrizzleObservationRepo } from "../../../src/adapters/node/drizzle-observation-repo.js";
@@ -11,7 +11,7 @@ import type { Source } from "../../../src/contracts/taxonomy.js";
 import { DEFAULT_CONFIDENCE, DEFAULT_PROVENANCE } from "../../helpers/taxonomy-fixtures.js";
 
 const TEST_DB_URL = process.env.TEST_DATABASE_URL;
-const EXTRA_SOURCES: Source[] = ["pyth-hermes", "jupiter-quote"];
+const EXTRA_SOURCES: Source[] = ["pyth-hermes", "jupiter-quote", "helius-api", "birdeye-api"];
 
 describe("DrizzleObservationRepo integration", () => {
   if (!TEST_DB_URL) {
@@ -43,7 +43,10 @@ describe("DrizzleObservationRepo integration", () => {
     await db
       .delete(rawObservations)
       .where(
-        and(eq(rawObservations.source, "clmm-v2-bundle"), gte(rawObservations.observedAtUnixMs, 0))
+        and(
+          inArray(rawObservations.source, ["clmm-v2-bundle", ...EXTRA_SOURCES]),
+          gte(rawObservations.observedAtUnixMs, 0)
+        )
       );
   });
 
@@ -359,6 +362,48 @@ describe("DrizzleObservationRepo integration", () => {
 
       const found = await normalizedRepo.findByRawObservation(99999, "pool_statistics");
       expect(found).toBeNull();
+    });
+  });
+
+  describe("getLatestReceivedAt", () => {
+    it("groups latest received timestamps in PostgreSQL without using observed time", async () => {
+      const hash1 = await canonicalHash({ data: 1 });
+      const hash2 = await canonicalHash({ data: 2 });
+      const hash3 = await canonicalHash({ data: 3 });
+
+      await repo.insertOrClassify({
+        source: "helius-api",
+        sourceObservationKey: `h1-${Date.now()}`,
+        observedAtUnixMs: 9999, // Deliberately higher observed time for earlier received row
+        fetchedAtUnixMs: 100,
+        payloadHash: hash1,
+        payloadCanonical: '{"data":1}',
+        receivedAtUnixMs: 1000
+      });
+
+      await repo.insertOrClassify({
+        source: "helius-api",
+        sourceObservationKey: `h2-${Date.now()}`,
+        observedAtUnixMs: 500, // Lower observed time for later received row
+        fetchedAtUnixMs: 200,
+        payloadHash: hash2,
+        payloadCanonical: '{"data":2}',
+        receivedAtUnixMs: 3000
+      });
+
+      await repo.insertOrClassify({
+        source: "birdeye-api",
+        sourceObservationKey: `b1-${Date.now()}`,
+        observedAtUnixMs: 150,
+        fetchedAtUnixMs: 150,
+        payloadHash: hash3,
+        payloadCanonical: '{"data":3}',
+        receivedAtUnixMs: 2000
+      });
+
+      const result = await repo.getLatestReceivedAt();
+      expect(result.get("helius-api")).toBe(3000);
+      expect(result.get("birdeye-api")).toBe(2000);
     });
   });
 });

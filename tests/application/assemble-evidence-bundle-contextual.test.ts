@@ -473,6 +473,9 @@ class FakeRawRepo implements RawObservationRepo {
     if (!row) throw new Error(`Row ${id} not found`);
     return { ...row, parseStatus: status };
   }
+  async getLatestReceivedAt(): Promise<Map<Source, number>> {
+    return new Map();
+  }
 }
 
 class FakeBundleRepo implements EvidenceBundleRepo {

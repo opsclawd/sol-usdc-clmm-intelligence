@@ -322,4 +322,55 @@ describe("RawObservationRepo contract", () => {
       expect(results[0]!.id).toBe(inserted.row.id);
     });
   });
+
+  describe("getLatestReceivedAt", () => {
+    it("returns the greatest received timestamp for each source", async () => {
+      const hash1 = await canonicalHash({ data: 1 });
+      const hash2 = await canonicalHash({ data: 2 });
+      const hash3 = await canonicalHash({ data: 3 });
+
+      await repo.insertOrClassify({
+        source: "helius-api",
+        sourceObservationKey: "h1",
+        observedAtUnixMs: 100,
+        fetchedAtUnixMs: 100,
+        payloadHash: hash1,
+        payloadCanonical: '{"data":1}',
+        receivedAtUnixMs: 1000
+      });
+
+      await repo.insertOrClassify({
+        source: "helius-api",
+        sourceObservationKey: "h2",
+        observedAtUnixMs: 200,
+        fetchedAtUnixMs: 200,
+        payloadHash: hash2,
+        payloadCanonical: '{"data":2}',
+        receivedAtUnixMs: 3000
+      });
+
+      await repo.insertOrClassify({
+        source: "birdeye-api",
+        sourceObservationKey: "b1",
+        observedAtUnixMs: 150,
+        fetchedAtUnixMs: 150,
+        payloadHash: hash3,
+        payloadCanonical: '{"data":3}',
+        receivedAtUnixMs: 2000
+      });
+
+      const result = await repo.getLatestReceivedAt();
+      expect(result).toEqual(
+        new Map([
+          ["helius-api", 3000],
+          ["birdeye-api", 2000]
+        ])
+      );
+    });
+
+    it("returns an empty map when no observations exist", async () => {
+      const result = await repo.getLatestReceivedAt();
+      expect(result).toEqual(new Map());
+    });
+  });
 });

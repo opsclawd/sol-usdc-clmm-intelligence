@@ -46,3 +46,6 @@ export type { AssembleEvidenceBundleInput } from "./assemble.js";
 export { hasUsableDerivativeSlots, buildDerivativeClaims } from "./derivatives.js";
 
 export { confidenceFractionToBps, confidenceBpsToFraction } from "./confidence-bps.js";
+
+export { FAMILY_IDS, FAMILY_SOURCES, buildFamilyLiveness } from "./liveness.js";
+export type { BundleFamilyId } from "./liveness.js";

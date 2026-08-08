@@ -1,4 +1,4 @@
-import { eq, and, gte, inArray } from "drizzle-orm";
+import { eq, and, gte, inArray, max } from "drizzle-orm";
 import { rawObservations } from "../../db/schema/raw-observations.js";
 import type {
   RawObservationRepo,
@@ -130,5 +130,23 @@ export class DrizzleObservationRepo implements RawObservationRepo {
       throw new Error(`Row with id ${id} not found`);
     }
     return toPortRow(updated);
+  }
+
+  async getLatestReceivedAt(): Promise<Map<Source, number>> {
+    const rows = await this.db
+      .select({
+        source: rawObservations.source,
+        latestReceivedAt: max(rawObservations.receivedAtUnixMs)
+      })
+      .from(rawObservations)
+      .groupBy(rawObservations.source);
+
+    return new Map(
+      rows.flatMap((row) =>
+        row.latestReceivedAt === null
+          ? []
+          : [[row.source as Source, Number(row.latestReceivedAt)] as const]
+      )
+    );
   }
 }
