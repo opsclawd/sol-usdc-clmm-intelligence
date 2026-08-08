@@ -2,3 +2,9 @@ node_modules
 dist
 pnpm-lock.yaml
 .env.example
+
+# Vendored byte-exact mirror of regime-engine's evidence-bundle contract.
+# provenance.json records a sha256 per asset and the contract test verifies
+# them, so reformatting here silently breaks ASSET_HASH_MISMATCH. These files
+# must match upstream byte-for-byte, not this repo's prettier config.
+schemas/regime-engine/

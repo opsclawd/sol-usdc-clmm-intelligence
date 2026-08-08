@@ -14,7 +14,7 @@ export type FamilyLiveness = NonNullable<BundleAssessment["liveness"]>;
 
 export type BundleFamilyId = keyof FamilyCoverage | keyof FamilyLiveness;
 
-const DETERMINISTIC_SUBFAMILY_IDS = [
+export const DETERMINISTIC_SUBFAMILY_IDS = [
   "market_state",
   "price_quality",
   "clmm_economics",

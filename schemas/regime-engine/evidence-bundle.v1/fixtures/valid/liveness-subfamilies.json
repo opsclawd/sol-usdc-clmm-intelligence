@@ -85,6 +85,30 @@
         "isConfigured": true,
         "lastCollectedAt": "2024-01-15T10:00:00.000Z"
       },
+      "market_state": {
+        "isConfigured": true,
+        "lastCollectedAt": "2024-01-15T09:59:00.000Z"
+      },
+      "price_quality": {
+        "isConfigured": true,
+        "lastCollectedAt": "2024-01-15T09:58:00.000Z"
+      },
+      "clmm_economics": {
+        "isConfigured": true,
+        "lastCollectedAt": "2024-01-15T09:57:00.000Z"
+      },
+      "position_state": {
+        "isConfigured": true,
+        "lastCollectedAt": "2024-01-15T09:56:00.000Z"
+      },
+      "liquidity": {
+        "isConfigured": true,
+        "lastCollectedAt": "2024-01-15T09:55:00.000Z"
+      },
+      "risk": {
+        "isConfigured": false,
+        "lastCollectedAt": "2024-01-15T09:54:00.000Z"
+      },
       "supportResistance": {
         "isConfigured": true,
         "lastCollectedAt": "2024-01-15T09:55:00.000Z"

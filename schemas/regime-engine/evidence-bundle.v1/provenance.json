@@ -13,7 +13,7 @@
     {
       "sourcePath": "contracts/evidence-bundle/v1/hash-vectors.json",
       "localPath": "hash-vectors.json",
-      "sha256": "9d281c46004ed989e42cff02402b25d948a1c0682bd0e293c3c5cb5f7f70bf9c"
+      "sha256": "b78988128cf147dbea7e9a7303fa7682a525347c7f39dab85c9f7763dada608f"
     },
     {
       "sourcePath": "contracts/evidence-bundle/v1/fixtures/valid/deterministic-only.json",
@@ -93,7 +93,7 @@
     {
       "sourcePath": "contracts/evidence-bundle/v1/fixtures/valid/liveness.json",
       "localPath": "fixtures/valid/liveness.json",
-      "sha256": "3152a4fe25717de8716f258fcfdb9d15d531c26f62099b0534e38d3ef84a5156"
+      "sha256": "31ea43c527f635ae8dffb900065b62cfb169ebafc94ba9f52da7b4533826c320"
     }
   ]
 }
