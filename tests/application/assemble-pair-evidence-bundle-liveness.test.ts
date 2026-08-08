@@ -22,7 +22,7 @@ import type {
   RawObservationRow,
   DerivedFeatureRow
 } from "../../src/contracts/index.js";
-import type { FamilyLiveness } from "../../src/domain/evidence-bundle/liveness.js";
+import { FAMILY_IDS, type FamilyLiveness } from "../../src/domain/evidence-bundle/liveness.js";
 import { MVP_ACCEPTED_CALCULATOR_VERSIONS } from "../../src/domain/derived-feature/constants.js";
 import { EVIDENCE_BUNDLE_SELECTION_VERSION } from "../../src/domain/evidence-bundle/select.js";
 import {
@@ -429,7 +429,7 @@ describe("assemble-pair-evidence-bundle liveness regression", () => {
       const liveness = (assessment as unknown as { liveness?: FamilyLiveness }).liveness;
 
       expect(liveness).toBeDefined();
-      expect(Object.keys(liveness!).sort()).toEqual(Object.keys(assessment.coverage).sort());
+      expect(Object.keys(liveness!).sort()).toEqual([...FAMILY_IDS].sort());
     }
   });
 
