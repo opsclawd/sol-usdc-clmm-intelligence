@@ -3,9 +3,9 @@ import { readFile, readdir } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const CONTRACT_DIR = fileURLToPath(
-  new URL("../schemas/regime-engine/evidence-bundle.v1", import.meta.url)
-);
+const CONTRACT_DIR =
+  process.env.CONTRACT_DIR ??
+  fileURLToPath(new URL("../schemas/regime-engine/evidence-bundle.v1", import.meta.url));
 const IGNORED_RELATIVE_PATHS = new Set(["provenance.json", "schema.sha256"]);
 
 function computeSha256(content: string): string {
@@ -21,9 +21,10 @@ async function listVendoredAssetPaths(): Promise<string[]> {
 
   return entries
     .filter((entry) => entry.isFile())
-    .map((entry) =>
-      normalizeRelativePath(relative(CONTRACT_DIR, join(entry.parentPath, entry.name)))
-    )
+    .map((entry) => {
+      const parentDir = entry.parentPath || entry.path;
+      return normalizeRelativePath(relative(CONTRACT_DIR, join(parentDir, entry.name)));
+    })
     .filter(
       (assetPath) =>
         !IGNORED_RELATIVE_PATHS.has(assetPath) && assetPath.split("/").at(-1) !== ".DS_Store"
@@ -61,7 +62,15 @@ async function main(): Promise<void> {
 
   for (const asset of provenance.assets) {
     const assetPath = join(CONTRACT_DIR, asset.localPath);
-    const content = await readFile(assetPath, "utf-8");
+    let content: string;
+    try {
+      content = await readFile(assetPath, "utf-8");
+    } catch {
+      console.log(`  FAIL: ${asset.localPath}`);
+      console.log(`    File missing or unreadable on disk`);
+      allPassed = false;
+      continue;
+    }
     const actualHash = computeSha256(content);
 
     if (actualHash === asset.sha256) {
