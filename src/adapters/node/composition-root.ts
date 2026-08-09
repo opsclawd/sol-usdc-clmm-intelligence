@@ -133,11 +133,35 @@ export function createNodeRuntime(): NodeRuntime {
     },
     async getLlmProvider() {
       if (!llmProviderPromise) {
+        const model = env.get("LLM_MODEL");
+        const modelVersion = env.getOptional("LLM_MODEL_VERSION");
+
+        // LLM_TRANSPORT=hermes routes generation through the local hermes CLI
+        // instead of an HTTP endpoint. Used where the only working credential
+        // belongs to a provider whose API ignores strict structured output
+        // (see hermes-llm-provider.ts). Defaults to the HTTP adapter.
+        if (env.getOptional("LLM_TRANSPORT") === "hermes") {
+          const { HermesLlmProvider } = await import("./hermes-llm-provider.js");
+          const { runHermesCommand } = await import("./hermes-command-runner.js");
+          const hermesProvider = env.getOptional("LLM_HERMES_PROVIDER") ?? "hermes";
+
+          if (!model) {
+            throw new Error("Missing required LLM environment configuration (LLM_MODEL)");
+          }
+
+          llmProviderPromise = Promise.resolve(
+            new HermesLlmProvider({
+              run: runHermesCommand,
+              model,
+              provider: hermesProvider
+            })
+          );
+          return llmProviderPromise;
+        }
+
         const { OpenAiLlmProvider } = await import("./openai-llm-provider.js");
         const baseUrl = env.get("LLM_BASE_URL");
         const apiKey = env.get("LLM_API_KEY");
-        const model = env.get("LLM_MODEL");
-        const modelVersion = env.getOptional("LLM_MODEL_VERSION");
 
         if (!baseUrl || !apiKey || !model) {
           throw new Error(
