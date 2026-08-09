@@ -347,6 +347,7 @@ export async function runCoreEvidencePipeline(
                   ? prep.warnings.map(redactSecretMentions)
                   : [];
                 let briefArtifact = prep.embeddedBrief ?? null;
+                let briefPriorRowId: number | undefined;
                 let briefOutcomeStr: string | null = briefArtifact ? "reused" : null;
 
                 if (!briefArtifact && prep.prepared) {
@@ -398,6 +399,8 @@ export async function runCoreEvidencePipeline(
                       };
                     } else {
                       briefArtifact = pairBrief.brief;
+                      briefPriorRowId =
+                        "priorBriefRowId" in pairBrief ? pairBrief.priorBriefRowId : undefined;
                     }
                   }
                 }
@@ -412,7 +415,8 @@ export async function runCoreEvidencePipeline(
                       evaluationTimeUnixMs,
                       codeVersion: config.codeVersion,
                       runId: pipelineRunId,
-                      expiresAtUnixMs: evaluationTimeUnixMs + 3600000
+                      expiresAtUnixMs: evaluationTimeUnixMs + 3600000,
+                      ...(briefPriorRowId !== undefined ? { priorBriefRowId: briefPriorRowId } : {})
                     });
                   } catch (err) {
                     pairResult = {
@@ -565,6 +569,8 @@ export async function runCoreEvidencePipeline(
                     };
                   } else {
                     const briefArtifact = pairBrief.brief;
+                    const briefPriorRowId =
+                      "priorBriefRowId" in pairBrief ? pairBrief.priorBriefRowId : undefined;
                     let fin: AssemblePairEvidenceBundleResult | null = null;
                     try {
                       fin = await resources.services.finalizePair(preparedPayload, briefArtifact);
@@ -642,7 +648,10 @@ export async function runCoreEvidencePipeline(
                               evaluationTimeUnixMs,
                               codeVersion: config.codeVersion,
                               runId: pipelineRunId,
-                              expiresAtUnixMs: evaluationTimeUnixMs + 3600000
+                              expiresAtUnixMs: evaluationTimeUnixMs + 3600000,
+                              ...(briefPriorRowId !== undefined
+                                ? { priorBriefRowId: briefPriorRowId }
+                                : {})
                             });
                           } catch (err) {
                             pairResult = {
@@ -834,6 +843,7 @@ export async function runCoreEvidencePipeline(
                   ? prep.warnings.map(redactSecretMentions)
                   : [];
                 let briefArtifact = prep.embeddedBrief ?? null;
+                let briefPriorRowId: number | undefined;
                 let briefOutcomeStr: string | null = briefArtifact ? "reused" : null;
 
                 if (!briefArtifact && prep.prepared) {
@@ -887,6 +897,7 @@ export async function runCoreEvidencePipeline(
                     };
                   }
                   briefArtifact = brief.brief;
+                  briefPriorRowId = "priorBriefRowId" in brief ? brief.priorBriefRowId : undefined;
                 }
 
                 if (briefArtifact) {
@@ -899,7 +910,8 @@ export async function runCoreEvidencePipeline(
                       evaluationTimeUnixMs: activeEvaluationTimeUnixMs,
                       codeVersion: config.codeVersion,
                       runId: pipelineRunId,
-                      expiresAtUnixMs: activeEvaluationTimeUnixMs + 3600000
+                      expiresAtUnixMs: activeEvaluationTimeUnixMs + 3600000,
+                      ...(briefPriorRowId !== undefined ? { priorBriefRowId: briefPriorRowId } : {})
                     });
                   } catch (err) {
                     return {
@@ -1060,6 +1072,8 @@ export async function runCoreEvidencePipeline(
               }
 
               const briefArtifact = brief.brief;
+              const briefPriorRowId =
+                "priorBriefRowId" in brief ? brief.priorBriefRowId : undefined;
               let fin: AssembleEvidenceBundleResult | null = null;
               try {
                 fin = await activeResources.services.finalize(preparedPayload, briefArtifact);
@@ -1135,7 +1149,8 @@ export async function runCoreEvidencePipeline(
                     evaluationTimeUnixMs: activeEvaluationTimeUnixMs,
                     codeVersion: config.codeVersion,
                     runId: pipelineRunId,
-                    expiresAtUnixMs: activeEvaluationTimeUnixMs + 3600000
+                    expiresAtUnixMs: activeEvaluationTimeUnixMs + 3600000,
+                    ...(briefPriorRowId !== undefined ? { priorBriefRowId: briefPriorRowId } : {})
                   });
                 } catch (err) {
                   return {
