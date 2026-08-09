@@ -61,6 +61,7 @@ export interface EvidenceQualityInput {
   readonly hasNewsRegulatory: boolean;
   readonly hasResearchBrief: boolean;
   readonly allowNoUsableFeatures?: boolean;
+  readonly excludedContextualWarnings?: readonly BundleWarning[];
 }
 
 function getSlotStatus(slot: SelectedFeatureSlot): SlotQualitySummary["status"] {
@@ -275,6 +276,12 @@ function buildWarnings(
     });
   }
 
+  if (input.excludedContextualWarnings && input.excludedContextualWarnings.length > 0) {
+    for (const warning of input.excludedContextualWarnings) {
+      warnings.push(warning);
+    }
+  }
+
   return warnings;
 }
 
@@ -311,8 +318,11 @@ export function classifyEvidenceBundleQuality(input: EvidenceQualityInput): Evid
   const noUsableFeatures = usableCount === 0;
 
   const deterministicQuality = computeQualityLevel(slotQualitySummaries, allowNoUsableFeatures);
+  const hasContextualExclusions =
+    input.excludedContextualWarnings !== undefined && input.excludedContextualWarnings.length > 0;
   const quality =
-    deterministicQuality === "complete" && !hasCompleteContextualCoverage(input)
+    deterministicQuality === "complete" &&
+    (!hasCompleteContextualCoverage(input) || hasContextualExclusions)
       ? "partial"
       : deterministicQuality;
   const overallConfidenceBps = computeOverallConfidence(slotQualitySummaries);

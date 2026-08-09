@@ -350,6 +350,18 @@ export interface VerifyContextualEvidenceLineageInput {
   readonly rawObservations: ReadonlyMap<number, RawObservationRow>;
 }
 
+export interface ExcludedContextualObservation {
+  readonly row: NormalizedObservationRow;
+  readonly error: LineageVerificationError;
+}
+
+export interface VerifyContextualEvidenceLineageResult {
+  readonly ok: true;
+  readonly lineage: VerifiedEvidenceLineage["lineage"];
+  readonly validObservations: readonly NormalizedObservationRow[];
+  readonly excludedObservations: readonly ExcludedContextualObservation[];
+}
+
 const ALLOWED_CONTEXTUAL_KINDS: ReadonlySet<string> = new Set([
   "scheduled_event",
   "protocol_incident",
@@ -365,88 +377,72 @@ const ALLOWED_CONTEXTUAL_KINDS: ReadonlySet<string> = new Set([
 
 export function verifyContextualEvidenceLineage(
   input: VerifyContextualEvidenceLineageInput
-):
-  | { ok: true; lineage: VerifiedEvidenceLineage["lineage"] }
-  | { ok: false; error: LineageVerificationError } {
+): VerifyContextualEvidenceLineageResult {
   const { contextualObservations, rawObservations } = input;
+  const validObservations: NormalizedObservationRow[] = [];
+  const excludedObservations: ExcludedContextualObservation[] = [];
 
   for (const ctxRow of contextualObservations) {
-    if (!ALLOWED_CONTEXTUAL_KINDS.has(ctxRow.observationKind)) {
-      return {
-        ok: false,
-        error: {
-          code: "UNSUPPORTED_CONTEXTUAL_KIND",
-          message: `Contextual observation kind '${ctxRow.observationKind}' is not supported.`
-        }
-      };
-    }
+    let error: LineageVerificationError | undefined;
 
-    const rawRow = rawObservations.get(ctxRow.rawObservationId);
-    if (!rawRow) {
-      return {
-        ok: false,
-        error: {
+    if (!ALLOWED_CONTEXTUAL_KINDS.has(ctxRow.observationKind)) {
+      error = {
+        code: "UNSUPPORTED_CONTEXTUAL_KIND",
+        message: `Contextual observation kind '${ctxRow.observationKind}' is not supported.`
+      };
+    } else {
+      const rawRow = rawObservations.get(ctxRow.rawObservationId);
+      if (!rawRow) {
+        error = {
           code: "MISSING_RAW_PARENT",
           message: `Raw observation ${ctxRow.rawObservationId} not found for contextual normalized ${ctxRow.id}`
-        }
-      };
-    }
-
-    if (rawRow.source !== ctxRow.source) {
-      return {
-        ok: false,
-        error: {
+        };
+      } else if (rawRow.source !== ctxRow.source) {
+        error = {
           code: "PROVENANCE_SOURCE_MISMATCH",
           message: `Contextual observation source mismatch: expected ${rawRow.source}, got ${ctxRow.source}`
+        };
+      } else {
+        const ref = ctxRow.provenance.rawObservationRefs.find(
+          (r) => r.refType === "raw_observation" && r.id === rawRow.id
+        );
+        if (!ref) {
+          error = {
+            code: "MISSING_RAW_PARENT",
+            message: `Raw observation reference ${rawRow.id} not found in provenance for normalized ${ctxRow.id}`
+          };
+        } else if (ref.source !== rawRow.source) {
+          error = {
+            code: "PROVENANCE_SOURCE_MISMATCH",
+            message: `Contextual observation raw reference source mismatch: expected ${rawRow.source}, got ${ref.source}`
+          };
+        } else if (ref.payloadHash !== rawRow.payloadHash) {
+          error = {
+            code: "PROVENANCE_HASH_MISMATCH",
+            message: `Contextual observation hash mismatch for normalized ${ctxRow.id}`
+          };
+        } else {
+          const rawRefResult = verifyProvenanceRef(
+            {
+              refType: "raw_observation",
+              id: rawRow.id,
+              source: rawRow.source,
+              payloadHash: rawRow.payloadHash
+            },
+            new Map(),
+            rawObservations
+          );
+          if (!rawRefResult.ok) {
+            error = rawRefResult.error;
+          }
         }
-      };
+      }
     }
 
-    const ref = ctxRow.provenance.rawObservationRefs.find(
-      (r) => r.refType === "raw_observation" && r.id === rawRow.id
-    );
-    if (!ref) {
-      return {
-        ok: false,
-        error: {
-          code: "MISSING_RAW_PARENT",
-          message: `Raw observation reference ${rawRow.id} not found in provenance for normalized ${ctxRow.id}`
-        }
-      };
-    }
-
-    if (ref.source !== rawRow.source) {
-      return {
-        ok: false,
-        error: {
-          code: "PROVENANCE_SOURCE_MISMATCH",
-          message: `Contextual observation raw reference source mismatch: expected ${rawRow.source}, got ${ref.source}`
-        }
-      };
-    }
-
-    if (ref.payloadHash !== rawRow.payloadHash) {
-      return {
-        ok: false,
-        error: {
-          code: "PROVENANCE_HASH_MISMATCH",
-          message: `Contextual observation hash mismatch for normalized ${ctxRow.id}`
-        }
-      };
-    }
-
-    const rawRefResult = verifyProvenanceRef(
-      {
-        refType: "raw_observation",
-        id: rawRow.id,
-        source: rawRow.source,
-        payloadHash: rawRow.payloadHash
-      },
-      new Map(),
-      rawObservations
-    );
-    if (!rawRefResult.ok) {
-      return rawRefResult;
+    if (error) {
+      excludedObservations.push({ row: ctxRow, error });
+    } else {
+      validObservations.push(ctxRow);
     }
   }
 
@@ -455,7 +451,7 @@ export function verifyContextualEvidenceLineage(
   const sourceReferences: VerifiedLineageSourceRef[] = [];
   const seenSourceReferenceIds = new Set<string>();
 
-  for (const ctxRow of contextualObservations) {
+  for (const ctxRow of validObservations) {
     rawObservationIds.add(ctxRow.rawObservationId);
     normalizedObservationIds.add(ctxRow.id);
     const rawRow = rawObservations.get(ctxRow.rawObservationId);
@@ -475,7 +471,9 @@ export function verifyContextualEvidenceLineage(
 
   return {
     ok: true,
-    lineage: finalizeLineage(rawObservationIds, normalizedObservationIds, sourceReferences)
+    lineage: finalizeLineage(rawObservationIds, normalizedObservationIds, sourceReferences),
+    validObservations,
+    excludedObservations
   };
 }
 
@@ -546,11 +544,18 @@ function finalizeLineage(
   };
 }
 
+export type VerifyPairEvidenceLineageResult =
+  | {
+      readonly ok: true;
+      readonly lineage: VerifiedEvidenceLineage["lineage"];
+      readonly validContextualObservations: readonly NormalizedObservationRow[];
+      readonly excludedContextualObservations: readonly ExcludedContextualObservation[];
+    }
+  | { readonly ok: false; readonly error: LineageVerificationError };
+
 export function verifyPairEvidenceLineage(
   input: VerifyPairEvidenceLineageInput
-):
-  | { ok: true; lineage: VerifiedEvidenceLineage["lineage"] }
-  | { ok: false; error: LineageVerificationError } {
+): VerifyPairEvidenceLineageResult {
   const { slots, rawObservations, normalizedObservations, contextualObservations = [] } = input;
 
   const provenanceResult = verifySelectedSlotsProvenance(
@@ -568,14 +573,14 @@ export function verifyPairEvidenceLineage(
     rawObservations
   );
 
+  let validContextualObservations: readonly NormalizedObservationRow[] = [];
+  let excludedContextualObservations: readonly ExcludedContextualObservation[] = [];
+
   if (contextualObservations.length > 0) {
     const ctxLineageResult = verifyContextualEvidenceLineage({
       contextualObservations,
       rawObservations
     });
-    if (!ctxLineageResult.ok) {
-      return ctxLineageResult;
-    }
 
     for (const rawId of ctxLineageResult.lineage.rawObservationIds) {
       rawObservationIds.add(rawId);
@@ -586,19 +591,31 @@ export function verifyPairEvidenceLineage(
     for (const sr of ctxLineageResult.lineage.sourceReferences) {
       sourceReferences.push(sr);
     }
+
+    validContextualObservations = ctxLineageResult.validObservations;
+    excludedContextualObservations = ctxLineageResult.excludedObservations;
   }
 
   return {
     ok: true,
-    lineage: finalizeLineage(rawObservationIds, normalizedObservationIds, sourceReferences)
+    lineage: finalizeLineage(rawObservationIds, normalizedObservationIds, sourceReferences),
+    validContextualObservations,
+    excludedContextualObservations
   };
 }
 
+export type VerifyEvidenceLineageResult =
+  | {
+      readonly ok: true;
+      readonly lineage: VerifiedEvidenceLineage["lineage"];
+      readonly validContextualObservations: readonly NormalizedObservationRow[];
+      readonly excludedContextualObservations: readonly ExcludedContextualObservation[];
+    }
+  | { readonly ok: false; readonly error: LineageVerificationError };
+
 export function verifyEvidenceLineage(
   input: VerifyEvidenceLineageInput
-):
-  | { ok: true; lineage: VerifiedEvidenceLineage["lineage"] }
-  | { ok: false; error: LineageVerificationError } {
+): VerifyEvidenceLineageResult {
   const {
     slots,
     rawObservations,
@@ -635,14 +652,14 @@ export function verifyEvidenceLineage(
     rawObservations
   );
 
+  let validContextualObservations: readonly NormalizedObservationRow[] = [];
+  let excludedContextualObservations: readonly ExcludedContextualObservation[] = [];
+
   if (contextualObservations.length > 0) {
     const ctxLineageResult = verifyContextualEvidenceLineage({
       contextualObservations,
       rawObservations
     });
-    if (!ctxLineageResult.ok) {
-      return ctxLineageResult;
-    }
 
     for (const rawId of ctxLineageResult.lineage.rawObservationIds) {
       rawObservationIds.add(rawId);
@@ -653,10 +670,15 @@ export function verifyEvidenceLineage(
     for (const sr of ctxLineageResult.lineage.sourceReferences) {
       sourceReferences.push(sr);
     }
+
+    validContextualObservations = ctxLineageResult.validObservations;
+    excludedContextualObservations = ctxLineageResult.excludedObservations;
   }
 
   return {
     ok: true,
-    lineage: finalizeLineage(rawObservationIds, normalizedObservationIds, sourceReferences)
+    lineage: finalizeLineage(rawObservationIds, normalizedObservationIds, sourceReferences),
+    validContextualObservations,
+    excludedContextualObservations
   };
 }

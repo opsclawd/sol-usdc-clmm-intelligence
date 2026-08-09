@@ -134,7 +134,7 @@ describe("verifyContextualEvidenceLineage", () => {
     }
   });
 
-  it("returns MISSING_RAW_PARENT when raw parent observation is missing", () => {
+  it("records MISSING_RAW_PARENT in excludedObservations when raw parent observation is missing", () => {
     const normRow = makeNormalizedRow({
       id: 10,
       rawObservationId: 1,
@@ -147,13 +147,13 @@ describe("verifyContextualEvidenceLineage", () => {
       rawObservations: new Map()
     });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.code).toBe("MISSING_RAW_PARENT");
-    }
+    expect(result.ok).toBe(true);
+    expect(result.validObservations).toHaveLength(0);
+    expect(result.excludedObservations).toHaveLength(1);
+    expect(result.excludedObservations[0]?.error.code).toBe("MISSING_RAW_PARENT");
   });
 
-  it("returns PROVENANCE_SOURCE_MISMATCH when raw source disagrees with normalized source", () => {
+  it("records PROVENANCE_SOURCE_MISMATCH in excludedObservations when raw source disagrees with normalized source", () => {
     const rawRow = makeRawObservationRow({
       id: 1,
       source: "crypto-news-api",
@@ -172,13 +172,13 @@ describe("verifyContextualEvidenceLineage", () => {
       rawObservations: rawMap
     });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.code).toBe("PROVENANCE_SOURCE_MISMATCH");
-    }
+    expect(result.ok).toBe(true);
+    expect(result.validObservations).toHaveLength(0);
+    expect(result.excludedObservations).toHaveLength(1);
+    expect(result.excludedObservations[0]?.error.code).toBe("PROVENANCE_SOURCE_MISMATCH");
   });
 
-  it("returns PROVENANCE_HASH_MISMATCH when provenance payload hash disagrees", () => {
+  it("records PROVENANCE_HASH_MISMATCH in excludedObservations when provenance payload hash disagrees", () => {
     const rawRow = makeRawObservationRow({
       id: 1,
       source: "macro-calendar-api",
@@ -208,13 +208,13 @@ describe("verifyContextualEvidenceLineage", () => {
       rawObservations: rawMap
     });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.code).toBe("PROVENANCE_HASH_MISMATCH");
-    }
+    expect(result.ok).toBe(true);
+    expect(result.validObservations).toHaveLength(0);
+    expect(result.excludedObservations).toHaveLength(1);
+    expect(result.excludedObservations[0]?.error.code).toBe("PROVENANCE_HASH_MISMATCH");
   });
 
-  it("returns UNSUPPORTED_CONTEXTUAL_KIND for an observation kind outside the pair-safe matrix", () => {
+  it("records UNSUPPORTED_CONTEXTUAL_KIND in excludedObservations for an observation kind outside the pair-safe matrix", () => {
     const rawRow = makeRawObservationRow({
       id: 1,
       source: "clmm-v2-bundle",
@@ -233,10 +233,10 @@ describe("verifyContextualEvidenceLineage", () => {
       rawObservations: rawMap
     });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.code).toBe("UNSUPPORTED_CONTEXTUAL_KIND");
-    }
+    expect(result.ok).toBe(true);
+    expect(result.validObservations).toHaveLength(0);
+    expect(result.excludedObservations).toHaveLength(1);
+    expect(result.excludedObservations[0]?.error.code).toBe("UNSUPPORTED_CONTEXTUAL_KIND");
   });
 
   it("sorts raw and normalized observation IDs deterministically", () => {

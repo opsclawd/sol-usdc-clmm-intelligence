@@ -827,7 +827,7 @@ describe("assembleEvidenceBundle contextual integration", () => {
     expect(contract.lastCandidate?.contextualEvidence.supportResistance).toHaveLength(0);
   });
 
-  it("returns a lineage error when a selected contextual raw parent is missing", async () => {
+  it("gracefully excludes contextual observation when a selected contextual raw parent is missing", async () => {
     const clmmRawRow = makeRawRow({ id: 1 });
     rawRepo.store.push(clmmRawRow);
 
@@ -866,18 +866,18 @@ describe("assembleEvidenceBundle contextual integration", () => {
 
     normalizedRepo.store.push(srNormRow);
 
-    const result = await prepareAndFinalizePositionWithoutBriefForTest(
-      { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
-      makeRequest()
+    const result = assertSuccess(
+      await prepareAndFinalizePositionWithoutBriefForTest(
+        { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+        makeRequest()
+      )
     );
 
-    expect("code" in result).toBe(true);
-    if ("code" in result) {
-      expect(result.code).toBe("LINEAGE_ERROR");
-    }
+    expect(result.outcome).toBe("persisted");
+    expect(contract.lastCandidate?.contextualEvidence.supportResistance).toHaveLength(0);
   });
 
-  it("returns a lineage error when selected contextual source or hash provenance mismatches", async () => {
+  it("gracefully excludes contextual observation when selected contextual source or hash provenance mismatches", async () => {
     const clmmRawRow = makeRawRow({ id: 1 });
     const srRawRow: RawObservationRow = {
       id: 100,
@@ -928,15 +928,15 @@ describe("assembleEvidenceBundle contextual integration", () => {
 
     normalizedRepo.store.push(srNormRow);
 
-    const result = await assembleEvidenceBundle(
-      { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
-      makeRequest()
+    const result = assertSuccess(
+      await assembleEvidenceBundle(
+        { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+        makeRequest()
+      )
     );
 
-    expect("code" in result).toBe(true);
-    if ("code" in result) {
-      expect(result.code).toBe("LINEAGE_ERROR");
-    }
+    expect(result.outcome).toBe("persisted");
+    expect(contract.lastCandidate?.contextualEvidence.supportResistance).toHaveLength(0);
   });
 
   it("continues with empty contextual arrays when contextual querying fails", async () => {
@@ -1231,5 +1231,75 @@ describe("assembleEvidenceBundle contextual integration", () => {
     expect(savedWithBrief.researchBrief).not.toBeNull();
     expect(savedWithBrief.researchBrief?.briefId).toBe("brief-001");
     expect(savedWithBrief.assessment.coverage.researchBrief).toBe("available");
+  });
+
+  it("gracefully excludes contextual observation with PROVENANCE_HASH_MISMATCH and degrades bundle quality to partial", async () => {
+    const clmmRawRow = makeRawRow({ id: 1 });
+
+    const badRawRow: RawObservationRow = {
+      id: 100,
+      source: "technical-analysis-api",
+      sourceObservationKey: "sr-key-100",
+      observedAtUnixMs: EVAL_MS - 3600000,
+      fetchedAtUnixMs: EVAL_MS - 3600000,
+      payloadHash: "real-raw-hash-100",
+      payloadCanonical: JSON.stringify({ level: 120.5 }),
+      parseStatus: "parsed",
+      sourceRequestMeta: null,
+      receivedAtUnixMs: EVAL_MS - 3600000
+    };
+
+    rawRepo.store.push(clmmRawRow, badRawRow);
+
+    featureRepo.store.push(
+      makeDerivedFeatureRow({
+        id: 1,
+        featureKind: "range_location",
+        positionId: "pos-1",
+        poolId: "pool-abc",
+        inputObservationIds: [1],
+        rawRefs: [makeRawRef(1, "clmm-v2-bundle", "raw-hash-1")]
+      })
+    );
+
+    const badSrNormRow: NormalizedObservationRow = {
+      id: 10,
+      rawObservationId: 100,
+      source: "technical-analysis-api",
+      observationKind: "support_resistance_level",
+      signalClass: "contextual",
+      evidenceFamily: "support_resistance",
+      payload: makeSupportResistancePayload(),
+      payloadHash: "sr-norm-hash-10",
+      confidence: DEFAULT_CONFIDENCE,
+      confidenceComposite: 0.85,
+      confidenceLevel: "high",
+      validUntilUnixMs: EVAL_MS + 86400000,
+      isStale: false,
+      staleBehavior: null,
+      provenance: {
+        ...DEFAULT_PROVENANCE,
+        rawObservationRefs: [makeRawRef(100, "technical-analysis-api", "mismatched-wrong-hash")]
+      },
+      receivedAtUnixMs: EVAL_MS - 3600000
+    };
+
+    normalizedRepo.store.push(badSrNormRow);
+
+    const result = assertSuccess(
+      await prepareAndFinalizePositionWithoutBriefForTest(
+        { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+        makeRequest()
+      )
+    );
+
+    expect(result.outcome).toBe("persisted");
+    expect(contract.lastCandidate).not.toBeNull();
+    const bundle = contract.lastCandidate!;
+
+    expect(bundle.contextualEvidence.supportResistance).toHaveLength(0);
+    expect(bundle.assessment.quality).toBe("partial");
+    const warningCodes = bundle.assessment.warnings.map((w) => w.code);
+    expect(warningCodes).toContain("UNVERIFIABLE_CONTEXTUAL_OBSERVATION");
   });
 });

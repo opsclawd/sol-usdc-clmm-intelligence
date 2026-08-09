@@ -317,6 +317,62 @@ describe("collectContextEvents", () => {
       expect(normInsertCounts.length).toBe(1);
       expect(normInsertCounts[0]).toBeGreaterThanOrEqual(2);
     });
+
+    it("records the raw payload hash in provenance while preserving the normalized payload hash", async () => {
+      const rawRepo = new FakeObservationRepo();
+      const normRepo = new FakeNormalizedObservationRepo();
+      const incidentSource = new FakeProtocolIncidentSource();
+
+      const snapshot = {
+        providerId: "solana-status-api",
+        providerRunId: "run-001",
+        sourceId: "solana-status",
+        network: "solana-mainnet" as const,
+        asOfUnixMs: 1704067200000,
+        license: "CC0-1.0",
+        retention: "bounded" as const,
+        confirmationLevel: "explicit" as const,
+        incidents: [
+          {
+            incidentId: "inc-001",
+            incidentType: "protocol_incident",
+            severity: "HIGH",
+            sourceReferences: ["https://status.solana.com/incidents/inc-001"]
+          }
+        ]
+      };
+
+      incidentSource.setResponse(snapshot);
+
+      const result = await collectProtocolIncidents(
+        { incidentSource, rawObservationRepo: rawRepo, normalizedObservationRepo: normRepo },
+        VALID_CONTEXT
+      );
+
+      expect(result.status).toBe("accepted");
+      expect(result.rawObservationId).toBeDefined();
+
+      const rawRow = (await rawRepo.findById(result.rawObservationId!))!;
+      expect(rawRow).toBeDefined();
+
+      const normRow = (await normRepo.findByRawObservation(rawRow.id, "protocol_incident"))!;
+      expect(normRow).toBeDefined();
+      expect(normRow.payloadHash).not.toBe(rawRow.payloadHash);
+
+      expect(normRow.provenance.sourceRefs.length).toBeGreaterThan(0);
+      for (const ref of normRow.provenance.sourceRefs) {
+        expect(ref.id).toBe(rawRow.id);
+        expect(ref.source).toBe("solana-status-api");
+        expect(ref.payloadHash).toBe(rawRow.payloadHash);
+      }
+
+      expect(normRow.provenance.rawObservationRefs.length).toBeGreaterThan(0);
+      for (const ref of normRow.provenance.rawObservationRefs) {
+        expect(ref.id).toBe(rawRow.id);
+        expect(ref.source).toBe("solana-status-api");
+        expect(ref.payloadHash).toBe(rawRow.payloadHash);
+      }
+    });
   });
 
   describe("source timestamps differ from retrieval timestamps", () => {
@@ -444,6 +500,7 @@ describe("collectContextEvents", () => {
                 payload: candidate as ScheduledEventPayloadV1,
                 source: "macro-calendar-api",
                 rawId: rawRow.id,
+                rawPayloadHash: rawRow.payloadHash,
                 nowMs: 1704067200000,
                 codeVersion: "v1",
                 runId: "run-001"

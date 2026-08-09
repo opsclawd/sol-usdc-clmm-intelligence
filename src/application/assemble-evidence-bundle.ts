@@ -518,6 +518,43 @@ export async function prepareEvidenceBundle(
     return { code: "LINEAGE_ERROR", message: lineageResult.error.message };
   }
 
+  const validContextualIds = new Set(lineageResult.validContextualObservations.map((r) => r.id));
+
+  selectedContextEvents = selectedContextEvents.filter((item) =>
+    validContextualIds.has(item.row.id)
+  );
+  selectedSupportResistance = selectedSupportResistance.filter((item) =>
+    validContextualIds.has(item.row.id)
+  );
+  selectedNewsEvidence = selectedNewsEvidence.filter((item) => validContextualIds.has(item.row.id));
+
+  const mapObservationKindToFamilyName = (kind: string): string => {
+    switch (kind) {
+      case "scheduled_event":
+      case "protocol_incident":
+        return "events";
+      case "whale_transfer":
+      case "whale_swap":
+      case "stablecoin_flow":
+      case "cex_flow_proxy":
+      case "dex_net_flow":
+        return "flows";
+      case "support_resistance_level":
+        return "supportResistance";
+      case "ecosystem_news":
+      case "regulatory_risk":
+        return "newsRegulatory";
+      default:
+        return "events";
+    }
+  };
+
+  const excludedContextualWarnings = lineageResult.excludedContextualObservations.map((ex) => ({
+    code: "UNVERIFIABLE_CONTEXTUAL_OBSERVATION",
+    message: `Excluded unverifiable contextual observation ${ex.row.id} (${ex.row.observationKind}): ${ex.error.message}`,
+    affectedFamilies: [mapObservationKindToFamilyName(ex.row.observationKind)]
+  }));
+
   const freshUntil = evaluationTimeUnixMs + 3600000;
   const expiresAt = evaluationTimeUnixMs + 7200000;
   const hasSupportResistance = selectedSupportResistance.length > 0;
@@ -552,7 +589,8 @@ export async function prepareEvidenceBundle(
     hasEvents,
     hasNewsRegulatory,
     hasResearchBrief: false,
-    allowNoUsableFeatures: false
+    allowNoUsableFeatures: false,
+    excludedContextualWarnings
   });
 
   const assembleInput: AssembleEvidenceBundleInput = {

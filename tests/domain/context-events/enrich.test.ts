@@ -16,6 +16,7 @@ describe("context-events/enrich", () => {
         payload,
         source: "macro-calendar-api",
         rawId: 1,
+        rawPayloadHash: "raw-scheduled-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: "run-001"
@@ -29,6 +30,23 @@ describe("context-events/enrich", () => {
       expect(result.freshness).toBeDefined();
       expect(result.provenance).toBeDefined();
       expect(result.provenance.sourceRefs).toHaveLength(1);
+    });
+
+    it("uses the supplied raw payload hash for both raw observation provenance lists", async () => {
+      const now = Date.now();
+      const payload = makeScheduledEventPayload();
+      const result = await enrichContextEvent({
+        payload,
+        source: "macro-calendar-api",
+        rawId: 1,
+        rawPayloadHash: "raw-scheduled-hash",
+        nowMs: now,
+        codeVersion: "1.0.0",
+        runId: null
+      });
+      expect(result.payloadHash).not.toBe("raw-scheduled-hash");
+      expect(result.provenance.sourceRefs[0]!.payloadHash).toBe("raw-scheduled-hash");
+      expect(result.provenance.rawObservationRefs[0]!.payloadHash).toBe("raw-scheduled-hash");
     });
 
     it("sets confidence compositeScore based on source reliability", async () => {
@@ -45,6 +63,7 @@ describe("context-events/enrich", () => {
         payload,
         source: "macro-calendar-api",
         rawId: 1,
+        rawPayloadHash: "raw-scheduled-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: null
@@ -66,6 +85,7 @@ describe("context-events/enrich", () => {
         payload,
         source: "macro-calendar-api",
         rawId: 1,
+        rawPayloadHash: "raw-scheduled-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: null
@@ -87,6 +107,7 @@ describe("context-events/enrich", () => {
         payload,
         source: "macro-calendar-api",
         rawId: 1,
+        rawPayloadHash: "raw-scheduled-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: null
@@ -109,6 +130,7 @@ describe("context-events/enrich", () => {
         payload,
         source: "macro-calendar-api",
         rawId: 1,
+        rawPayloadHash: "raw-scheduled-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: null
@@ -124,6 +146,7 @@ describe("context-events/enrich", () => {
         payload,
         source: "macro-calendar-api",
         rawId: 42,
+        rawPayloadHash: "raw-scheduled-hash",
         nowMs: now,
         codeVersion: "2.5.0",
         runId: "run-xyz"
@@ -141,6 +164,7 @@ describe("context-events/enrich", () => {
         payload,
         source: "macro-calendar-api",
         rawId: 1,
+        rawPayloadHash: "raw-scheduled-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: null
@@ -149,6 +173,7 @@ describe("context-events/enrich", () => {
         payload,
         source: "macro-calendar-api",
         rawId: 1,
+        rawPayloadHash: "raw-scheduled-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: null
@@ -163,6 +188,7 @@ describe("context-events/enrich", () => {
         payload,
         source: "macro-calendar-api",
         rawId: 1,
+        rawPayloadHash: "raw-scheduled-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: null
@@ -182,6 +208,7 @@ describe("context-events/enrich", () => {
         payload,
         source: "solana-status-api",
         rawId: 2,
+        rawPayloadHash: "raw-incident-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: "run-002"
@@ -196,6 +223,23 @@ describe("context-events/enrich", () => {
       expect(result.provenance).toBeDefined();
     });
 
+    it("uses the supplied raw payload hash for both raw observation provenance lists", async () => {
+      const now = Date.now();
+      const payload = makeProtocolIncidentPayload();
+      const result = await enrichContextEvent({
+        payload,
+        source: "solana-status-api",
+        rawId: 1,
+        rawPayloadHash: "raw-incident-hash",
+        nowMs: now,
+        codeVersion: "1.0.0",
+        runId: null
+      });
+      expect(result.payloadHash).not.toBe("raw-incident-hash");
+      expect(result.provenance.sourceRefs[0]!.payloadHash).toBe("raw-incident-hash");
+      expect(result.provenance.rawObservationRefs[0]!.payloadHash).toBe("raw-incident-hash");
+    });
+
     it("validates provenance with solana-status-api source", async () => {
       const now = Date.now();
       const payload = makeProtocolIncidentPayload();
@@ -203,6 +247,7 @@ describe("context-events/enrich", () => {
         payload,
         source: "solana-status-api",
         rawId: 3,
+        rawPayloadHash: "raw-incident-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: null
@@ -222,6 +267,7 @@ describe("context-events/enrich", () => {
         payload: payload1,
         source: "solana-status-api",
         rawId: 1,
+        rawPayloadHash: "raw-incident-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: null
@@ -230,6 +276,7 @@ describe("context-events/enrich", () => {
         payload: payload2,
         source: "solana-status-api",
         rawId: 2,
+        rawPayloadHash: "raw-incident-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: null
@@ -244,6 +291,7 @@ describe("context-events/enrich", () => {
         payload,
         source: "solana-status-api",
         rawId: 1,
+        rawPayloadHash: "raw-incident-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: null
@@ -259,6 +307,7 @@ describe("context-events/enrich", () => {
         payload: criticalPayload,
         source: "solana-status-api",
         rawId: 1,
+        rawPayloadHash: "raw-incident-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: null
@@ -267,6 +316,7 @@ describe("context-events/enrich", () => {
         payload: lowPayload,
         source: "solana-status-api",
         rawId: 2,
+        rawPayloadHash: "raw-incident-hash",
         nowMs: now,
         codeVersion: "1.0.0",
         runId: null

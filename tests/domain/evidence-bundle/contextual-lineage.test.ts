@@ -531,7 +531,7 @@ describe("contextual lineage verification exhaustive allowed set and API classif
     }
   });
 
-  it("returns a lineage error when selected contextual raw parent is missing", () => {
+  it("excludes contextual observation when selected contextual raw parent is missing", () => {
     const base = makeBaseInput();
 
     const normObs = makeNormalizedRow({
@@ -580,13 +580,15 @@ describe("contextual lineage verification exhaustive allowed set and API classif
       contextualObservations: [normObs]
     });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.code).toBe("MISSING_RAW_PARENT");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.validContextualObservations).toHaveLength(0);
+      expect(result.excludedContextualObservations).toHaveLength(1);
+      expect(result.excludedContextualObservations[0]?.error.code).toBe("MISSING_RAW_PARENT");
     }
   });
 
-  it("returns a lineage error when selected contextual source or hash provenance mismatches", () => {
+  it("excludes contextual observation when selected contextual source or hash provenance mismatches", () => {
     const base = makeBaseInput();
 
     const rawObs = makeRawObservationRow({
@@ -644,9 +646,11 @@ describe("contextual lineage verification exhaustive allowed set and API classif
       contextualObservations: [normObsHashMismatch]
     });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.code).toBe("PROVENANCE_HASH_MISMATCH");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.validContextualObservations).toHaveLength(0);
+      expect(result.excludedContextualObservations).toHaveLength(1);
+      expect(result.excludedContextualObservations[0]?.error.code).toBe("PROVENANCE_HASH_MISMATCH");
     }
   });
 });
