@@ -1,3 +1,4 @@
+import { isProviderUnavailable } from "../domain/brief/provider-availability.js";
 import type { EvidenceBundleRepo } from "../ports/bundle-repo.js";
 import type {
   ResearchBriefRepo,
@@ -81,7 +82,7 @@ export interface GenerateResearchBriefParams {
 export type GenerateResearchBriefOutcome =
   | {
       readonly outcome: "no_brief";
-      readonly reason: "no_bundle" | "expired_source" | "stale_source";
+      readonly reason: "no_bundle" | "expired_source" | "stale_source" | "provider_unavailable";
     }
   | {
       readonly outcome: "reused";
@@ -128,7 +129,7 @@ export interface GenerateAndPersistResearchBriefParams {
 export type GenerateAndPersistResearchBriefOutcome =
   | {
       readonly outcome: "no_brief";
-      readonly reason: "no_bundle" | "expired_source" | "stale_source";
+      readonly reason: "no_bundle" | "expired_source" | "stale_source" | "provider_unavailable";
     }
   | {
       readonly outcome: "reused";
@@ -304,6 +305,11 @@ export async function generateResearchBrief(
   };
   let generationStatus: ResearchBriefGenerationStatus = "complete";
   let degradationReason: ResearchBriefDegradationReason | undefined = undefined;
+  // A provider we could not reach or authenticate against is a configuration
+  // fault, not a degraded answer. Publishing a synthetic brief whose summary is
+  // the error string turns a misconfiguration into content — consumers render
+  // it as analysis. Fail closed instead: no brief, coverage unavailable. See #171.
+  let providerUnavailable = false;
   const warnings: string[] = [...initialWarnings];
 
   if (projectionError || !projectedContext) {
@@ -366,8 +372,14 @@ export async function generateResearchBrief(
     } catch (err) {
       generationStatus = "degraded";
       degradationReason = "model_error";
-      warnings.push(`LLM generation failed: ${(err as Error).message}`);
+      const message = (err as Error).message;
+      warnings.push(`LLM generation failed: ${message}`);
+      providerUnavailable = isProviderUnavailable(message);
     }
+  }
+
+  if (providerUnavailable) {
+    return { outcome: "no_brief", reason: "provider_unavailable" };
   }
 
   const fallbackEvidenceIds = extractFallbackEvidenceIds(projectedContext, bundlePayload);
