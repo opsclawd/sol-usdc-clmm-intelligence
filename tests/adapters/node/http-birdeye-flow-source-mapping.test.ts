@@ -1339,7 +1339,7 @@ describe("HttpBirdeyeFlowSource", () => {
         expect.anything()
       );
       expect(mockHttp.getJson).toHaveBeenCalledWith(
-        expect.stringContaining("offset=0"),
+        expect.stringContaining("after_time=1785270000"),
         expect.anything()
       );
       expect(mockHttp.getJson).toHaveBeenCalledWith(
@@ -1499,8 +1499,8 @@ describe("HttpBirdeyeFlowSource", () => {
     });
   });
 
-  describe("paginates trades using offset and hasNext", () => {
-    it("fetches multiple pages incrementing offset by limit until hasNext is false", async () => {
+  describe("paginates trades using an after_time cursor and hasNext", () => {
+    it("fetches multiple pages advancing after_time past the newest trade until hasNext is false", async () => {
       const page1Items = Array.from({ length: 100 }, (_, i) => ({
         txHash: `hash-${i}`,
         source: "whirlpool",
@@ -1586,12 +1586,12 @@ describe("HttpBirdeyeFlowSource", () => {
       expect(getJson).toHaveBeenCalledTimes(2);
       expect(getJson).toHaveBeenNthCalledWith(
         1,
-        expect.stringContaining("offset=0"),
+        expect.stringContaining("after_time=1785270000"),
         expect.anything()
       );
       expect(getJson).toHaveBeenNthCalledWith(
         2,
-        expect.stringContaining("offset=50"),
+        expect.stringContaining("after_time=1785278099"),
         expect.anything()
       );
 

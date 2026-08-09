@@ -14,6 +14,11 @@ import { parseRateLimitDelayMs } from "./fetch-http.js";
 
 const BASE_BACKOFF_MS = 25;
 const MAX_BACKOFF_MS = 400;
+function isNumberOrNumericString(value: unknown): boolean {
+  if (typeof value === "number") return Number.isFinite(value);
+  return typeof value === "string" && value.length > 0 && Number.isFinite(Number(value));
+}
+
 const PAGE_LIMIT = 50;
 const MAX_PAGES = 200;
 
@@ -44,7 +49,7 @@ interface BirdeyePairTradeItem {
     symbol: string;
     decimals: number;
     address: string;
-    amount: number;
+    amount: number | string;
     uiAmount: number;
     price: number;
   };
@@ -52,7 +57,7 @@ interface BirdeyePairTradeItem {
     symbol: string;
     decimals: number;
     address: string;
-    amount: number;
+    amount: number | string;
     uiAmount: number;
     price: number;
   };
@@ -97,8 +102,12 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
     const trades: BirdeyePairTradeItem[] = [];
     const fromUnixSec = Math.floor(request.fromUnixMs / 1000);
 
-    for (let page = 0, offset = 0; page < MAX_PAGES; page++, offset += PAGE_LIMIT) {
-      const pageData = await this.fetchPageWithRetry(offset, request);
+    const beforeUnixSec = Math.floor(request.toUnixMs / 1000);
+    const seenTxHashes = new Set<string>();
+    let cursorUnixSec = fromUnixSec;
+
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const pageData = await this.fetchPageWithRetry(cursorUnixSec, beforeUnixSec);
       const inWindowItems = pageData.items.filter((item) => {
         const blockUnixTime = item.blockUnixTime;
         return (
@@ -107,11 +116,38 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
           blockUnixTime >= fromUnixSec
         );
       });
+
+      // Defensive: with a forward cursor the API should not return trades older
+      // than the window start, but if it does, stop rather than walk outside it.
       const crossedLowerTimeBoundary = inWindowItems.length < pageData.items.length;
 
-      trades.push(...inWindowItems);
+      let newestSeenUnixSec = cursorUnixSec;
+      for (const item of inWindowItems) {
+        const txHash = item.txHash;
+        // Slices overlap on their boundary second, so the same trade can appear
+        // in consecutive responses.
+        if (typeof txHash === "string" && txHash.length > 0) {
+          if (seenTxHashes.has(txHash)) continue;
+          seenTxHashes.add(txHash);
+        }
+        trades.push(item);
+        if (typeof item.blockUnixTime === "number" && Number.isFinite(item.blockUnixTime)) {
+          newestSeenUnixSec = Math.max(newestSeenUnixSec, item.blockUnixTime);
+        }
+      }
+
+      // A short page, or the API declaring no further pages, means the rest of
+      // the window is already in hand. Live responses set hasNext=true whenever
+      // a page is capped, so it is a reliable stop signal — unlike the empty
+      // second page the offset loop relied on.
+      const windowExhausted = pageData.items.length < PAGE_LIMIT || !pageData.hasNext;
+      // Guard against a stalled cursor: more than PAGE_LIMIT trades sharing the
+      // newest second would otherwise loop without progress.
+      const cursorStalled = newestSeenUnixSec <= cursorUnixSec;
+      cursorUnixSec = cursorStalled ? cursorUnixSec + 1 : newestSeenUnixSec;
+
       const isLastPage =
-        crossedLowerTimeBoundary || !pageData.hasNext || pageData.items.length < PAGE_LIMIT;
+        windowExhausted || crossedLowerTimeBoundary || cursorUnixSec > beforeUnixSec;
       if (isLastPage) {
         try {
           return this.acceptBirdeyeSnapshot(trades, request);
@@ -141,17 +177,21 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
   }
 
   private async fetchPageWithRetry(
-    offset: number,
-    request: OnChainFlowSourceRequest
+    afterUnixSec: number,
+    beforeUnixSec: number
   ): Promise<{ items: BirdeyePairTradeItem[]; hasNext: boolean }> {
+    // Paged by time, not offset. Birdeye ignores `offset` on this endpoint —
+    // offset=0 returns a full page while offset=10 returns nothing — so the
+    // previous loop stopped after one capped page and treated the window as
+    // fully covered. A 15-minute window routinely holds far more than
+    // PAGE_LIMIT trades, so that silently truncated flow evidence.
     const baseUrl = new URL("/defi/txs/pair", this.options.url);
     const url = new URL(baseUrl);
     url.searchParams.set("address", this.poolAddress);
     url.searchParams.set("tx_type", "swap");
-    url.searchParams.set("offset", String(offset));
     url.searchParams.set("limit", String(PAGE_LIMIT));
-    url.searchParams.set("after_time", String(Math.floor(request.fromUnixMs / 1000)));
-    url.searchParams.set("before_time", String(Math.floor(request.toUnixMs / 1000)));
+    url.searchParams.set("after_time", String(afterUnixSec));
+    url.searchParams.set("before_time", String(beforeUnixSec));
 
     const headers: Record<string, string> = {
       "x-chain": "solana"
@@ -360,8 +400,12 @@ export class HttpBirdeyeFlowSource implements OnChainFlowSourcePort {
     if (typeof item.to !== "object" || item.to === null) return false;
     if (typeof item.from.symbol !== "string") return false;
     if (typeof item.to.symbol !== "string") return false;
-    if (typeof item.from.amount !== "number") return false;
-    if (typeof item.to.amount !== "number") return false;
+    // Birdeye serialises `amount` as a JSON string for some trades (observed:
+    // from.amount "20604869999" alongside to.amount "1575305061"). The field is
+    // never read — all arithmetic uses uiAmount — so requiring `number` here
+    // discarded whole windows over a value the collector does not consume.
+    if (!isNumberOrNumericString(item.from.amount)) return false;
+    if (!isNumberOrNumericString(item.to.amount)) return false;
     if (typeof item.from.uiAmount !== "number" || !Number.isFinite(item.from.uiAmount))
       return false;
     if (typeof item.to.uiAmount !== "number" || !Number.isFinite(item.to.uiAmount)) return false;
