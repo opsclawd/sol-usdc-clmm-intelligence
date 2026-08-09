@@ -370,17 +370,17 @@ describe("HttpBirdeyeFlowSource rate limiting", () => {
     expect(mockHttp.getJson).toHaveBeenCalledTimes(3);
     expect(mockHttp.getJson).toHaveBeenNthCalledWith(
       1,
-      expect.stringContaining("offset=0"),
+      expect.stringContaining("after_time=1785270000"),
       expect.anything()
     );
     expect(mockHttp.getJson).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining("offset=50"),
+      expect.stringContaining("after_time=1785278000"),
       expect.anything()
     );
     expect(mockHttp.getJson).toHaveBeenNthCalledWith(
       3,
-      expect.stringContaining("offset=50"),
+      expect.stringContaining("after_time=1785278000"),
       expect.anything()
     );
     expect(fakeRetry.delays).toEqual([2_000]);
