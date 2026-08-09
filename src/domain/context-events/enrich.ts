@@ -82,6 +82,7 @@ async function enrichEvent(
   payload: ScheduledEventPayloadV1 | ProtocolIncidentPayloadV1,
   source: "macro-calendar-api" | "solana-status-api",
   rawId: number,
+  rawPayloadHash: string,
   nowMs: number,
   codeVersion: string,
   runId: string | null
@@ -118,7 +119,7 @@ async function enrichEvent(
     CONTEXTUAL_COMPLETENESS_VERSION
   );
 
-  const provenance = buildProvenance(rawId, source, payloadHash, codeVersion, runId);
+  const provenance = buildProvenance(rawId, source, rawPayloadHash, codeVersion, runId);
 
   const provenanceResult = validateProvenance(provenance, entry.provenanceRequirements, kind);
 
@@ -149,6 +150,7 @@ export async function enrichContextEvent(input: {
   payload: ScheduledEventPayloadV1 | ProtocolIncidentPayloadV1;
   source: "macro-calendar-api" | "solana-status-api";
   rawId: number;
+  rawPayloadHash: string;
   nowMs: number;
   codeVersion: string;
   runId: string | null;
@@ -157,6 +159,7 @@ export async function enrichContextEvent(input: {
     input.payload,
     input.source,
     input.rawId,
+    input.rawPayloadHash,
     input.nowMs,
     input.codeVersion,
     input.runId

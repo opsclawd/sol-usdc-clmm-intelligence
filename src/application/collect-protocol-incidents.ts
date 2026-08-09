@@ -169,6 +169,7 @@ export async function collectProtocolIncidents(
             payload: candidate,
             source: "solana-status-api",
             rawId: rawRow.id,
+            rawPayloadHash: rawRow.payloadHash,
             nowMs: context.startedAtUnixMs,
             codeVersion: "context-events-v1",
             runId: context.runId

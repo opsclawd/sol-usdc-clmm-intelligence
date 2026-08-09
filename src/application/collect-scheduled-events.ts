@@ -174,6 +174,7 @@ export async function collectScheduledEvents(
             payload: candidate,
             source: "macro-calendar-api",
             rawId: rawRow.id,
+            rawPayloadHash: rawRow.payloadHash,
             nowMs: context.startedAtUnixMs,
             codeVersion: "context-events-v1",
             runId: context.runId

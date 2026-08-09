@@ -500,6 +500,7 @@ describe("collectContextEvents", () => {
                 payload: candidate as ScheduledEventPayloadV1,
                 source: "macro-calendar-api",
                 rawId: rawRow.id,
+                rawPayloadHash: rawRow.payloadHash,
                 nowMs: 1704067200000,
                 codeVersion: "v1",
                 runId: "run-001"
