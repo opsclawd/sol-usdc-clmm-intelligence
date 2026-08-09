@@ -487,9 +487,11 @@ describe("contextual event lineage verification", () => {
         contextualObservations: [contextualNormObs]
       });
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe("MISSING_RAW_PARENT");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.validContextualObservations).toHaveLength(0);
+        expect(result.excludedContextualObservations).toHaveLength(1);
+        expect(result.excludedContextualObservations[0]?.error.code).toBe("MISSING_RAW_PARENT");
       }
     });
   });
@@ -589,9 +591,13 @@ describe("contextual event lineage verification", () => {
         contextualObservations: [contextualNormObs]
       });
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe("PROVENANCE_SOURCE_MISMATCH");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.validContextualObservations).toHaveLength(0);
+        expect(result.excludedContextualObservations).toHaveLength(1);
+        expect(result.excludedContextualObservations[0]?.error.code).toBe(
+          "PROVENANCE_SOURCE_MISMATCH"
+        );
       }
     });
   });
@@ -686,9 +692,13 @@ describe("contextual event lineage verification", () => {
         contextualObservations: [contextualNormObs]
       });
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe("PROVENANCE_HASH_MISMATCH");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.validContextualObservations).toHaveLength(0);
+        expect(result.excludedContextualObservations).toHaveLength(1);
+        expect(result.excludedContextualObservations[0]?.error.code).toBe(
+          "PROVENANCE_HASH_MISMATCH"
+        );
       }
     });
   });
@@ -756,9 +766,13 @@ describe("contextual event lineage verification", () => {
         contextualObservations: [contextualNormObs]
       });
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe("UNSUPPORTED_CONTEXTUAL_KIND");
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.validContextualObservations).toHaveLength(0);
+        expect(result.excludedContextualObservations).toHaveLength(1);
+        expect(result.excludedContextualObservations[0]?.error.code).toBe(
+          "UNSUPPORTED_CONTEXTUAL_KIND"
+        );
       }
     });
   });
