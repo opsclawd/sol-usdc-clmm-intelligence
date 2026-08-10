@@ -29,6 +29,10 @@ export function mapPersistedBriefToCanonicalBrief(
     }
   }
 
+  if (artifact.priorBriefRef && artifact.priorBriefRef.briefId) {
+    availableEvidenceIds.add(String(artifact.priorBriefRef.briefId));
+  }
+
   const sourceEvidenceIds = artifact.llmOutput.sourceEvidenceIds;
   if (sourceEvidenceIds.length === 0) {
     throw new Error("Research brief must have at least 1 source evidence ID.");

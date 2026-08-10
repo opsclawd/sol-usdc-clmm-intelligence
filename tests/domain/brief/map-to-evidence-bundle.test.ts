@@ -117,6 +117,31 @@ describe("map-to-evidence-bundle", () => {
         mapPersistedBriefToCanonicalBundle(calmBundle, ungroundedDegraded, "brief-degraded-1")
       ).toThrowError(/unresolved evidence IDs/i);
     });
+
+    test("accepts prior brief ID as valid source evidence reference", () => {
+      const briefWithPriorRef: PersistedResearchBrief = {
+        ...validPersistedBrief,
+        priorBriefRef: {
+          briefId: "brief-prior-999",
+          payloadHash: "priorhash"
+        },
+        llmOutput: {
+          ...validPersistedBrief.llmOutput,
+          sourceEvidenceIds: ["feat-sol-price", "brief-prior-999"]
+        }
+      };
+
+      const mappedBundle = mapPersistedBriefToCanonicalBundle(
+        calmBundle,
+        briefWithPriorRef,
+        "brief-complete-2"
+      );
+
+      expect(mappedBundle.researchBrief?.sourceEvidenceIds).toEqual([
+        "feat-sol-price",
+        "brief-prior-999"
+      ]);
+    });
   });
 
   test("leaves source bundle object untouched (non-mutating)", () => {
