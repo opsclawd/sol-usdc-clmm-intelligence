@@ -301,6 +301,10 @@ export function validateGroundedReferences(
     }
   }
 
+  if (context.priorBrief && context.priorBrief.briefId) {
+    availableEvidenceIds.add(context.priorBrief.briefId);
+  }
+
   const availableSourceRefIds = new Set<string>(context.sourceReferences.map((r) => r.referenceId));
 
   const unsupportedIds: string[] = [];
