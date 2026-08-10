@@ -167,6 +167,30 @@ describe("project-context", () => {
       expect(result.valid).toBe(false);
       expect(result.unsupportedIds).toContain("unknown-ref-id");
     });
+
+    test("validateGroundedReferences allows prior brief ID if projected, but rejects arbitrary brief IDs", async () => {
+      const proj = await projectResearchBriefContext({
+        bundle: trendingBundle,
+        priorBrief: samplePriorBrief
+      });
+
+      // Should accept the prior brief's ID
+      const validResult = validateGroundedReferences(
+        proj,
+        ["feat-sol-price", "prior-brief-100"],
+        []
+      );
+      expect(validResult.valid).toBe(true);
+
+      // Should reject an arbitrary brief ID not in context
+      const invalidResult = validateGroundedReferences(
+        proj,
+        ["feat-sol-price", "brief:arbitrary-123"],
+        []
+      );
+      expect(invalidResult.valid).toBe(false);
+      expect(invalidResult.unsupportedIds).toContain("brief:arbitrary-123");
+    });
   });
 
   describe("fixtures context projection", () => {
