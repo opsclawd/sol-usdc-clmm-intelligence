@@ -31,7 +31,9 @@
     "db:migrate": "tsx scripts/db-ensure-schema.ts && drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "contract:evidence-bundle:check": "tsx scripts/check-evidence-bundle-contract.ts",
-    "contract:evidence-bundle:generate": "tsx scripts/generate-evidence-bundle-contract.ts"
+    "contract:evidence-bundle:generate": "tsx scripts/generate-evidence-bundle-contract.ts",
+    "cron:render": "tsx scripts/cron/render-system-cron.ts",
+    "cron:install": "bash scripts/cron/install-system-cron.sh"
   },
   "dependencies": {
     "ajv": "^8.17.1",

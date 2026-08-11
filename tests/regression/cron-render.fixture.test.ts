@@ -39,7 +39,10 @@ describe("cron-render regression", () => {
     const lines = renderSystemCron(config);
     expect(lines).toContain("# BEGIN SOL-USDC CRON");
     expect(lines).toContain(
-      "*/5 * * * * cd /opt/apps/sol-usdc-clmm-intelligence && source .env && pnpm collect:perp-liquidation >> cron/output/perp-liquidation.log 2>&1"
+      "*/5 * * * * cd /opt/apps/sol-usdc-clmm-intelligence && " +
+        "flock -n cron/output/perp-liquidation.lock " +
+        "/bin/sh -c 'set -a; . ./.env; set +a; pnpm collect:perp-liquidation' " +
+        ">> cron/output/perp-liquidation.log 2>&1"
     );
   });
 });

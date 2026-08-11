@@ -1,3 +1,3 @@
 # BEGIN SOL-USDC CRON
-0 7 * * * cd /opt/apps/sol-usdc-clmm-intelligence && source .env && pnpm collect:daily >> cron/output/clmm-daily.log 2>&1
+0 7 * * * cd /opt/apps/sol-usdc-clmm-intelligence && flock -n cron/output/clmm-daily.lock /bin/sh -c 'set -a; . ./.env; set +a; pnpm collect:daily' >> cron/output/clmm-daily.log 2>&1
 # END SOL-USDC CRON

@@ -19,7 +19,9 @@ describe("renderSystemCron", () => {
     });
     expect(lines).toEqual([
       "# BEGIN SOL-USDC CRON",
-      "0 * * * * cd /opt/apps/test && source .env && pnpm test >> cron/output/job1.log 2>&1",
+      "0 * * * * cd /opt/apps/test && flock -n cron/output/job1.lock " +
+        "/bin/sh -c 'set -a; . ./.env; set +a; pnpm test' " +
+        ">> cron/output/job1.log 2>&1",
       "# END SOL-USDC CRON"
     ]);
   });
