@@ -58,7 +58,14 @@ export const LlmResearchBriefOutputSchema = z
     confidenceReasoning: z.string().min(1).max(5000).superRefine(validateNoPolicyLanguage),
     sourceEvidenceIds: z.array(z.string().min(1).max(128)).min(0).max(100),
     unsupportedOrMissingInputs: z.array(z.string().min(1).max(1000)).max(50),
-    degradationReason: ResearchBriefDegradationReasonSchema.optional()
+    // nullish, not optional: a model asked for "the reason this degraded" on a
+    // brief that did not degrade will emit `null` rather than omit the key.
+    // `.optional()` rejects null, so that reply failed schema validation and
+    // produced a degraded brief — the field describing degradation causing it.
+    // Downstream reads it with a truthy check, so null and undefined are
+    // equivalent there. Especially likely on the hermes transport, where the
+    // schema is stated in the prompt rather than enforced by the provider.
+    degradationReason: ResearchBriefDegradationReasonSchema.nullish()
   })
   .strict();
 
