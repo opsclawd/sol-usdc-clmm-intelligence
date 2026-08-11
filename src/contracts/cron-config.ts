@@ -1,6 +1,7 @@
 export interface CronJob {
   name: string;
   cron: string;
+  command: string;
   messageFile: string;
   description?: string;
   model?: string;

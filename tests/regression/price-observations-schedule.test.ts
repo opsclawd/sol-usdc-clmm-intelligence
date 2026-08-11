@@ -90,6 +90,7 @@ describe("price observations schedule regression", () => {
       {
         name: "price-observations",
         cron: "*/5 * * * *",
+        command: "pnpm collect:price",
         messageFile: "cron/routines/price-observations.md"
       }
     ]);

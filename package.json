@@ -18,8 +18,6 @@
     "generate:brief": "tsx scripts/generate/research-brief.ts",
     "publish:evidence": "tsx scripts/collectors/publish-evidence-bundle.ts",
     "run:core-evidence-pipeline": "tsx scripts/collectors/core-evidence-pipeline.ts",
-    "cron:render": "tsx scripts/cron/render-cron-commands.ts",
-    "cron:sync": "tsx scripts/cron/sync-cron.ts",
     "deploy:live": "bash scripts/deploy-live.sh",
     "test": "vitest run",
     "test:watch": "vitest",
