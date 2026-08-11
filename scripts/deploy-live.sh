@@ -9,7 +9,7 @@ if [ "${1:-}" = "--post-pull" ]; then
   shift
 else
   git pull --ff-only
-  exec "$0" --post-pull "$@"
+  exec bash "$0" --post-pull "$@"
 fi
 
 pnpm install --frozen-lockfile

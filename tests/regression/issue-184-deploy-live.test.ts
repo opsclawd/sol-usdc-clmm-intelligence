@@ -50,11 +50,13 @@ mv "${scriptPath}.new" "${scriptPath}"
 
   const env = { ...process.env, PATH: `${binDir}:${process.env.PATH}` };
 
+  let execError: unknown;
   try {
     await execAsync(`bash "${scriptPath}"`, { env });
-  } catch {
-    // Catch command exit error on un-fixed script so assertion can cleanly evaluate log
+  } catch (err) {
+    execError = err;
   }
+  expect(execError).toBeUndefined();
 
   const pnpmLog = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
   expect(pnpmLog).toContain("pnpm cron:NEW_COMMAND");
@@ -94,13 +96,60 @@ exit 1
 
   const env = { ...process.env, PATH: `${binDir}:${process.env.PATH}` };
 
+  let postPullError: unknown;
   try {
     await execAsync(`bash "${scriptPath}" --post-pull`, { env });
-  } catch {
-    // Catch command exit error on un-fixed script when git pull fails
+  } catch (err) {
+    postPullError = err;
   }
+  expect(postPullError).toBeUndefined();
 
   const log = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
   expect(log).not.toContain("git");
+  expect(log).toContain("pnpm cron:install");
+});
+
+test("deploy-live.sh re-executes via bash even without executable permissions or when $0 lacks directory separator", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "deploy-live-test-"));
+  const binDir = path.join(tmpDir, "bin");
+  fs.mkdirSync(binDir);
+
+  const logPath = path.join(tmpDir, "execution.log");
+
+  fs.writeFileSync(
+    path.join(binDir, "pnpm"),
+    `#!/usr/bin/env bash
+echo "pnpm $@" >> "${logPath}"
+`
+  );
+  fs.chmodSync(path.join(binDir, "pnpm"), 0o755);
+
+  const scriptPath = path.join(tmpDir, "deploy-live.sh");
+  const realScriptPath = path.resolve(process.cwd(), "scripts/deploy-live.sh");
+  const originalScript = fs.readFileSync(realScriptPath, "utf8");
+  fs.writeFileSync(scriptPath, originalScript);
+  // Intentionally remove executable permissions
+  fs.chmodSync(scriptPath, 0o644);
+
+  // mock git: runs git pull and logs
+  const gitMock = `#!/usr/bin/env bash
+echo "git pull --ff-only" >> "${logPath}"
+`;
+  fs.writeFileSync(path.join(binDir, "git"), gitMock);
+  fs.chmodSync(path.join(binDir, "git"), 0o755);
+
+  const env = { ...process.env, PATH: `${binDir}:${process.env.PATH}` };
+
+  let execError: unknown;
+  try {
+    // Run from inside tmpDir with $0 = deploy-live.sh (no directory separator in $0)
+    await execAsync(`bash deploy-live.sh`, { env, cwd: tmpDir });
+  } catch (err) {
+    execError = err;
+  }
+  expect(execError).toBeUndefined();
+
+  const log = fs.existsSync(logPath) ? fs.readFileSync(logPath, "utf8") : "";
+  expect(log).toContain("git pull --ff-only");
   expect(log).toContain("pnpm cron:install");
 });
