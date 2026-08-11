@@ -13,25 +13,25 @@ delivery:
 jobs:
   - name: context-events
     cron: "0 */4 * * *"
-    messageFile: cron/routines/context-events.md
+    command: pnpm collect:context-events
   - name: news-evidence
     cron: "0 */2 * * *"
-    messageFile: cron/routines/news-evidence.md
+    command: pnpm collect:news-evidence
   - name: on-chain-flow
     cron: "*/15 * * * *"
-    messageFile: cron/routines/on-chain-flow.md
+    command: pnpm collect:on-chain-flow
   - name: perp-liquidation
     cron: "*/5 * * * *"
-    messageFile: cron/routines/perp-liquidation.md
+    command: pnpm collect:perp-liquidation
   - name: price-observations
     cron: "*/5 * * * *"
-    messageFile: cron/routines/price-observations.md
+    command: pnpm collect:price
   - name: support-resistance
     cron: "15 */4 * * *"
-    messageFile: cron/routines/support-resistance.md
+    command: pnpm collect:support-resistance
   - name: core-evidence-pipeline
     cron: "0 */4 * * *"
-    messageFile: cron/routines/core-evidence-pipeline.md
+    command: pnpm run:core-evidence-pipeline
   - name: clmm-bundle
     cron: "* * * * *"
-    messageFile: cron/routines/clmm-bundle.md
+    command: pnpm collect:clmm-bundle

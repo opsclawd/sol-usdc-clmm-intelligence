@@ -49,14 +49,14 @@ afterEach(async () => {
 });
 
 describe("deploy-live", () => {
-  it("runs pull, locked install, migration, and cron sync in order", async () => {
+  it("runs pull, locked install, migration, and cron install in order", async () => {
     const { result, commands } = await runDeployment();
     expect(result.status).toBe(0);
     expect(commands).toEqual([
       "git pull --ff-only",
       "pnpm install --frozen-lockfile",
       "pnpm db:migrate",
-      "pnpm cron:sync -- --apply"
+      "pnpm cron:install"
     ]);
   });
 
@@ -72,7 +72,7 @@ describe("deploy-live", () => {
     expect(commands).toEqual(["git pull --ff-only", "pnpm install --frozen-lockfile"]);
   });
 
-  it("stops after migration failure before cron sync", async () => {
+  it("stops after migration failure before cron install", async () => {
     const { result, commands } = await runDeployment("db:migrate");
     expect(result.status).toBe(23);
     expect(commands).toEqual([
@@ -82,14 +82,14 @@ describe("deploy-live", () => {
     ]);
   });
 
-  it("reports cron sync failure after prior stages succeed", async () => {
-    const { result, commands } = await runDeployment("cron:sync");
+  it("reports cron install failure after prior stages succeed", async () => {
+    const { result, commands } = await runDeployment("cron:install");
     expect(result.status).toBe(23);
     expect(commands).toEqual([
       "git pull --ff-only",
       "pnpm install --frozen-lockfile",
       "pnpm db:migrate",
-      "pnpm cron:sync -- --apply"
+      "pnpm cron:install"
     ]);
   });
 

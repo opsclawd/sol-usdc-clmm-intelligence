@@ -90,14 +90,16 @@ describe("price observations schedule regression", () => {
       {
         name: "price-observations",
         cron: "*/5 * * * *",
-        messageFile: "cron/routines/price-observations.md"
+        command: "pnpm collect:price"
       }
     ]);
   });
 
-  it("keeps the price observations routine to the collect:price command only", async () => {
-    const routine = await readFile("cron/routines/price-observations.md", "utf8");
-    expect(routine.trim()).toBe("Run `pnpm collect:price`.");
+  it("keeps the price observations job to the collect:price command only", async () => {
+    const config = YAML.parse(await readFile("cron/jobs.yaml", "utf8")) as CronConfig;
+    const job = config.jobs.find((j) => j.name === "price-observations");
+    expect(job?.command).toBe("pnpm collect:price");
+    expect(job?.command).not.toMatch(/[;&|]/);
   });
 
   it("becomes available on the tenth healthy five-minute observation after 45 minutes", async () => {

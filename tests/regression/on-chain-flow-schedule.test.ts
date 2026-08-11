@@ -22,7 +22,7 @@ describe("on-chain-flow schedule regression", () => {
     expect(await loadOnChainFlowJob()).toEqual({
       name: "on-chain-flow",
       cron: "*/15 * * * *",
-      messageFile: "cron/routines/on-chain-flow.md"
+      command: "pnpm collect:on-chain-flow"
     });
   });
 

@@ -2,7 +2,8 @@ import { readFile } from "node:fs/promises";
 import YAML from "yaml";
 import { describe, expect, it } from "vitest";
 import type { CronConfig, CronJob } from "../../src/contracts/cron-config.js";
-import { renderCronCommands } from "../../src/application/render-cron-commands.js";
+import { loadCronConfig } from "../../src/application/load-cron-config.js";
+import { renderSystemCron } from "../../src/application/render-system-cron.js";
 import { FakeTextReader, FakeEnv } from "../fakes/index.js";
 import { getFeatureKindEntry } from "../../src/domain/taxonomy/index.js";
 
@@ -31,30 +32,30 @@ function parseCronIntervalMs(expression: string): number {
   throw new Error(`Expected supported cron expression, received: ${expression}`);
 }
 
-async function loadCronConfig(): Promise<CronConfig> {
+async function loadRawCronConfig(): Promise<CronConfig> {
   const content = await readFile("cron/jobs.yaml", "utf8");
   return YAML.parse(content) as CronConfig;
 }
 
 function projectJobs(jobs: CronJob[], names: string[]): Array<[string, string, string]> {
-  return jobs.filter((j) => names.includes(j.name)).map((j) => [j.name, j.cron, j.messageFile]);
+  return jobs.filter((j) => names.includes(j.name)).map((j) => [j.name, j.cron, j.command]);
 }
 
 describe("core evidence pipeline cron schedule regression", () => {
   it("registers core-evidence-pipeline in canonical cron/jobs.yaml at the four-hour cadence", async () => {
-    const config = await loadCronConfig();
+    const config = await loadRawCronConfig();
     const matches = config.jobs.filter((j) => j.name === "core-evidence-pipeline");
     expect(matches).toEqual([
       {
         name: "core-evidence-pipeline",
         cron: "0 */4 * * *",
-        messageFile: "cron/routines/core-evidence-pipeline.md"
+        command: "pnpm run:core-evidence-pipeline"
       }
     ]);
   });
 
   it("keeps the assembly interval within perp feature validity windows", async () => {
-    const config = await loadCronConfig();
+    const config = await loadRawCronConfig();
     const job = config.jobs.find(({ name }) => name === "core-evidence-pipeline");
     expect(job).toBeDefined();
 
@@ -66,54 +67,45 @@ describe("core evidence pipeline cron schedule regression", () => {
     }
   });
 
-  it("keeps the core evidence pipeline routine to one deterministic command", async () => {
-    const routine = await readFile("cron/routines/core-evidence-pipeline.md", "utf8");
-    expect(routine.trim()).toBe("Run `pnpm run:core-evidence-pipeline`.");
+  it("keeps the core evidence pipeline job to one deterministic command", async () => {
+    // The command is declarative in jobs.yaml now; it used to be prose in a
+    // routine markdown file that an agent read. The invariant is unchanged:
+    // exactly one command, no scripting or chaining.
+    const { jobs } = await loadRawCronConfig();
+    const job = jobs.find((j) => j.name === "core-evidence-pipeline");
+    expect(job?.command).toBe("pnpm run:core-evidence-pipeline");
+    expect(job?.command).not.toMatch(/[;&|]/);
   });
 
   it("preserves every pre-existing research schedule", async () => {
-    const { jobs } = await loadCronConfig();
+    const { jobs } = await loadRawCronConfig();
     expect(projectJobs(jobs, PRE_EXISTING_JOB_NAMES)).toEqual([
-      ["context-events", "0 */4 * * *", "cron/routines/context-events.md"],
-      ["news-evidence", "0 */2 * * *", "cron/routines/news-evidence.md"],
-      ["on-chain-flow", "*/15 * * * *", "cron/routines/on-chain-flow.md"],
-      ["perp-liquidation", "*/5 * * * *", "cron/routines/perp-liquidation.md"],
-      ["price-observations", "*/5 * * * *", "cron/routines/price-observations.md"],
-      ["support-resistance", "15 */4 * * *", "cron/routines/support-resistance.md"],
-      ["clmm-bundle", "* * * * *", "cron/routines/clmm-bundle.md"]
+      ["context-events", "0 */4 * * *", "pnpm collect:context-events"],
+      ["news-evidence", "0 */2 * * *", "pnpm collect:news-evidence"],
+      ["on-chain-flow", "*/15 * * * *", "pnpm collect:on-chain-flow"],
+      ["perp-liquidation", "*/5 * * * *", "pnpm collect:perp-liquidation"],
+      ["price-observations", "*/5 * * * *", "pnpm collect:price"],
+      ["support-resistance", "15 */4 * * *", "pnpm collect:support-resistance"],
+      ["clmm-bundle", "* * * * *", "pnpm collect:clmm-bundle"]
     ]);
   });
 
   it("renders the canonical four-hour core pipeline alongside the five-minute sampler", async () => {
     const rawYaml = await readFile("cron/jobs.yaml", "utf8");
-    const config = YAML.parse(rawYaml) as CronConfig;
 
     const fakeTextReader = new FakeTextReader();
     fakeTextReader.seed("cron/jobs.yaml", rawYaml);
 
-    for (const job of config.jobs) {
-      const content = await readFile(job.messageFile, "utf8");
-      fakeTextReader.seed(job.messageFile, content);
-    }
-
     const fakeEnv = new FakeEnv();
-    const lines = await renderCronCommands({
+    const loadedConfig = await loadCronConfig({
       textReader: fakeTextReader,
       env: fakeEnv
     });
 
-    const coreLine = lines.find((line) => line.includes("--name 'core-evidence-pipeline'"));
-    const priceLine = lines.find((line) => line.includes("--name 'price-observations'"));
+    const lines = renderSystemCron(loadedConfig);
 
-    expect(coreLine).toBeDefined();
-    expect(priceLine).toBeDefined();
-    expect(coreLine).toContain("hermes cron create '0 */4 * * *'");
-    expect(coreLine).toContain("--name 'core-evidence-pipeline'");
-    expect(coreLine).toContain("pnpm run:core-evidence-pipeline");
-    expect(priceLine).toContain("hermes cron create '*/5 * * * *'");
-    expect(priceLine).toContain("--name 'price-observations'");
-    expect(priceLine).toContain("pnpm collect:price");
-    expect(lines).toHaveLength(new Set(config.jobs.map(({ name }) => name)).size);
-    expect(lines.every((line) => line.includes("Working directory for this task:"))).toBe(true);
+    expect(lines).toContain("# BEGIN SOL-USDC CRON");
+    expect(lines.some((line) => line.includes("pnpm run:core-evidence-pipeline"))).toBe(true);
+    expect(lines.some((line) => line.includes("pnpm collect:price"))).toBe(true);
   });
 });

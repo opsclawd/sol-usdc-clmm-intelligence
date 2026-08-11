@@ -5,4 +5,4 @@ modelEnv: OPENCLAW_MODEL
 jobs:
   - name: perp-liquidation
     cron: "*/5 * * * *"
-    messageFile: cron/routines/perp-liquidation.md
+    command: pnpm collect:perp-liquidation
