@@ -55,6 +55,32 @@ describe("Research Brief Contracts & Schemas", () => {
   };
 
   describe("LlmResearchBriefOutputSchema", () => {
+    it("accepts degradationReason: null from a model that did not degrade", () => {
+      // Observed in production on the hermes transport: the model emitted
+      // `"degradationReason": null` for a healthy brief. `.optional()` rejected
+      // it, so schema validation failed and produced a degraded brief whose
+      // summary was the validation error — the field describing degradation
+      // causing the degradation.
+      const result = LlmResearchBriefOutputSchema.safeParse({
+        ...validLlmOutput,
+        degradationReason: null
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("still accepts an omitted degradationReason", () => {
+      const result = LlmResearchBriefOutputSchema.safeParse(validLlmOutput);
+      expect(result.success).toBe(true);
+    });
+
+    it("still rejects an unrecognised degradationReason", () => {
+      const result = LlmResearchBriefOutputSchema.safeParse({
+        ...validLlmOutput,
+        degradationReason: "not_a_real_reason"
+      });
+      expect(result.success).toBe(false);
+    });
+
     it("parses a valid complete LLM research brief output", () => {
       const result = LlmResearchBriefOutputSchema.safeParse(validLlmOutput);
       expect(result.success).toBe(true);
