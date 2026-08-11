@@ -2,7 +2,6 @@ export interface CronJob {
   name: string;
   cron: string;
   command: string;
-  messageFile: string;
   description?: string;
   model?: string;
   thinking?: string;
@@ -39,7 +38,6 @@ export interface ResolvedCronDefaults {
 
 export interface PreparedCronJob {
   job: CronJob;
-  message: string;
   model?: string;
   thinking?: string;
 }

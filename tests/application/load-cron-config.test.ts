@@ -16,14 +16,13 @@ delivery:
 jobs:
   - name: clmm-daily
     cron: "0 7 * * *"
-    messageFile: routines/daily.md
+    command: pnpm collect:daily
 `;
 
 describe("loadCronConfig", () => {
-  it("parses YAML, resolves env defaults, and reads message files via the TextReader port", async () => {
+  it("parses YAML and resolves env defaults via the TextReader port", async () => {
     const textReader = new FakeTextReader();
     textReader.seed("cron/jobs.yaml", yaml);
-    textReader.seed("routines/daily.md", "Daily routine.");
     const env = new FakeEnv({
       OPENCLAW_MODEL: "opus",
       OPENCLAW_THINKING: "high",
@@ -46,7 +45,7 @@ describe("loadCronConfig", () => {
       delivery: { channel: "telegram", to: "12345" }
     });
     expect(result.preparedJobs).toHaveLength(1);
-    expect(result.preparedJobs[0]?.message).toBe("Daily routine.");
+    expect(result.preparedJobs[0]?.job.command).toBe("pnpm collect:daily");
     expect(result.preparedJobs[0]?.job.name).toBe("clmm-daily");
   });
 

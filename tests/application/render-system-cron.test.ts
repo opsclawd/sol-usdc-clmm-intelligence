@@ -12,8 +12,7 @@ describe("renderSystemCron", () => {
       },
       preparedJobs: [
         {
-          job: { name: "job1", cron: "0 * * * *", command: "pnpm test", messageFile: "x.md" },
-          message: "test message"
+          job: { name: "job1", cron: "0 * * * *", command: "pnpm test" }
         }
       ]
     });

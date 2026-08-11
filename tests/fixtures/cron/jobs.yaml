@@ -6,4 +6,3 @@ jobs:
   - name: clmm-daily
     cron: "0 7 * * *"
     command: pnpm collect:daily
-    messageFile: tests/fixtures/cron/routines/daily.md

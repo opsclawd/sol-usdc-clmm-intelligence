@@ -5,7 +5,7 @@ import { parse } from "yaml";
 interface CronJob {
   name: string;
   cron: string;
-  messageFile: string;
+  command: string;
 }
 
 interface CronConfig {
@@ -23,7 +23,7 @@ async function loadCronJobs(): Promise<{ jobs: CronJob[]; job: CronJob }> {
 }
 
 async function loadRoutine(): Promise<string> {
-  return await readFile("cron/routines/support-resistance.md", "utf8");
+  return await readFile("docs/collectors/support-resistance.md", "utf8");
 }
 
 describe("support-resistance cron schedule and routine regression", () => {
@@ -32,9 +32,9 @@ describe("support-resistance cron schedule and routine regression", () => {
     expect(job.cron).toBe("15 */4 * * *");
   });
 
-  it("points the schedule at the support resistance routine", async () => {
+  it("points the schedule at the support resistance command", async () => {
     const { job } = await loadCronJobs();
-    expect(job.messageFile).toBe("cron/routines/support-resistance.md");
+    expect(job.command).toBe("pnpm collect:support-resistance");
   });
 
   it("runs exactly pnpm collect support resistance from the routine", async () => {

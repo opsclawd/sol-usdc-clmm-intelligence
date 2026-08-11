@@ -37,10 +37,8 @@ async function loadRawCronConfig(): Promise<CronConfig> {
   return YAML.parse(content) as CronConfig;
 }
 
-function projectJobs(jobs: CronJob[], names: string[]): Array<[string, string, string, string]> {
-  return jobs
-    .filter((j) => names.includes(j.name))
-    .map((j) => [j.name, j.cron, j.command, j.messageFile]);
+function projectJobs(jobs: CronJob[], names: string[]): Array<[string, string, string]> {
+  return jobs.filter((j) => names.includes(j.name)).map((j) => [j.name, j.cron, j.command]);
 }
 
 describe("core evidence pipeline cron schedule regression", () => {
@@ -51,8 +49,7 @@ describe("core evidence pipeline cron schedule regression", () => {
       {
         name: "core-evidence-pipeline",
         cron: "0 */4 * * *",
-        command: "pnpm run:core-evidence-pipeline",
-        messageFile: "cron/routines/core-evidence-pipeline.md"
+        command: "pnpm run:core-evidence-pipeline"
       }
     ]);
   });
@@ -70,65 +67,34 @@ describe("core evidence pipeline cron schedule regression", () => {
     }
   });
 
-  it("keeps the core evidence pipeline routine to one deterministic command", async () => {
-    const routine = await readFile("cron/routines/core-evidence-pipeline.md", "utf8");
-    expect(routine.trim()).toBe("Run `pnpm run:core-evidence-pipeline`.");
+  it("keeps the core evidence pipeline job to one deterministic command", async () => {
+    // The command is declarative in jobs.yaml now; it used to be prose in a
+    // routine markdown file that an agent read. The invariant is unchanged:
+    // exactly one command, no scripting or chaining.
+    const { jobs } = await loadRawCronConfig();
+    const job = jobs.find((j) => j.name === "core-evidence-pipeline");
+    expect(job?.command).toBe("pnpm run:core-evidence-pipeline");
+    expect(job?.command).not.toMatch(/[;&|]/);
   });
 
   it("preserves every pre-existing research schedule", async () => {
     const { jobs } = await loadRawCronConfig();
     expect(projectJobs(jobs, PRE_EXISTING_JOB_NAMES)).toEqual([
-      [
-        "context-events",
-        "0 */4 * * *",
-        "pnpm collect:context-events",
-        "cron/routines/context-events.md"
-      ],
-      [
-        "news-evidence",
-        "0 */2 * * *",
-        "pnpm collect:news-evidence",
-        "cron/routines/news-evidence.md"
-      ],
-      [
-        "on-chain-flow",
-        "*/15 * * * *",
-        "pnpm collect:on-chain-flow",
-        "cron/routines/on-chain-flow.md"
-      ],
-      [
-        "perp-liquidation",
-        "*/5 * * * *",
-        "pnpm collect:perp-liquidation",
-        "cron/routines/perp-liquidation.md"
-      ],
-      [
-        "price-observations",
-        "*/5 * * * *",
-        "pnpm collect:price",
-        "cron/routines/price-observations.md"
-      ],
-      [
-        "support-resistance",
-        "15 */4 * * *",
-        "pnpm collect:support-resistance",
-        "cron/routines/support-resistance.md"
-      ],
-      ["clmm-bundle", "* * * * *", "pnpm collect:clmm-bundle", "cron/routines/clmm-bundle.md"]
+      ["context-events", "0 */4 * * *", "pnpm collect:context-events"],
+      ["news-evidence", "0 */2 * * *", "pnpm collect:news-evidence"],
+      ["on-chain-flow", "*/15 * * * *", "pnpm collect:on-chain-flow"],
+      ["perp-liquidation", "*/5 * * * *", "pnpm collect:perp-liquidation"],
+      ["price-observations", "*/5 * * * *", "pnpm collect:price"],
+      ["support-resistance", "15 */4 * * *", "pnpm collect:support-resistance"],
+      ["clmm-bundle", "* * * * *", "pnpm collect:clmm-bundle"]
     ]);
   });
 
   it("renders the canonical four-hour core pipeline alongside the five-minute sampler", async () => {
     const rawYaml = await readFile("cron/jobs.yaml", "utf8");
-    const config = YAML.parse(rawYaml) as CronConfig;
 
     const fakeTextReader = new FakeTextReader();
     fakeTextReader.seed("cron/jobs.yaml", rawYaml);
-
-    for (const job of config.jobs) {
-      const content = await readFile(job.messageFile, "utf8");
-      fakeTextReader.seed(job.messageFile, content);
-    }
 
     const fakeEnv = new FakeEnv();
     const loadedConfig = await loadCronConfig({
