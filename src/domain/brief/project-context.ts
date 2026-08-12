@@ -31,6 +31,7 @@ export interface ProjectedFeatureSummary {
   unit: string | null;
   confidenceBps: number;
   warnings: string[];
+  inputLineage?: string[];
 }
 
 export interface ProjectedContextualClaimSummary {
@@ -116,16 +117,20 @@ export async function projectResearchBriefContext(
   }
 
   const features: ProjectedFeatureSummary[] = featuresSource
-    .map((f: DeterministicFeature) => ({
-      featureId: f.featureId,
-      family: f.family,
-      featureKind: f.featureKind,
-      status: f.status,
-      value: f.value,
-      unit: f.unit,
-      confidenceBps: f.confidenceBps,
-      warnings: [...(f.warnings || [])].sort()
-    }))
+    .map((f: DeterministicFeature) => {
+      const lineage = "inputLineage" in f && Array.isArray(f.inputLineage) ? f.inputLineage : [];
+      return {
+        featureId: f.featureId,
+        family: f.family,
+        featureKind: f.featureKind,
+        status: f.status,
+        value: f.value,
+        unit: f.unit,
+        confidenceBps: f.confidenceBps,
+        warnings: [...(f.warnings || [])].sort(),
+        inputLineage: [...lineage].sort()
+      };
+    })
     .sort((a, b) => a.featureId.localeCompare(b.featureId));
 
   // 2. Contextual evidence claims
@@ -260,7 +265,7 @@ export async function projectResearchBriefContext(
 
   // Enforce UTF-8 byte limit
   const serialized = JSON.stringify(context);
-  const utf8Bytes = Buffer.byteLength(serialized, "utf8");
+  const utf8Bytes = new TextEncoder().encode(serialized).length;
   if (utf8Bytes > MAX_CONTEXT_BYTES) {
     throw new ResearchBriefContextError(
       `Projected context size (${utf8Bytes} bytes) exceeds maximum cap of ${MAX_CONTEXT_BYTES} bytes.`,
@@ -308,7 +313,7 @@ export function validateGroundedReferences(
     if (f && f.featureId) {
       availableEvidenceIds.add(f.featureId);
     }
-    const lineage = (f as { inputLineage?: string[] }).inputLineage || [];
+    const lineage = f?.inputLineage || [];
     for (const lineageId of lineage) {
       if (lineageId) {
         availableEvidenceIds.add(lineageId);
@@ -334,6 +339,7 @@ export function validateGroundedReferences(
       for (const refId of refIds) {
         if (refId) {
           availableEvidenceIds.add(refId);
+          availableSourceRefIds.add(refId);
         }
       }
     }

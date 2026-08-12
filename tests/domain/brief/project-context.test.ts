@@ -209,7 +209,7 @@ describe("project-context", () => {
 
     test("validateGroundedReferences accepts raw-* IDs from features[].inputLineage", async () => {
       const proj = await projectResearchBriefContext({ bundle: calmBundle });
-      const context = {
+      const context: ResearchBriefContext = {
         ...proj,
         features: [
           ...proj.features,
@@ -227,12 +227,61 @@ describe("project-context", () => {
         ]
       };
 
-      const result = validateGroundedReferences(
-        context as unknown as ResearchBriefContext,
-        ["raw-lineage-456"],
-        []
-      );
+      const result = validateGroundedReferences(context, ["raw-lineage-456"], []);
       expect(result.valid).toBe(true);
+    });
+
+    test("projectResearchBriefContext projects inputLineage onto feature summaries", async () => {
+      const featureWithLineage = {
+        ...calmBundle.deterministicFeatures[0],
+        inputLineage: ["raw-lineage-123", "raw-lineage-456"]
+      };
+      const testBundle: EvidenceBundleV1 = {
+        ...calmBundle,
+        // @ts-expect-error test feature override
+        deterministicFeatures: [featureWithLineage]
+      };
+
+      const proj = await projectResearchBriefContext({ bundle: testBundle });
+      expect(proj.features[0]?.inputLineage).toEqual(["raw-lineage-123", "raw-lineage-456"]);
+
+      const result = validateGroundedReferences(proj, ["raw-lineage-456"], []);
+      expect(result.valid).toBe(true);
+    });
+
+    test("validateGroundedReferences accepts contextualClaims sourceReferenceIds passed as sourceRefs", async () => {
+      const proj = await projectResearchBriefContext({ bundle: calmBundle });
+      const context: ResearchBriefContext = {
+        ...proj,
+        contextualClaims: {
+          ...proj.contextualClaims,
+          supportResistance: [
+            {
+              evidenceId: "sr-claim-1",
+              kind: "support",
+              claim: "test claim",
+              direction: "bullish",
+              confidenceBps: 8000,
+              sourceReferenceIds: ["raw-claim-ref-789"]
+            }
+          ]
+        }
+      };
+
+      const result = validateGroundedReferences(context, [], ["raw-claim-ref-789"]);
+      expect(result.valid).toBe(true);
+    });
+
+    test("byte length check operates without Node.js Buffer global", async () => {
+      const originalBuffer = globalThis.Buffer;
+      try {
+        // @ts-expect-error testing environment independence
+        delete globalThis.Buffer;
+        const proj = await projectResearchBriefContext({ bundle: calmBundle });
+        expect(proj).toBeDefined();
+      } finally {
+        globalThis.Buffer = originalBuffer;
+      }
     });
 
     test("validateGroundedReferences accepts raw-* IDs from contextualClaims sourceReferenceIds", async () => {
