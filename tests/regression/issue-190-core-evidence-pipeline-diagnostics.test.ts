@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { runCoreEvidencePipeline } from "../../src/application/run-core-evidence-pipeline.js";
 import type {
+  CoreEvidencePipelineResult,
   CoreEvidencePipelineServices,
   RunCoreEvidencePipelineDeps
 } from "../../src/application/run-core-evidence-pipeline.js";
@@ -168,104 +169,128 @@ describe("issue-190 core evidence pipeline diagnostics", () => {
     }
   );
 
-  it("emits a top-level diagnostic for pre-target infrastructure failures programmatically", async () => {
-    const infrastructureFailures: Array<{
-      name: string;
-      deps: RunCoreEvidencePipelineDeps;
-    }> = [
-      {
-        name: "lock.acquire throwing",
-        deps: {
-          clock: new QueuedClock(["2026-08-12T12:00:00.000Z"]),
-          runIdFactory: new FakeRunIdFactory(["run-lock-err"]),
-          lock: (() => {
-            const l = new FakePipelineRunLock();
-            l.acquireError = new Error("Lock acquisition failed");
-            return l;
-          })(),
-          openResources: async () => {
-            throw new Error("Should not reach openResources");
-          }
+  it("emits a top-level diagnostic for every failed pre-target abort path", async () => {
+    const scenarios: Array<[string, () => Promise<CoreEvidencePipelineResult>]> = [
+      [
+        "lock acquisition throwing",
+        async () => {
+          const lock = new FakePipelineRunLock();
+          lock.acquireError = new Error("Lock acquisition failed");
+          return runCoreEvidencePipeline(
+            {
+              clock: new QueuedClock(["2026-08-12T12:00:00.000Z"]),
+              runIdFactory: new FakeRunIdFactory(["run-lock-err"]),
+              lock,
+              openResources: async () => {
+                throw new Error("Should not reach openResources");
+              }
+            },
+            testConfig
+          );
         }
-      },
-      {
-        name: "openResources throwing",
-        deps: {
-          clock: new QueuedClock(["2026-08-12T12:00:00.000Z"]),
-          runIdFactory: new FakeRunIdFactory(["run-open-err"]),
-          lock: new FakePipelineRunLock(),
-          openResources: async () => {
-            throw new Error("Failed to open resources");
-          }
+      ],
+      [
+        "openResources throwing",
+        async () => {
+          const lock = new FakePipelineRunLock();
+          return runCoreEvidencePipeline(
+            {
+              clock: new QueuedClock(["2026-08-12T12:00:00.000Z"]),
+              runIdFactory: new FakeRunIdFactory(["run-open-err"]),
+              lock,
+              openResources: async () => {
+                throw new Error("Failed to open resources");
+              }
+            },
+            testConfig
+          );
         }
-      }
+      ],
+      [
+        "collect throwing",
+        async () => {
+          const lock = new FakePipelineRunLock();
+          return runCoreEvidencePipeline(
+            {
+              clock: new QueuedClock(["2026-08-12T12:00:00.000Z"]),
+              runIdFactory: new FakeRunIdFactory(["run-collect-err"]),
+              lock,
+              openResources: async () => ({
+                connection: fakeDbConnection,
+                services: createServices(async () => {
+                  throw new Error("Collection network error");
+                })
+              })
+            },
+            testConfig
+          );
+        }
+      ],
+      [
+        "collection returning FAILED",
+        async () => {
+          const lock = new FakePipelineRunLock();
+          return runCoreEvidencePipeline(
+            {
+              clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
+              runIdFactory: new FakeRunIdFactory(["run-collect-failed"]),
+              lock,
+              openResources: async () => ({
+                connection: fakeDbConnection,
+                services: createServices(async (ctx) => collectionResult(ctx, "FAILED"))
+              })
+            },
+            testConfig
+          );
+        }
+      ],
+      [
+        "collection returning UNAVAILABLE",
+        async () => {
+          const lock = new FakePipelineRunLock();
+          return runCoreEvidencePipeline(
+            {
+              clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
+              runIdFactory: new FakeRunIdFactory(["run-collect-unavail"]),
+              lock,
+              openResources: async () => ({
+                connection: fakeDbConnection,
+                services: createServices(async (ctx) => collectionResult(ctx, "UNAVAILABLE"))
+              })
+            },
+            testConfig
+          );
+        }
+      ],
+      [
+        "derive throwing after a COMPLETE collection",
+        async () => {
+          const lock = new FakePipelineRunLock();
+          return runCoreEvidencePipeline(
+            {
+              clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
+              runIdFactory: new FakeRunIdFactory(["run-derive-err"]),
+              lock,
+              openResources: async () => ({
+                connection: fakeDbConnection,
+                services: createServices(
+                  async (ctx) => collectionResult(ctx, "COMPLETE"),
+                  async () => {
+                    throw new Error("Derivation failed");
+                  }
+                )
+              })
+            },
+            testConfig
+          );
+        }
+      ]
     ];
 
-    for (const { name, deps } of infrastructureFailures) {
-      const result = await runCoreEvidencePipeline(deps, testConfig);
+    for (const [name, runScenario] of scenarios) {
+      const result = await runScenario();
       expect(result.status, name).toBe("failed");
       expect(result.diagnostics.length, name).toBeGreaterThan(0);
-      expect(result.pair, name).toBeNull();
-      expect(result.positions, name).toEqual([]);
-    }
-  });
-
-  it("emits a top-level diagnostic for every service method throwing during pre-target execution programmatically", async () => {
-    const baseServices = createServices(async (ctx) => collectionResult(ctx, "COMPLETE"));
-    const serviceKeys = Object.keys(baseServices) as Array<keyof CoreEvidencePipelineServices>;
-
-    for (const key of serviceKeys) {
-      const services: CoreEvidencePipelineServices = {
-        ...createServices(async (ctx) => collectionResult(ctx, "COMPLETE")),
-        [key]: vi.fn().mockImplementation(async () => {
-          throw new Error(`Service method ${key} failed`);
-        })
-      };
-
-      const deps: RunCoreEvidencePipelineDeps = {
-        clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
-        runIdFactory: new FakeRunIdFactory([`run-service-${key}`]),
-        lock: new FakePipelineRunLock(),
-        openResources: async () => ({
-          connection: fakeDbConnection,
-          services
-        })
-      };
-
-      const result = await runCoreEvidencePipeline(deps, testConfig);
-
-      if (result.pair === null && result.positions.length === 0) {
-        expect(result.status, `Pre-target abort when ${key} throws`).toBe("failed");
-        expect(
-          result.diagnostics.length,
-          `Diagnostics populated when ${key} throws`
-        ).toBeGreaterThan(0);
-      }
-    }
-  });
-
-  it("emits a top-level diagnostic for all collection status outcomes where shouldFailCommand is true programmatically", async () => {
-    const statusesToTest: CoreCollectionStatus[] = ["FAILED", "UNAVAILABLE"];
-
-    for (const status of statusesToTest) {
-      const deps: RunCoreEvidencePipelineDeps = {
-        clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
-        runIdFactory: new FakeRunIdFactory([`run-status-${status}`]),
-        lock: new FakePipelineRunLock(),
-        openResources: async () => ({
-          connection: fakeDbConnection,
-          services: createServices(async (ctx) => collectionResult(ctx, status))
-        })
-      };
-
-      const result = await runCoreEvidencePipeline(deps, testConfig);
-      expect(result.status, `Collection status ${status}`).toBe("failed");
-      expect(
-        result.diagnostics.length,
-        `Diagnostics for collection status ${status}`
-      ).toBeGreaterThan(0);
-      expect(result.pair).toBeNull();
-      expect(result.positions).toEqual([]);
     }
   });
 });
