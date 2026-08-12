@@ -1036,30 +1036,30 @@ A source outage is ambiguous: it may indicate genuine no-coverage or a service p
 
 ## On-Chain Flow Collection (`pnpm collect:on-chain-flow`)
 
-The `collect:on-chain-flow` command collects on-chain SOL/USDC flow events from two providers: Helius (whale transfers for the position wallet only) and Birdeye (whale swaps and DEX net flows). On-chain flow data describes what happened on-chain, not why. No output claims motive or policy; final synthesis belongs to regime-engine.
+The `collect:on-chain-flow` command collects on-chain SOL/USDC flow events from two providers: Helius (whale transfers querying the Whirlpool address) and Birdeye (whale swaps and DEX net flows). On-chain flow data describes what happened on-chain, not why. No output claims motive or policy; final synthesis belongs to regime-engine.
 
 ### Authority Boundary
 
 - **Factual evidence only**: Flow events (whale transfers, swaps, stablecoin flows, DEX net flows, CEX proxies) are factual metadata about on-chain activity. The collector does not infer intent, motive, or policy.
-- **No comprehensive whale surveillance**: Helius whale_transfer is scoped to `WALLET_PUBLIC_KEY` only. The collector does not track arbitrary whale wallets.
+- **No comprehensive whale surveillance**: Helius whale_transfer queries `WHIRLPOOL_ADDRESS` (not `WALLET_PUBLIC_KEY`). Note that `addressContext.addressType` remains `wallet` for compatibility even though `addressContext.address` is the Whirlpool address. `WALLET_PUBLIC_KEY` is retained for its position-scoped uses elsewhere.
 - **No stablecoin or CEX coverage in this phase**: `stablecoin_flow` is deferred pending Circle address verification. `cex_flow_proxy` is deferred indefinitely (paid identity API required; self-maintained address book rejected as ongoing burden).
 - **No execution authority**: This collector captures evidence only. It does not construct instructions, sign transactions, or execute swaps.
 
-### Watched-Wallet Boundary
+### Pool Target Boundary
 
-Helius `whale_transfer` is scoped exclusively to `WALLET_PUBLIC_KEY`. The collector polls the Helius legacy address-history endpoint for this single wallet only. Expanding the watch-list to additional wallets is a separate design decision and is not implemented.
+Helius `whale_transfer` queries `WHIRLPOOL_ADDRESS`. Note that `addressContext.addressType` remains `wallet` for compatibility even though `addressContext.address` is the Whirlpool address. The collector polls the Helius legacy address-history endpoint for the Whirlpool address.
 
 ### Legacy Endpoint and Completeness Guard
 
 Helius uses a **legacy address-history endpoint** confirmed working on the current free-tier key. The endpoint is flagged deprecated by Helius in favor of `getTransactionsForAddress`, but that newer method returns only bare signatures without parsed `type`/`tokenTransfers` — would require a second parse call per transaction. The legacy endpoint is used with the known limitation:
 
-- **Single-page with `limit=100`**: The endpoint returns at most 100 transactions per request. A highly active watched wallet can exceed this in a lookback window. When the page saturates (100 transactions returned), the collector returns `unavailable` rather than fabricating an incomplete window as complete. Operators should monitor for repeated `unavailable` on active wallets as a signal that pagination design is needed.
+- **Single-page with `limit=100`**: The endpoint returns at most 100 transactions per request. A highly active pool target can exceed this in a lookback window. When the page saturates (100 transactions returned), the collector returns `unavailable` rather than fabricating an incomplete window as complete. Operators should monitor for repeated `unavailable` on active pools as a signal that pagination design is needed. Keep saturated Helius pages `unavailable`, not `empty`.
 
 ### Event Coverage Matrix
 
 | Event kind        | Status                               | Source                                              |
 | ----------------- | ------------------------------------ | --------------------------------------------------- |
-| `whale_transfer`  | Live, position wallet only           | Helius address history                              |
+| `whale_transfer`  | Live, Whirlpool target               | Helius address history                              |
 | `whale_swap`      | Live                                 | Birdeye pair trades                                 |
 | `dex_net_flow`    | Live                                 | Birdeye pair trades                                 |
 | `stablecoin_flow` | Deferred pending source verification | No clean free-tier source confirmed                 |
@@ -1070,7 +1070,7 @@ Helius uses a **legacy address-history endpoint** confirmed working on the curre
 Required environment variables:
 
 ```bash
-# Helius flow API (whale_transfer only, position wallet only)
+# Helius flow API (whale_transfer only, Whirlpool target)
 HELIUS_FLOW_API_URL=https://api.helius.xyz
 HELIUS_API_KEY=<your-helius-api-key>
 
@@ -1078,7 +1078,7 @@ HELIUS_API_KEY=<your-helius-api-key>
 BIRDEYE_FLOW_API_URL=https://public-api.birdeye.so
 BIRDEYE_API_KEY=<your-birdeye-api-key>
 
-# Whale transfer threshold (Helius, position wallet only)
+# Whale transfer threshold (Helius, Whirlpool target)
 ON_CHAIN_WHALE_TRANSFER_MIN_USDC=100000        # Default: 100,000 USDC
 
 # Threshold overrides (Birdeye)
@@ -1088,7 +1088,8 @@ ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000          # Default: 250,000 USDC
 # Lookback window
 ON_CHAIN_FLOW_LOOKBACK_MS=900000               # Default: 900,000 ms (15 minutes)
 
-# Position wallet (already declared elsewhere; referenced here for clarity)
+# Whirlpool address and position wallet
+WHIRLPOOL_ADDRESS=<orca-sol-usdc-whirlpool-address>
 WALLET_PUBLIC_KEY=<position-wallet-address>
 ```
 
@@ -1098,7 +1099,22 @@ WALLET_PUBLIC_KEY=<position-wallet-address>
 
 - **Schedule & Cadence**: `on-chain-flow` runs every 15 minutes (`*/15 * * * *`).
 - **Lookback Window**: `ON_CHAIN_FLOW_LOOKBACK_MS` defaults to 900,000 ms (15 minutes), ensuring adjacent runs have no structural gap.
-- **Threshold Calibration**: Grounded in pool snapshot data (~$65.6M daily volume implies ~$684K gross volume per 15-minute window for a pool with ~$25.5M TVL; net flow is expected to be below gross flow). Defaults are set to 100,000 USDC for whale transfers/swaps and 250,000 USDC for DEX net flow.
+- **Implemented Live Thresholds**:
+
+  ```bash
+  ON_CHAIN_WHALE_TRANSFER_MIN_USDC=100000
+  ON_CHAIN_WHALE_SWAP_MIN_USDC=100000
+  ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000
+  ```
+
+- **Threshold Calibration Arithmetic**:
+  ```text
+  Current snapshot: $72,954,595 24h volume and $26,150,296 TVL.
+  $72,954,595 / 96 fifteen-minute windows = approximately $759,944 gross volume per window.
+  $100,000 / $759,944 = approximately 13.2% of a typical window.
+  ```
+- **Deferred VPS Variables**: Observed VPS names `ON_CHAIN_STABLECOIN_FLOW_MIN_USDC` and `ON_CHAIN_CEX_PROXY_MIN_USDC` are parsed for deferred signal kinds and do not replace the live whale-transfer/whale-swap variables.
+- **Operator Callout**: The deployment VPS must set the two live whale values (`ON_CHAIN_WHALE_TRANSFER_MIN_USDC` and `ON_CHAIN_WHALE_SWAP_MIN_USDC`) to `100000`; repository documentation cannot mutate host-local environment state.
 - **Provider Costs & Rate Limits**: The 15-minute cadence makes four times as many Helius/Birdeye collection attempts as the old hourly cadence; monitor provider rate limits (429s) and costs after rollout.
 
 ### Command and Statuses
@@ -1107,22 +1123,36 @@ WALLET_PUBLIC_KEY=<position-wallet-address>
 pnpm collect:on-chain-flow
 ```
 
+Status semantics:
+
+- `empty`: the provider request completed, but no event became accepted or replayed; this is healthy source execution, not usable evidence.
+
+Truth table reducer rules:
+
+```text
+all empty -> COMPLETE / exit 0
+empty + accepted/replayed -> COMPLETE / exit 0
+empty + unavailable/failed -> PARTIAL / exit 0
+all unavailable -> UNAVAILABLE / exit 1
+all non-empty failures -> FAILED / exit 1
+```
+
 Exit codes:
 
-| Status        | Exit Code | Meaning                                                                |
-| ------------- | --------- | ---------------------------------------------------------------------- |
-| `COMPLETE`    | 0         | All configured sources succeeded (or replayed identically)             |
-| `PARTIAL`     | 0         | At least one source succeeded; others failed or degraded               |
-| `UNAVAILABLE` | 1         | All sources unavailable (HTTP 429, 404, 5xx, timeouts, saturated page) |
-| `FAILED`      | 1         | Validation conflict, malformed payload, or zero usable evidence        |
+| Status        | Exit Code | Meaning                                                                     |
+| ------------- | --------- | --------------------------------------------------------------------------- |
+| `COMPLETE`    | 0         | All configured sources succeeded, replayed identically, or reported `empty` |
+| `PARTIAL`     | 0         | At least one source succeeded/empty while others failed or were unavailable |
+| `UNAVAILABLE` | 1         | All sources unavailable (HTTP 429, 404, 5xx, timeouts, saturated page)      |
+| `FAILED`      | 1         | Validation conflict, malformed payload, or non-empty source failure         |
 
-A saturated Helius page (100 transactions returned, incomplete window) maps to `unavailable` — not a clean no-event result. See "Legacy Endpoint and Completeness Guard" above.
+A saturated Helius page (100 transactions returned, incomplete window) maps to `unavailable` — not a clean no-event (`empty`) result. See "Legacy Endpoint and Completeness Guard" above.
 
 ### Threshold Semantics
 
 Thresholds are exact decimal strings parsed with arbitrary-precision arithmetic. All thresholds are denominated in USDC:
 
-- `whaleTransferMinUsdc`: Whale transfer transactions (Helius, position wallet only)
+- `whaleTransferMinUsdc`: Whale transfer transactions (Helius, Whirlpool target)
 - `whaleSwapMinUsdc`: Whale swap transactions (Birdeye)
 - `dexNetFlowMinUsdc`: DEX net flow magnitude (Birdeye)
 
@@ -1131,7 +1161,7 @@ Thresholds are exact decimal strings parsed with arbitrary-precision arithmetic.
 ### Real Amount and Address Semantics
 
 - **`amountUsdc`**: Converted from raw token amounts using proper decimal arithmetic. Raw native-unit amounts mislabeled as USDC are rejected at normalization.
-- **`addressContext.address`**: The actual wallet public key (`WALLET_PUBLIC_KEY`), not the transaction signature. Transfer attribution uses `fromUserAccount`/`toUserAccount` fields; ambiguous records (wallet absent or appears on both sides) are omitted rather than guessed.
+- **`addressContext.address`**: The Whirlpool address (`WHIRLPOOL_ADDRESS`). Note that `addressContext.addressType` remains `wallet` for compatibility even though `addressContext.address` is the Whirlpool address. Transfer attribution uses `fromUserAccount`/`toUserAccount` fields; ambiguous records (address absent or appears on both sides) are omitted rather than guessed.
 
 ### Existing-Deployment Rollout
 
@@ -1154,21 +1184,19 @@ Editing `.env.example` does not rewrite deployed environment overrides on active
 
 > **Warning**: The collector persists immutable raw and normalized rows directly to the database. Use the intended deployment database intentionally.
 
-To produce bounded live acceptance proof:
+To produce bounded live acceptance proof without contacting Birdeye while its quota is exhausted:
 
-1. Run the collector with a temporary process-level Helius threshold override and normal persistence path:
-   ```bash
-   ON_CHAIN_WHALE_TRANSFER_MIN_USDC=10 pnpm collect:on-chain-flow
-   ```
-2. Record the sanitized run ID, execution status, and event counts from stdout. Never log provider API keys.
-3. Query the database to verify a new `helius-api` / `whale_transfer` normalized observation row exists with `received_at_unix_ms` at or after the recorded run start time.
-4. Run the core evidence pipeline workflow:
-   ```bash
-   pnpm run:core-evidence-pipeline
-   ```
-5. Verify the latest assembled payload reports `assessment.coverage.flows` as `partial` or `available`.
+1. Confirm the deployed live thresholds are `100000`; do not use threshold-lowering.
+2. Run the collector with `BIRDEYE_FLOW_API_URL=http://127.0.0.1:1` as a process-local override, leaving the Helius URL/key and database configuration intact:
 
-> **Note**: Zero accepted transfers is **inconclusive**. A saturated Helius page, provider failure, or absent genuine transfer is not permission to insert synthetic data or claim success. If no genuine transfer occurs, record the run as inconclusive and re-test when live activity occurs.
+   ```bash
+   BIRDEYE_FLOW_API_URL=http://127.0.0.1:1 pnpm collect:on-chain-flow
+   ```
+
+3. Require a Helius outcome with `accepted > 0` or `replayed > 0` over a representative recent window. `empty` is correctly reported but does not satisfy the live-evidence acceptance criterion.
+4. Query `intelligence.raw_observations` for a `helius-api` row received at or after the recorded run start. Do not delete immutable observations afterward.
+
+> **Note**: Zero accepted transfers (`empty`) is correctly reported but is **inconclusive** for live acceptance evidence. A saturated Helius page, provider failure, or absent genuine transfer is not permission to insert synthetic data or claim success. If no genuine transfer occurs, record the run as inconclusive and re-test when live activity occurs.
 
 ### Live Smoke Command
 
@@ -1182,7 +1210,7 @@ The command persists immutable raw and normalized observations. Use the configur
 
 ### No-Event Semantics
 
-Empty responses from both providers are valid (no qualifying events in the lookback window). The collector returns `COMPLETE` with zero accepted events, not an error. A `unavailable` status from Helius due to a saturated page is distinct from a clean no-event result — see "Legacy Endpoint and Completeness Guard" above.
+`empty` responses from providers are valid (no qualifying events in the lookback window). The collector returns `COMPLETE` with zero accepted events, not an error. An `unavailable` status from Helius due to a saturated page is distinct from a clean no-event (`empty`) result — see "Legacy Endpoint and Completeness Guard" above.
 
 ### Retention and Licensing
 
@@ -1190,13 +1218,13 @@ All events carry `retention: "bounded"` and a provider-supplied `license` string
 
 ### Troubleshooting
 
-#### Both sources return empty events
+#### Both sources return empty events (`empty`)
 
-Empty responses are valid (no qualifying events in the lookback window). If combined with a `degraded` status, this may indicate providers are filtering incorrectly. Verify the lookback window and threshold values are appropriate.
+Empty responses are valid (no qualifying events in the lookback window). `empty: the provider request completed, but no event became accepted or replayed; this is healthy source execution, not usable evidence.` If combined with a `degraded` status, this may indicate providers are filtering incorrectly. Verify the lookback window and threshold values are appropriate.
 
 #### Helius returns `unavailable` with saturated page
 
-A saturated page (100 transactions returned, window not covered) produces `unavailable`. This is expected for highly active wallets and indicates the lookback window is not fully covered. A clean empty response (fewer than 100 transactions, window fully covered) is distinct and indicates genuine no qualifying events.
+A saturated page (100 transactions returned, window not covered) produces `unavailable`. This is expected for highly active pool targets and indicates the lookback window is not fully covered. Keep saturated Helius pages `unavailable`, not `empty`. A clean empty response (fewer than 100 transactions, window fully covered) is distinct (`empty`) and indicates genuine no qualifying events.
 
 #### Timeout errors
 

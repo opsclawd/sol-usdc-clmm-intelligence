@@ -30,8 +30,22 @@ The synthesis cadence is 4 hours (`0 */4 * * *`), matching the core evidence pip
 
 Specifically, for `on-chain-flow` (15-minute cadence):
 
-- The job runs every 15 minutes (`*/15 * * * *`) with a matching 900,000 ms (15-minute) default lookback window so adjacent runs have no structural gap.
-- Default thresholds are set to 100,000 USDC for whale transfers/swaps and 250,000 USDC for DEX net flow, calibrated to the pool's volume snapshot (~$65.6M daily volume implies ~$684K gross volume per 15-minute window for ~$25.5M TVL).
+- The job runs every 15 minutes (`*/15 * * * *`) with a matching 900,000 ms (15-minute) default lookback window so adjacent runs have no structural gap. Helius queries `WHIRLPOOL_ADDRESS`, not `WALLET_PUBLIC_KEY` (though `addressContext.addressType` remains `wallet` for compatibility).
+- Implemented live thresholds by exact repository name and value:
+
+```bash
+ON_CHAIN_WHALE_TRANSFER_MIN_USDC=100000
+ON_CHAIN_WHALE_SWAP_MIN_USDC=100000
+ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000
+```
+
+- Calibration arithmetic:
+  Current snapshot: $72,954,595 24h volume and $26,150,296 TVL.
+  $72,954,595 / 96 fifteen-minute windows = approximately $759,944 gross volume per window.
+  $100,000 / $759,944 = approximately 13.2% of a typical window.
+
+- Note: Observed VPS variable names `ON_CHAIN_STABLECOIN_FLOW_MIN_USDC` and `ON_CHAIN_CEX_PROXY_MIN_USDC` are parsed for deferred signal kinds and do not replace the live whale-transfer/whale-swap variables.
+- Operator Callout: The deployment VPS must set the two live whale values (`ON_CHAIN_WHALE_TRANSFER_MIN_USDC` and `ON_CHAIN_WHALE_SWAP_MIN_USDC`) to `100000`; repository documentation cannot mutate host-local environment state.
 - The 15-minute schedule makes four times as many collection attempts per hour (Helius and Birdeye) compared to the old hourly schedule; operators must monitor provider rate limits (429s) and costs after rollout.
 
 Specifically, for five-minute sampling:
