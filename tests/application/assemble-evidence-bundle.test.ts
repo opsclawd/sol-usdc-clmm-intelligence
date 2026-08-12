@@ -598,6 +598,79 @@ describe("assembleEvidenceBundle", () => {
       );
     });
 
+    it("computes partial quality when finalizing bundle with a degraded research brief", async () => {
+      const rawRow = makeRawRow({ id: 1 });
+      seedRaw([rawRow]);
+
+      const featureRow = makeDerivedFeatureRow({
+        id: 1,
+        featureKind: "range_location",
+        positionId: "pos-1",
+        poolId: "pool-abc",
+        inputObservationIds: [1],
+        rawRefs: [makeRawRef(1, "clmm-v2-bundle", "raw-hash-1")]
+      });
+      seedFeature([featureRow]);
+
+      const request = makeRequest();
+      const prepareResult = assertSuccess(
+        await prepareEvidenceBundle(
+          { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+          request
+        )
+      );
+
+      expect(prepareResult.outcome).toBe("prepared");
+      if (prepareResult.outcome !== "prepared") return;
+
+      const featureId =
+        prepareResult.prepared.nullBriefCandidate.deterministicFeatures[0]!.featureId;
+
+      const degradedBrief: PersistedResearchBrief = {
+        briefId: "brief-deg-1",
+        pair: "SOL/USDC",
+        generationStatus: "degraded",
+        llmOutput: {
+          summary: "Degraded brief summary",
+          keyTakeaways: ["Takeaway 1"],
+          supportsCurrentRegime: "unclear",
+          regimeAssessmentReasoning: "Degraded reasoning",
+          confidenceScore: 0.2,
+          confidenceReasoning: "Degraded confidence",
+          sourceEvidenceIds: [featureId],
+          unsupportedOrMissingInputs: [],
+          degradationReason: "model_error"
+        },
+        sourceRefs: [],
+        providerMetadata: {
+          provider: "openai",
+          model: "gpt-4o-mini"
+        },
+        sourceBundleRef: {
+          bundleId: "run-123",
+          bundleHash: "hash-1"
+        },
+        inputContextHash: "ctx-hash",
+        priorBriefRef: null,
+        generatedAt: EPOCH,
+        promptVersion: RESEARCH_BRIEF_PROMPT_VERSION
+      };
+
+      const result = assertSuccess(
+        await finalizeEvidenceBundle(
+          { clock, featureRepo, normalizedRepo, rawRepo, bundleRepo, contract },
+          prepareResult.prepared,
+          degradedBrief
+        )
+      );
+
+      expect(result.outcome).toBe("persisted");
+      const persistedPayload = bundleRepo.store[0]?.payload as EvidenceBundleV1;
+      expect(persistedPayload.assessment.coverage.researchBrief).toBe("unavailable");
+      expect(persistedPayload.assessment.quality).toBe("partial");
+      expect(persistedPayload.researchBrief?.briefId).toBe("brief-deg-1");
+    });
+
     it("gives bundles from different positions in the same pipeline run distinct runIds", async () => {
       seedRaw([makeRawRow({ id: 1 }), makeRawRow({ id: 2, positionId: "pos-2" })]);
       seedFeature([

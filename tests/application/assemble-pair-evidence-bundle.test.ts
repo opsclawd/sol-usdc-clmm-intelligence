@@ -1392,6 +1392,20 @@ describe("assemblePairEvidenceBundle", () => {
         expect(withBriefPayload.assessment.coverage.researchBrief).not.toBe("unavailable");
         expect(withBriefPayload.researchBrief).not.toBeNull();
         expect(withBriefPayload.researchBrief?.briefId).toBe("brief-1");
+
+        // 3. Finalize with degraded brief
+        capturedInserts = [];
+        const degradedBrief = makeMockBrief({
+          briefId: "brief-deg-1",
+          generationStatus: "degraded"
+        });
+        await finalizePairEvidenceBundle(deps, prepareResult.prepared, degradedBrief);
+        expect(capturedInserts).toHaveLength(1);
+        const degradedBriefPayload = capturedInserts[0]!.payload as EvidenceBundleV1;
+        expect(degradedBriefPayload.assessment.coverage.researchBrief).toBe("unavailable");
+        expect(degradedBriefPayload.assessment.quality).toBe("partial");
+        expect(degradedBriefPayload.researchBrief).not.toBeNull();
+        expect(degradedBriefPayload.researchBrief?.briefId).toBe("brief-deg-1");
       }
     });
 

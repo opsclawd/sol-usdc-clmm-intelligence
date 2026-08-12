@@ -728,7 +728,8 @@ export async function finalizeEvidenceBundle(
   }
 
   const { bundleRepo, contract } = deps;
-  const hasResearchBrief = researchBrief !== undefined;
+  const hasResearchBrief =
+    researchBrief !== undefined && researchBrief.generationStatus === "complete";
 
   const qualityInput = {
     slots: prepared.slots,
