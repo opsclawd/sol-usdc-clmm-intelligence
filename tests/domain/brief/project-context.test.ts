@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, it } from "vitest";
 import calmFixture from "../../fixtures/research-brief/calm.json" with { type: "json" };
 import trendingFixture from "../../fixtures/research-brief/trending.json" with { type: "json" };
 import stressedFixture from "../../fixtures/research-brief/stressed.json" with { type: "json" };
@@ -9,6 +9,8 @@ import {
   projectResearchBriefContext,
   validateGroundedReferences,
   ResearchBriefContextError,
+  type ResearchBriefContext,
+  CONTEXT_IDENTIFIER_FIELDS,
   MAX_PROJECTED_FEATURES
 } from "../../../src/domain/brief/project-context.js";
 
@@ -190,6 +192,189 @@ describe("project-context", () => {
       );
       expect(invalidResult.valid).toBe(false);
       expect(invalidResult.unsupportedIds).toContain("brief:arbitrary-123");
+    });
+
+    test("validateGroundedReferences accepts raw-* IDs present in sourceReferences", async () => {
+      const proj = await projectResearchBriefContext({ bundle: calmBundle });
+      const context: ResearchBriefContext = {
+        ...proj,
+        sourceReferences: [
+          ...proj.sourceReferences,
+          { referenceId: "raw-obs-100", sourceType: "raw_observation", locator: "loc-100" }
+        ]
+      };
+
+      const result = validateGroundedReferences(context, ["raw-obs-100"], []);
+      expect(result.valid).toBe(true);
+    });
+
+    test("validateGroundedReferences accepts raw-* IDs from features[].inputLineage", async () => {
+      const proj = await projectResearchBriefContext({ bundle: calmBundle });
+      const context: ResearchBriefContext = {
+        ...proj,
+        features: [
+          ...proj.features,
+          {
+            featureId: "feat-test",
+            family: "market_state",
+            featureKind: "number",
+            status: "available",
+            value: 1,
+            unit: "usd",
+            confidenceBps: 9000,
+            warnings: [],
+            inputLineage: ["raw-lineage-456"]
+          }
+        ]
+      };
+
+      const result = validateGroundedReferences(context, ["raw-lineage-456"], []);
+      expect(result.valid).toBe(true);
+    });
+
+    test("projectResearchBriefContext projects inputLineage onto feature summaries", async () => {
+      const featureWithLineage = {
+        ...calmBundle.deterministicFeatures[0],
+        inputLineage: ["raw-lineage-123", "raw-lineage-456"]
+      };
+      const testBundle: EvidenceBundleV1 = {
+        ...calmBundle,
+        // @ts-expect-error test feature override
+        deterministicFeatures: [featureWithLineage]
+      };
+
+      const proj = await projectResearchBriefContext({ bundle: testBundle });
+      expect(proj.features[0]?.inputLineage).toEqual(["raw-lineage-123", "raw-lineage-456"]);
+
+      const result = validateGroundedReferences(proj, ["raw-lineage-456"], []);
+      expect(result.valid).toBe(true);
+    });
+
+    test("validateGroundedReferences accepts contextualClaims sourceReferenceIds passed as sourceRefs", async () => {
+      const proj = await projectResearchBriefContext({ bundle: calmBundle });
+      const context: ResearchBriefContext = {
+        ...proj,
+        contextualClaims: {
+          ...proj.contextualClaims,
+          supportResistance: [
+            {
+              evidenceId: "sr-claim-1",
+              kind: "support",
+              claim: "test claim",
+              direction: "bullish",
+              confidenceBps: 8000,
+              sourceReferenceIds: ["raw-claim-ref-789"]
+            }
+          ]
+        }
+      };
+
+      const result = validateGroundedReferences(context, [], ["raw-claim-ref-789"]);
+      expect(result.valid).toBe(true);
+    });
+
+    test("byte length check operates without Node.js Buffer global", async () => {
+      const originalBuffer = globalThis.Buffer;
+      try {
+        // @ts-expect-error testing environment independence
+        delete globalThis.Buffer;
+        const proj = await projectResearchBriefContext({ bundle: calmBundle });
+        expect(proj).toBeDefined();
+      } finally {
+        globalThis.Buffer = originalBuffer;
+      }
+    });
+
+    test("validateGroundedReferences accepts raw-* IDs from contextualClaims sourceReferenceIds", async () => {
+      const proj = await projectResearchBriefContext({ bundle: calmBundle });
+      const context: ResearchBriefContext = {
+        ...proj,
+        contextualClaims: {
+          ...proj.contextualClaims,
+          supportResistance: [
+            {
+              evidenceId: "sr-claim-1",
+              kind: "support",
+              claim: "test claim",
+              direction: "bullish",
+              confidenceBps: 8000,
+              sourceReferenceIds: ["raw-claim-ref-789"]
+            }
+          ]
+        }
+      };
+
+      const result = validateGroundedReferences(context, ["raw-claim-ref-789"], []);
+      expect(result.valid).toBe(true);
+    });
+
+    // Drift is caught at compile time by CONTEXT_IDENTIFIER_FIELDS, which is
+    // typed `Record<keyof ResearchBriefContext, boolean>` — adding a field to
+    // the context without classifying it fails `tsc`. These tests cover the
+    // other half: that every field classified as identifier-bearing is
+    // actually consumed by the allow-list builder.
+    it("classifies every field of the projected context", async () => {
+      const projContext = await projectResearchBriefContext({ bundle: calmBundle });
+      for (const key of Object.keys(projContext)) {
+        expect(CONTEXT_IDENTIFIER_FIELDS).toHaveProperty(key);
+      }
+    });
+
+    it("grounds an identifier drawn from every identifier-bearing field", async () => {
+      const projContext = await projectResearchBriefContext({ bundle: calmBundle });
+      const context: ResearchBriefContext = {
+        ...projContext,
+        features: [
+          {
+            featureId: "feat-drift",
+            family: "market_state",
+            featureKind: "number",
+            status: "available",
+            value: 1,
+            unit: null,
+            confidenceBps: 9000,
+            warnings: [],
+            inputLineage: ["raw-drift-lineage"]
+          }
+        ],
+        contextualClaims: {
+          ...projContext.contextualClaims,
+          flows: [
+            {
+              evidenceId: "flow-drift",
+              kind: "flow",
+              claim: "test claim",
+              direction: "bullish",
+              confidenceBps: 8000,
+              sourceReferenceIds: ["raw-drift-claim-ref"]
+            }
+          ]
+        },
+        sourceReferences: [
+          { referenceId: "raw-drift-source", sourceType: "api", locator: "https://example.com" }
+        ],
+        priorBrief: {
+          briefId: "brief-drift",
+          generatedAt: "2026-01-01T00:00:00.000Z",
+          summary: "s",
+          keyTakeaways: [],
+          supportsCurrentRegime: "unknown",
+          confidenceScore: 0.5
+        }
+      };
+
+      // One id per field marked `true` in CONTEXT_IDENTIFIER_FIELDS.
+      const ids = [
+        "feat-drift",
+        "raw-drift-lineage",
+        "flow-drift",
+        "raw-drift-claim-ref",
+        "raw-drift-source",
+        "brief-drift"
+      ];
+      const result = validateGroundedReferences(context, ids, []);
+      expect(result.unsupportedIds).toEqual([]);
+      expect(result.valid).toBe(true);
     });
   });
 

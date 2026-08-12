@@ -4,7 +4,8 @@ import type { EvidenceBundleV1 } from "../../../src/contracts/generated/evidence
 import type { PersistedResearchBrief } from "../../../src/contracts/research-brief.js";
 import {
   mapPersistedBriefToCanonicalBrief,
-  mapPersistedBriefToCanonicalBundle
+  mapPersistedBriefToCanonicalBundle,
+  BUNDLE_IDENTIFIER_FIELDS
 } from "../../../src/domain/brief/map-to-evidence-bundle.js";
 
 const calmBundle = calmFixture as unknown as EvidenceBundleV1;
@@ -142,6 +143,111 @@ describe("map-to-evidence-bundle", () => {
         "brief-prior-999"
       ]);
     });
+
+    test("accepts raw reference IDs from sourceReferences in brief citation", () => {
+      const bundleWithRawSourceRef: EvidenceBundleV1 = {
+        ...calmBundle,
+        sourceReferences: [
+          ...calmBundle.sourceReferences,
+          {
+            referenceId: "raw-obs-123",
+            sourceType: "api",
+            locator: "https://api.example.com/raw",
+            publishedAt: "2026-05-10T11:55:00.000Z",
+            observedAt: "2026-05-10T12:00:00.000Z",
+            contentHash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        ]
+      };
+
+      const briefWithRawRef: PersistedResearchBrief = {
+        ...validPersistedBrief,
+        llmOutput: {
+          ...validPersistedBrief.llmOutput,
+          sourceEvidenceIds: ["raw-obs-123"]
+        }
+      };
+
+      const mappedBrief = mapPersistedBriefToCanonicalBrief(
+        bundleWithRawSourceRef,
+        briefWithRawRef,
+        "brief-raw-ref-1"
+      );
+
+      expect(mappedBrief.sourceEvidenceIds).toEqual(["raw-obs-123"]);
+    });
+
+    test("accepts raw reference IDs from deterministicFeatures inputLineage in brief citation", () => {
+      const bundleWithRawLineage: EvidenceBundleV1 = {
+        ...calmBundle,
+        deterministicFeatures: calmBundle.deterministicFeatures.map((f, i) =>
+          i === 0 ? { ...f, inputLineage: ["raw-obs-456"] } : f
+        ) as EvidenceBundleV1["deterministicFeatures"]
+      };
+
+      const briefWithRawLineage: PersistedResearchBrief = {
+        ...validPersistedBrief,
+        llmOutput: {
+          ...validPersistedBrief.llmOutput,
+          sourceEvidenceIds: ["raw-obs-456"]
+        }
+      };
+
+      const mappedBrief = mapPersistedBriefToCanonicalBrief(
+        bundleWithRawLineage,
+        briefWithRawLineage,
+        "brief-raw-lineage-1"
+      );
+
+      expect(mappedBrief.sourceEvidenceIds).toEqual(["raw-obs-456"]);
+    });
+
+    test("accepts raw reference IDs from contextualEvidence sourceReferenceIds in brief citation", () => {
+      const bundleWithClaimSourceRef: EvidenceBundleV1 = {
+        ...calmBundle,
+        contextualEvidence: {
+          ...calmBundle.contextualEvidence,
+          supportResistance: [
+            {
+              evidenceId: "sr-calm-1",
+              kind: "support_zone",
+              claim: "Support zone",
+              direction: "bullish",
+              confidenceBps: 8000,
+              observedAt: "2026-05-10T12:00:00.000Z",
+              expiresAt: null,
+              sourceReferenceIds: ["raw-claim-ref-789"],
+              provenanceMethod: "derived"
+            }
+          ]
+        }
+      };
+
+      const briefWithClaimRef: PersistedResearchBrief = {
+        ...validPersistedBrief,
+        llmOutput: {
+          ...validPersistedBrief.llmOutput,
+          sourceEvidenceIds: ["raw-claim-ref-789"]
+        }
+      };
+
+      const mappedBrief = mapPersistedBriefToCanonicalBrief(
+        bundleWithClaimSourceRef,
+        briefWithClaimRef,
+        "brief-claim-ref-1"
+      );
+
+      expect(mappedBrief.sourceEvidenceIds).toEqual(["raw-claim-ref-789"]);
+    });
+
+    // Drift is caught at compile time by BUNDLE_IDENTIFIER_FIELDS, which is
+    // typed `Record<keyof EvidenceBundleV1, boolean>` — adding a field to the
+    // contract without classifying it fails `tsc`.
+    test("classifies every field of EvidenceBundleV1", () => {
+      for (const key of Object.keys(calmBundle)) {
+        expect(BUNDLE_IDENTIFIER_FIELDS).toHaveProperty(key);
+      }
+    });
   });
 
   test("leaves source bundle object untouched (non-mutating)", () => {
@@ -150,19 +256,33 @@ describe("map-to-evidence-bundle", () => {
     expect(JSON.stringify(calmBundle)).toBe(originalJson);
   });
 
-  test("degraded brief maps with grounded fallback evidence and available coverage", () => {
+  test("sets coverage to unavailable when brief is degraded", () => {
+    const bundleWithAvailableCoverage: EvidenceBundleV1 = {
+      ...calmBundle,
+      assessment: {
+        ...calmBundle.assessment,
+        coverage: {
+          ...calmBundle.assessment.coverage,
+          researchBrief: "available"
+        },
+        warnings: calmBundle.assessment.warnings.filter(
+          (w) => w.code !== "RESEARCH_BRIEF_UNAVAILABLE"
+        )
+      }
+    };
+
     const mappedBundle = mapPersistedBriefToCanonicalBundle(
-      calmBundle,
+      bundleWithAvailableCoverage,
       degradedPersistedBrief,
       "brief-degraded-1"
     );
 
     expect(mappedBundle.researchBrief).not.toBeNull();
     expect(mappedBundle.researchBrief?.briefId).toBe("brief-degraded-1");
-    expect(mappedBundle.assessment.coverage.researchBrief).toBe("available");
+    expect(mappedBundle.assessment.coverage.researchBrief).toBe("unavailable");
     expect(
       mappedBundle.assessment.warnings.some((w) => w.code === "RESEARCH_BRIEF_UNAVAILABLE")
-    ).toBe(false);
+    ).toBe(true);
   });
 
   test("mapPersistedBriefToCanonicalBrief maps persisted brief to ResearchBrief struct", () => {

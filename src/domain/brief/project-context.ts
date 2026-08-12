@@ -31,6 +31,7 @@ export interface ProjectedFeatureSummary {
   unit: string | null;
   confidenceBps: number;
   warnings: string[];
+  inputLineage: string[];
 }
 
 export interface ProjectedContextualClaimSummary {
@@ -89,6 +90,32 @@ export interface ResearchBriefContext {
   inputContextHash: string;
 }
 
+/**
+ * Compile-time drift guard for {@link validateGroundedReferences}.
+ *
+ * Every field of `ResearchBriefContext` is classified as either carrying
+ * identifiers the model may cite (`true`) or not (`false`). Adding a field to
+ * the context without classifying it here fails `tsc`.
+ *
+ * The guard is deliberately compile-time. A runtime key scan would throw inside
+ * `generate-research-brief`, where the surrounding catch turns any error into
+ * `generationStatus: "degraded"` with `degradationReason: "model_error"` — so a
+ * field addition would silently degrade every brief and blame the model, which
+ * is the exact failure this validator exists to prevent.
+ */
+export const CONTEXT_IDENTIFIER_FIELDS: Record<keyof ResearchBriefContext, boolean> = {
+  pair: false,
+  asOf: false,
+  features: true,
+  contextualClaims: true,
+  sourceReferences: true,
+  assessment: false,
+  priorBrief: true,
+  currentRegimeEvidence: false,
+  projectionWarnings: false,
+  inputContextHash: false
+};
+
 function truncateString(str: string, maxLength: number): string {
   if (str.length <= maxLength) return str;
   return str.slice(0, maxLength);
@@ -116,16 +143,21 @@ export async function projectResearchBriefContext(
   }
 
   const features: ProjectedFeatureSummary[] = featuresSource
-    .map((f: DeterministicFeature) => ({
-      featureId: f.featureId,
-      family: f.family,
-      featureKind: f.featureKind,
-      status: f.status,
-      value: f.value,
-      unit: f.unit,
-      confidenceBps: f.confidenceBps,
-      warnings: [...(f.warnings || [])].sort()
-    }))
+    .map((f: DeterministicFeature) => {
+      // inputLineage is a required non-empty tuple on DeterministicFeature.
+      const lineage = f.inputLineage;
+      return {
+        featureId: f.featureId,
+        family: f.family,
+        featureKind: f.featureKind,
+        status: f.status,
+        value: f.value,
+        unit: f.unit,
+        confidenceBps: f.confidenceBps,
+        warnings: [...(f.warnings || [])].sort(),
+        inputLineage: [...lineage].sort()
+      };
+    })
     .sort((a, b) => a.featureId.localeCompare(b.featureId));
 
   // 2. Contextual evidence claims
@@ -260,7 +292,7 @@ export async function projectResearchBriefContext(
 
   // Enforce UTF-8 byte limit
   const serialized = JSON.stringify(context);
-  const utf8Bytes = Buffer.byteLength(serialized, "utf8");
+  const utf8Bytes = new TextEncoder().encode(serialized).length;
   if (utf8Bytes > MAX_CONTEXT_BYTES) {
     throw new ResearchBriefContextError(
       `Projected context size (${utf8Bytes} bytes) exceeds maximum cap of ${MAX_CONTEXT_BYTES} bytes.`,
@@ -282,30 +314,56 @@ export function validateGroundedReferences(
   sourceRefs: string[]
 ): ValidationResult {
   const availableEvidenceIds = new Set<string>();
+  const availableSourceRefIds = new Set<string>();
 
-  for (const f of context.features) {
-    availableEvidenceIds.add(f.featureId);
+  const features = context.features || [];
+  for (const f of features) {
+    if (f && f.featureId) {
+      availableEvidenceIds.add(f.featureId);
+    }
+    const lineage = f?.inputLineage || [];
+    for (const lineageId of lineage) {
+      if (lineageId) {
+        availableEvidenceIds.add(lineageId);
+      }
+    }
   }
 
+  const contextualClaims = context.contextualClaims || {};
   const claimFamilies = [
-    context.contextualClaims.supportResistance,
-    context.contextualClaims.flows,
-    context.contextualClaims.derivatives,
-    context.contextualClaims.events,
-    context.contextualClaims.newsRegulatory
+    contextualClaims.supportResistance || [],
+    contextualClaims.flows || [],
+    contextualClaims.derivatives || [],
+    contextualClaims.events || [],
+    contextualClaims.newsRegulatory || []
   ];
 
   for (const family of claimFamilies) {
     for (const claim of family) {
-      availableEvidenceIds.add(claim.evidenceId);
+      if (claim && claim.evidenceId) {
+        availableEvidenceIds.add(claim.evidenceId);
+      }
+      const refIds = claim?.sourceReferenceIds || [];
+      for (const refId of refIds) {
+        if (refId) {
+          availableEvidenceIds.add(refId);
+          availableSourceRefIds.add(refId);
+        }
+      }
     }
   }
 
-  if (context.priorBrief && context.priorBrief.briefId) {
-    availableEvidenceIds.add(context.priorBrief.briefId);
+  const sourceReferences = context.sourceReferences || [];
+  for (const sr of sourceReferences) {
+    if (sr && sr.referenceId) {
+      availableEvidenceIds.add(sr.referenceId);
+      availableSourceRefIds.add(sr.referenceId);
+    }
   }
 
-  const availableSourceRefIds = new Set<string>(context.sourceReferences.map((r) => r.referenceId));
+  if (context.priorBrief?.briefId) {
+    availableEvidenceIds.add(context.priorBrief.briefId);
+  }
 
   const unsupportedIds: string[] = [];
 

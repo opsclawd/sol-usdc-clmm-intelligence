@@ -4,6 +4,34 @@ import type {
 } from "../../contracts/generated/evidence-bundle-v1.js";
 import type { PersistedResearchBrief } from "../../contracts/research-brief.js";
 
+/**
+ * Compile-time drift guard: every field of `EvidenceBundleV1` is classified as
+ * either carrying identifiers a brief may cite (`true`) or not (`false`).
+ * Adding a field to the contract without classifying it here fails `tsc`.
+ *
+ * Compile-time rather than a runtime key scan: both callers of
+ * `mapPersistedBriefToCanonicalBundle` wrap it in a catch that drops the brief
+ * from the bundle, so a throw here would silently discard briefs in production.
+ */
+export const BUNDLE_IDENTIFIER_FIELDS: Record<keyof EvidenceBundleV1, boolean> = {
+  schemaVersion: false,
+  pair: false,
+  scope: false,
+  source: false,
+  runId: false,
+  correlationId: false,
+  createdAt: false,
+  asOf: false,
+  freshUntil: false,
+  expiresAt: false,
+  deterministicFeatures: true,
+  contextualEvidence: true,
+  researchBrief: false,
+  sourceReferences: true,
+  assessment: false,
+  provenance: false
+};
+
 export function mapPersistedBriefToCanonicalBrief(
   base: EvidenceBundleV1,
   artifact: PersistedResearchBrief,
@@ -11,25 +39,51 @@ export function mapPersistedBriefToCanonicalBrief(
 ): ResearchBrief {
   // Validate that sourceEvidenceIds reference features/claims present in the base bundle
   const availableEvidenceIds = new Set<string>();
-  for (const f of base.deterministicFeatures) {
-    availableEvidenceIds.add(f.featureId);
+
+  const features = base.deterministicFeatures || [];
+  for (const f of features) {
+    if (f && f.featureId) {
+      availableEvidenceIds.add(f.featureId);
+    }
+    const lineage = f?.inputLineage || [];
+    for (const lineageId of lineage) {
+      if (lineageId) {
+        availableEvidenceIds.add(lineageId);
+      }
+    }
   }
 
+  const contextualEvidence = base.contextualEvidence || {};
   const claimFamilies = [
-    base.contextualEvidence.supportResistance || [],
-    base.contextualEvidence.flows || [],
-    base.contextualEvidence.derivatives || [],
-    base.contextualEvidence.events || [],
-    base.contextualEvidence.newsRegulatory || []
+    contextualEvidence.supportResistance || [],
+    contextualEvidence.flows || [],
+    contextualEvidence.derivatives || [],
+    contextualEvidence.events || [],
+    contextualEvidence.newsRegulatory || []
   ];
 
   for (const family of claimFamilies) {
     for (const c of family) {
-      availableEvidenceIds.add(c.evidenceId);
+      if (c && c.evidenceId) {
+        availableEvidenceIds.add(c.evidenceId);
+      }
+      const refIds = c?.sourceReferenceIds || [];
+      for (const refId of refIds) {
+        if (refId) {
+          availableEvidenceIds.add(refId);
+        }
+      }
     }
   }
 
-  if (artifact.priorBriefRef && artifact.priorBriefRef.briefId) {
+  const sourceReferences = base.sourceReferences || [];
+  for (const sr of sourceReferences) {
+    if (sr && sr.referenceId) {
+      availableEvidenceIds.add(sr.referenceId);
+    }
+  }
+
+  if (artifact.priorBriefRef?.briefId) {
     availableEvidenceIds.add(String(artifact.priorBriefRef.briefId));
   }
 
@@ -82,12 +136,24 @@ export function mapPersistedBriefToCanonicalBundle(
   const bundleCopy: EvidenceBundleV1 = JSON.parse(JSON.stringify(base));
 
   bundleCopy.researchBrief = canonicalBrief;
-  bundleCopy.assessment.coverage.researchBrief = "available";
 
-  // Remove only RESEARCH_BRIEF_UNAVAILABLE warning if present
-  bundleCopy.assessment.warnings = bundleCopy.assessment.warnings.filter(
-    (w) => w.code !== "RESEARCH_BRIEF_UNAVAILABLE"
-  );
+  if (artifact.generationStatus === "degraded") {
+    bundleCopy.assessment.coverage.researchBrief = "unavailable";
+    if (!bundleCopy.assessment.warnings.some((w) => w.code === "RESEARCH_BRIEF_UNAVAILABLE")) {
+      bundleCopy.assessment.warnings.push({
+        code: "RESEARCH_BRIEF_UNAVAILABLE",
+        message: "No research brief available",
+        affectedFamilies: ["researchBrief"]
+      });
+    }
+  } else if (artifact.generationStatus === "complete") {
+    bundleCopy.assessment.coverage.researchBrief = "available";
+
+    // Remove only RESEARCH_BRIEF_UNAVAILABLE warning if present
+    bundleCopy.assessment.warnings = bundleCopy.assessment.warnings.filter(
+      (w) => w.code !== "RESEARCH_BRIEF_UNAVAILABLE"
+    );
+  }
 
   return bundleCopy;
 }

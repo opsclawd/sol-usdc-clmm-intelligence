@@ -352,7 +352,8 @@ export function createEvidenceBundleContract(): EvidenceBundleContract {
       }
       if (
         payload.researchBrief !== null &&
-        payload.assessment.coverage.researchBrief !== "available"
+        payload.assessment.coverage.researchBrief !== "available" &&
+        payload.assessment.coverage.researchBrief !== "unavailable"
       ) {
         errors.push({
           message: "researchBrief coverage mismatch",
