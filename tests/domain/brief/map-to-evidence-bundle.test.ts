@@ -179,12 +179,9 @@ describe("map-to-evidence-bundle", () => {
     test("accepts raw reference IDs from deterministicFeatures inputLineage in brief citation", () => {
       const bundleWithRawLineage: EvidenceBundleV1 = {
         ...calmBundle,
-        deterministicFeatures: [
-          {
-            ...calmBundle.deterministicFeatures[0],
-            inputLineage: ["raw-obs-456"]
-          }
-        ]
+        deterministicFeatures: calmBundle.deterministicFeatures.map((f, i) =>
+          i === 0 ? { ...f, inputLineage: ["raw-obs-456"] } : f
+        ) as EvidenceBundleV1["deterministicFeatures"]
       };
 
       const briefWithRawLineage: PersistedResearchBrief = {
@@ -212,26 +209,22 @@ describe("map-to-evidence-bundle", () => {
   });
 
   test("sets coverage to unavailable when brief is degraded", () => {
-    const bundleWithWarning: EvidenceBundleV1 = {
+    const bundleWithAvailableCoverage: EvidenceBundleV1 = {
       ...calmBundle,
       assessment: {
         ...calmBundle.assessment,
         coverage: {
           ...calmBundle.assessment.coverage,
-          researchBrief: "unavailable"
+          researchBrief: "available"
         },
-        warnings: [
-          {
-            code: "RESEARCH_BRIEF_UNAVAILABLE",
-            message: "No research brief available",
-            affectedFamilies: ["researchBrief"]
-          }
-        ]
+        warnings: calmBundle.assessment.warnings.filter(
+          (w) => w.code !== "RESEARCH_BRIEF_UNAVAILABLE"
+        )
       }
     };
 
     const mappedBundle = mapPersistedBriefToCanonicalBundle(
-      bundleWithWarning,
+      bundleWithAvailableCoverage,
       degradedPersistedBrief,
       "brief-degraded-1"
     );

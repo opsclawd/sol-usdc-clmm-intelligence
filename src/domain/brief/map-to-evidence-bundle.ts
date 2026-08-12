@@ -13,6 +13,11 @@ export function mapPersistedBriefToCanonicalBrief(
   const availableEvidenceIds = new Set<string>();
   for (const f of base.deterministicFeatures) {
     availableEvidenceIds.add(f.featureId);
+    if (Array.isArray(f.inputLineage)) {
+      for (const lineageId of f.inputLineage) {
+        availableEvidenceIds.add(lineageId);
+      }
+    }
   }
 
   const claimFamilies = [
@@ -26,6 +31,14 @@ export function mapPersistedBriefToCanonicalBrief(
   for (const family of claimFamilies) {
     for (const c of family) {
       availableEvidenceIds.add(c.evidenceId);
+    }
+  }
+
+  if (Array.isArray(base.sourceReferences)) {
+    for (const sr of base.sourceReferences) {
+      if (sr && sr.referenceId) {
+        availableEvidenceIds.add(sr.referenceId);
+      }
     }
   }
 
@@ -82,12 +95,24 @@ export function mapPersistedBriefToCanonicalBundle(
   const bundleCopy: EvidenceBundleV1 = JSON.parse(JSON.stringify(base));
 
   bundleCopy.researchBrief = canonicalBrief;
-  bundleCopy.assessment.coverage.researchBrief = "available";
 
-  // Remove only RESEARCH_BRIEF_UNAVAILABLE warning if present
-  bundleCopy.assessment.warnings = bundleCopy.assessment.warnings.filter(
-    (w) => w.code !== "RESEARCH_BRIEF_UNAVAILABLE"
-  );
+  if (artifact.generationStatus === "degraded") {
+    bundleCopy.assessment.coverage.researchBrief = "unavailable";
+    if (!bundleCopy.assessment.warnings.some((w) => w.code === "RESEARCH_BRIEF_UNAVAILABLE")) {
+      bundleCopy.assessment.warnings.push({
+        code: "RESEARCH_BRIEF_UNAVAILABLE",
+        message: "No research brief available",
+        affectedFamilies: ["researchBrief"]
+      });
+    }
+  } else {
+    bundleCopy.assessment.coverage.researchBrief = "available";
+
+    // Remove only RESEARCH_BRIEF_UNAVAILABLE warning if present
+    bundleCopy.assessment.warnings = bundleCopy.assessment.warnings.filter(
+      (w) => w.code !== "RESEARCH_BRIEF_UNAVAILABLE"
+    );
+  }
 
   return bundleCopy;
 }

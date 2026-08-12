@@ -281,10 +281,37 @@ export function validateGroundedReferences(
   sourceEvidenceIds: string[],
   sourceRefs: string[]
 ): ValidationResult {
+  const knownKeys = new Set([
+    "version",
+    "bundleId",
+    "pair",
+    "asOf",
+    "scope",
+    "assessment",
+    "features",
+    "contextualClaims",
+    "sourceReferences",
+    "priorBrief",
+    "currentRegimeEvidence",
+    "projectionWarnings",
+    "inputContextHash"
+  ]);
+
+  for (const key of Object.keys(context)) {
+    if (!knownKeys.has(key)) {
+      throw new Error(`Unhandled field in projected context: ${key}`);
+    }
+  }
+
   const availableEvidenceIds = new Set<string>();
 
   for (const f of context.features) {
     availableEvidenceIds.add(f.featureId);
+    if (Array.isArray((f as unknown as { inputLineage?: string[] }).inputLineage)) {
+      for (const lineageId of (f as unknown as { inputLineage: string[] }).inputLineage) {
+        availableEvidenceIds.add(lineageId);
+      }
+    }
   }
 
   const claimFamilies = [
@@ -298,6 +325,14 @@ export function validateGroundedReferences(
   for (const family of claimFamilies) {
     for (const claim of family) {
       availableEvidenceIds.add(claim.evidenceId);
+    }
+  }
+
+  if (Array.isArray(context.sourceReferences)) {
+    for (const sr of context.sourceReferences) {
+      if (sr && sr.referenceId) {
+        availableEvidenceIds.add(sr.referenceId);
+      }
     }
   }
 
