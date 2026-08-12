@@ -365,7 +365,7 @@ describe("collectOnChainFlow", () => {
         { source: "helius-api", thresholds: VALID_THRESHOLDS, lookbackMs: LOOKBACK_MS }
       );
 
-      expect(result.status).toBe("accepted");
+      expect(result.status).toBe("empty");
       expect(result.filtered).toBe(1);
       expect(result.accepted).toBe(0);
       expect(rawObservationRepo["store"].size).toBe(0);

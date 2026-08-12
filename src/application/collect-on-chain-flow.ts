@@ -153,7 +153,7 @@ export async function collectOnChainFlow(
 
   if (snapshot.events.length === 0) {
     return {
-      status: "accepted",
+      status: "empty",
       accepted: 0,
       filtered: 0,
       replayed: 0,
@@ -385,6 +385,8 @@ export async function collectOnChainFlow(
     status = "identical_replay";
   } else if (conflict > 0 || failed > 0) {
     status = "failed";
+  } else if (accepted === 0 && replayed === 0 && failed === 0 && conflict === 0) {
+    status = "empty";
   }
 
   const firstAccepted = results.find((r) => r.outcome === "accepted");
