@@ -176,6 +176,18 @@ const MALFORMED_RESULT: OnChainFlowCollectionResult = {
   results: []
 };
 
+const EMPTY_RESULT: OnChainFlowCollectionResult = {
+  status: "empty",
+  accepted: 0,
+  filtered: 0,
+  replayed: 0,
+  failed: 0,
+  conflict: 0,
+  sourceObservationId: null,
+  sourceObservationKey: null,
+  results: []
+};
+
 describe("onChainFlowJob", () => {
   beforeEach(() => {
     mockCreateCollectionRunContext.mockReset();
@@ -468,41 +480,53 @@ describe("onChainFlowJob", () => {
       expect(result.shouldFailCommand).toBe(false);
     });
 
-    it("does not convert absence into evidence (empty results treated as accepted with no evidence)", async () => {
+    it("all empty sources reduce to COMPLETE without usable evidence or command failure", async () => {
       mockCreateCollectionRunContext.mockReturnValue(VALID_CONTEXT);
-      mockCollectOnChainFlow
-        .mockResolvedValueOnce({
-          status: "accepted",
-          accepted: 0,
-          filtered: 0,
-          replayed: 0,
-          failed: 0,
-          conflict: 0,
-          sourceObservationId: null,
-          sourceObservationKey: null,
-          results: []
-        })
-        .mockResolvedValueOnce({
-          status: "accepted",
-          accepted: 0,
-          filtered: 0,
-          replayed: 0,
-          failed: 0,
-          conflict: 0,
-          sourceObservationId: null,
-          sourceObservationKey: null,
-          results: []
-        });
-
-      const sources: ConfiguredOnChainFlowSource[] = [
-        { source: "helius-api", adapter: makeOnChainFlowSource() },
-        { source: "birdeye-api", adapter: makeOnChainFlowSource() }
-      ];
-      const deps = makeJobDeps(sources);
-      const result = await runOnChainFlowJob(deps);
+      mockCollectOnChainFlow.mockResolvedValue(EMPTY_RESULT);
+      const result = await runOnChainFlowJob(
+        makeJobDeps([
+          { source: "helius-api", adapter: makeOnChainFlowSource() },
+          { source: "birdeye-api", adapter: makeOnChainFlowSource() }
+        ])
+      );
 
       expect(result.status).toBe("COMPLETE");
       expect(result.shouldFailCommand).toBe(false);
+      expect(result.outcomes.every((outcome) => outcome.hasUsableEvidence === false)).toBe(true);
+    });
+
+    it("one empty and one accepted source reduce to COMPLETE while only accepted is usable", async () => {
+      mockCreateCollectionRunContext.mockReturnValue(VALID_CONTEXT);
+      mockCollectOnChainFlow
+        .mockResolvedValueOnce(EMPTY_RESULT)
+        .mockResolvedValueOnce(ACCEPTED_RESULT);
+      const result = await runOnChainFlowJob(
+        makeJobDeps([
+          { source: "helius-api", adapter: makeOnChainFlowSource() },
+          { source: "birdeye-api", adapter: makeOnChainFlowSource() }
+        ])
+      );
+
+      expect(result.status).toBe("COMPLETE");
+      expect(result.shouldFailCommand).toBe(false);
+      expect(result.outcomes.filter((outcome) => outcome.hasUsableEvidence)).toHaveLength(1);
+    });
+
+    it("one empty and one unavailable source reduce to PARTIAL without command failure", async () => {
+      mockCreateCollectionRunContext.mockReturnValue(VALID_CONTEXT);
+      mockCollectOnChainFlow
+        .mockResolvedValueOnce(EMPTY_RESULT)
+        .mockResolvedValueOnce(UNAVAILABLE_RESULT);
+      const result = await runOnChainFlowJob(
+        makeJobDeps([
+          { source: "helius-api", adapter: makeOnChainFlowSource() },
+          { source: "birdeye-api", adapter: makeOnChainFlowSource() }
+        ])
+      );
+
+      expect(result.status).toBe("PARTIAL");
+      expect(result.shouldFailCommand).toBe(false);
+      expect(result.outcomes.every((outcome) => outcome.hasUsableEvidence === false)).toBe(true);
     });
   });
 
