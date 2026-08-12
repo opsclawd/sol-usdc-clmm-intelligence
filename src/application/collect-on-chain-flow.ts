@@ -374,7 +374,8 @@ export async function collectOnChainFlow(
     }
   }
 
-  let status: OnChainFlowCollectionResult["status"] = "accepted";
+  let status: OnChainFlowCollectionResult["status"] =
+    accepted === 0 && replayed === 0 && failed === 0 && conflict === 0 ? "empty" : "accepted";
   if (accepted === 0 && replayed === 0 && failed > 0) {
     status = "malformed";
   } else if (hasStale && accepted > 0 && failed === 0 && conflict === 0) {
@@ -385,8 +386,6 @@ export async function collectOnChainFlow(
     status = "identical_replay";
   } else if (conflict > 0 || failed > 0) {
     status = "failed";
-  } else if (accepted === 0 && replayed === 0 && failed === 0 && conflict === 0) {
-    status = "empty";
   }
 
   const firstAccepted = results.find((r) => r.outcome === "accepted");
