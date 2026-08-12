@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, it } from "vitest";
 import calmFixture from "../../fixtures/research-brief/calm.json" with { type: "json" };
 import trendingFixture from "../../fixtures/research-brief/trending.json" with { type: "json" };
 import stressedFixture from "../../fixtures/research-brief/stressed.json" with { type: "json" };
@@ -9,6 +9,7 @@ import {
   projectResearchBriefContext,
   validateGroundedReferences,
   ResearchBriefContextError,
+  type ResearchBriefContext,
   MAX_PROJECTED_FEATURES
 } from "../../../src/domain/brief/project-context.js";
 
@@ -190,6 +191,61 @@ describe("project-context", () => {
       );
       expect(invalidResult.valid).toBe(false);
       expect(invalidResult.unsupportedIds).toContain("brief:arbitrary-123");
+    });
+
+    test("validateGroundedReferences accepts raw-* IDs present in sourceReferences", async () => {
+      const proj = await projectResearchBriefContext({ bundle: calmBundle });
+      const context: ResearchBriefContext = {
+        ...proj,
+        sourceReferences: [
+          ...proj.sourceReferences,
+          { referenceId: "raw-obs-100", sourceType: "raw_observation", locator: "loc-100" }
+        ]
+      };
+
+      const result = validateGroundedReferences(context, ["raw-obs-100"], []);
+      expect(result.valid).toBe(true);
+    });
+
+    test("validateGroundedReferences accepts raw-* IDs from features[].inputLineage", async () => {
+      const proj = await projectResearchBriefContext({ bundle: calmBundle });
+      const context = {
+        ...proj,
+        features: [
+          ...proj.features,
+          {
+            featureId: "feat-test",
+            family: "market_state",
+            featureKind: "number",
+            status: "available",
+            value: 1,
+            unit: "usd",
+            confidenceBps: 9000,
+            warnings: [],
+            inputLineage: ["raw-lineage-456"]
+          }
+        ]
+      };
+
+      const result = validateGroundedReferences(
+        context as unknown as ResearchBriefContext,
+        ["raw-lineage-456"],
+        []
+      );
+      expect(result.valid).toBe(true);
+    });
+
+    it("fails when an unhandled field is added to the projected context", async () => {
+      const projContext = await projectResearchBriefContext({ bundle: calmBundle });
+      // Inject a new unhandled field to simulate drift
+      const context = {
+        ...projContext,
+        newEvidenceField: [{ id: "new-123" }]
+      } as unknown as ResearchBriefContext;
+
+      expect(() => validateGroundedReferences(context, ["new-123"], [])).toThrow(
+        /unhandled field/i
+      );
     });
   });
 
