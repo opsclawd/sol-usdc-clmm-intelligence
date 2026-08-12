@@ -282,15 +282,12 @@ export function validateGroundedReferences(
   sourceRefs: string[]
 ): ValidationResult {
   const knownKeys = new Set([
-    "version",
-    "bundleId",
     "pair",
     "asOf",
-    "scope",
-    "assessment",
     "features",
     "contextualClaims",
     "sourceReferences",
+    "assessment",
     "priorBrief",
     "currentRegimeEvidence",
     "projectionWarnings",
@@ -299,48 +296,60 @@ export function validateGroundedReferences(
 
   for (const key of Object.keys(context)) {
     if (!knownKeys.has(key)) {
-      throw new Error(`Unhandled field in projected context: ${key}`);
+      throw new Error(`Unhandled field in ResearchBriefContext: ${key}`);
     }
   }
 
   const availableEvidenceIds = new Set<string>();
+  const availableSourceRefIds = new Set<string>();
 
-  for (const f of context.features) {
-    availableEvidenceIds.add(f.featureId);
-    if (Array.isArray((f as unknown as { inputLineage?: string[] }).inputLineage)) {
-      for (const lineageId of (f as unknown as { inputLineage: string[] }).inputLineage) {
+  const features = context.features || [];
+  for (const f of features) {
+    if (f && f.featureId) {
+      availableEvidenceIds.add(f.featureId);
+    }
+    const lineage = (f as { inputLineage?: string[] }).inputLineage || [];
+    for (const lineageId of lineage) {
+      if (lineageId) {
         availableEvidenceIds.add(lineageId);
       }
     }
   }
 
+  const contextualClaims = context.contextualClaims || {};
   const claimFamilies = [
-    context.contextualClaims.supportResistance,
-    context.contextualClaims.flows,
-    context.contextualClaims.derivatives,
-    context.contextualClaims.events,
-    context.contextualClaims.newsRegulatory
+    contextualClaims.supportResistance || [],
+    contextualClaims.flows || [],
+    contextualClaims.derivatives || [],
+    contextualClaims.events || [],
+    contextualClaims.newsRegulatory || []
   ];
 
   for (const family of claimFamilies) {
     for (const claim of family) {
-      availableEvidenceIds.add(claim.evidenceId);
-    }
-  }
-
-  if (Array.isArray(context.sourceReferences)) {
-    for (const sr of context.sourceReferences) {
-      if (sr && sr.referenceId) {
-        availableEvidenceIds.add(sr.referenceId);
+      if (claim && claim.evidenceId) {
+        availableEvidenceIds.add(claim.evidenceId);
+      }
+      const refIds = claim?.sourceReferenceIds || [];
+      for (const refId of refIds) {
+        if (refId) {
+          availableEvidenceIds.add(refId);
+        }
       }
     }
   }
 
-  if (context.priorBrief && context.priorBrief.briefId) {
-    availableEvidenceIds.add(context.priorBrief.briefId);
+  const sourceReferences = context.sourceReferences || [];
+  for (const sr of sourceReferences) {
+    if (sr && sr.referenceId) {
+      availableEvidenceIds.add(sr.referenceId);
+      availableSourceRefIds.add(sr.referenceId);
+    }
   }
 
-  const availableSourceRefIds = new Set<string>(context.sourceReferences.map((r) => r.referenceId));
+  if (context.priorBrief?.briefId) {
+    availableEvidenceIds.add(context.priorBrief.briefId);
+  }
 
   const unsupportedIds: string[] = [];
 

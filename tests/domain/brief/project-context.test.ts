@@ -235,6 +235,29 @@ describe("project-context", () => {
       expect(result.valid).toBe(true);
     });
 
+    test("validateGroundedReferences accepts raw-* IDs from contextualClaims sourceReferenceIds", async () => {
+      const proj = await projectResearchBriefContext({ bundle: calmBundle });
+      const context: ResearchBriefContext = {
+        ...proj,
+        contextualClaims: {
+          ...proj.contextualClaims,
+          supportResistance: [
+            {
+              evidenceId: "sr-claim-1",
+              kind: "support",
+              claim: "test claim",
+              direction: "bullish",
+              confidenceBps: 8000,
+              sourceReferenceIds: ["raw-claim-ref-789"]
+            }
+          ]
+        }
+      };
+
+      const result = validateGroundedReferences(context, ["raw-claim-ref-789"], []);
+      expect(result.valid).toBe(true);
+    });
+
     it("fails when an unhandled field is added to the projected context", async () => {
       const projContext = await projectResearchBriefContext({ bundle: calmBundle });
       // Inject a new unhandled field to simulate drift
@@ -246,6 +269,16 @@ describe("project-context", () => {
       expect(() => validateGroundedReferences(context, ["new-123"], [])).toThrow(
         /unhandled field/i
       );
+    });
+
+    it("fails drift check when obsolete fields like version or bundleId are present", async () => {
+      const projContext = await projectResearchBriefContext({ bundle: calmBundle });
+      const context = {
+        ...projContext,
+        version: "v1"
+      } as unknown as ResearchBriefContext;
+
+      expect(() => validateGroundedReferences(context, [], [])).toThrow(/unhandled field/i);
     });
   });
 
