@@ -4,45 +4,84 @@ import type {
 } from "../../contracts/generated/evidence-bundle-v1.js";
 import type { PersistedResearchBrief } from "../../contracts/research-brief.js";
 
+const VALID_BUNDLE_KEYS = new Set([
+  "schemaVersion",
+  "pair",
+  "scope",
+  "source",
+  "runId",
+  "correlationId",
+  "createdAt",
+  "asOf",
+  "freshUntil",
+  "expiresAt",
+  "deterministicFeatures",
+  "contextualEvidence",
+  "researchBrief",
+  "sourceReferences",
+  "assessment",
+  "provenance"
+]);
+
 export function mapPersistedBriefToCanonicalBrief(
   base: EvidenceBundleV1,
   artifact: PersistedResearchBrief,
   briefId: string
 ): ResearchBrief {
+  // Validate top-level keys to detect drift in EvidenceBundleV1
+  for (const key of Object.keys(base)) {
+    if (!VALID_BUNDLE_KEYS.has(key)) {
+      throw new Error(`Unhandled field in EvidenceBundleV1: ${key}`);
+    }
+  }
+
   // Validate that sourceEvidenceIds reference features/claims present in the base bundle
   const availableEvidenceIds = new Set<string>();
-  for (const f of base.deterministicFeatures) {
-    availableEvidenceIds.add(f.featureId);
-    if (Array.isArray(f.inputLineage)) {
-      for (const lineageId of f.inputLineage) {
+
+  const features = base.deterministicFeatures || [];
+  for (const f of features) {
+    if (f && f.featureId) {
+      availableEvidenceIds.add(f.featureId);
+    }
+    const lineage = f?.inputLineage || [];
+    for (const lineageId of lineage) {
+      if (lineageId) {
         availableEvidenceIds.add(lineageId);
       }
     }
   }
 
+  const contextualEvidence = base.contextualEvidence || {};
   const claimFamilies = [
-    base.contextualEvidence.supportResistance || [],
-    base.contextualEvidence.flows || [],
-    base.contextualEvidence.derivatives || [],
-    base.contextualEvidence.events || [],
-    base.contextualEvidence.newsRegulatory || []
+    contextualEvidence.supportResistance || [],
+    contextualEvidence.flows || [],
+    contextualEvidence.derivatives || [],
+    contextualEvidence.events || [],
+    contextualEvidence.newsRegulatory || []
   ];
 
   for (const family of claimFamilies) {
     for (const c of family) {
-      availableEvidenceIds.add(c.evidenceId);
-    }
-  }
-
-  if (Array.isArray(base.sourceReferences)) {
-    for (const sr of base.sourceReferences) {
-      if (sr && sr.referenceId) {
-        availableEvidenceIds.add(sr.referenceId);
+      if (c && c.evidenceId) {
+        availableEvidenceIds.add(c.evidenceId);
+      }
+      const refIds = c?.sourceReferenceIds || [];
+      for (const refId of refIds) {
+        if (refId) {
+          availableEvidenceIds.add(refId);
+        }
       }
     }
   }
 
-  if (artifact.priorBriefRef && artifact.priorBriefRef.briefId) {
+  const sourceReferences = base.sourceReferences || [];
+  for (const sr of sourceReferences) {
+    if (sr && sr.referenceId) {
+      availableEvidenceIds.add(sr.referenceId);
+    }
+  }
+
+  if (artifact.priorBriefRef?.briefId) {
     availableEvidenceIds.add(String(artifact.priorBriefRef.briefId));
   }
 
@@ -105,7 +144,7 @@ export function mapPersistedBriefToCanonicalBundle(
         affectedFamilies: ["researchBrief"]
       });
     }
-  } else {
+  } else if (artifact.generationStatus === "complete") {
     bundleCopy.assessment.coverage.researchBrief = "available";
 
     // Remove only RESEARCH_BRIEF_UNAVAILABLE warning if present

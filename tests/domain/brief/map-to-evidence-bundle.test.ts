@@ -200,6 +200,59 @@ describe("map-to-evidence-bundle", () => {
 
       expect(mappedBrief.sourceEvidenceIds).toEqual(["raw-obs-456"]);
     });
+
+    test("accepts raw reference IDs from contextualEvidence sourceReferenceIds in brief citation", () => {
+      const bundleWithClaimSourceRef: EvidenceBundleV1 = {
+        ...calmBundle,
+        contextualEvidence: {
+          ...calmBundle.contextualEvidence,
+          supportResistance: [
+            {
+              evidenceId: "sr-calm-1",
+              kind: "support_zone",
+              claim: "Support zone",
+              direction: "bullish",
+              confidenceBps: 8000,
+              observedAt: "2026-05-10T12:00:00.000Z",
+              expiresAt: null,
+              sourceReferenceIds: ["raw-claim-ref-789"],
+              provenanceMethod: "derived"
+            }
+          ]
+        }
+      };
+
+      const briefWithClaimRef: PersistedResearchBrief = {
+        ...validPersistedBrief,
+        llmOutput: {
+          ...validPersistedBrief.llmOutput,
+          sourceEvidenceIds: ["raw-claim-ref-789"]
+        }
+      };
+
+      const mappedBrief = mapPersistedBriefToCanonicalBrief(
+        bundleWithClaimSourceRef,
+        briefWithClaimRef,
+        "brief-claim-ref-1"
+      );
+
+      expect(mappedBrief.sourceEvidenceIds).toEqual(["raw-claim-ref-789"]);
+    });
+
+    test("fails when an unhandled field is present in EvidenceBundleV1", () => {
+      const bundleWithUnhandledKey = {
+        ...calmBundle,
+        unhandledField: "drift-value"
+      } as unknown as EvidenceBundleV1;
+
+      expect(() =>
+        mapPersistedBriefToCanonicalBrief(
+          bundleWithUnhandledKey,
+          validPersistedBrief,
+          "brief-complete-1"
+        )
+      ).toThrowError(/Unhandled field in EvidenceBundleV1: unhandledField/i);
+    });
   });
 
   test("leaves source bundle object untouched (non-mutating)", () => {
