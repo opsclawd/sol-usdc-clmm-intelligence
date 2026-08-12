@@ -124,6 +124,25 @@ export interface CoreEvidencePipelineResult {
 
 const LOCK_KEY = "core-evidence-pipeline:SOL/USDC";
 
+function formatReportedCollectionFailure(result: CoreCollectionResult): string {
+  const sourceOutcomes = [
+    result.clmmV2,
+    result.pyth,
+    result.jupiter,
+    result.orca,
+    result.solana
+  ].map((outcome) => ({
+    sourceKey: outcome.sourceKey,
+    status: outcome.status,
+    hasUsableEvidence: outcome.hasUsableEvidence,
+    diagnostic: outcome.diagnostic ? redactSecretMentions(outcome.diagnostic) : null
+  }));
+
+  return redactSecretMentions(
+    `Collection reported ${result.status}: ${JSON.stringify(sourceOutcomes)}`
+  );
+}
+
 // Bounds how many positions are processed concurrently so the cron job
 // doesn't serialize dozens of sequential LLM round-trips (risking timeout)
 // while still respecting per-provider rate limits.
@@ -255,6 +274,11 @@ export async function runCoreEvidencePipeline(
         }
 
         if (collectionStatus === "UNAVAILABLE" || collectionStatus === "FAILED") {
+          diagnostics.push({
+            stage: "collection",
+            code: `COLLECTION_REPORTED_${collectionStatus}`,
+            message: formatReportedCollectionFailure(collectionResult)
+          });
           status = "failed";
         } else {
           let deriveSuccess = false;
