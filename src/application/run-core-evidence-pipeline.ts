@@ -273,7 +273,7 @@ export async function runCoreEvidencePipeline(
           sharedWarnings.push(redactSecretMentions(formatted));
         }
 
-        if (collectionStatus === "UNAVAILABLE" || collectionStatus === "FAILED") {
+        if (collectionResult.shouldFailCommand) {
           diagnostics.push({
             stage: "collection",
             code: `COLLECTION_REPORTED_${collectionStatus}`,
@@ -1308,6 +1308,13 @@ export async function runCoreEvidencePipeline(
     }
   }
 
+  if (cleanupErrors.length > 0) {
+    status = "failed";
+    for (const err of cleanupErrors) {
+      diagnostics.push(err);
+    }
+  }
+
   return {
     pipelineRunId,
     collectionStartedAtUnixMs,
@@ -1315,7 +1322,7 @@ export async function runCoreEvidencePipeline(
     collectionStatus,
     pair: pairResult,
     positions: Object.freeze([...positions]),
-    status: cleanupErrors.length > 0 ? "failed" : status,
+    status,
     warnings: Object.freeze([...sharedWarnings]),
     diagnostics: Object.freeze([...diagnostics]),
     cleanupErrors: Object.freeze([...cleanupErrors])
