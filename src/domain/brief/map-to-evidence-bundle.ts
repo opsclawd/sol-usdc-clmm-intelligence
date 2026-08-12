@@ -4,37 +4,39 @@ import type {
 } from "../../contracts/generated/evidence-bundle-v1.js";
 import type { PersistedResearchBrief } from "../../contracts/research-brief.js";
 
-const VALID_BUNDLE_KEYS = new Set([
-  "schemaVersion",
-  "pair",
-  "scope",
-  "source",
-  "runId",
-  "correlationId",
-  "createdAt",
-  "asOf",
-  "freshUntil",
-  "expiresAt",
-  "deterministicFeatures",
-  "contextualEvidence",
-  "researchBrief",
-  "sourceReferences",
-  "assessment",
-  "provenance"
-]);
+/**
+ * Compile-time drift guard: every field of `EvidenceBundleV1` is classified as
+ * either carrying identifiers a brief may cite (`true`) or not (`false`).
+ * Adding a field to the contract without classifying it here fails `tsc`.
+ *
+ * Compile-time rather than a runtime key scan: both callers of
+ * `mapPersistedBriefToCanonicalBundle` wrap it in a catch that drops the brief
+ * from the bundle, so a throw here would silently discard briefs in production.
+ */
+export const BUNDLE_IDENTIFIER_FIELDS: Record<keyof EvidenceBundleV1, boolean> = {
+  schemaVersion: false,
+  pair: false,
+  scope: false,
+  source: false,
+  runId: false,
+  correlationId: false,
+  createdAt: false,
+  asOf: false,
+  freshUntil: false,
+  expiresAt: false,
+  deterministicFeatures: true,
+  contextualEvidence: true,
+  researchBrief: false,
+  sourceReferences: true,
+  assessment: false,
+  provenance: false
+};
 
 export function mapPersistedBriefToCanonicalBrief(
   base: EvidenceBundleV1,
   artifact: PersistedResearchBrief,
   briefId: string
 ): ResearchBrief {
-  // Validate top-level keys to detect drift in EvidenceBundleV1
-  for (const key of Object.keys(base)) {
-    if (!VALID_BUNDLE_KEYS.has(key)) {
-      throw new Error(`Unhandled field in EvidenceBundleV1: ${key}`);
-    }
-  }
-
   // Validate that sourceEvidenceIds reference features/claims present in the base bundle
   const availableEvidenceIds = new Set<string>();
 

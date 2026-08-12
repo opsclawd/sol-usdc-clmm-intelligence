@@ -10,6 +10,7 @@ import {
   validateGroundedReferences,
   ResearchBriefContextError,
   type ResearchBriefContext,
+  CONTEXT_IDENTIFIER_FIELDS,
   MAX_PROJECTED_FEATURES
 } from "../../../src/domain/brief/project-context.js";
 
@@ -307,27 +308,73 @@ describe("project-context", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("fails when an unhandled field is added to the projected context", async () => {
+    // Drift is caught at compile time by CONTEXT_IDENTIFIER_FIELDS, which is
+    // typed `Record<keyof ResearchBriefContext, boolean>` — adding a field to
+    // the context without classifying it fails `tsc`. These tests cover the
+    // other half: that every field classified as identifier-bearing is
+    // actually consumed by the allow-list builder.
+    it("classifies every field of the projected context", async () => {
       const projContext = await projectResearchBriefContext({ bundle: calmBundle });
-      // Inject a new unhandled field to simulate drift
-      const context = {
-        ...projContext,
-        newEvidenceField: [{ id: "new-123" }]
-      } as unknown as ResearchBriefContext;
-
-      expect(() => validateGroundedReferences(context, ["new-123"], [])).toThrow(
-        /unhandled field/i
-      );
+      for (const key of Object.keys(projContext)) {
+        expect(CONTEXT_IDENTIFIER_FIELDS).toHaveProperty(key);
+      }
     });
 
-    it("fails drift check when obsolete fields like version or bundleId are present", async () => {
+    it("grounds an identifier drawn from every identifier-bearing field", async () => {
       const projContext = await projectResearchBriefContext({ bundle: calmBundle });
-      const context = {
+      const context: ResearchBriefContext = {
         ...projContext,
-        version: "v1"
-      } as unknown as ResearchBriefContext;
+        features: [
+          {
+            featureId: "feat-drift",
+            family: "market_state",
+            featureKind: "number",
+            status: "available",
+            value: 1,
+            unit: null,
+            confidenceBps: 9000,
+            warnings: [],
+            inputLineage: ["raw-drift-lineage"]
+          }
+        ],
+        contextualClaims: {
+          ...projContext.contextualClaims,
+          flows: [
+            {
+              evidenceId: "flow-drift",
+              kind: "flow",
+              claim: "test claim",
+              direction: "bullish",
+              confidenceBps: 8000,
+              sourceReferenceIds: ["raw-drift-claim-ref"]
+            }
+          ]
+        },
+        sourceReferences: [
+          { referenceId: "raw-drift-source", sourceType: "api", locator: "https://example.com" }
+        ],
+        priorBrief: {
+          briefId: "brief-drift",
+          generatedAt: "2026-01-01T00:00:00.000Z",
+          summary: "s",
+          keyTakeaways: [],
+          supportsCurrentRegime: "unknown",
+          confidenceScore: 0.5
+        }
+      };
 
-      expect(() => validateGroundedReferences(context, [], [])).toThrow(/unhandled field/i);
+      // One id per field marked `true` in CONTEXT_IDENTIFIER_FIELDS.
+      const ids = [
+        "feat-drift",
+        "raw-drift-lineage",
+        "flow-drift",
+        "raw-drift-claim-ref",
+        "raw-drift-source",
+        "brief-drift"
+      ];
+      const result = validateGroundedReferences(context, ids, []);
+      expect(result.unsupportedIds).toEqual([]);
+      expect(result.valid).toBe(true);
     });
   });
 

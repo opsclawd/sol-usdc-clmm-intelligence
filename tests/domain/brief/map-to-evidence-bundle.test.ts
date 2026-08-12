@@ -4,7 +4,8 @@ import type { EvidenceBundleV1 } from "../../../src/contracts/generated/evidence
 import type { PersistedResearchBrief } from "../../../src/contracts/research-brief.js";
 import {
   mapPersistedBriefToCanonicalBrief,
-  mapPersistedBriefToCanonicalBundle
+  mapPersistedBriefToCanonicalBundle,
+  BUNDLE_IDENTIFIER_FIELDS
 } from "../../../src/domain/brief/map-to-evidence-bundle.js";
 
 const calmBundle = calmFixture as unknown as EvidenceBundleV1;
@@ -239,19 +240,13 @@ describe("map-to-evidence-bundle", () => {
       expect(mappedBrief.sourceEvidenceIds).toEqual(["raw-claim-ref-789"]);
     });
 
-    test("fails when an unhandled field is present in EvidenceBundleV1", () => {
-      const bundleWithUnhandledKey = {
-        ...calmBundle,
-        unhandledField: "drift-value"
-      } as unknown as EvidenceBundleV1;
-
-      expect(() =>
-        mapPersistedBriefToCanonicalBrief(
-          bundleWithUnhandledKey,
-          validPersistedBrief,
-          "brief-complete-1"
-        )
-      ).toThrowError(/Unhandled field in EvidenceBundleV1: unhandledField/i);
+    // Drift is caught at compile time by BUNDLE_IDENTIFIER_FIELDS, which is
+    // typed `Record<keyof EvidenceBundleV1, boolean>` — adding a field to the
+    // contract without classifying it fails `tsc`.
+    test("classifies every field of EvidenceBundleV1", () => {
+      for (const key of Object.keys(calmBundle)) {
+        expect(BUNDLE_IDENTIFIER_FIELDS).toHaveProperty(key);
+      }
     });
   });
 

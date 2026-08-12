@@ -31,7 +31,7 @@ export interface ProjectedFeatureSummary {
   unit: string | null;
   confidenceBps: number;
   warnings: string[];
-  inputLineage?: string[];
+  inputLineage: string[];
 }
 
 export interface ProjectedContextualClaimSummary {
@@ -90,6 +90,32 @@ export interface ResearchBriefContext {
   inputContextHash: string;
 }
 
+/**
+ * Compile-time drift guard for {@link validateGroundedReferences}.
+ *
+ * Every field of `ResearchBriefContext` is classified as either carrying
+ * identifiers the model may cite (`true`) or not (`false`). Adding a field to
+ * the context without classifying it here fails `tsc`.
+ *
+ * The guard is deliberately compile-time. A runtime key scan would throw inside
+ * `generate-research-brief`, where the surrounding catch turns any error into
+ * `generationStatus: "degraded"` with `degradationReason: "model_error"` — so a
+ * field addition would silently degrade every brief and blame the model, which
+ * is the exact failure this validator exists to prevent.
+ */
+export const CONTEXT_IDENTIFIER_FIELDS: Record<keyof ResearchBriefContext, boolean> = {
+  pair: false,
+  asOf: false,
+  features: true,
+  contextualClaims: true,
+  sourceReferences: true,
+  assessment: false,
+  priorBrief: true,
+  currentRegimeEvidence: false,
+  projectionWarnings: false,
+  inputContextHash: false
+};
+
 function truncateString(str: string, maxLength: number): string {
   if (str.length <= maxLength) return str;
   return str.slice(0, maxLength);
@@ -118,7 +144,8 @@ export async function projectResearchBriefContext(
 
   const features: ProjectedFeatureSummary[] = featuresSource
     .map((f: DeterministicFeature) => {
-      const lineage = "inputLineage" in f && Array.isArray(f.inputLineage) ? f.inputLineage : [];
+      // inputLineage is a required non-empty tuple on DeterministicFeature.
+      const lineage = f.inputLineage;
       return {
         featureId: f.featureId,
         family: f.family,
@@ -286,25 +313,6 @@ export function validateGroundedReferences(
   sourceEvidenceIds: string[],
   sourceRefs: string[]
 ): ValidationResult {
-  const knownKeys = new Set([
-    "pair",
-    "asOf",
-    "features",
-    "contextualClaims",
-    "sourceReferences",
-    "assessment",
-    "priorBrief",
-    "currentRegimeEvidence",
-    "projectionWarnings",
-    "inputContextHash"
-  ]);
-
-  for (const key of Object.keys(context)) {
-    if (!knownKeys.has(key)) {
-      throw new Error(`Unhandled field in ResearchBriefContext: ${key}`);
-    }
-  }
-
   const availableEvidenceIds = new Set<string>();
   const availableSourceRefIds = new Set<string>();
 
