@@ -1,9 +1,14 @@
-import type { ZodSchema } from "zod";
+import type { ZodType, ZodTypeDef } from "zod";
 
 export interface StructuredGenerationRequest<T> {
   readonly systemPrompt: string;
   readonly context: unknown;
-  readonly schema: ZodSchema<T>;
+  /**
+   * Input is `unknown` rather than `T`: a schema may legitimately preprocess
+   * the model's reply before validating (see clampLlmBriefOutput). ZodSchema<T>
+   * requires input and output to match, which excludes that.
+   */
+  readonly schema: ZodType<T, ZodTypeDef, unknown>;
   readonly schemaName: string;
   readonly timeoutMs?: number;
 }

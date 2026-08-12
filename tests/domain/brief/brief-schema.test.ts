@@ -55,6 +55,65 @@ describe("Research Brief Contracts & Schemas", () => {
   };
 
   describe("LlmResearchBriefOutputSchema", () => {
+    it("clamps an over-long advisory string instead of rejecting the brief", () => {
+      // Production run 1e347864 discarded a whole position bundle because
+      // unsupportedOrMissingInputs[0] exceeded 1000 chars. Nothing was published
+      // for that scope. Losing the analysis over one long caveat is
+      // disproportionate, so over-long prose is truncated with a marker.
+      const result = LlmResearchBriefOutputSchema.safeParse({
+        ...validLlmOutput,
+        unsupportedOrMissingInputs: ["x".repeat(1500)]
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        const first = result.data.unsupportedOrMissingInputs[0]!;
+        expect(first.length).toBeLessThanOrEqual(1000);
+        expect(first.endsWith("… [truncated]")).toBe(true);
+      }
+    });
+
+    it("clamps over-long summary and reasoning prose", () => {
+      const result = LlmResearchBriefOutputSchema.safeParse({
+        ...validLlmOutput,
+        summary: "s".repeat(6000),
+        regimeAssessmentReasoning: "r".repeat(6000),
+        confidenceReasoning: "c".repeat(6000)
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.summary.length).toBeLessThanOrEqual(5000);
+        expect(result.data.regimeAssessmentReasoning.length).toBeLessThanOrEqual(5000);
+        expect(result.data.confidenceReasoning.length).toBeLessThanOrEqual(5000);
+      }
+    });
+
+    it("clamps too many array items rather than rejecting", () => {
+      const result = LlmResearchBriefOutputSchema.safeParse({
+        ...validLlmOutput,
+        keyTakeaways: Array.from({ length: 40 }, (_, i) => `takeaway ${i}`)
+      });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.keyTakeaways.length).toBe(20);
+    });
+
+    it("never truncates evidence ids — a clipped id would corrupt provenance", () => {
+      const result = LlmResearchBriefOutputSchema.safeParse({
+        ...validLlmOutput,
+        sourceEvidenceIds: ["e".repeat(200)]
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it("still rejects prohibited policy language after clamping", () => {
+      // Clamping must not become a way to smuggle a policy instruction past
+      // the refinement by burying it beyond the cap.
+      const result = LlmResearchBriefOutputSchema.safeParse({
+        ...validLlmOutput,
+        summary: "We should rebalance the position now."
+      });
+      expect(result.success).toBe(false);
+    });
+
     it("accepts degradationReason: null from a model that did not degrade", () => {
       // Observed in production on the hermes transport: the model emitted
       // `"degradationReason": null` for a healthy brief. `.optional()` rejected
@@ -126,7 +185,11 @@ describe("Research Brief Contracts & Schemas", () => {
       expect(LlmResearchBriefOutputSchema.safeParse(emptyIds).success).toBe(true);
     });
 
-    it("rejects overlong arrays and strings", () => {
+    it("clamps overlong arrays and strings to the declared limits", () => {
+      // Behaviour change: these used to be rejected outright, which discarded a
+      // whole brief over advisory prose the model could not measure. They are
+      // now clamped to the same limits the schema declares. The limits
+      // themselves are unchanged and still appear in the generated JSON schema.
       const overlongSummary = {
         ...validLlmOutput,
         summary: "a".repeat(5001)
@@ -135,8 +198,12 @@ describe("Research Brief Contracts & Schemas", () => {
         ...validLlmOutput,
         keyTakeaways: Array(25).fill("Takeaway text")
       };
-      expect(LlmResearchBriefOutputSchema.safeParse(overlongSummary).success).toBe(false);
-      expect(LlmResearchBriefOutputSchema.safeParse(tooManyTakeaways).success).toBe(false);
+      const s1 = LlmResearchBriefOutputSchema.safeParse(overlongSummary);
+      const s2 = LlmResearchBriefOutputSchema.safeParse(tooManyTakeaways);
+      expect(s1.success).toBe(true);
+      expect(s2.success).toBe(true);
+      if (s1.success) expect(s1.data.summary.length).toBeLessThanOrEqual(5000);
+      if (s2.success) expect(s2.data.keyTakeaways.length).toBe(20);
     });
 
     it("rejects policy language such as direct rebalance/transaction instructions", () => {

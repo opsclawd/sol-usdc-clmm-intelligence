@@ -45,7 +45,46 @@ export const SupportsCurrentRegimeSchema = z.enum([
 
 export const ResearchBriefGenerationStatusSchema = z.enum(["complete", "degraded"]);
 
-export const LlmResearchBriefOutputSchema = z
+/**
+ * Clamp over-long model output instead of rejecting the whole brief.
+ *
+ * The length caps are visible to the model — zodToJsonSchema emits maxLength
+ * and maxItems into the prompt — but models exceed them anyway. Losing an
+ * entire analysis because one advisory caveat ran past 1000 characters is
+ * disproportionate: production run 1e347864 discarded a position bundle
+ * entirely over `unsupportedOrMissingInputs[0]` being too long, and nothing
+ * was published for that scope.
+ *
+ * Applied as a preprocess so the declared schema — and therefore the prompt the
+ * model sees — still states the real limits. Prose is truncated with a visible
+ * marker rather than silently; identifiers are never touched, because a
+ * truncated evidence id would corrupt provenance and fail grounding anyway.
+ */
+const TRUNCATION_MARKER = "… [truncated]";
+
+function clampText(value: unknown, max: number): unknown {
+  if (typeof value !== "string" || value.length <= max) return value;
+  return value.slice(0, max - TRUNCATION_MARKER.length) + TRUNCATION_MARKER;
+}
+
+function clampTextArray(value: unknown, maxItems: number, maxLen: number): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.slice(0, maxItems).map((v) => clampText(v, maxLen));
+}
+
+export function clampLlmBriefOutput(value: unknown): unknown {
+  if (typeof value !== "object" || value === null) return value;
+  const v = { ...(value as Record<string, unknown>) };
+  v.summary = clampText(v.summary, 5000);
+  v.regimeAssessmentReasoning = clampText(v.regimeAssessmentReasoning, 5000);
+  v.confidenceReasoning = clampText(v.confidenceReasoning, 5000);
+  v.keyTakeaways = clampTextArray(v.keyTakeaways, 20, 1000);
+  v.unsupportedOrMissingInputs = clampTextArray(v.unsupportedOrMissingInputs, 50, 1000);
+  // sourceEvidenceIds deliberately untouched — identifiers must stay exact.
+  return v;
+}
+
+export const LlmResearchBriefOutputBaseSchema = z
   .object({
     summary: z.string().min(1).max(5000).superRefine(validateNoPolicyLanguage),
     keyTakeaways: z
@@ -65,9 +104,18 @@ export const LlmResearchBriefOutputSchema = z
     // Downstream reads it with a truthy check, so null and undefined are
     // equivalent there. Especially likely on the hermes transport, where the
     // schema is stated in the prompt rather than enforced by the provider.
-    degradationReason: ResearchBriefDegradationReasonSchema.nullish()
+    // `.nullish()` alone emitted no type or enum into the generated JSON schema,
+    // so the model saw a bare field name with no allowed values. Union with null
+    // keeps null acceptable (see #186) while restoring the enum in the prompt.
+    degradationReason: z.union([ResearchBriefDegradationReasonSchema, z.null()]).optional()
   })
   .strict();
+
+export const LlmResearchBriefOutputSchema: z.ZodType<
+  z.infer<typeof LlmResearchBriefOutputBaseSchema>,
+  z.ZodTypeDef,
+  unknown
+> = z.preprocess(clampLlmBriefOutput, LlmResearchBriefOutputBaseSchema);
 
 export const ResearchBriefProviderMetadataSchema = z
   .object({
