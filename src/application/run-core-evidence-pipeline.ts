@@ -1308,13 +1308,6 @@ export async function runCoreEvidencePipeline(
     }
   }
 
-  if (cleanupErrors.length > 0) {
-    status = "failed";
-    for (const err of cleanupErrors) {
-      diagnostics.push(err);
-    }
-  }
-
   return {
     pipelineRunId,
     collectionStartedAtUnixMs,
@@ -1322,7 +1315,7 @@ export async function runCoreEvidencePipeline(
     collectionStatus,
     pair: pairResult,
     positions: Object.freeze([...positions]),
-    status,
+    status: cleanupErrors.length > 0 ? "failed" : status,
     warnings: Object.freeze([...sharedWarnings]),
     diagnostics: Object.freeze([...diagnostics]),
     cleanupErrors: Object.freeze([...cleanupErrors])
