@@ -33,6 +33,7 @@ export interface CollectOnChainFlowDeps {
 export interface OnChainFlowCollectionResult {
   status:
     | "accepted"
+    | "empty"
     | "partial"
     | "degraded"
     | "identical_replay"
