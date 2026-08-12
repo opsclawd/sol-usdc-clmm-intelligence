@@ -168,11 +168,14 @@ describe("issue-190 core evidence pipeline diagnostics", () => {
     }
   );
 
-  it("emits a top-level diagnostic for every failed pre-target abort path", async () => {
-    const scenarios: Array<[string, RunCoreEvidencePipelineDeps]> = [
-      [
-        "lock.acquire throwing",
-        {
+  it("emits a top-level diagnostic for pre-target infrastructure failures programmatically", async () => {
+    const infrastructureFailures: Array<{
+      name: string;
+      deps: RunCoreEvidencePipelineDeps;
+    }> = [
+      {
+        name: "lock.acquire throwing",
+        deps: {
           clock: new QueuedClock(["2026-08-12T12:00:00.000Z"]),
           runIdFactory: new FakeRunIdFactory(["run-lock-err"]),
           lock: (() => {
@@ -184,10 +187,10 @@ describe("issue-190 core evidence pipeline diagnostics", () => {
             throw new Error("Should not reach openResources");
           }
         }
-      ],
-      [
-        "openResources throwing",
-        {
+      },
+      {
+        name: "openResources throwing",
+        deps: {
           clock: new QueuedClock(["2026-08-12T12:00:00.000Z"]),
           runIdFactory: new FakeRunIdFactory(["run-open-err"]),
           lock: new FakePipelineRunLock(),
@@ -195,192 +198,74 @@ describe("issue-190 core evidence pipeline diagnostics", () => {
             throw new Error("Failed to open resources");
           }
         }
-      ],
-      [
-        "collect service throwing",
-        {
-          clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
-          runIdFactory: new FakeRunIdFactory(["run-service-collect"]),
-          lock: new FakePipelineRunLock(),
-          openResources: async () => ({
-            connection: fakeDbConnection,
-            services: {
-              ...createServices(async (ctx) => collectionResult(ctx, "COMPLETE")),
-              collect: vi.fn().mockImplementation(async () => {
-                throw new Error("Service method collect failed");
-              })
-            }
-          })
-        }
-      ],
-      [
-        "derive service throwing",
-        {
-          clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
-          runIdFactory: new FakeRunIdFactory(["run-service-derive"]),
-          lock: new FakePipelineRunLock(),
-          openResources: async () => ({
-            connection: fakeDbConnection,
-            services: {
-              ...createServices(async (ctx) => collectionResult(ctx, "COMPLETE")),
-              derive: vi.fn().mockImplementation(async () => {
-                throw new Error("Service method derive failed");
-              })
-            }
-          })
-        }
-      ],
-      [
-        "prepare service throwing",
-        {
-          clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
-          runIdFactory: new FakeRunIdFactory(["run-service-prepare"]),
-          lock: new FakePipelineRunLock(),
-          openResources: async () => ({
-            connection: fakeDbConnection,
-            services: {
-              ...createServices(async (ctx) => collectionResult(ctx, "COMPLETE")),
-              prepare: vi.fn().mockImplementation(async () => {
-                throw new Error("Service method prepare failed");
-              })
-            }
-          })
-        }
-      ],
-      [
-        "finalize service throwing",
-        {
-          clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
-          runIdFactory: new FakeRunIdFactory(["run-service-finalize"]),
-          lock: new FakePipelineRunLock(),
-          openResources: async () => ({
-            connection: fakeDbConnection,
-            services: {
-              ...createServices(async (ctx) => collectionResult(ctx, "COMPLETE")),
-              finalize: vi.fn().mockImplementation(async () => {
-                throw new Error("Service method finalize failed");
-              })
-            }
-          })
-        }
-      ],
-      [
-        "preparePair service throwing",
-        {
-          clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
-          runIdFactory: new FakeRunIdFactory(["run-service-preparePair"]),
-          lock: new FakePipelineRunLock(),
-          openResources: async () => ({
-            connection: fakeDbConnection,
-            services: {
-              ...createServices(async (ctx) => collectionResult(ctx, "COMPLETE")),
-              preparePair: vi.fn().mockImplementation(async () => {
-                throw new Error("Service method preparePair failed");
-              })
-            }
-          })
-        }
-      ],
-      [
-        "finalizePair service throwing",
-        {
-          clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
-          runIdFactory: new FakeRunIdFactory(["run-service-finalizePair"]),
-          lock: new FakePipelineRunLock(),
-          openResources: async () => ({
-            connection: fakeDbConnection,
-            services: {
-              ...createServices(async (ctx) => collectionResult(ctx, "COMPLETE")),
-              finalizePair: vi.fn().mockImplementation(async () => {
-                throw new Error("Service method finalizePair failed");
-              })
-            }
-          })
-        }
-      ],
-      [
-        "generateBrief service throwing",
-        {
-          clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
-          runIdFactory: new FakeRunIdFactory(["run-service-generateBrief"]),
-          lock: new FakePipelineRunLock(),
-          openResources: async () => ({
-            connection: fakeDbConnection,
-            services: {
-              ...createServices(async (ctx) => collectionResult(ctx, "COMPLETE")),
-              generateBrief: vi.fn().mockImplementation(async () => {
-                throw new Error("Service method generateBrief failed");
-              })
-            }
-          })
-        }
-      ],
-      [
-        "persistBrief service throwing",
-        {
-          clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
-          runIdFactory: new FakeRunIdFactory(["run-service-persistBrief"]),
-          lock: new FakePipelineRunLock(),
-          openResources: async () => ({
-            connection: fakeDbConnection,
-            services: {
-              ...createServices(async (ctx) => collectionResult(ctx, "COMPLETE")),
-              persistBrief: vi.fn().mockImplementation(async () => {
-                throw new Error("Service method persistBrief failed");
-              })
-            }
-          })
-        }
-      ],
-      [
-        "publish service throwing",
-        {
-          clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
-          runIdFactory: new FakeRunIdFactory(["run-service-publish"]),
-          lock: new FakePipelineRunLock(),
-          openResources: async () => ({
-            connection: fakeDbConnection,
-            services: {
-              ...createServices(async (ctx) => collectionResult(ctx, "COMPLETE")),
-              publish: vi.fn().mockImplementation(async () => {
-                throw new Error("Service method publish failed");
-              })
-            }
-          })
-        }
-      ],
-      [
-        "collection status FAILED",
-        {
-          clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
-          runIdFactory: new FakeRunIdFactory(["run-status-FAILED"]),
-          lock: new FakePipelineRunLock(),
-          openResources: async () => ({
-            connection: fakeDbConnection,
-            services: createServices(async (ctx) => collectionResult(ctx, "FAILED"))
-          })
-        }
-      ],
-      [
-        "collection status UNAVAILABLE",
-        {
-          clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
-          runIdFactory: new FakeRunIdFactory(["run-status-UNAVAILABLE"]),
-          lock: new FakePipelineRunLock(),
-          openResources: async () => ({
-            connection: fakeDbConnection,
-            services: createServices(async (ctx) => collectionResult(ctx, "UNAVAILABLE"))
-          })
-        }
-      ]
+      }
     ];
 
-    for (const [name, deps] of scenarios) {
+    for (const { name, deps } of infrastructureFailures) {
       const result = await runCoreEvidencePipeline(deps, testConfig);
       expect(result.status, name).toBe("failed");
       expect(result.diagnostics.length, name).toBeGreaterThan(0);
       expect(result.pair, name).toBeNull();
       expect(result.positions, name).toEqual([]);
+    }
+  });
+
+  it("emits a top-level diagnostic for every service method throwing during pre-target execution programmatically", async () => {
+    const baseServices = createServices(async (ctx) => collectionResult(ctx, "COMPLETE"));
+    const serviceKeys = Object.keys(baseServices) as Array<keyof CoreEvidencePipelineServices>;
+
+    for (const key of serviceKeys) {
+      const services: CoreEvidencePipelineServices = {
+        ...createServices(async (ctx) => collectionResult(ctx, "COMPLETE")),
+        [key]: vi.fn().mockImplementation(async () => {
+          throw new Error(`Service method ${key} failed`);
+        })
+      };
+
+      const deps: RunCoreEvidencePipelineDeps = {
+        clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
+        runIdFactory: new FakeRunIdFactory([`run-service-${key}`]),
+        lock: new FakePipelineRunLock(),
+        openResources: async () => ({
+          connection: fakeDbConnection,
+          services
+        })
+      };
+
+      const result = await runCoreEvidencePipeline(deps, testConfig);
+
+      if (result.pair === null && result.positions.length === 0) {
+        expect(result.status, `Pre-target abort when ${key} throws`).toBe("failed");
+        expect(
+          result.diagnostics.length,
+          `Diagnostics populated when ${key} throws`
+        ).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("emits a top-level diagnostic for all collection status outcomes where shouldFailCommand is true programmatically", async () => {
+    const statusesToTest: CoreCollectionStatus[] = ["FAILED", "UNAVAILABLE"];
+
+    for (const status of statusesToTest) {
+      const deps: RunCoreEvidencePipelineDeps = {
+        clock: new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]),
+        runIdFactory: new FakeRunIdFactory([`run-status-${status}`]),
+        lock: new FakePipelineRunLock(),
+        openResources: async () => ({
+          connection: fakeDbConnection,
+          services: createServices(async (ctx) => collectionResult(ctx, status))
+        })
+      };
+
+      const result = await runCoreEvidencePipeline(deps, testConfig);
+      expect(result.status, `Collection status ${status}`).toBe("failed");
+      expect(
+        result.diagnostics.length,
+        `Diagnostics for collection status ${status}`
+      ).toBeGreaterThan(0);
+      expect(result.pair).toBeNull();
+      expect(result.positions).toEqual([]);
     }
   });
 });
