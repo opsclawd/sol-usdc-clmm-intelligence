@@ -128,83 +128,46 @@ function createServices(
 }
 
 describe("issue-190 core evidence pipeline diagnostics", () => {
-  it("reports all source outcomes when collection returns FAILED without warnings", async () => {
-    const expectedStatus: CoreCollectionStatus = "FAILED";
-    const runIdFactory = new FakeRunIdFactory(["run-1"]);
-    const lock = new FakePipelineRunLock();
-    const clock = new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]);
+  it.each(["FAILED", "UNAVAILABLE"] as CoreCollectionStatus[])(
+    "reports all source outcomes when collection returns %s without warnings",
+    async (expectedStatus) => {
+      const runIdFactory = new FakeRunIdFactory(["run-1"]);
+      const lock = new FakePipelineRunLock();
+      const clock = new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]);
 
-    const deps: RunCoreEvidencePipelineDeps = {
-      clock,
-      runIdFactory,
-      lock,
-      openResources: async () => ({
-        connection: fakeDbConnection,
-        services: createServices(async (ctx) => collectionResult(ctx, expectedStatus))
-      })
-    };
+      const deps: RunCoreEvidencePipelineDeps = {
+        clock,
+        runIdFactory,
+        lock,
+        openResources: async () => ({
+          connection: fakeDbConnection,
+          services: createServices(async (ctx) => collectionResult(ctx, expectedStatus))
+        })
+      };
 
-    const result = await runCoreEvidencePipeline(deps, testConfig);
+      const result = await runCoreEvidencePipeline(deps, testConfig);
 
-    expect(result.status).toBe("failed");
-    expect(result.collectionStatus).toBe(expectedStatus);
-    expect(result.warnings).toEqual([]);
-    expect(result.pair).toBeNull();
-    expect(result.positions).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]).toMatchObject({
-      stage: "collection",
-      code: `COLLECTION_REPORTED_${expectedStatus}`
-    });
+      expect(result.status).toBe("failed");
+      expect(result.collectionStatus).toBe(expectedStatus);
+      expect(result.warnings).toEqual([]);
+      expect(result.pair).toBeNull();
+      expect(result.positions).toEqual([]);
+      expect(result.diagnostics).toHaveLength(1);
+      expect(result.diagnostics[0]).toMatchObject({
+        stage: "collection",
+        code: `COLLECTION_REPORTED_${expectedStatus}`
+      });
 
-    const message = result.diagnostics[0]?.message ?? "";
-    for (const source of ["clmm-v2", "pyth", "jupiter", "orca", "solana"]) {
-      expect(message).toContain(`"source":"${source}"`);
+      const message = result.diagnostics[0]?.message ?? "";
+      for (const source of ["clmm-v2", "pyth", "jupiter", "orca", "solana"]) {
+        expect(message).toContain(`"sourceKey":"${source}"`);
+      }
+      expect(message).toContain('"status":"failed"');
+      expect(message).toContain('"hasUsableEvidence":false');
+      expect(message).toContain('"diagnostic":"[REDACTED]"');
+      expect(message).not.toContain("super-secret");
     }
-    expect(message).toContain('"status":"failed"');
-    expect(message).toContain('"hasUsableEvidence":false');
-    expect(message).toContain('"diagnostic":"[REDACTED]"');
-    expect(message).not.toContain("super-secret");
-  });
-
-  it("reports all source outcomes when collection returns UNAVAILABLE without warnings", async () => {
-    const expectedStatus: CoreCollectionStatus = "UNAVAILABLE";
-    const runIdFactory = new FakeRunIdFactory(["run-1"]);
-    const lock = new FakePipelineRunLock();
-    const clock = new QueuedClock(["2026-08-12T12:00:00.000Z", "2026-08-12T12:00:01.000Z"]);
-
-    const deps: RunCoreEvidencePipelineDeps = {
-      clock,
-      runIdFactory,
-      lock,
-      openResources: async () => ({
-        connection: fakeDbConnection,
-        services: createServices(async (ctx) => collectionResult(ctx, expectedStatus))
-      })
-    };
-
-    const result = await runCoreEvidencePipeline(deps, testConfig);
-
-    expect(result.status).toBe("failed");
-    expect(result.collectionStatus).toBe(expectedStatus);
-    expect(result.warnings).toEqual([]);
-    expect(result.pair).toBeNull();
-    expect(result.positions).toEqual([]);
-    expect(result.diagnostics).toHaveLength(1);
-    expect(result.diagnostics[0]).toMatchObject({
-      stage: "collection",
-      code: `COLLECTION_REPORTED_${expectedStatus}`
-    });
-
-    const message = result.diagnostics[0]?.message ?? "";
-    for (const source of ["clmm-v2", "pyth", "jupiter", "orca", "solana"]) {
-      expect(message).toContain(`"source":"${source}"`);
-    }
-    expect(message).toContain('"status":"failed"');
-    expect(message).toContain('"hasUsableEvidence":false');
-    expect(message).toContain('"diagnostic":"[REDACTED]"');
-    expect(message).not.toContain("super-secret");
-  });
+  );
 
   it("emits a top-level diagnostic for every failed pre-target abort path", async () => {
     const scenarios: Array<[string, () => Promise<CoreEvidencePipelineResult>]> = [
