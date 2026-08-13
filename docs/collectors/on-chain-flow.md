@@ -42,9 +42,29 @@ This routine collects on-chain flow events from two providers: Helius (windowed 
 
 Helius `dex_net_flow` queries `WHIRLPOOL_ADDRESS` (`addressContext.addressType: "contract"`). The collector walks the Helius transaction history endpoint for the Whirlpool address across the lookback window, aggregating USDC transfers into pool (buy volume) and out of pool (sell volume). Reaching the 25-page cap marks the aggregate as `partial` completeness without losing the calculated volume.
 
-## Threshold Gating & Calibration Rationale
+## Collection Window Alignment & Cadence Contract
 
-`on-chain-flow` runs every 15 minutes (`*/15 * * * *`). The default lookback is 900,000 ms (15 minutes), so adjacent runs have no structural gap.
+`on-chain-flow` runs on a 15-minute cadence (`*/15 * * * *`) with a default lookback of 900,000 ms (`ON_CHAIN_FLOW_LOOKBACK_MS`). Collection windows are deterministically floored to an epoch/UTC-aligned grid to prevent scheduling jitter or retries from creating overlapping windows or gaps:
+
+```text
+windowEndUnixMs = floor(runStartedAtUnixMs / ON_CHAIN_FLOW_LOOKBACK_MS)
+                     * ON_CHAIN_FLOW_LOOKBACK_MS
+windowStartUnixMs = windowEndUnixMs - ON_CHAIN_FLOW_LOOKBACK_MS
+```
+
+Key window properties:
+
+- **Epoch/UTC Alignment**: Window boundaries snap to exact grid multiples (e.g. `:00`, `:15`, `:30`, `:45`).
+- **Deterministic Replays**: Retries inside one cadence bucket evaluate the exact same closed window, producing identical observation hashes that cleanly trigger `identical_replay`.
+- **Exact Tiling**: Adjacent scheduled buckets tile perfectly with `windowStartUnixMs` matching the previous `windowEndUnixMs`.
+- **Unified Provider Bounds**: Both Helius and Birdeye adapters receive the identical application-layer request bounds (`windowStartUnixMs` and `windowEndUnixMs`) within a single collection run.
+
+## Delayed Runs & Historical Observations
+
+- **Delayed-Run Semantics**: The collector is stateless. If a run is delayed beyond a full cadence (>15 minutes), it selects only the latest closed bucket based on `runStartedAtUnixMs` and does not backfill earlier missed buckets. Missing data remains missing/degraded under the repository's default posture rather than being disguised by a shifted overlapping window.
+- **Historical Data Handling**: The 29 historical Birdeye `dex_net_flow` observations collected prior to deterministic window alignment remain unchanged. No database migration or retrospective deletion is justified for low-confidence historical observations that will age out under existing retention tiers.
+
+## Threshold Gating & Calibration Rationale
 
 Implemented live thresholds by exact repository names and values:
 
@@ -88,6 +108,20 @@ all non-empty failures -> FAILED / exit 1
 | PARTIAL     | 0         | At least one source succeeded/empty while others failed or were unavailable |
 | UNAVAILABLE | 1         | All sources unavailable (HTTP 429, 404, 5xx, timeouts)                      |
 | FAILED      | 1         | Validation conflict, malformed payload, or non-empty source failure         |
+
+## Live Verification & Acceptance
+
+Live verification of window alignment and replay semantics for both live flow providers (Helius and Birdeye) is performed using the guarded live verifier:
+
+```bash
+ISSUE_196_LIVE_DATABASE_ACK=isolated-disposable tsx scripts/verify-issue-196-live.ts
+```
+
+Verification requirements and safety controls:
+
+- **Isolated Disposable Database Requirement**: The verifier requires explicit opt-in via `ISSUE_196_LIVE_DATABASE_ACK=isolated-disposable` and must target an isolated disposable test database (`DATABASE_URL`). Running against production or shared databases is a strict stop condition due to destructive cleanup operations. Ordinary scheduled collector rows remain immutable.
+- **Accepted-Then-Replayed Verification**: The script executes two sequential collection contexts across both Helius and Birdeye providers for the same closed window grid bucket. Verification succeeds only when both providers yield an initial `accepted` outcome followed by a subsequent `replayed` outcome (`accepted-then-replayed`).
+- **Exact-ID Cleanup**: Following verification, the script cleans up the created test rows in `normalized_observations` and `raw_observations` strictly by exact tracked ID.
 
 ## Scope Limitation
 
