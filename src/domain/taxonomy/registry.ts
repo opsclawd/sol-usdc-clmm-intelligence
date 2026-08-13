@@ -519,7 +519,7 @@ export const observationKindRegistry = {
     },
     provenanceRequirements: {
       ...DEFAULT_PROVENANCE_REQUIREMENTS,
-      allowedSourceRefs: ["birdeye-api"]
+      allowedSourceRefs: ["birdeye-api", "helius-api"]
     },
     active: true,
     schemaVersion: 1

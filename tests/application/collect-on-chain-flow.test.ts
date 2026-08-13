@@ -232,6 +232,58 @@ describe("collectOnChainFlow", () => {
       expect(insertOrClassifySpy).not.toHaveBeenCalled();
       expect(insertManySpy).not.toHaveBeenCalled();
     });
+
+    it("accepts Helius net flow at the existing DEX threshold and filters a balanced window", async () => {
+      const { source, rawObservationRepo, normalizedObservationRepo } = makeDeps();
+
+      const qualifyingHeliusFlow = {
+        eventKind: "dex_net_flow",
+        sourceEventId: "helius-address-history:Pool123:1699999000000:1700000000000",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "50000",
+        direction: "inbound",
+        venue: "solana",
+        addressContext: { addressType: "contract", address: "Pool123" },
+        sourceReferences: ["https://api.helius.xyz/v0/addresses/Pool123/transactions"],
+        sourceQuality: { provider: "helius-api", freshness: "windowed", completeness: "full" },
+        freshnessContext: { blockTimestampUnixMs: 1700000000000 },
+        windowStartUnixMs: 1699999000000,
+        windowEndUnixMs: 1700000000000,
+        buyVolumeUsdc: "300000",
+        sellVolumeUsdc: "250000",
+        netFlowUsdc: "50000"
+      };
+
+      source.setResponse(makeValidSnapshot([qualifyingHeliusFlow]));
+
+      const acceptedResult = await collectOnChainFlow(
+        { source, rawObservationRepo, normalizedObservationRepo },
+        VALID_CONTEXT,
+        { source: "helius-api", thresholds: VALID_THRESHOLDS, lookbackMs: LOOKBACK_MS }
+      );
+
+      expect(acceptedResult.status).toBe("accepted");
+      expect(acceptedResult.accepted).toBe(1);
+
+      const balancedHeliusFlow = {
+        ...qualifyingHeliusFlow,
+        buyVolumeUsdc: "500000",
+        sellVolumeUsdc: "500000",
+        netFlowUsdc: "0",
+        amountUsdc: "0"
+      };
+
+      source.setResponse(makeValidSnapshot([balancedHeliusFlow]));
+
+      const filteredResult = await collectOnChainFlow(
+        { source, rawObservationRepo, normalizedObservationRepo },
+        VALID_CONTEXT,
+        { source: "helius-api", thresholds: VALID_THRESHOLDS, lookbackMs: LOOKBACK_MS }
+      );
+
+      expect(filteredResult.status).toBe("empty");
+      expect(filteredResult.filtered).toBe(1);
+    });
   });
 
   describe("malformed-only snapshot remains absent and returns malformed", () => {

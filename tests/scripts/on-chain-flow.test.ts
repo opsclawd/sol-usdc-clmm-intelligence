@@ -260,7 +260,7 @@ describe("on-chain-flow collector script", () => {
   });
 
   describe("provider configuration and adapter construction", () => {
-    it("constructs the Helius address-history adapter and passes the Orca pool address to the job", async () => {
+    it("constructs both adapters when both providers are fully configured", async () => {
       mockRunOnChainFlowJob.mockResolvedValue(COMPLETE_RESULT);
 
       await runOnChainFlowCollect();
@@ -284,28 +284,60 @@ describe("on-chain-flow collector script", () => {
       );
     });
 
-    it("fails before persistence when HELIUS_FLOW_API_URL is missing", async () => {
-      mockCreateNodeRuntime.mockReturnValue({
-        ...createMockRuntime(),
-        env: {
-          ...createMockRuntime().env,
-          get: vi.fn((name: string) => {
-            if (name === "BIRDEYE_FLOW_API_URL") return "https://public-api.birdeye.so";
-            if (name === "BIRDEYE_API_KEY") return "birdeye-secret-key-456";
-            if (name === "WHIRLPOOL_ADDRESS") return "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
-            if (name === "HELIUS_FLOW_API_URL")
-              throw new Error("Missing required environment variable: HELIUS_FLOW_API_URL");
-            if (name === "HELIUS_API_KEY") return "helius-secret-key-123";
-            if (name === "WALLET_PUBLIC_KEY") return "Wallet123";
-            throw new Error(`Unexpected env var: ${name}`);
-          }),
-          getOptional: vi.fn((name: string) => {
-            if (name === "HELIUS_FLOW_API_URL") return undefined;
-            if (name === "HELIUS_API_KEY") return "helius-secret-key-123";
-            return createMockRuntime().env.getOptional(name);
-          })
-        }
+    it("runs Helius without constructing or calling Birdeye", async () => {
+      const runtime = createMockRuntime();
+      runtime.env.getOptional.mockImplementation((name: string) => {
+        if (name === "BIRDEYE_FLOW_API_URL" || name === "BIRDEYE_API_KEY") return undefined;
+        return createMockRuntime().env.getOptional(name);
       });
+      mockCreateNodeRuntime.mockReturnValue(runtime);
+      mockRunOnChainFlowJob.mockResolvedValue(COMPLETE_RESULT);
+
+      await runOnChainFlowCollect();
+
+      expect(mockHeliusConstructor).toHaveBeenCalledTimes(1);
+      expect(mockBirdeyeConstructor).not.toHaveBeenCalled();
+      expect(mockRunOnChainFlowJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sources: [{ source: "helius-api", adapter: expect.anything() }]
+        })
+      );
+    });
+
+    it("runs Birdeye without constructing or calling Helius", async () => {
+      const runtime = createMockRuntime();
+      runtime.env.getOptional.mockImplementation((name: string) => {
+        if (name === "HELIUS_FLOW_API_URL" || name === "HELIUS_API_KEY") return undefined;
+        return createMockRuntime().env.getOptional(name);
+      });
+      mockCreateNodeRuntime.mockReturnValue(runtime);
+      mockRunOnChainFlowJob.mockResolvedValue(COMPLETE_RESULT);
+
+      await runOnChainFlowCollect();
+
+      expect(mockBirdeyeConstructor).toHaveBeenCalledTimes(1);
+      expect(mockHeliusConstructor).not.toHaveBeenCalled();
+      expect(mockRunOnChainFlowJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sources: [{ source: "birdeye-api", adapter: expect.anything() }]
+        })
+      );
+    });
+
+    it("fails before persistence when no on-chain flow source is configured", async () => {
+      const runtime = createMockRuntime();
+      runtime.env.getOptional.mockImplementation((name: string) => {
+        if (
+          name === "HELIUS_FLOW_API_URL" ||
+          name === "HELIUS_API_KEY" ||
+          name === "BIRDEYE_FLOW_API_URL" ||
+          name === "BIRDEYE_API_KEY"
+        ) {
+          return undefined;
+        }
+        return createMockRuntime().env.getOptional(name);
+      });
+      mockCreateNodeRuntime.mockReturnValue(runtime);
 
       await runOnChainFlowCollect();
 
@@ -314,28 +346,86 @@ describe("on-chain-flow collector script", () => {
       expect(mockRunOnChainFlowJob).not.toHaveBeenCalled();
     });
 
-    it("fails before persistence when HELIUS_API_KEY is missing", async () => {
-      mockCreateNodeRuntime.mockReturnValue({
-        ...createMockRuntime(),
-        env: {
-          ...createMockRuntime().env,
-          get: vi.fn((name: string) => {
-            if (name === "BIRDEYE_FLOW_API_URL") return "https://public-api.birdeye.so";
-            if (name === "BIRDEYE_API_KEY") return "birdeye-secret-key-456";
-            if (name === "WHIRLPOOL_ADDRESS") return "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
-            if (name === "HELIUS_FLOW_API_URL") return "https://api.helius.xyz";
-            if (name === "HELIUS_API_KEY")
-              throw new Error("Missing required environment variable: HELIUS_API_KEY");
-            if (name === "WALLET_PUBLIC_KEY") return "Wallet123";
-            throw new Error(`Unexpected env var: ${name}`);
-          }),
-          getOptional: vi.fn((name: string) => {
-            if (name === "HELIUS_FLOW_API_URL") return "https://api.helius.xyz";
-            if (name === "HELIUS_API_KEY") return undefined;
-            return createMockRuntime().env.getOptional(name);
-          })
+    it("fails before persistence when Helius is half-configured (url missing)", async () => {
+      const runtime = createMockRuntime();
+      runtime.env.getOptional.mockImplementation((name: string) => {
+        if (
+          name === "HELIUS_FLOW_API_URL" ||
+          name === "BIRDEYE_FLOW_API_URL" ||
+          name === "BIRDEYE_API_KEY"
+        ) {
+          return undefined;
         }
+        if (name === "HELIUS_API_KEY") return "key-123";
+        return createMockRuntime().env.getOptional(name);
       });
+      mockCreateNodeRuntime.mockReturnValue(runtime);
+
+      await runOnChainFlowCollect();
+
+      expect(process.exitCode).toBe(1);
+      expect(mockGetPersistence).not.toHaveBeenCalled();
+      expect(mockRunOnChainFlowJob).not.toHaveBeenCalled();
+    });
+
+    it("fails before persistence when Helius is half-configured (key missing)", async () => {
+      const runtime = createMockRuntime();
+      runtime.env.getOptional.mockImplementation((name: string) => {
+        if (
+          name === "HELIUS_API_KEY" ||
+          name === "BIRDEYE_FLOW_API_URL" ||
+          name === "BIRDEYE_API_KEY"
+        ) {
+          return undefined;
+        }
+        if (name === "HELIUS_FLOW_API_URL") return "https://api.helius.xyz";
+        return createMockRuntime().env.getOptional(name);
+      });
+      mockCreateNodeRuntime.mockReturnValue(runtime);
+
+      await runOnChainFlowCollect();
+
+      expect(process.exitCode).toBe(1);
+      expect(mockGetPersistence).not.toHaveBeenCalled();
+      expect(mockRunOnChainFlowJob).not.toHaveBeenCalled();
+    });
+
+    it("fails before persistence when Birdeye is half-configured (url missing)", async () => {
+      const runtime = createMockRuntime();
+      runtime.env.getOptional.mockImplementation((name: string) => {
+        if (
+          name === "BIRDEYE_FLOW_API_URL" ||
+          name === "HELIUS_FLOW_API_URL" ||
+          name === "HELIUS_API_KEY"
+        ) {
+          return undefined;
+        }
+        if (name === "BIRDEYE_API_KEY") return "key-456";
+        return createMockRuntime().env.getOptional(name);
+      });
+      mockCreateNodeRuntime.mockReturnValue(runtime);
+
+      await runOnChainFlowCollect();
+
+      expect(process.exitCode).toBe(1);
+      expect(mockGetPersistence).not.toHaveBeenCalled();
+      expect(mockRunOnChainFlowJob).not.toHaveBeenCalled();
+    });
+
+    it("fails before persistence when Birdeye is half-configured (key missing)", async () => {
+      const runtime = createMockRuntime();
+      runtime.env.getOptional.mockImplementation((name: string) => {
+        if (
+          name === "BIRDEYE_API_KEY" ||
+          name === "HELIUS_FLOW_API_URL" ||
+          name === "HELIUS_API_KEY"
+        ) {
+          return undefined;
+        }
+        if (name === "BIRDEYE_FLOW_API_URL") return "https://public-api.birdeye.so";
+        return createMockRuntime().env.getOptional(name);
+      });
+      mockCreateNodeRuntime.mockReturnValue(runtime);
 
       await runOnChainFlowCollect();
 

@@ -61,6 +61,28 @@ export interface BirdeyeDexNetFlowEvent {
   readonly netFlowUsdc: string;
 }
 
+export interface HeliusDexNetFlowEvent {
+  readonly eventKind: "dex_net_flow";
+  readonly sourceEventId: string;
+  readonly observedAtUnixMs: number;
+  readonly amountUsdc: string;
+  readonly direction: "inbound" | "outbound";
+  readonly venue: "solana";
+  readonly addressContext: { readonly addressType: "contract"; readonly address: string };
+  readonly sourceReferences: readonly string[];
+  readonly sourceQuality: {
+    readonly provider: "helius-api";
+    readonly freshness: "windowed";
+    readonly completeness: "full" | "partial";
+  };
+  readonly freshnessContext: { readonly blockTimestampUnixMs: number };
+  readonly windowStartUnixMs: number;
+  readonly windowEndUnixMs: number;
+  readonly buyVolumeUsdc: string;
+  readonly sellVolumeUsdc: string;
+  readonly netFlowUsdc: string;
+}
+
 export interface HeliusWhaleTransferEvent {
   readonly eventKind: "whale_transfer";
   readonly sourceEventId: string;
@@ -94,6 +116,7 @@ export type OnChainFlowSourceEvent =
   | HeliusTransactionFlowEvent
   | BirdeyeWhaleSwapEvent
   | BirdeyeDexNetFlowEvent
+  | HeliusDexNetFlowEvent
   | HeliusWhaleTransferEvent;
 
 export interface OnChainFlowSourceSnapshot {

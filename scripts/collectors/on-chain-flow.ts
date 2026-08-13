@@ -58,28 +58,6 @@ export async function runOnChainFlowCollect(): Promise<void> {
   const heliusUrl = runtime.env.getOptional("HELIUS_FLOW_API_URL")?.trim();
   const heliusApiKey = runtime.env.getOptional("HELIUS_API_KEY")?.trim();
 
-  if (!birdeyeUrl) {
-    console.error(
-      JSON.stringify({
-        status: "failed",
-        diagnostic: "BIRDEYE_FLOW_API_URL is not configured"
-      })
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  if (!birdeyeApiKey) {
-    console.error(
-      JSON.stringify({
-        status: "failed",
-        diagnostic: "BIRDEYE_API_KEY is not configured"
-      })
-    );
-    process.exitCode = 1;
-    return;
-  }
-
   if (!orcaPoolAddress) {
     console.error(
       JSON.stringify({
@@ -91,7 +69,18 @@ export async function runOnChainFlowCollect(): Promise<void> {
     return;
   }
 
-  if (!heliusUrl) {
+  if (heliusUrl && !heliusApiKey) {
+    console.error(
+      JSON.stringify({
+        status: "failed",
+        diagnostic: "HELIUS_API_KEY is not configured"
+      })
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!heliusUrl && heliusApiKey) {
     console.error(
       JSON.stringify({
         status: "failed",
@@ -102,11 +91,33 @@ export async function runOnChainFlowCollect(): Promise<void> {
     return;
   }
 
-  if (!heliusApiKey) {
+  if (birdeyeUrl && !birdeyeApiKey) {
     console.error(
       JSON.stringify({
         status: "failed",
-        diagnostic: "HELIUS_API_KEY is not configured"
+        diagnostic: "BIRDEYE_API_KEY is not configured"
+      })
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!birdeyeUrl && birdeyeApiKey) {
+    console.error(
+      JSON.stringify({
+        status: "failed",
+        diagnostic: "BIRDEYE_FLOW_API_URL is not configured"
+      })
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  if (!heliusUrl && !heliusApiKey && !birdeyeUrl && !birdeyeApiKey) {
+    console.error(
+      JSON.stringify({
+        status: "failed",
+        diagnostic: "No on-chain flow source is configured"
       })
     );
     process.exitCode = 1;
@@ -163,26 +174,40 @@ export async function runOnChainFlowCollect(): Promise<void> {
 
   const lookbackMs = parseLookbackMs(runtime.env.getOptional("ON_CHAIN_FLOW_LOOKBACK_MS"));
 
-  const heliusSource = new HttpHeliusFlowSource({
-    http: runtime.http,
-    url: heliusUrl,
-    apiKey: heliusApiKey,
-    retryControl: runtime.retryControl
-  });
+  const sources: ConfiguredOnChainFlowSource[] = [];
 
-  const birdeyeSource = new HttpBirdeyeFlowSource({
-    http: runtime.http,
-    url: birdeyeUrl,
-    apiKey: birdeyeApiKey,
-    poolAddress: orcaPoolAddress,
-    whaleSwapMinUsdc: thresholds.whaleSwapMinUsdc,
-    retryControl: runtime.retryControl
-  });
+  if (heliusUrl && heliusApiKey) {
+    const heliusSource = new HttpHeliusFlowSource({
+      http: runtime.http,
+      url: heliusUrl,
+      apiKey: heliusApiKey,
+      retryControl: runtime.retryControl
+    });
+    sources.push({ source: "helius-api", adapter: heliusSource });
+  }
 
-  const sources: ConfiguredOnChainFlowSource[] = [
-    { source: "helius-api", adapter: heliusSource },
-    { source: "birdeye-api", adapter: birdeyeSource }
-  ];
+  if (birdeyeUrl && birdeyeApiKey) {
+    const birdeyeSource = new HttpBirdeyeFlowSource({
+      http: runtime.http,
+      url: birdeyeUrl,
+      apiKey: birdeyeApiKey,
+      poolAddress: orcaPoolAddress,
+      whaleSwapMinUsdc: thresholds.whaleSwapMinUsdc,
+      retryControl: runtime.retryControl
+    });
+    sources.push({ source: "birdeye-api", adapter: birdeyeSource });
+  }
+
+  if (sources.length === 0) {
+    console.error(
+      JSON.stringify({
+        status: "failed",
+        diagnostic: "No on-chain flow source is configured"
+      })
+    );
+    process.exitCode = 1;
+    return;
+  }
 
   let persistence;
   try {

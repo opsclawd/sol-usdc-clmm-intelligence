@@ -134,6 +134,43 @@ describe("verifyContextualEvidenceLineage", () => {
     }
   });
 
+  it("verifies a valid Helius dex_net_flow contextual observation with raw parent", () => {
+    const rawRow = makeRawObservationRow({
+      id: 2,
+      source: "helius-api",
+      payloadHash: "hash-helius-dex"
+    });
+    const normRow = makeNormalizedRow({
+      id: 20,
+      rawObservationId: 2,
+      source: "helius-api",
+      observationKind: "dex_net_flow",
+      provenance: {
+        ...DEFAULT_PROVENANCE,
+        rawObservationRefs: [
+          {
+            refType: "raw_observation",
+            id: 2,
+            source: "helius-api",
+            payloadHash: "hash-helius-dex"
+          }
+        ]
+      }
+    });
+
+    const rawMap = new Map<number, RawObservationRow>([[2, rawRow]]);
+    const result = verifyContextualEvidenceLineage({
+      contextualObservations: [normRow],
+      rawObservations: rawMap
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.lineage.rawObservationIds).toEqual([2]);
+      expect(result.lineage.normalizedObservationIds).toEqual([20]);
+    }
+  });
+
   it("records MISSING_RAW_PARENT in excludedObservations when raw parent observation is missing", () => {
     const normRow = makeNormalizedRow({
       id: 10,

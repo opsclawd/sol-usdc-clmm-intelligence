@@ -18,7 +18,7 @@ export type OnChainFlowFreshnessContext = {
 export type OnChainFlowSourceQuality =
   | {
       readonly provider: "helius-api";
-      readonly freshness: "realtime";
+      readonly freshness: "realtime" | "windowed";
       readonly completeness: "full" | "partial";
     }
   | {

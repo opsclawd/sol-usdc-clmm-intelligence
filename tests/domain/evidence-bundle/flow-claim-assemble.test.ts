@@ -149,14 +149,16 @@ function makeSelectedFlowEvent(
   };
 }
 
-function makeQuality(): EvidenceBundleQuality {
+function makeQuality(
+  flowsCoverage: import("../../../src/contracts/generated/evidence-bundle-v1.js").CoverageStatus = "partial"
+): EvidenceBundleQuality {
   return {
     version: "mvp-evidence-bundle-quality/v1",
     quality: "complete",
     coverage: {
       deterministic: "available",
       supportResistance: "unavailable",
-      flows: "partial",
+      flows: flowsCoverage,
       derivatives: "unavailable",
       events: "unavailable",
       newsRegulatory: "unavailable",
@@ -212,7 +214,8 @@ function makeQuality(): EvidenceBundleQuality {
 }
 
 function makeAssembleInput(
-  contextualEvents: readonly SelectedContextEvent[]
+  contextualEvents: readonly SelectedContextEvent[],
+  flowsCoverage: import("../../../src/contracts/generated/evidence-bundle-v1.js").CoverageStatus = "partial"
 ): AssembleEvidenceBundleInput {
   const scope: Scope = { kind: "pair" };
   const slot: SelectedFeatureSlot = {
@@ -246,7 +249,7 @@ function makeAssembleInput(
     scope,
     slots: [slot],
     featureKinds: ["range_location"],
-    quality: makeQuality(),
+    quality: makeQuality(flowsCoverage),
     lineage,
     runId: "run-1",
     correlationId: "corr-1",
@@ -292,6 +295,16 @@ describe("flow claim translation during bundle assembly", () => {
     const claim = bundle.contextualEvidence.flows[0]!;
     expect(claim.kind).toBe("spot_flow");
     expect(claim.claim).toContain("dex_net_flow");
+  });
+
+  it("assembles available spot-flow coverage from Helius dex_net_flow alone", () => {
+    const event = makeSelectedFlowEvent("dex_net_flow");
+    const input = makeAssembleInput([event], "available");
+    const bundle = assembleEvidenceBundleCandidate(input);
+
+    expect(bundle.contextualEvidence.flows).toHaveLength(1);
+    expect(bundle.contextualEvidence.flows[0]!.kind).toBe("spot_flow");
+    expect(bundle.assessment.coverage.flows).toBe("available");
   });
 
   it("maps whale_swap to spot_flow", () => {

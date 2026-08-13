@@ -409,6 +409,7 @@ export async function preparePairEvidenceBundle(
       { source: "helius-api", observationKind: "stablecoin_flow" },
       { source: "helius-api", observationKind: "cex_flow_proxy" },
       { source: "birdeye-api", observationKind: "dex_net_flow" },
+      { source: "helius-api", observationKind: "dex_net_flow" },
       { source: "technical-analysis-api", observationKind: "support_resistance_level" },
       { source: "crypto-news-api", observationKind: "ecosystem_news" },
       { source: "regulatory-monitor-api", observationKind: "regulatory_risk" }

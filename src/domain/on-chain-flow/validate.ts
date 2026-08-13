@@ -46,7 +46,7 @@ const addressContextSchema = z.object({
 
 const sourceQualityHeliusSchema = z.object({
   provider: z.literal("helius-api"),
-  freshness: z.literal("realtime"),
+  freshness: z.enum(["realtime", "windowed"]),
   completeness: z.enum(["full", "partial"])
 });
 

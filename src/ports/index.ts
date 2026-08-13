@@ -81,6 +81,7 @@ export type {
   HeliusTransactionFlowEvent,
   BirdeyeWhaleSwapEvent,
   BirdeyeDexNetFlowEvent,
+  HeliusDexNetFlowEvent,
   HeliusWhaleTransferEvent
 } from "./on-chain-flow-source.js";
 export type {

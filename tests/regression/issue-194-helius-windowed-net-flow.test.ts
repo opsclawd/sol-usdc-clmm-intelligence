@@ -2,12 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { HttpClient } from "../../src/ports/http.js";
 import { HttpRequestError } from "../../src/ports/http.js";
 import { HttpHeliusFlowSource } from "../../src/adapters/node/http-helius-flow-source.js";
+import { FakeHttp } from "../fakes/fake-http.js";
 import { FakeRetry } from "../fakes/fake-retry.js";
 
 const POOL_ADDRESS = "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
 const CANONICAL_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const FROM_UNIX_MS = 1700000000000;
 const TO_UNIX_MS = 1700000900000;
+const HELIUS_WINDOW_URL = `https://api.helius.com/v0/addresses/${POOL_ADDRESS}/transactions?api-key=test-api-key&limit=100`;
 
 interface HeliusRawTransaction {
   signature: string;
@@ -172,10 +174,8 @@ const capturedWindowTransactions: HeliusRawTransaction[] = [
 
 describe("Issue 194 Helius windowed net-flow regression proof", () => {
   it("aggregates a Helius window into one exact dex_net_flow event", async () => {
-    const mockHttp = {
-      getJson: vi.fn().mockResolvedValue(capturedWindowTransactions),
-      postJsonRaw: vi.fn().mockRejectedValue(new Error("Not implemented"))
-    } as unknown as HttpClient;
+    const mockHttp = new FakeHttp();
+    mockHttp.setResponse(HELIUS_WINDOW_URL, { body: capturedWindowTransactions });
 
     const source = new HttpHeliusFlowSource({
       http: mockHttp,
@@ -194,37 +194,31 @@ describe("Issue 194 Helius windowed net-flow regression proof", () => {
 
     const expected = {
       eventKind: "dex_net_flow",
+      sourceEventId: `helius-address-history:${POOL_ADDRESS}:${FROM_UNIX_MS}:${TO_UNIX_MS}`,
+      observedAtUnixMs: TO_UNIX_MS,
       buyVolumeUsdc: "300000.3",
       sellVolumeUsdc: "50000.3",
       netFlowUsdc: "250000",
       amountUsdc: "250000",
       direction: "inbound",
+      venue: "solana",
+      addressContext: { addressType: "contract", address: POOL_ADDRESS },
+      sourceReferences: [`https://api.helius.com/v0/addresses/${POOL_ADDRESS}/transactions`],
+      sourceQuality: { provider: "helius-api", freshness: "windowed", completeness: "full" },
+      freshnessContext: { blockTimestampUnixMs: TO_UNIX_MS },
       windowStartUnixMs: FROM_UNIX_MS,
       windowEndUnixMs: TO_UNIX_MS
     };
 
     expect(result.events).toHaveLength(1);
-    const event = result.events[0] as Record<string, unknown>;
-    expect(event).toMatchObject(expected);
-    expect(event["sourceQuality"]).toMatchObject({
-      provider: "helius-api",
-      freshness: "windowed",
-      completeness: "full"
-    });
-    expect(event["addressContext"]).toEqual({
-      addressType: "contract",
-      address: POOL_ADDRESS
-    });
-    expect(event["venue"]).toBe("solana");
-    expect(typeof event["sourceEventId"]).toBe("string");
-    expect(result.providerRunId).toContain(POOL_ADDRESS);
+    expect(result.events[0]).toEqual(expected);
+    expect(result.events.every((event) => event.eventKind === "dex_net_flow")).toBe(true);
+    expect(result.providerRunId).toBe(expected.sourceEventId);
   });
 
   it("returns a full zero aggregate for a quiet window but throws for a failed collection", async () => {
-    const mockHttpQuiet = {
-      getJson: vi.fn().mockResolvedValue([]),
-      postJsonRaw: vi.fn().mockRejectedValue(new Error("Not implemented"))
-    } as unknown as HttpClient;
+    const mockHttpQuiet = new FakeHttp();
+    mockHttpQuiet.setResponse(HELIUS_WINDOW_URL, { body: [] });
 
     const sourceQuiet = new HttpHeliusFlowSource({
       http: mockHttpQuiet,
@@ -241,7 +235,7 @@ describe("Issue 194 Helius windowed net-flow regression proof", () => {
     });
 
     expect(quietResult.events).toHaveLength(1);
-    const zeroEvent = quietResult.events[0] as Record<string, unknown>;
+    const zeroEvent = quietResult.events[0] as unknown as Record<string, unknown>;
     expect(zeroEvent).toMatchObject({
       eventKind: "dex_net_flow",
       buyVolumeUsdc: "0",
@@ -333,11 +327,15 @@ describe("Issue 194 Helius windowed net-flow regression proof", () => {
 
     expect(mockGetJson).toHaveBeenCalledTimes(25);
     expect(result.events).toHaveLength(1);
-    const event = result.events[0] as Record<string, unknown>;
+    const event = result.events[0] as unknown as Record<string, unknown>;
     expect(event["eventKind"]).toBe("dex_net_flow");
     expect(event["buyVolumeUsdc"]).toBe("25000");
     expect(event["sellVolumeUsdc"]).toBe("0");
     expect(event["netFlowUsdc"]).toBe("25000");
+    expect(event["amountUsdc"]).toBe("25000");
+    expect(event["direction"]).toBe("inbound");
+    expect(event["windowStartUnixMs"]).toBe(FROM_UNIX_MS);
+    expect(event["windowEndUnixMs"]).toBe(TO_UNIX_MS);
     expect((event["sourceQuality"] as Record<string, unknown>)["completeness"]).toBe("partial");
   });
 });

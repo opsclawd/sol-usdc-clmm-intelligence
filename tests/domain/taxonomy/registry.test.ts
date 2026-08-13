@@ -636,9 +636,9 @@ describe("allows only the source providers that can emit each flow kind", () => 
     expect(entry.provenanceRequirements.allowedSourceRefs).toContain("birdeye-api");
   });
 
-  it("dex_net_flow does not allow helius-api for DEX net flow", () => {
+  it("dex_net_flow allows helius-api as provenance source", () => {
     const entry = getObservationKindEntry("dex_net_flow");
-    expect(entry.provenanceRequirements.allowedSourceRefs).not.toContain("helius-api");
+    expect(entry.provenanceRequirements.allowedSourceRefs).toContain("helius-api");
   });
 });
 
