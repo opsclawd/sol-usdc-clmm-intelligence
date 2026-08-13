@@ -1036,41 +1036,34 @@ A source outage is ambiguous: it may indicate genuine no-coverage or a service p
 
 ## On-Chain Flow Collection (`pnpm collect:on-chain-flow`)
 
-The `collect:on-chain-flow` command collects on-chain SOL/USDC flow events from two providers: Helius (whale transfers querying the Whirlpool address) and Birdeye (whale swaps and DEX net flows). On-chain flow data describes what happened on-chain, not why. No output claims motive or policy; final synthesis belongs to regime-engine.
+The `collect:on-chain-flow` command collects on-chain SOL/USDC flow events from two providers: Helius (windowed DEX net flow querying the Whirlpool contract address) and Birdeye (whale swaps and DEX net flows). On-chain flow data describes what happened on-chain, not why. No output claims motive or policy; final synthesis belongs to regime-engine.
 
 ### Authority Boundary
 
-- **Factual evidence only**: Flow events (whale transfers, swaps, stablecoin flows, DEX net flows, CEX proxies) are factual metadata about on-chain activity. The collector does not infer intent, motive, or policy.
-- **No comprehensive whale surveillance**: Helius whale_transfer queries `WHIRLPOOL_ADDRESS` (not `WALLET_PUBLIC_KEY`). Note that `addressContext.addressType` remains `wallet` for compatibility even though `addressContext.address` is the Whirlpool address. `WALLET_PUBLIC_KEY` is retained for its position-scoped uses elsewhere.
+- **Factual evidence only**: Flow events (swaps, stablecoin flows, DEX net flows, CEX proxies) are factual metadata about on-chain activity. The collector does not infer intent, motive, or policy.
 - **No stablecoin or CEX coverage in this phase**: `stablecoin_flow` is deferred pending Circle address verification. `cex_flow_proxy` is deferred indefinitely (paid identity API required; self-maintained address book rejected as ongoing burden).
 - **No execution authority**: This collector captures evidence only. It does not construct instructions, sign transactions, or execute swaps.
 
 ### Pool Target Boundary
 
-Helius `whale_transfer` queries `WHIRLPOOL_ADDRESS`. Note that `addressContext.addressType` remains `wallet` for compatibility even though `addressContext.address` is the Whirlpool address. The collector polls the Helius legacy address-history endpoint for the Whirlpool address.
-
-### Legacy Endpoint and Completeness Guard
-
-Helius uses a **legacy address-history endpoint** confirmed working on the current free-tier key. The endpoint is flagged deprecated by Helius in favor of `getTransactionsForAddress`, but that newer method returns only bare signatures without parsed `type`/`tokenTransfers` — would require a second parse call per transaction. The legacy endpoint is used with the known limitation:
-
-- **Single-page with `limit=100`**: The endpoint returns at most 100 transactions per request. A highly active pool target can exceed this in a lookback window. When the page saturates (100 transactions returned), the collector returns `unavailable` rather than fabricating an incomplete window as complete. Operators should monitor for repeated `unavailable` on active pools as a signal that pagination design is needed. Keep saturated Helius pages `unavailable`, not `empty`.
+Helius `dex_net_flow` queries `WHIRLPOOL_ADDRESS` (`addressContext.addressType: "contract"`).
 
 ### Event Coverage Matrix
 
-| Event kind        | Status                               | Source                                              |
-| ----------------- | ------------------------------------ | --------------------------------------------------- |
-| `whale_transfer`  | Live, Whirlpool target               | Helius address history                              |
-| `whale_swap`      | Live                                 | Birdeye pair trades                                 |
-| `dex_net_flow`    | Live                                 | Birdeye pair trades                                 |
-| `stablecoin_flow` | Deferred pending source verification | No clean free-tier source confirmed                 |
-| `cex_flow_proxy`  | Deferred                             | Paid identity/self-maintained address book rejected |
+| Event kind        | Status                               | Source                                                |
+| ----------------- | ------------------------------------ | ----------------------------------------------------- |
+| `whale_swap`      | Live                                 | Birdeye pair trades                                   |
+| `dex_net_flow`    | Live                                 | Birdeye pair trades, Helius address history aggregate |
+| `whale_transfer`  | Retired                              | Retired (replaced by Helius windowed net flow)        |
+| `stablecoin_flow` | Deferred pending source verification | No clean free-tier source confirmed                   |
+| `cex_flow_proxy`  | Deferred                             | Paid identity/self-maintained address book rejected   |
 
 ### Environment Variables
 
 Required environment variables:
 
 ```bash
-# Helius flow API (whale_transfer only, Whirlpool target)
+# Helius flow API (dex_net_flow, Whirlpool contract target)
 HELIUS_FLOW_API_URL=https://api.helius.xyz
 HELIUS_API_KEY=<your-helius-api-key>
 
@@ -1078,14 +1071,8 @@ HELIUS_API_KEY=<your-helius-api-key>
 BIRDEYE_FLOW_API_URL=https://public-api.birdeye.so
 BIRDEYE_API_KEY=<your-birdeye-api-key>
 
-# Whale transfer threshold (Helius, Whirlpool target)
-ON_CHAIN_WHALE_TRANSFER_MIN_USDC=100000        # Default: 100,000 USDC
-
-# Threshold overrides (Birdeye)
+# Threshold overrides
 ON_CHAIN_WHALE_SWAP_MIN_USDC=100000            # Default: 100,000 USDC
-ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000          # Default: 250,000 USDC
-
-# Lookback window
 ON_CHAIN_FLOW_LOOKBACK_MS=900000               # Default: 900,000 ms (15 minutes)
 
 # Whirlpool address and position wallet
@@ -1102,9 +1089,7 @@ WALLET_PUBLIC_KEY=<position-wallet-address>
 - **Implemented Live Thresholds**:
 
   ```bash
-  ON_CHAIN_WHALE_TRANSFER_MIN_USDC=100000
   ON_CHAIN_WHALE_SWAP_MIN_USDC=100000
-  ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000
   ```
 
 - **Threshold Calibration Arithmetic**:
@@ -1113,8 +1098,8 @@ WALLET_PUBLIC_KEY=<position-wallet-address>
   $72,954,595 / 96 fifteen-minute windows = approximately $759,944 gross volume per window.
   $100,000 / $759,944 = approximately 13.2% of a typical window.
   ```
-- **Deferred VPS Variables**: Observed VPS names `ON_CHAIN_STABLECOIN_FLOW_MIN_USDC` and `ON_CHAIN_CEX_PROXY_MIN_USDC` are parsed for deferred signal kinds and do not replace the live whale-transfer/whale-swap variables.
-- **Operator Callout**: The deployment VPS must set the two live whale values (`ON_CHAIN_WHALE_TRANSFER_MIN_USDC` and `ON_CHAIN_WHALE_SWAP_MIN_USDC`) to `100000`; repository documentation cannot mutate host-local environment state.
+- **Deferred VPS Variables**: Observed VPS names `ON_CHAIN_STABLECOIN_FLOW_MIN_USDC` and `ON_CHAIN_CEX_PROXY_MIN_USDC` are parsed for deferred signal kinds and do not replace the live whale-swap variable.
+- **Operator Callout**: The deployment VPS must set the live whale value (`ON_CHAIN_WHALE_SWAP_MIN_USDC`) to `100000`; repository documentation cannot mutate host-local environment state.
 - **Provider Costs & Rate Limits**: The 15-minute cadence makes four times as many Helius/Birdeye collection attempts as the old hourly cadence; monitor provider rate limits (429s) and costs after rollout.
 
 ### Command and Statuses
@@ -1152,9 +1137,7 @@ A saturated Helius page (100 transactions returned, incomplete window) maps to `
 
 Thresholds are exact decimal strings parsed with arbitrary-precision arithmetic. All thresholds are denominated in USDC:
 
-- `whaleTransferMinUsdc`: Whale transfer transactions (Helius, Whirlpool target)
 - `whaleSwapMinUsdc`: Whale swap transactions (Birdeye)
-- `dexNetFlowMinUsdc`: DEX net flow magnitude (Birdeye)
 
 `stablecoinFlowMinUsdc` and `cexFlowProxyMinUsdc` are not implemented in this phase.
 
@@ -1167,11 +1150,9 @@ Thresholds are exact decimal strings parsed with arbitrary-precision arithmetic.
 
 Editing `.env.example` does not rewrite deployed environment overrides on active systems. To roll out the calibrated thresholds and 15-minute schedule:
 
-1. Update deployed environment variables for all three live thresholds:
+1. Update deployed environment variables for the live thresholds:
    ```bash
-   ON_CHAIN_WHALE_TRANSFER_MIN_USDC=100000
    ON_CHAIN_WHALE_SWAP_MIN_USDC=100000
-   ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000
    ```
 2. Deploy the updated code.
 3. Reconcile desired state with Hermes cron registration:

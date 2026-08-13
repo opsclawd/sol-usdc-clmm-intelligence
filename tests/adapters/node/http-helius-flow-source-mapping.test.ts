@@ -56,52 +56,17 @@ function createMockHttpClient(behavior: {
 }
 
 describe("HttpHeliusFlowSource mapping", () => {
-  describe("maps a captured inbound USDC transfer without using native lamports", () => {
-    it("maps a captured inbound USDC transfer without using native lamports", async () => {
+  describe("maps inbound and outbound pool transfers to buy and sell gross legs", () => {
+    it("maps inbound and outbound pool transfers to buy and sell gross legs", async () => {
       const inboundTx = (heliusTransactionsFixture as HeliusRawTransaction[]).find(
         (t) => t.signature === "captured-inbound-signature"
       )!;
-
-      const mockHttp = createMockHttpClient({
-        body: [inboundTx]
-      });
-
-      const source = new HttpHeliusFlowSource({
-        http: mockHttp,
-        url: "https://api.helius.com",
-        apiKey: "test-api-key"
-      });
-
-      const result = await source.collect({
-        pair: "SOL/USDC",
-        walletAddress: WATCHED_WALLET,
-        fromUnixMs: FROM_UNIX_MS,
-        toUnixMs: TO_UNIX_MS
-      });
-
-      expect(result.events).toHaveLength(1);
-      const event = result.events[0]!;
-      expect(event.eventKind).toBe("whale_transfer");
-      expect((event as { amountUsdc: string }).amountUsdc).toBe("1250000.25");
-      expect((event as { addressContext: { address: string } }).addressContext.address).toBe(
-        WATCHED_WALLET
-      );
-      expect((event as { transactionSignature: string }).transactionSignature).toBe(
-        "captured-inbound-signature"
-      );
-      expect((event as { direction: string }).direction).toBe("inbound");
-      expect((event as { slot: number }).slot).toBe(24681012);
-    });
-  });
-
-  describe("maps an outbound USDC transfer with deterministic per-transfer identity", () => {
-    it("maps an outbound USDC transfer with deterministic per-transfer identity", async () => {
       const outboundTx = (heliusTransactionsFixture as HeliusRawTransaction[]).find(
         (t) => t.signature === "captured-outbound-signature"
       )!;
 
       const mockHttp = createMockHttpClient({
-        body: [outboundTx]
+        body: [inboundTx, outboundTx]
       });
 
       const source = new HttpHeliusFlowSource({
@@ -118,24 +83,92 @@ describe("HttpHeliusFlowSource mapping", () => {
       });
 
       expect(result.events).toHaveLength(1);
-      const event = result.events[0]!;
-      expect(event.eventKind).toBe("whale_transfer");
-      expect((event as { direction: string }).direction).toBe("outbound");
-      expect((event as { sourceEventId: string }).sourceEventId).toBe(
-        "captured-outbound-signature:0"
-      );
-      expect((event as { transactionSignature: string }).transactionSignature).toBe(
-        "captured-outbound-signature"
-      );
-      expect((event as { eventIndex: number }).eventIndex).toBe(0);
+      const event = result.events[0] as unknown as Record<string, unknown>;
+      expect(event["eventKind"]).toBe("dex_net_flow");
+      expect(event["buyVolumeUsdc"]).toBe("1250000.25");
+      expect(event["sellVolumeUsdc"]).toBe("2500000.5");
+      expect(event["netFlowUsdc"]).toBe("-1250000.25");
+      expect(event["amountUsdc"]).toBe("1250000.25");
+      expect(event["direction"]).toBe("outbound");
     });
   });
 
-  describe("ignores non-transfer non-USDC unrelated and self-transfer records", () => {
-    it("ignores non-transfer non-USDC unrelated and self-transfer records", async () => {
-      const nonTransferTx = (heliusTransactionsFixture as HeliusRawTransaction[]).find(
-        (t) => t.signature === "non-transfer-signature"
-      )!;
+  describe("aggregates fractional USDC with exact six-decimal arithmetic", () => {
+    it("aggregates fractional USDC with exact six-decimal arithmetic", async () => {
+      const tx1: HeliusRawTransaction = {
+        signature: "frac-1",
+        slot: 100,
+        timestamp: 1700000050,
+        type: "TRANSFER",
+        nativeTransfers: [],
+        tokenTransfers: [
+          {
+            fromUserAccount: "TraderA",
+            toUserAccount: WATCHED_WALLET,
+            mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            tokenAmount: 0.100001
+          }
+        ]
+      };
+      const tx2: HeliusRawTransaction = {
+        signature: "frac-2",
+        slot: 101,
+        timestamp: 1700000060,
+        type: "TRANSFER",
+        nativeTransfers: [],
+        tokenTransfers: [
+          {
+            fromUserAccount: "TraderB",
+            toUserAccount: WATCHED_WALLET,
+            mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            tokenAmount: 0.200002
+          }
+        ]
+      };
+      const tx3: HeliusRawTransaction = {
+        signature: "frac-3",
+        slot: 102,
+        timestamp: 1700000070,
+        type: "TRANSFER",
+        nativeTransfers: [],
+        tokenTransfers: [
+          {
+            fromUserAccount: WATCHED_WALLET,
+            toUserAccount: "TraderC",
+            mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            tokenAmount: 0.000001
+          }
+        ]
+      };
+
+      const mockHttp = createMockHttpClient({
+        body: [tx1, tx2, tx3]
+      });
+
+      const source = new HttpHeliusFlowSource({
+        http: mockHttp,
+        url: "https://api.helius.com",
+        apiKey: "test-api-key"
+      });
+
+      const result = await source.collect({
+        pair: "SOL/USDC",
+        walletAddress: WATCHED_WALLET,
+        fromUnixMs: FROM_UNIX_MS,
+        toUnixMs: TO_UNIX_MS
+      });
+
+      expect(result.events).toHaveLength(1);
+      const event = result.events[0] as unknown as Record<string, unknown>;
+      expect(event["buyVolumeUsdc"]).toBe("0.300003");
+      expect(event["sellVolumeUsdc"]).toBe("0.000001");
+      expect(event["netFlowUsdc"]).toBe("0.300002");
+      expect(event["amountUsdc"]).toBe("0.300002");
+    });
+  });
+
+  describe("ignores non-USDC, self-transfer, and unrelated records", () => {
+    it("ignores non-USDC, self-transfer, and unrelated records", async () => {
       const nonUsdcTx = (heliusTransactionsFixture as HeliusRawTransaction[]).find(
         (t) => t.signature === "non-usdc-signature"
       )!;
@@ -147,7 +180,7 @@ describe("HttpHeliusFlowSource mapping", () => {
       )!;
 
       const mockHttp = createMockHttpClient({
-        body: [nonTransferTx, nonUsdcTx, unrelatedTx, selfTransferTx]
+        body: [nonUsdcTx, unrelatedTx, selfTransferTx]
       });
 
       const source = new HttpHeliusFlowSource({
@@ -163,7 +196,11 @@ describe("HttpHeliusFlowSource mapping", () => {
         toUnixMs: TO_UNIX_MS
       });
 
-      expect(result.events).toHaveLength(0);
+      expect(result.events).toHaveLength(1);
+      const event = result.events[0] as unknown as Record<string, unknown>;
+      expect(event["buyVolumeUsdc"]).toBe("0");
+      expect(event["sellVolumeUsdc"]).toBe("0");
+      expect(event["netFlowUsdc"]).toBe("0");
     });
   });
 
@@ -194,9 +231,9 @@ describe("HttpHeliusFlowSource mapping", () => {
       });
 
       expect(result.events).toHaveLength(1);
-      expect((result.events[0] as { transactionSignature: string }).transactionSignature).toBe(
-        "captured-inbound-signature"
-      );
+      const event = result.events[0] as unknown as Record<string, unknown>;
+      expect(event["buyVolumeUsdc"]).toBe("1250000.25");
+      expect(event["sellVolumeUsdc"]).toBe("0");
     });
   });
 
@@ -499,7 +536,7 @@ describe("HttpHeliusFlowSource mapping", () => {
       });
 
       expect(mockHttp.getJson).toHaveBeenCalledTimes(1);
-      expect(result.events).toHaveLength(0);
+      expect(result.events).toHaveLength(1);
     });
 
     it("throws on non-array API response", async () => {

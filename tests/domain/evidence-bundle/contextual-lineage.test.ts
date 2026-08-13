@@ -199,11 +199,6 @@ describe("contextual lineage verification exhaustive allowed set and API classif
     },
     {
       source: "helius-api",
-      observationKind: "whale_transfer",
-      expectedSourceType: "api"
-    },
-    {
-      source: "helius-api",
       observationKind: "whale_swap",
       expectedSourceType: "api"
     },

@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type {
   OnChainFlowPayloadV1,
-  WhaleTransferPayloadV1,
   WhaleSwapPayloadV1,
   StablecoinFlowPayloadV1,
   DexNetFlowPayloadV1,
@@ -15,7 +14,7 @@ import type {
 const BASE_COMMON_FIELDS = {
   schemaVersion: 1 as const,
   eventFamily: "on_chain_flow" as const,
-  eventType: "whale_transfer" as const,
+  eventType: "whale_swap" as const,
   sourceEventId: "tx_abc123_sig_0" as const,
   observedAtUnixMs: Date.now(),
   amountUsdc: "500000" as const,
@@ -38,23 +37,6 @@ const BASE_COMMON_FIELDS = {
 };
 
 describe("OnChainFlowPayloadV1 union", () => {
-  it("contains WhaleTransferPayloadV1 with required common fields", () => {
-    const transfer: WhaleTransferPayloadV1 = {
-      ...BASE_COMMON_FIELDS,
-      eventType: "whale_transfer",
-      transactionSignature: "transfer_sig_xyz",
-      eventIndex: 0,
-      slot: 123456789,
-      stablecoinOperation: "transfer"
-    };
-    expect(transfer.schemaVersion).toBe(1);
-    expect(transfer.eventFamily).toBe("on_chain_flow");
-    expect(transfer.sourceEventId).toBe("tx_abc123_sig_0");
-    expect(transfer.amountUsdc).toBe("500000");
-    expect(transfer.transactionSignature).toBe("transfer_sig_xyz");
-    expect(transfer.stablecoinOperation).toBe("transfer");
-  });
-
   it("contains WhaleSwapPayloadV1 with swap-specific fields", () => {
     const swap: WhaleSwapPayloadV1 = {
       ...BASE_COMMON_FIELDS,
@@ -163,26 +145,19 @@ describe("OnChainAddressContext", () => {
 describe("OnChainFlowThresholds", () => {
   it("defines minimum thresholds for each flow kind", () => {
     const thresholds: OnChainFlowThresholds = {
-      whaleTransferMinUsdc: "100000",
       whaleSwapMinUsdc: "100000",
       stablecoinFlowMinUsdc: "1000",
-      dexNetFlowMinUsdc: "50000",
       cexFlowProxyMinUsdc: "50000",
       cexMinAttributionConfidence: 0.5
     };
-    expect(thresholds.whaleTransferMinUsdc).toBe("100000");
+    expect(thresholds.whaleSwapMinUsdc).toBe("100000");
     expect(thresholds.cexMinAttributionConfidence).toBe(0.5);
   });
 });
 
 describe("registering deterministic on-chain transaction facts and probabilistic CEX proxies", () => {
-  it("whale_transfer, whale_swap, stablecoin_flow, and dex_net_flow use deterministic signal class", () => {
-    const deterministicKinds = [
-      "whale_transfer",
-      "whale_swap",
-      "stablecoin_flow",
-      "dex_net_flow"
-    ] as const;
+  it("whale_swap, stablecoin_flow, and dex_net_flow use deterministic signal class", () => {
+    const deterministicKinds = ["whale_swap", "stablecoin_flow", "dex_net_flow"] as const;
     for (const kind of deterministicKinds) {
       const payload = { ...BASE_COMMON_FIELDS, eventType: kind };
       expect(payload.eventFamily).toBe("on_chain_flow");
@@ -203,7 +178,7 @@ describe("registering deterministic on-chain transaction facts and probabilistic
 });
 
 describe("allowing only the source providers that can emit each flow kind", () => {
-  it("transaction kinds (whale_transfer, stablecoin_flow) allow helius-api", () => {
+  it("stablecoin_flow allows helius-api", () => {
     const txPayload = {
       ...BASE_COMMON_FIELDS,
       sourceQuality: {
@@ -288,18 +263,6 @@ describe("requiring explicit CEX proxy noise metadata", () => {
 });
 
 describe("not providing a motive field on any normalized flow payload", () => {
-  it("WhaleTransferPayloadV1 has no motive field", () => {
-    const transfer: WhaleTransferPayloadV1 = {
-      ...BASE_COMMON_FIELDS,
-      eventType: "whale_transfer",
-      transactionSignature: "sig",
-      eventIndex: 0,
-      slot: 1,
-      stablecoinOperation: "transfer"
-    };
-    expect("motive" in transfer).toBe(false);
-  });
-
   it("WhaleSwapPayloadV1 has no motive field", () => {
     const swap: WhaleSwapPayloadV1 = {
       ...BASE_COMMON_FIELDS,
@@ -352,19 +315,6 @@ describe("not providing a motive field on any normalized flow payload", () => {
 });
 
 describe("OnChainFlowPayloadV1 satisfies contracts", () => {
-  it("WhaleTransferPayloadV1 satisfies OnChainFlowPayloadV1", () => {
-    const transfer: WhaleTransferPayloadV1 = {
-      ...BASE_COMMON_FIELDS,
-      eventType: "whale_transfer",
-      transactionSignature: "sig123",
-      eventIndex: 0,
-      slot: 999,
-      stablecoinOperation: "transfer"
-    };
-    const payload: OnChainFlowPayloadV1 = transfer;
-    expect(payload.eventType).toBe("whale_transfer");
-  });
-
   it("WhaleSwapPayloadV1 satisfies OnChainFlowPayloadV1", () => {
     const swap: WhaleSwapPayloadV1 = {
       ...BASE_COMMON_FIELDS,

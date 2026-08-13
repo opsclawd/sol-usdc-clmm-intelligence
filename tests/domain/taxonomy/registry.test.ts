@@ -42,7 +42,6 @@ describe("observationKindRegistry", () => {
     "support_resistance_level",
     "ecosystem_news",
     "regulatory_risk",
-    "whale_transfer",
     "whale_swap",
     "stablecoin_flow",
     "dex_net_flow",
@@ -560,12 +559,15 @@ describe("registers regulatory_risk as contextual news_evidence evidence", () =>
 });
 
 describe("registers deterministic on-chain transaction facts and probabilistic CEX proxies", () => {
-  const deterministicKinds = [
-    "whale_transfer",
-    "whale_swap",
-    "stablecoin_flow",
-    "dex_net_flow"
-  ] as const;
+  it("registers only supported on-chain flow kinds after whale_transfer retirement", () => {
+    expect(observationKindRegistry).not.toHaveProperty("whale_transfer");
+    expect(observationKindRegistry).toHaveProperty("whale_swap");
+    expect(observationKindRegistry).toHaveProperty("stablecoin_flow");
+    expect(observationKindRegistry).toHaveProperty("dex_net_flow");
+    expect(observationKindRegistry).toHaveProperty("cex_flow_proxy");
+  });
+
+  const deterministicKinds = ["whale_swap", "stablecoin_flow", "dex_net_flow"] as const;
 
   for (const kind of deterministicKinds) {
     describe(`registers ${kind} as deterministic on_chain_flow evidence`, () => {
@@ -606,11 +608,6 @@ describe("registers deterministic on-chain transaction facts and probabilistic C
 });
 
 describe("allows only the source providers that can emit each flow kind", () => {
-  it("whale_transfer allows helius-api as provenance source", () => {
-    const entry = getObservationKindEntry("whale_transfer");
-    expect(entry.provenanceRequirements.allowedSourceRefs).toContain("helius-api");
-  });
-
   it("whale_swap allows birdeye-api as provenance source", () => {
     const entry = getObservationKindEntry("whale_swap");
     expect(entry.provenanceRequirements.allowedSourceRefs).toContain("birdeye-api");
@@ -636,20 +633,14 @@ describe("allows only the source providers that can emit each flow kind", () => 
     expect(entry.provenanceRequirements.allowedSourceRefs).toContain("birdeye-api");
   });
 
-  it("dex_net_flow does not allow helius-api for DEX net flow", () => {
+  it("dex_net_flow allows helius-api as provenance source", () => {
     const entry = getObservationKindEntry("dex_net_flow");
-    expect(entry.provenanceRequirements.allowedSourceRefs).not.toContain("helius-api");
+    expect(entry.provenanceRequirements.allowedSourceRefs).toContain("helius-api");
   });
 });
 
 describe("on-chain flow freshness policies", () => {
-  const flowKinds = [
-    "whale_transfer",
-    "whale_swap",
-    "stablecoin_flow",
-    "dex_net_flow",
-    "cex_flow_proxy"
-  ] as const;
+  const flowKinds = ["whale_swap", "stablecoin_flow", "dex_net_flow", "cex_flow_proxy"] as const;
 
   for (const kind of flowKinds) {
     it(`${kind} has 15-minute max age, 5-second skew tolerance, and allow_context_only stale behavior`, () => {
@@ -663,12 +654,7 @@ describe("on-chain flow freshness policies", () => {
 
 describe("on-chain flow confidence policies", () => {
   it("deterministic flow kinds have source reliability weight >= 0.4", () => {
-    const deterministicKinds = [
-      "whale_transfer",
-      "whale_swap",
-      "stablecoin_flow",
-      "dex_net_flow"
-    ] as const;
+    const deterministicKinds = ["whale_swap", "stablecoin_flow", "dex_net_flow"] as const;
     for (const kind of deterministicKinds) {
       const entry = getObservationKindEntry(kind);
       expect(entry.confidencePolicy.weights.sourceReliability).toBeGreaterThanOrEqual(0.4);
@@ -681,13 +667,7 @@ describe("on-chain flow confidence policies", () => {
   });
 
   it("all flow kinds have confidence weights summing to 1.0", () => {
-    const flowKinds = [
-      "whale_transfer",
-      "whale_swap",
-      "stablecoin_flow",
-      "dex_net_flow",
-      "cex_flow_proxy"
-    ] as const;
+    const flowKinds = ["whale_swap", "stablecoin_flow", "dex_net_flow", "cex_flow_proxy"] as const;
     for (const kind of flowKinds) {
       const entry = getObservationKindEntry(kind);
       const w = entry.confidencePolicy.weights;

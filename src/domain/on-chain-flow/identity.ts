@@ -1,7 +1,6 @@
 import { canonicalHash } from "../content-hash.js";
 import type {
   OnChainFlowPayloadV1,
-  WhaleTransferPayloadV1,
   WhaleSwapPayloadV1,
   StablecoinFlowPayloadV1,
   DexNetFlowPayloadV1
@@ -24,12 +23,8 @@ function isDexFlow(payload: OnChainFlowPayloadV1): payload is DexNetFlowPayloadV
 
 function isTransactionFlow(
   payload: OnChainFlowPayloadV1
-): payload is WhaleTransferPayloadV1 | WhaleSwapPayloadV1 | StablecoinFlowPayloadV1 {
-  return (
-    payload.eventType === "whale_transfer" ||
-    payload.eventType === "whale_swap" ||
-    payload.eventType === "stablecoin_flow"
-  );
+): payload is WhaleSwapPayloadV1 | StablecoinFlowPayloadV1 {
+  return payload.eventType === "whale_swap" || payload.eventType === "stablecoin_flow";
 }
 
 export async function deriveOnChainFlowSourceObservationKey(

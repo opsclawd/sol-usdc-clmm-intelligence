@@ -14,7 +14,6 @@ import {
   assembleEvidenceBundleCandidate,
   type AssembleEvidenceBundleInput
 } from "../../../src/domain/evidence-bundle/assemble.js";
-import { createEvidenceBundleContract } from "../../../src/adapters/node/evidence-bundle-v1-contract.js";
 
 const DEFAULT_CONFIDENCE: Confidence = {
   components: {
@@ -65,16 +64,6 @@ function makeOnChainFlowPayload(
   };
 
   switch (eventType) {
-    case "whale_transfer":
-      return {
-        ...common,
-        eventType: "whale_transfer",
-        venue: "solana",
-        transactionSignature: "sig1",
-        eventIndex: 0,
-        slot: 100,
-        stablecoinOperation: "transfer"
-      };
     case "whale_swap":
       return {
         ...common,
@@ -149,14 +138,16 @@ function makeSelectedFlowEvent(
   };
 }
 
-function makeQuality(): EvidenceBundleQuality {
+function makeQuality(
+  flowsCoverage: import("../../../src/contracts/generated/evidence-bundle-v1.js").CoverageStatus = "partial"
+): EvidenceBundleQuality {
   return {
     version: "mvp-evidence-bundle-quality/v1",
     quality: "complete",
     coverage: {
       deterministic: "available",
       supportResistance: "unavailable",
-      flows: "partial",
+      flows: flowsCoverage,
       derivatives: "unavailable",
       events: "unavailable",
       newsRegulatory: "unavailable",
@@ -212,7 +203,8 @@ function makeQuality(): EvidenceBundleQuality {
 }
 
 function makeAssembleInput(
-  contextualEvents: readonly SelectedContextEvent[]
+  contextualEvents: readonly SelectedContextEvent[],
+  flowsCoverage: import("../../../src/contracts/generated/evidence-bundle-v1.js").CoverageStatus = "partial"
 ): AssembleEvidenceBundleInput {
   const scope: Scope = { kind: "pair" };
   const slot: SelectedFeatureSlot = {
@@ -246,7 +238,7 @@ function makeAssembleInput(
     scope,
     slots: [slot],
     featureKinds: ["range_location"],
-    quality: makeQuality(),
+    quality: makeQuality(flowsCoverage),
     lineage,
     runId: "run-1",
     correlationId: "corr-1",
@@ -294,6 +286,16 @@ describe("flow claim translation during bundle assembly", () => {
     expect(claim.claim).toContain("dex_net_flow");
   });
 
+  it("assembles available spot-flow coverage from Helius dex_net_flow alone", () => {
+    const event = makeSelectedFlowEvent("dex_net_flow");
+    const input = makeAssembleInput([event], "available");
+    const bundle = assembleEvidenceBundleCandidate(input);
+
+    expect(bundle.contextualEvidence.flows).toHaveLength(1);
+    expect(bundle.contextualEvidence.flows[0]!.kind).toBe("spot_flow");
+    expect(bundle.assessment.coverage.flows).toBe("available");
+  });
+
   it("maps whale_swap to spot_flow", () => {
     const event = makeSelectedFlowEvent("whale_swap");
     const input = makeAssembleInput([event]);
@@ -319,57 +321,5 @@ describe("flow claim translation during bundle assembly", () => {
 
     expect(bundle.contextualEvidence.flows).toHaveLength(1);
     expect(bundle.contextualEvidence.flows[0]!.kind).toBe("stablecoin_flow");
-  });
-
-  it("drops whale_transfer and emits an unmappable flow warning", () => {
-    const event = makeSelectedFlowEvent("whale_transfer");
-    const input = makeAssembleInput([event]);
-    const bundle = assembleEvidenceBundleCandidate(input);
-
-    expect(bundle.assessment.warnings).toContainEqual({
-      code: "unmappable_flow_kind",
-      message: "Dropped unmappable on-chain flow kind: whale_transfer",
-      affectedFamilies: ["flows"]
-    });
-    expect(bundle.contextualEvidence.flows).toEqual([]);
-  });
-
-  it("keeps representable flows when an unmappable transfer is also selected", () => {
-    const swapEvent = makeSelectedFlowEvent("whale_swap", 1);
-    const transferEvent = makeSelectedFlowEvent("whale_transfer", 2);
-    const input = makeAssembleInput([swapEvent, transferEvent]);
-    const bundle = assembleEvidenceBundleCandidate(input);
-
-    expect(bundle.contextualEvidence.flows).toHaveLength(1);
-    expect(bundle.contextualEvidence.flows[0]!.kind).toBe("spot_flow");
-    expect(bundle.assessment.warnings).toContainEqual({
-      code: "unmappable_flow_kind",
-      message: "Dropped unmappable on-chain flow kind: whale_transfer",
-      affectedFamilies: ["flows"]
-    });
-    expect(bundle.assessment.coverage.flows).not.toBe("unavailable");
-  });
-
-  it("marks flows unavailable when every selected flow is unmappable", async () => {
-    const transferEvent = makeSelectedFlowEvent("whale_transfer");
-    const input = makeAssembleInput([transferEvent]);
-    const bundle = assembleEvidenceBundleCandidate(input);
-
-    expect(bundle.contextualEvidence.flows).toEqual([]);
-    expect(bundle.assessment.coverage.flows).toBe("unavailable");
-    expect(bundle.assessment.warnings).toContainEqual({
-      code: "FLOWS_UNAVAILABLE",
-      message: "On-chain flows evidence family is unavailable",
-      affectedFamilies: ["flows"]
-    });
-    expect(bundle.assessment.warnings).toContainEqual({
-      code: "unmappable_flow_kind",
-      message: "Dropped unmappable on-chain flow kind: whale_transfer",
-      affectedFamilies: ["flows"]
-    });
-    expect(bundle.assessment.quality).toBe("complete");
-
-    const contract = createEvidenceBundleContract();
-    await expect(contract.validateCanonicalizeAndHash(bundle)).resolves.toBeDefined();
   });
 });

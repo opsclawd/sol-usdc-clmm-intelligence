@@ -395,12 +395,12 @@ export async function prepareEvidenceBundle(
     sourceKinds: [
       { source: "macro-calendar-api", observationKind: "scheduled_event" },
       { source: "solana-status-api", observationKind: "protocol_incident" },
-      { source: "helius-api", observationKind: "whale_transfer" },
       { source: "helius-api", observationKind: "whale_swap" },
       { source: "birdeye-api", observationKind: "whale_swap" },
       { source: "helius-api", observationKind: "stablecoin_flow" },
       { source: "helius-api", observationKind: "cex_flow_proxy" },
       { source: "birdeye-api", observationKind: "dex_net_flow" },
+      { source: "helius-api", observationKind: "dex_net_flow" },
       { source: "technical-analysis-api", observationKind: "support_resistance_level" },
       { source: "crypto-news-api", observationKind: "ecosystem_news" },
       { source: "regulatory-monitor-api", observationKind: "regulatory_risk" }
@@ -533,7 +533,6 @@ export async function prepareEvidenceBundle(
       case "scheduled_event":
       case "protocol_incident":
         return "events";
-      case "whale_transfer":
       case "whale_swap":
       case "stablecoin_flow":
       case "cex_flow_proxy":

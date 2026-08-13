@@ -610,10 +610,6 @@ describe("assembleEvidenceBundle with contextual events", () => {
       });
       expect(query.sourceKinds).toContainEqual({
         source: "helius-api",
-        observationKind: "whale_transfer"
-      });
-      expect(query.sourceKinds).toContainEqual({
-        source: "helius-api",
         observationKind: "whale_swap"
       });
       expect(query.sourceKinds).toContainEqual({
@@ -630,6 +626,10 @@ describe("assembleEvidenceBundle with contextual events", () => {
       });
       expect(query.sourceKinds).toContainEqual({
         source: "birdeye-api",
+        observationKind: "dex_net_flow"
+      });
+      expect(query.sourceKinds).toContainEqual({
+        source: "helius-api",
         observationKind: "dex_net_flow"
       });
       expect(query.sourceKinds).toContainEqual({

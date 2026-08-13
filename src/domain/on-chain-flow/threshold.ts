@@ -78,10 +78,8 @@ function decimalGreaterThanOrEqual(a: ParsedDecimal, b: ParsedDecimal): boolean 
 }
 
 export interface ParsedOnChainFlowThresholds {
-  whaleTransferMinUsdc: ParsedDecimal;
   whaleSwapMinUsdc: ParsedDecimal;
   stablecoinFlowMinUsdc: ParsedDecimal;
-  dexNetFlowMinUsdc: ParsedDecimal;
   cexFlowProxyMinUsdc: ParsedDecimal;
   cexMinAttributionConfidence: number;
 }
@@ -89,11 +87,6 @@ export interface ParsedOnChainFlowThresholds {
 export function parseOnChainFlowThresholds(
   input: OnChainFlowThresholds
 ): ParsedOnChainFlowThresholds {
-  if (!isValidThresholdDecimalString(input.whaleTransferMinUsdc)) {
-    throw new OnChainFlowThresholdError(
-      "whaleTransferMinUsdc must be a valid decimal string without scientific notation"
-    );
-  }
   if (!isValidThresholdDecimalString(input.whaleSwapMinUsdc)) {
     throw new OnChainFlowThresholdError(
       "whaleSwapMinUsdc must be a valid decimal string without scientific notation"
@@ -102,11 +95,6 @@ export function parseOnChainFlowThresholds(
   if (!isValidThresholdDecimalString(input.stablecoinFlowMinUsdc)) {
     throw new OnChainFlowThresholdError(
       "stablecoinFlowMinUsdc must be a valid decimal string without scientific notation"
-    );
-  }
-  if (!isValidThresholdDecimalString(input.dexNetFlowMinUsdc)) {
-    throw new OnChainFlowThresholdError(
-      "dexNetFlowMinUsdc must be a valid decimal string without scientific notation"
     );
   }
   if (!isValidThresholdDecimalString(input.cexFlowProxyMinUsdc)) {
@@ -125,10 +113,8 @@ export function parseOnChainFlowThresholds(
   }
 
   return {
-    whaleTransferMinUsdc: parseDecimalString(input.whaleTransferMinUsdc),
     whaleSwapMinUsdc: parseDecimalString(input.whaleSwapMinUsdc),
     stablecoinFlowMinUsdc: parseDecimalString(input.stablecoinFlowMinUsdc),
-    dexNetFlowMinUsdc: parseDecimalString(input.dexNetFlowMinUsdc),
     cexFlowProxyMinUsdc: parseDecimalString(input.cexFlowProxyMinUsdc),
     cexMinAttributionConfidence: input.cexMinAttributionConfidence
   };
@@ -138,14 +124,6 @@ function getAmountDecimal(event: AcceptedOnChainFlowSourceEvent): ParsedDecimal 
   let amountStr: string;
 
   switch (event.eventKind) {
-    case "helius_transaction":
-      if (typeof event.nativeAmount === "string") {
-        amountStr = event.nativeAmount;
-      } else {
-        amountStr = String(event.nativeAmount);
-      }
-      break;
-    case "whale_transfer":
     case "whale_swap":
     case "stablecoin_flow":
     case "dex_net_flow":
@@ -164,15 +142,10 @@ function getThresholdForEventKind(
   thresholds: ParsedOnChainFlowThresholds
 ): ParsedDecimal {
   switch (event.eventKind) {
-    case "helius_transaction":
-    case "whale_transfer":
-      return thresholds.whaleTransferMinUsdc;
     case "whale_swap":
       return thresholds.whaleSwapMinUsdc;
     case "stablecoin_flow":
       return thresholds.stablecoinFlowMinUsdc;
-    case "dex_net_flow":
-      return thresholds.dexNetFlowMinUsdc;
     case "cex_flow_proxy":
       return thresholds.cexFlowProxyMinUsdc;
     default:
@@ -184,12 +157,23 @@ export function qualifiesOnChainFlow(
   event: AcceptedOnChainFlowSourceEvent,
   thresholds: ParsedOnChainFlowThresholds
 ): boolean {
-  let amountDecimal = getAmountDecimal(event);
-  const threshold = getThresholdForEventKind(event, thresholds);
-
+  // A windowed aggregate is emitted unconditionally: exactly one per window, so
+  // there is no volume to suppress, and a balanced window is a real observation
+  // about the market rather than an absence of data.
+  //
+  // An absolute USDC floor also selects the wrong windows. Measured over 88
+  // minutes of live pool activity, gross volume swung more than 3x, so a fixed
+  // floor tracks activity level rather than directional conviction: a 250,000
+  // floor discarded a window that was 62.8% directional (net 188,739 on gross
+  // 300,434) while admitting one that was only 29.3% (net 278,048 on gross
+  // 949,237). Conviction belongs in the payload — buyVolumeUsdc and
+  // sellVolumeUsdc are carried so consumers can weight on net/gross.
   if (event.eventKind === "dex_net_flow") {
-    amountDecimal = { ...amountDecimal, sign: 1 };
+    return true;
   }
+
+  const amountDecimal = getAmountDecimal(event);
+  const threshold = getThresholdForEventKind(event, thresholds);
 
   const amountPasses = decimalGreaterThanOrEqual(amountDecimal, threshold);
   if (!amountPasses) return false;

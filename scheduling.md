@@ -19,7 +19,7 @@ Hermes has no per-job model/thinking/agent override and no per-job timezone (it 
 | Job                         | Cadence          | Responsibility                                                                                                |
 | --------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------- |
 | `price-observations` (#104) | Every 5 minutes  | Build historical price density for `realized_volatility_1h`.                                                  |
-| `on-chain-flow`             | Every 15 minutes | Collect SOL/USDC on-chain flow observations (Helius whale_transfer, Birdeye whale_swap and dex_net_flow).     |
+| `on-chain-flow`             | Every 15 minutes | Collect SOL/USDC on-chain flow observations (Helius dex_net_flow, Birdeye whale_swap and dex_net_flow).       |
 | `perp-liquidation`          | Every 5 minutes  | Collect perp/liquidation stress evidence (funding, OI, basis, liquidation clusters).                          |
 | `news-evidence`             | Every 2 hours    | Collect ecosystem and regulatory news evidence.                                                               |
 | `context-events`            | Every 4 hours    | Collect contextual events (scheduled macro events, protocol incidents).                                       |
@@ -34,9 +34,7 @@ Specifically, for `on-chain-flow` (15-minute cadence):
 - Implemented live thresholds by exact repository name and value:
 
 ```bash
-ON_CHAIN_WHALE_TRANSFER_MIN_USDC=100000
 ON_CHAIN_WHALE_SWAP_MIN_USDC=100000
-ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000
 ```
 
 - Calibration arithmetic:
@@ -44,8 +42,8 @@ ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000
   $72,954,595 / 96 fifteen-minute windows = approximately $759,944 gross volume per window.
   $100,000 / $759,944 = approximately 13.2% of a typical window.
 
-- Note: Observed VPS variable names `ON_CHAIN_STABLECOIN_FLOW_MIN_USDC` and `ON_CHAIN_CEX_PROXY_MIN_USDC` are parsed for deferred signal kinds and do not replace the live whale-transfer/whale-swap variables.
-- Operator Callout: The deployment VPS must set the two live whale values (`ON_CHAIN_WHALE_TRANSFER_MIN_USDC` and `ON_CHAIN_WHALE_SWAP_MIN_USDC`) to `100000`; repository documentation cannot mutate host-local environment state.
+- Note: Observed VPS variable names `ON_CHAIN_STABLECOIN_FLOW_MIN_USDC` and `ON_CHAIN_CEX_PROXY_MIN_USDC` are parsed for deferred signal kinds and do not replace the live whale-swap variable.
+- Operator Callout: The deployment VPS must set the live whale value (`ON_CHAIN_WHALE_SWAP_MIN_USDC`) to `100000`; repository documentation cannot mutate host-local environment state.
 - The 15-minute schedule makes four times as many collection attempts per hour (Helius and Birdeye) compared to the old hourly schedule; operators must monitor provider rate limits (429s) and costs after rollout.
 
 Specifically, for five-minute sampling:

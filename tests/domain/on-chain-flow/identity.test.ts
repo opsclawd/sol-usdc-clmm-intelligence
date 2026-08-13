@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import type {
-  WhaleTransferPayloadV1,
   WhaleSwapPayloadV1,
   DexNetFlowPayloadV1,
   CexFlowProxyPayloadV1
@@ -10,10 +9,10 @@ import { deriveOnChainFlowSourceObservationKey } from "../../../src/domain/on-ch
 describe("deriveOnChainFlowSourceObservationKey", () => {
   describe("transaction identity is stable across pagination and collection runs", () => {
     it("same transaction produces same key regardless of pagination cursor", async () => {
-      const baseEvent: WhaleTransferPayloadV1 = {
+      const baseEvent: WhaleSwapPayloadV1 = {
         schemaVersion: 1,
         eventFamily: "on_chain_flow",
-        eventType: "whale_transfer",
+        eventType: "whale_swap",
         sourceEventId: "txn_abc123",
         observedAtUnixMs: 1700000000000,
         amountUsdc: "1000000000",
@@ -50,10 +49,10 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
     });
 
     it("same transaction produces same key regardless of provider run ID", async () => {
-      const baseEvent: WhaleTransferPayloadV1 = {
+      const baseEvent: WhaleSwapPayloadV1 = {
         schemaVersion: 1,
         eventFamily: "on_chain_flow",
-        eventType: "whale_transfer",
+        eventType: "whale_swap",
         sourceEventId: "txn_abc123",
         observedAtUnixMs: 1700000000000,
         amountUsdc: "1000000000",
@@ -78,10 +77,10 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
     });
 
     it("retries with different fetched time do not change identity", async () => {
-      const baseEvent: WhaleTransferPayloadV1 = {
+      const baseEvent: WhaleSwapPayloadV1 = {
         schemaVersion: 1,
         eventFamily: "on_chain_flow",
-        eventType: "whale_transfer",
+        eventType: "whale_swap",
         sourceEventId: "txn_abc123",
         observedAtUnixMs: 1700000000000,
         amountUsdc: "1000000000",
@@ -104,10 +103,10 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
     });
 
     it("only source, kind, signature, and event index affect the identity key", async () => {
-      const eventA: WhaleTransferPayloadV1 = {
+      const eventA: WhaleSwapPayloadV1 = {
         schemaVersion: 1,
         eventFamily: "on_chain_flow",
-        eventType: "whale_transfer",
+        eventType: "whale_swap",
         sourceEventId: "txn_abc123",
         observedAtUnixMs: 1700000000000,
         amountUsdc: "1000000000",
@@ -123,17 +122,17 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
         stablecoinOperation: "transfer"
       };
 
-      const eventB: WhaleTransferPayloadV1 = {
+      const eventB: WhaleSwapPayloadV1 = {
         ...eventA,
         observedAtUnixMs: 1800000000000
       };
 
-      const eventC: WhaleTransferPayloadV1 = {
+      const eventC: WhaleSwapPayloadV1 = {
         ...eventA,
         amountUsdc: "9999999999"
       };
 
-      const eventD: WhaleTransferPayloadV1 = {
+      const eventD: WhaleSwapPayloadV1 = {
         ...eventA,
         slot: 999999999
       };
@@ -151,10 +150,10 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
 
   describe("different events in one transaction have different identities", () => {
     it("different event index produces different identity", async () => {
-      const baseEvent: WhaleTransferPayloadV1 = {
+      const baseEvent: WhaleSwapPayloadV1 = {
         schemaVersion: 1,
         eventFamily: "on_chain_flow",
-        eventType: "whale_transfer",
+        eventType: "whale_swap",
         sourceEventId: "txn_abc123",
         observedAtUnixMs: 1700000000000,
         amountUsdc: "1000000000",
@@ -184,10 +183,10 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
     });
 
     it("different event kind produces different identity even with same transaction", async () => {
-      const whaleTransfer: WhaleTransferPayloadV1 = {
+      const dexNetFlow: DexNetFlowPayloadV1 = {
         schemaVersion: 1,
         eventFamily: "on_chain_flow",
-        eventType: "whale_transfer",
+        eventType: "dex_net_flow",
         sourceEventId: "txn_abc123",
         observedAtUnixMs: 1700000000000,
         amountUsdc: "1000000000",
@@ -197,10 +196,11 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
         sourceReferences: ["https://helius.xyz/txn/txn_abc123"],
         sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "full" },
         freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
-        transactionSignature: "txn_abc123",
-        eventIndex: 0,
-        slot: 123456789,
-        stablecoinOperation: "transfer"
+        windowStartUnixMs: 1699913600000,
+        windowEndUnixMs: 1700000000000,
+        buyVolumeUsdc: "50000000000",
+        sellVolumeUsdc: "30000000000",
+        netFlowUsdc: "20000000000"
       };
 
       const whaleSwap: WhaleSwapPayloadV1 = {
@@ -222,21 +222,17 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
         stablecoinOperation: "transfer"
       };
 
-      const keyTransfer = await deriveOnChainFlowSourceObservationKey(
-        whaleTransfer,
-        "helius-api",
-        null
-      );
+      const keyDex = await deriveOnChainFlowSourceObservationKey(dexNetFlow, "helius-api", null);
       const keySwap = await deriveOnChainFlowSourceObservationKey(whaleSwap, "helius-api", null);
 
-      expect(keyTransfer).not.toBe(keySwap);
+      expect(keyDex).not.toBe(keySwap);
     });
 
     it("same transaction signature but different source produces different identity", async () => {
-      const whaleTransferHelius: WhaleTransferPayloadV1 = {
+      const whaleSwapHelius: WhaleSwapPayloadV1 = {
         schemaVersion: 1,
         eventFamily: "on_chain_flow",
-        eventType: "whale_transfer",
+        eventType: "whale_swap",
         sourceEventId: "txn_abc123",
         observedAtUnixMs: 1700000000000,
         amountUsdc: "1000000000",
@@ -252,19 +248,19 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
         stablecoinOperation: "transfer"
       };
 
-      const whaleTransferBirdeye: WhaleTransferPayloadV1 = {
-        ...whaleTransferHelius,
+      const whaleSwapBirdeye: WhaleSwapPayloadV1 = {
+        ...whaleSwapHelius,
         sourceReferences: ["https://birdeye.xyz/txn/txn_abc123"],
         sourceQuality: { provider: "birdeye-api", freshness: "windowed", completeness: "full" }
       };
 
       const keyHelius = await deriveOnChainFlowSourceObservationKey(
-        whaleTransferHelius,
+        whaleSwapHelius,
         "helius-api",
         null
       );
       const keyBirdeye = await deriveOnChainFlowSourceObservationKey(
-        whaleTransferBirdeye,
+        whaleSwapBirdeye,
         "birdeye-api",
         null
       );
@@ -445,10 +441,10 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
     });
 
     it("differs from a non-CEX event with the same sourceEventId", async () => {
-      const whaleTransfer: WhaleTransferPayloadV1 = {
+      const whaleSwap: WhaleSwapPayloadV1 = {
         schemaVersion: 1,
         eventFamily: "on_chain_flow",
-        eventType: "whale_transfer",
+        eventType: "whale_swap",
         sourceEventId: baseCexEvent.sourceEventId,
         observedAtUnixMs: 1700000000000,
         amountUsdc: "1000000000",
@@ -465,22 +461,18 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
       };
 
       const keyCex = await deriveOnChainFlowSourceObservationKey(baseCexEvent, "helius-api", null);
-      const keyTransfer = await deriveOnChainFlowSourceObservationKey(
-        whaleTransfer,
-        "helius-api",
-        null
-      );
+      const keySwap = await deriveOnChainFlowSourceObservationKey(whaleSwap, "helius-api", null);
 
-      expect(keyCex).not.toBe(keyTransfer);
+      expect(keyCex).not.toBe(keySwap);
     });
   });
 
   describe("produces valid SHA-256 hash output", () => {
     it("returns a 64-character hex string", async () => {
-      const event: WhaleTransferPayloadV1 = {
+      const event: WhaleSwapPayloadV1 = {
         schemaVersion: 1,
         eventFamily: "on_chain_flow",
-        eventType: "whale_transfer",
+        eventType: "whale_swap",
         sourceEventId: "txn_abc123",
         observedAtUnixMs: 1700000000000,
         amountUsdc: "1000000000",
@@ -502,10 +494,10 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
     });
 
     it("is deterministic - same input always produces same hash", async () => {
-      const event: WhaleTransferPayloadV1 = {
+      const event: WhaleSwapPayloadV1 = {
         schemaVersion: 1,
         eventFamily: "on_chain_flow",
-        eventType: "whale_transfer",
+        eventType: "whale_swap",
         sourceEventId: "txn_abc123",
         observedAtUnixMs: 1700000000000,
         amountUsdc: "1000000000",

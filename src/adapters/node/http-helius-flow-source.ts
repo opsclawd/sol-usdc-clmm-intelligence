@@ -3,7 +3,7 @@ import type {
   OnChainFlowSourceRequest,
   OnChainFlowSourceSnapshot,
   OnChainFlowSourceError,
-  HeliusWhaleTransferEvent
+  HeliusDexNetFlowEvent
 } from "../../ports/on-chain-flow-source.js";
 import { HttpRequestError } from "../../ports/http.js";
 import type { HttpClient } from "../../ports/http.js";
@@ -180,11 +180,12 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
     // Reaching the page cap means the window is only partly observed. Report it
     // rather than presenting a truncated view as a complete one.
     const completeness: "full" | "partial" = coveredLookback ? "full" : "partial";
-    const allEvents = mapTransactionsToWhaleEvents(
+    const allEvents = aggregateTransactionsToNetFlow(
       allTransactions,
       walletAddress,
       request,
-      completeness
+      completeness,
+      this.options.url
     );
 
     const providerRunId = `helius-address-history:${walletAddress}:${request.fromUnixMs}:${request.toUnixMs}`;
@@ -199,10 +200,6 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
       events: Object.freeze(allEvents)
     });
   }
-}
-
-function addressTypeOf(request: OnChainFlowSourceRequest): "wallet" | "contract" {
-  return request.addressType ?? "wallet";
 }
 
 function redactApiKey(diagnostic: string, apiKey?: string): string {
@@ -255,24 +252,6 @@ function mapToOnChainFlowSourceError(e: HttpRequestError, apiKey?: string): OnCh
   }
 }
 
-function isFiniteNumber(value: number): boolean {
-  return Number.isFinite(value);
-}
-
-function toPlainDecimalString(value: number): string {
-  if (Number.isInteger(value)) {
-    return String(value);
-  }
-  return value.toString();
-}
-
-function isValidDecimalString(value: string): boolean {
-  if (value === "") return false;
-  if (value.startsWith("+")) return false;
-  if (!/^-?[0-9]+(\.[0-9]+)?$/.test(value)) return false;
-  return true;
-}
-
 function parseHeliusTransactionPage(response: unknown): HeliusRawTransaction[] {
   if (!Array.isArray(response)) {
     throw new HttpRequestError("invalid_json", "Response is not an array", null, false);
@@ -280,103 +259,90 @@ function parseHeliusTransactionPage(response: unknown): HeliusRawTransaction[] {
   return response as HeliusRawTransaction[];
 }
 
-function mapTransactionsToWhaleEvents(
+function parseUsdcAmountToRaw(tokenAmount: unknown): bigint | null {
+  if (tokenAmount === null || tokenAmount === undefined) return null;
+  const str = String(tokenAmount);
+  if (!/^\d+(\.\d{1,6})?$/.test(str)) return null;
+  const [intPart, fracPart = ""] = str.split(".");
+  const paddedFrac = fracPart.padEnd(6, "0");
+  return BigInt(intPart + paddedFrac);
+}
+
+function formatUsdc(raw: bigint): string {
+  if (raw === 0n) return "0";
+  const rawStr = raw.toString().padStart(7, "0");
+  const intPart = rawStr.slice(0, rawStr.length - 6);
+  const fracPart = rawStr.slice(rawStr.length - 6).replace(/0+$/, "");
+  return fracPart.length > 0 ? `${intPart}.${fracPart}` : intPart;
+}
+
+function aggregateTransactionsToNetFlow(
   transactions: HeliusRawTransaction[],
-  walletAddress: string,
+  poolAddress: string,
   request: OnChainFlowSourceRequest,
-  completeness: "full" | "partial"
-): HeliusWhaleTransferEvent[] {
-  const whaleEvents: HeliusWhaleTransferEvent[] = [];
-  const fromUnixMsSeconds = Math.floor(request.fromUnixMs / 1000);
-  const toUnixMsSeconds = Math.floor(request.toUnixMs / 1000);
+  completeness: "full" | "partial",
+  baseUrl: string
+): readonly [HeliusDexNetFlowEvent] {
+  let buyRaw = 0n;
+  let sellRaw = 0n;
 
-  for (let i = 0; i < transactions.length; i++) {
-    const tx = transactions[i];
+  for (const tx of transactions) {
+    if (typeof tx !== "object" || tx === null) continue;
+    if (typeof tx.signature !== "string" || tx.signature.length === 0) continue;
+    if (typeof tx.slot !== "number" || !Number.isInteger(tx.slot) || tx.slot < 0) continue;
+    if (typeof tx.timestamp !== "number" || !Number.isInteger(tx.timestamp)) continue;
 
-    if (typeof tx !== "object" || tx === null) {
-      continue;
-    }
+    const txMs = tx.timestamp * 1000;
+    if (txMs < request.fromUnixMs || txMs > request.toUnixMs) continue;
 
-    if (typeof tx.signature !== "string" || tx.signature.length === 0) {
-      continue;
-    }
-    if (typeof tx.slot !== "number" || !Number.isInteger(tx.slot) || tx.slot < 0) {
-      continue;
-    }
-    if (typeof tx.timestamp !== "number" || !Number.isInteger(tx.timestamp)) {
-      continue;
-    }
-    if (typeof tx.type !== "string" || tx.type !== "TRANSFER") {
-      continue;
-    }
+    if (!Array.isArray(tx.tokenTransfers)) continue;
 
-    if (tx.timestamp < fromUnixMsSeconds || tx.timestamp > toUnixMsSeconds) {
-      continue;
-    }
+    for (const transfer of tx.tokenTransfers) {
+      if (typeof transfer !== "object" || transfer === null) continue;
+      if (typeof transfer.mint !== "string" || transfer.mint !== CANONICAL_USDC_MINT) continue;
 
-    if (!Array.isArray(tx.tokenTransfers)) {
-      continue;
-    }
+      const isInbound = transfer.toUserAccount === poolAddress;
+      const isOutbound = transfer.fromUserAccount === poolAddress;
 
-    for (let j = 0; j < tx.tokenTransfers.length; j++) {
-      const transfer = tx.tokenTransfers[j];
+      if ((!isInbound && !isOutbound) || (isInbound && isOutbound)) continue;
 
-      if (typeof transfer !== "object" || transfer === null) {
-        continue;
+      const usdcRaw = parseUsdcAmountToRaw(transfer.tokenAmount);
+      if (usdcRaw === null) continue;
+
+      if (isInbound) {
+        buyRaw += usdcRaw;
+      } else {
+        sellRaw += usdcRaw;
       }
-      if (typeof transfer.mint !== "string" || transfer.mint !== CANONICAL_USDC_MINT) {
-        continue;
-      }
-      if (typeof transfer.tokenAmount !== "number" || !isFiniteNumber(transfer.tokenAmount)) {
-        continue;
-      }
-
-      const isInbound = transfer.toUserAccount === walletAddress;
-      const isOutbound = transfer.fromUserAccount === walletAddress;
-
-      if (!isInbound && !isOutbound) {
-        continue;
-      }
-
-      if (isInbound && isOutbound) {
-        continue;
-      }
-
-      const amountUsdc = toPlainDecimalString(transfer.tokenAmount);
-      if (!isValidDecimalString(amountUsdc)) {
-        continue;
-      }
-
-      const direction: "inbound" | "outbound" = isInbound ? "inbound" : "outbound";
-      const sourceEventId = `${tx.signature}:${j}`;
-      const observedAtUnixMs = tx.timestamp * 1000;
-      const blockTimestampUnixMs = tx.timestamp * 1000;
-
-      whaleEvents.push({
-        eventKind: "whale_transfer",
-        sourceEventId,
-        observedAtUnixMs,
-        amountUsdc,
-        direction,
-        venue: "solana",
-        addressContext: { addressType: addressTypeOf(request), address: walletAddress },
-        sourceReferences: [`https://solscan.io/tx/${tx.signature}`],
-        sourceQuality: {
-          provider: "helius-api",
-          freshness: "realtime",
-          completeness
-        },
-        freshnessContext: {
-          slot: tx.slot,
-          blockTimestampUnixMs
-        },
-        transactionSignature: tx.signature,
-        eventIndex: j,
-        slot: tx.slot,
-        stablecoinOperation: "transfer"
-      });
     }
   }
 
-  return whaleEvents;
+  const netRaw = buyRaw - sellRaw;
+  const absoluteNetRaw = netRaw < 0n ? -netRaw : netRaw;
+
+  const event: HeliusDexNetFlowEvent = Object.freeze({
+    eventKind: "dex_net_flow",
+    sourceEventId: `helius-address-history:${poolAddress}:${request.fromUnixMs}:${request.toUnixMs}`,
+    observedAtUnixMs: request.toUnixMs,
+    amountUsdc: formatUsdc(absoluteNetRaw),
+    direction: netRaw < 0n ? "outbound" : "inbound",
+    venue: "solana",
+    addressContext: { addressType: "contract" as const, address: poolAddress },
+    sourceReferences: [
+      new URL(`/v0/addresses/${encodeURIComponent(poolAddress)}/transactions`, baseUrl).toString()
+    ],
+    sourceQuality: {
+      provider: "helius-api" as const,
+      freshness: "windowed" as const,
+      completeness
+    },
+    freshnessContext: { blockTimestampUnixMs: request.toUnixMs },
+    windowStartUnixMs: request.fromUnixMs,
+    windowEndUnixMs: request.toUnixMs,
+    buyVolumeUsdc: formatUsdc(buyRaw),
+    sellVolumeUsdc: formatUsdc(sellRaw),
+    netFlowUsdc: `${netRaw < 0n ? "-" : ""}${formatUsdc(absoluteNetRaw)}`
+  });
+
+  return Object.freeze([event]);
 }

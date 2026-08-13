@@ -58,8 +58,6 @@ function isCexFlowProxy(payload: OnChainFlowPayloadV1): payload is CexFlowProxyP
 
 function mapEventTypeToKind(eventType: OnChainFlowPayloadV1["eventType"]): ObservationKind {
   switch (eventType) {
-    case "whale_transfer":
-      return "whale_transfer";
     case "whale_swap":
       return "whale_swap";
     case "stablecoin_flow":

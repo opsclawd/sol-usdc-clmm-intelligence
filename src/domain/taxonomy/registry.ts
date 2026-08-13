@@ -412,34 +412,7 @@ export const observationKindRegistry = {
     active: true,
     schemaVersion: 1
   },
-  whale_transfer: {
-    kind: "whale_transfer",
-    evidenceFamily: "on_chain_flow",
-    signalClass: "deterministic",
-    freshnessPolicy: {
-      maxObservedAgeMs: 900_000,
-      maxFetchLagMs: null,
-      validForMs: null,
-      clockSkewToleranceMs: 5_000,
-      staleBehavior: "allow_context_only"
-    },
-    confidencePolicy: {
-      weights: {
-        sourceReliability: 0.45,
-        dataCompleteness: 0.35,
-        derivationConfidence: 0.2,
-        llmConfidence: 0
-      },
-      thresholds: DEFAULT_THRESHOLDS,
-      redistributeLlmWeight: true
-    },
-    provenanceRequirements: {
-      ...DEFAULT_PROVENANCE_REQUIREMENTS,
-      allowedSourceRefs: ["helius-api"]
-    },
-    active: true,
-    schemaVersion: 1
-  },
+
   whale_swap: {
     kind: "whale_swap",
     evidenceFamily: "on_chain_flow",
@@ -519,7 +492,7 @@ export const observationKindRegistry = {
     },
     provenanceRequirements: {
       ...DEFAULT_PROVENANCE_REQUIREMENTS,
-      allowedSourceRefs: ["birdeye-api"]
+      allowedSourceRefs: ["birdeye-api", "helius-api"]
     },
     active: true,
     schemaVersion: 1

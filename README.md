@@ -153,7 +153,7 @@ Research collector packs add:
 
 - **news evidence** (`crypto-news-api`, `regulatory-monitor-api`): Collects bounded factual extracts from two allowed news sources. Produces `ecosystem_news` and `regulatory_risk` observations with immutable article/version identities, correction semantics, corroboration state, and source quality metadata. Ecosystem news carries a 24-hour freshness cap; regulatory risk carries a 72-hour cap. Syndication is distinguished from independent corroboration. Missing coverage does not imply no risk. No full-text retention, LLM briefs, policy synthesis, or execution authority.
 
-- **on-chain flow** (`pnpm collect:on-chain-flow`, Helius + Birdeye): Collects whale transfers, whale swaps, and DEX net flow. Produces `whale_transfer`, `whale_swap`, and `dex_net_flow` observations with exact-decimal thresholds. `stablecoin_flow` and `cex_flow_proxy` are deferred. On-chain flow data describes what happened, not why — no output claims motive or policy. See `docs/architecture.md` and `docs/operator-runbook.md` for the full contract.
+- **on-chain flow** (`pnpm collect:on-chain-flow`, Helius + Birdeye): Collects whale swaps and DEX net flow. Produces `whale_swap` and `dex_net_flow` observations with exact-decimal thresholds. `stablecoin_flow` and `cex_flow_proxy` are deferred. On-chain flow data describes what happened, not why — no output claims motive or policy. See `docs/architecture.md` and `docs/operator-runbook.md` for the full contract.
 
 - **perp & liquidation** (`pnpm collect:perp-liquidation`, Binance fAPI + Drift): Collects funding rates, open interest, perp/spot basis, and liquidation-cluster evidence for leverage-crowding context. Derives deterministic perp stress features from the two-venue observations.
 
@@ -611,7 +611,7 @@ The scheduled jobs defined in `cron/jobs.yaml` run on Hermes according to the de
 
 | Job                      | Schedule                      | Collector                         | Sources                                                     |
 | ------------------------ | ----------------------------- | --------------------------------- | ----------------------------------------------------------- |
-| `on-chain-flow`          | every 15 min (`*/15 * * * *`) | `pnpm collect:on-chain-flow`      | Helius (whale_transfer), Birdeye (whale_swap, dex_net_flow) |
+| `on-chain-flow`          | every 15 min (`*/15 * * * *`) | `pnpm collect:on-chain-flow`      | Helius (dex_net_flow), Birdeye (whale_swap, dex_net_flow)   |
 | `perp-liquidation`       | every 5 min (`*/5 * * * *`)   | `pnpm collect:perp-liquidation`   | Binance fAPI, Drift (Velocity Data API)                     |
 | `news-evidence`          | every 2h (`0 */2 * * *`)      | `pnpm collect:news-evidence`      | `crypto-news-api`, `regulatory-monitor-api`                 |
 | `context-events`         | every 4h (`0 */4 * * *`)      | `pnpm collect:context-events`     | `solana-status-api` (live), `macro-calendar-api` (deferred) |
@@ -685,7 +685,7 @@ SUPPORT_RESISTANCE_API_URL=<technical-analysis-api-provider-url>
 SUPPORT_RESISTANCE_API_KEY=<optional-api-key>
 ```
 
-For On-Chain Flow collection (Helius whale_transfer for position wallet, Birdeye whale_swap and dex_net_flow; see `docs/operator-runbook.md` for threshold overrides):
+For On-Chain Flow collection (Helius dex_net_flow for Whirlpool contract, Birdeye whale_swap and dex_net_flow; see `docs/operator-runbook.md` for threshold overrides):
 
 ```bash
 HELIUS_FLOW_API_URL=https://api.helius.xyz

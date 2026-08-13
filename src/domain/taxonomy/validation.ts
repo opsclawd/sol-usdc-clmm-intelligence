@@ -24,7 +24,6 @@ const OBSERVATION_KINDS = new Set<ObservationKind>([
   "support_resistance_level",
   "scheduled_event",
   "protocol_incident",
-  "whale_transfer",
   "whale_swap",
   "stablecoin_flow",
   "dex_net_flow",

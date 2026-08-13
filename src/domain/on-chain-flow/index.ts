@@ -26,7 +26,6 @@ export {
 
 export type {
   OnChainFlowPayloadV1,
-  WhaleTransferPayloadV1,
   WhaleSwapPayloadV1,
   StablecoinFlowPayloadV1,
   DexNetFlowPayloadV1,

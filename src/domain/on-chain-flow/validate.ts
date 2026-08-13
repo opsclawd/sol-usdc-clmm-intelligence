@@ -11,7 +11,6 @@ export class OnChainFlowValidationError extends Error {
 }
 
 const DECIMAL_STRING_REGEX = /^-?[0-9]+(\.[0-9]+)?$/;
-const NO_LEADING_PLUS_REGEX = /^[a-zA-Z0-9_-]+$/;
 
 function isValidDecimalString(value: string): boolean {
   if (value === "") return false;
@@ -27,14 +26,6 @@ function isValidNonNegativeDecimalString(value: string): boolean {
   return false;
 }
 
-function isSafeInteger(value: number): boolean {
-  return Number.isInteger(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER;
-}
-
-function isFiniteNonNegative(value: number): boolean {
-  return Number.isFinite(value) && value >= 0;
-}
-
 function isAttributionConfidence(value: unknown): boolean {
   return typeof value === "number" && value >= 0 && value <= 1 && Number.isFinite(value);
 }
@@ -46,7 +37,7 @@ const addressContextSchema = z.object({
 
 const sourceQualityHeliusSchema = z.object({
   provider: z.literal("helius-api"),
-  freshness: z.literal("realtime"),
+  freshness: z.enum(["realtime", "windowed"]),
   completeness: z.enum(["full", "partial"])
 });
 
@@ -60,55 +51,6 @@ const freshnessContextSchema = z.object({
   slot: z.number().int().nonnegative().optional(),
   blockTimestampUnixMs: z.number().int().positive()
 });
-
-const heliusTransactionFlowSchema = z
-  .object({
-    eventKind: z.literal("helius_transaction"),
-    transactionHash: z
-      .string()
-      .regex(NO_LEADING_PLUS_REGEX, "transactionHash must not have + prefix"),
-    slot: z.number().int().nonnegative(),
-    timestampUnixMs: z.number().int().positive(),
-    flowSide: z.enum(["buy", "sell"]),
-    nativeAmount: z.union([z.number().int().nonnegative(), z.string()]).refine(
-      (val) => {
-        if (typeof val === "number") {
-          return isFiniteNonNegative(val) && isSafeInteger(val);
-        }
-        if (typeof val === "string") {
-          return isValidDecimalString(val) && !val.includes(".");
-        }
-        return false;
-      },
-      {
-        message:
-          "nativeAmount must be a non-negative finite integer or decimal string without scientific notation"
-      }
-    ),
-    sourceReferences: z.array(z.string().url()).min(1, "sourceReferences cannot be empty")
-  })
-  .strict();
-
-const whaleTransferFlowSchema = z
-  .object({
-    eventKind: z.literal("whale_transfer"),
-    sourceEventId: z.string().min(1),
-    observedAtUnixMs: z.number().int().positive(),
-    amountUsdc: z.string().refine(isValidNonNegativeDecimalString, {
-      message: "amountUsdc must be a non-negative decimal string without scientific notation"
-    }),
-    direction: z.enum(["inbound", "outbound"]),
-    venue: z.literal("solana"),
-    addressContext: addressContextSchema,
-    sourceReferences: z.array(z.string().url()).min(1),
-    sourceQuality: z.union([sourceQualityHeliusSchema, sourceQualityBirdeyeSchema]),
-    freshnessContext: freshnessContextSchema,
-    transactionSignature: z.string().min(1),
-    eventIndex: z.number().int().nonnegative(),
-    slot: z.number().int().nonnegative(),
-    stablecoinOperation: z.enum(["mint", "burn", "transfer"])
-  })
-  .strict();
 
 const whaleSwapFlowSchema = z
   .object({
@@ -208,8 +150,6 @@ const cexFlowProxySchema = z
   .strict();
 
 const onChainFlowSourceEventSchema = z.union([
-  heliusTransactionFlowSchema,
-  whaleTransferFlowSchema,
   whaleSwapFlowSchema,
   stablecoinFlowSchema,
   dexNetFlowSchema,

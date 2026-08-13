@@ -5,7 +5,7 @@ import { HttpHeliusFlowSource } from "../../../src/adapters/node/http-helius-flo
 import type {
   OnChainFlowSourceError,
   OnChainFlowSourceEvent,
-  HeliusWhaleTransferEvent
+  HeliusDexNetFlowEvent
 } from "../../../src/ports/on-chain-flow-source.js";
 import { FakeRetry } from "../../fakes/fake-retry.js";
 
@@ -35,10 +35,8 @@ function createTx(sig: string, timestampSeconds: number) {
 
 function heliusEvents(result: {
   events: readonly OnChainFlowSourceEvent[];
-}): HeliusWhaleTransferEvent[] {
-  return result.events.filter(
-    (e): e is HeliusWhaleTransferEvent => e.eventKind === "whale_transfer"
-  );
+}): HeliusDexNetFlowEvent[] {
+  return result.events.filter((e): e is HeliusDexNetFlowEvent => e.eventKind === "dex_net_flow");
 }
 
 describe("HttpHeliusFlowSource reliability", () => {
@@ -121,7 +119,7 @@ describe("HttpHeliusFlowSource reliability", () => {
     );
   });
 
-  it("labels events with the address type the caller declared", async () => {
+  it("labels dex_net_flow events with addressType contract", async () => {
     const tx = createTx("sig-pool-1", Math.floor(FROM_UNIX_MS / 1000) + 10);
     const mockHttp: HttpClient = {
       getJson: vi.fn().mockResolvedValue([tx]),
@@ -142,14 +140,6 @@ describe("HttpHeliusFlowSource reliability", () => {
       toUnixMs: TO_UNIX_MS
     });
     expect(heliusEvents(pool)[0]?.addressContext.addressType).toBe("contract");
-
-    const wallet = await source.collect({
-      pair: "SOL/USDC",
-      walletAddress: WATCHED_WALLET,
-      fromUnixMs: FROM_UNIX_MS,
-      toUnixMs: TO_UNIX_MS
-    });
-    expect(heliusEvents(wallet)[0]?.addressContext.addressType).toBe("wallet");
   });
 
   it("accepts a saturated page after it reaches the requested lookback", async () => {

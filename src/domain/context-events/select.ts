@@ -48,7 +48,6 @@ function deriveIdentityKey(row: NormalizedObservationRow): IdentityKey | null {
   if (
     eventType !== "scheduled_event" &&
     eventType !== "protocol_incident" &&
-    eventType !== "whale_transfer" &&
     eventType !== "whale_swap" &&
     eventType !== "stablecoin_flow" &&
     eventType !== "dex_net_flow" &&
@@ -85,7 +84,6 @@ function isOnChainFlowPayload(payload: unknown): payload is OnChainFlowPayloadV1
   }
   const eventType = (payload as OnChainFlowPayloadV1).eventType;
   return (
-    eventType === "whale_transfer" ||
     eventType === "whale_swap" ||
     eventType === "stablecoin_flow" ||
     eventType === "dex_net_flow" ||

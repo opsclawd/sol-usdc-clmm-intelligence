@@ -1,5 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { makeHeliusTransactionFlowEvent } from "../../fixtures/on-chain-flow.js";
 import type { StablecoinFlowPayloadV1 } from "../../../src/contracts/on-chain-flow.js";
 import { normalizeOnChainFlow } from "../../../src/domain/on-chain-flow/normalize.js";
 
@@ -277,14 +276,31 @@ describe("normalizeOnChainFlow", () => {
 
   describe("sorts and deduplicates source references", () => {
     it("deduplicates and sorts source references", () => {
-      const event = makeHeliusTransactionFlowEvent({
+      const event = {
+        eventKind: "whale_swap" as const,
+        sourceEventId: "ws_001",
+        observedAtUnixMs: 1700000000000,
+        amountUsdc: "1000000",
+        direction: "inbound" as const,
+        venue: "solana" as const,
+        addressContext: { addressType: "wallet" as const, address: "user_wallet" },
         sourceReferences: [
           "https://b.example.com",
           "https://a.example.com",
           "https://c.example.com",
           "https://a.example.com"
-        ]
-      });
+        ],
+        sourceQuality: {
+          provider: "birdeye-api" as const,
+          freshness: "windowed" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
+        transactionSignature: "txn_abc123",
+        eventIndex: 0,
+        slot: 123456789,
+        stablecoinOperation: "transfer" as const
+      };
       const result = normalizeOnChainFlow(event, Date.now());
       expect(result.sourceReferences).toEqual([
         "https://a.example.com",
@@ -298,9 +314,26 @@ describe("normalizeOnChainFlow", () => {
     it("freshness context includes source and retrieval timestamps", () => {
       const sourceObserved = 1700000000000;
       const retrievedAt = 1700000005000;
-      const event = makeHeliusTransactionFlowEvent({
-        timestampUnixMs: sourceObserved
-      });
+      const event = {
+        eventKind: "whale_swap" as const,
+        sourceEventId: "ws_001",
+        observedAtUnixMs: sourceObserved,
+        amountUsdc: "1000000",
+        direction: "inbound" as const,
+        venue: "solana" as const,
+        addressContext: { addressType: "wallet" as const, address: "user_wallet" },
+        sourceReferences: ["https://a.example.com"],
+        sourceQuality: {
+          provider: "birdeye-api" as const,
+          freshness: "windowed" as const,
+          completeness: "full" as const
+        },
+        freshnessContext: { slot: 123456789, blockTimestampUnixMs: sourceObserved },
+        transactionSignature: "txn_abc123",
+        eventIndex: 0,
+        slot: 123456789,
+        stablecoinOperation: "transfer" as const
+      };
       const result = normalizeOnChainFlow(event, retrievedAt);
       expect(result.freshnessContext.blockTimestampUnixMs).toBe(sourceObserved);
     });

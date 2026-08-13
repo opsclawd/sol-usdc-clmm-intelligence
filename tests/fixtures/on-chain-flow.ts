@@ -64,22 +64,7 @@ export interface BirdeyeDexNetFlowEvent {
   readonly netFlowUsdc: string;
 }
 
-export type OnChainFlowSourceEvent = HeliusTransactionFlowEvent;
-
-export function makeHeliusTransactionFlowEvent(
-  overrides?: Partial<HeliusTransactionFlowEvent>
-): HeliusTransactionFlowEvent {
-  return {
-    eventKind: "helius_transaction",
-    transactionHash: "txn_abc123",
-    slot: 123456789,
-    timestampUnixMs: 1700000000000,
-    flowSide: "buy",
-    nativeAmount: 1000000000,
-    sourceReferences: ["https://helius.xyz/txn/txn_abc123"],
-    ...overrides
-  };
-}
+export type OnChainFlowSourceEvent = BirdeyeWhaleSwapEvent | BirdeyeDexNetFlowEvent;
 
 export function makeBirdeyeWhaleSwapEvent(
   overrides?: Partial<BirdeyeWhaleSwapEvent>
@@ -154,13 +139,13 @@ export function makeOnChainFlowSourceSnapshot(overrides?: OnChainFlowSourceSnaps
   extraField?: unknown;
 } {
   return {
-    source: overrides?.source ?? "helius-api",
+    source: overrides?.source ?? "birdeye-api",
     providerId: overrides?.providerId ?? "test-provider",
     providerRunId: overrides?.providerRunId ?? "run-001",
     asOfUnixMs: overrides?.asOfUnixMs ?? 1700000000000,
     license: overrides?.license ?? "CC0-1.0",
     retention: "bounded",
-    events: overrides?.events ?? [makeHeliusTransactionFlowEvent()],
+    events: overrides?.events ?? [makeBirdeyeDexNetFlowEvent()],
     ...(overrides?.extraField !== undefined ? { extraField: overrides.extraField } : {})
   };
 }
