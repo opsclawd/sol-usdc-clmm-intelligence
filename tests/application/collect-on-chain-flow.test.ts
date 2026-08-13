@@ -213,7 +213,7 @@ describe("collectOnChainFlow", () => {
   });
 
   describe("below-threshold event remains absent", () => {
-    it("neither repository is called when event amount is below threshold", async () => {
+    it("returns empty when every valid event is filtered below threshold", async () => {
       const { source, rawObservationRepo, normalizedObservationRepo } = makeDeps();
       source.setResponse(makeValidSnapshot([makeWhaleTransferEvent({ amountUsdc: "100" })]));
 
@@ -226,7 +226,7 @@ describe("collectOnChainFlow", () => {
         { source: "helius-api", thresholds: VALID_THRESHOLDS, lookbackMs: LOOKBACK_MS }
       );
 
-      expect(result.status).toBe("accepted");
+      expect(result.status).toBe("empty");
       expect(result.filtered).toBe(1);
       expect(result.accepted).toBe(0);
       expect(insertOrClassifySpy).not.toHaveBeenCalled();
@@ -276,8 +276,8 @@ describe("collectOnChainFlow", () => {
     });
   });
 
-  describe("empty snapshot returns accepted with zero counts", () => {
-    it("no-event is not treated as unavailable", async () => {
+  describe("empty snapshot remains absent and returns empty", () => {
+    it("returns empty when the source snapshot contains no events", async () => {
       const { source, rawObservationRepo, normalizedObservationRepo } = makeDeps();
       source.setResponse(makeValidSnapshot([]));
 
@@ -287,11 +287,19 @@ describe("collectOnChainFlow", () => {
         { source: "helius-api", thresholds: VALID_THRESHOLDS, lookbackMs: LOOKBACK_MS }
       );
 
-      expect(result.status).toBe("accepted");
-      expect(result.accepted).toBe(0);
-      expect(result.filtered).toBe(0);
-      expect(result.replayed).toBe(0);
-      expect(result.failed).toBe(0);
+      expect(result).toMatchObject({
+        status: "empty",
+        accepted: 0,
+        filtered: 0,
+        replayed: 0,
+        failed: 0,
+        conflict: 0,
+        sourceObservationId: null,
+        sourceObservationKey: null,
+        results: []
+      });
+      expect(rawObservationRepo["store"].size).toBe(0);
+      expect(normalizedObservationRepo.count).toBe(0);
     });
   });
 
@@ -357,7 +365,7 @@ describe("collectOnChainFlow", () => {
         { source: "helius-api", thresholds: VALID_THRESHOLDS, lookbackMs: LOOKBACK_MS }
       );
 
-      expect(result.status).toBe("accepted");
+      expect(result.status).toBe("empty");
       expect(result.filtered).toBe(1);
       expect(result.accepted).toBe(0);
       expect(rawObservationRepo["store"].size).toBe(0);

@@ -13,6 +13,12 @@ import { SystemRetryControl } from "./system-retry.js";
 const BASE_BACKOFF_MS = 25;
 const MAX_BACKOFF_MS = 400;
 const LIMIT_PARAM = 100;
+// The whirlpool produces roughly 750 transactions per 15-minute lookback, so a
+// single page covers only seconds. Walk back with Helius's `before` signature
+// cursor until the page reaches past `fromUnixMs`. Measured live: 8 pages
+// covered 27.7 minutes, so 25 pages leaves headroom for activity spikes without
+// letting a runaway pool drain the API budget.
+const MAX_PAGES = 25;
 const CANONICAL_USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 function computeBackoffMs(attempt: number, retryControl: RetryControl): number {
@@ -77,95 +83,103 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
 
     const encodedWallet = encodeURIComponent(walletAddress);
     const baseUrl = `${this.options.url}/v0/addresses/${encodedWallet}/transactions`;
-    const url = new URL(baseUrl);
-    if (this.options.apiKey) {
-      url.searchParams.set("api-key", this.options.apiKey);
-    }
-    url.searchParams.set("limit", String(LIMIT_PARAM));
 
     const headers: Record<string, string> = {};
 
-    let lastError: Error | null = null;
-    let allTransactions: HeliusRawTransaction[] = [];
-    let pageSuccess = false;
-    let saturatedPage = false;
+    const allTransactions: HeliusRawTransaction[] = [];
+    const seenSignatures = new Set<string>();
+    let beforeSignature: string | undefined;
+    let coveredLookback = false;
 
-    for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
-      try {
-        const response = await this.options.http.getJson<unknown>(url.toString(), {
-          headers,
-          timeoutMs: this.timeoutMs,
-          maxAttempts: 1
-        });
-
-        const pageTransactions = parseHeliusTransactionPage(response);
-        allTransactions = pageTransactions;
-
-        if (pageTransactions.length === 0) {
-          pageSuccess = true;
-          break;
-        }
-
-        if (pageTransactions.length < LIMIT_PARAM) {
-          pageSuccess = true;
-          break;
-        }
-
-        const oldestTimestampMs = getOldestTransactionTimestampMs(pageTransactions);
-
-        if (
-          pageTransactions.length === LIMIT_PARAM &&
-          oldestTimestampMs !== undefined &&
-          oldestTimestampMs > request.fromUnixMs
-        ) {
-          saturatedPage = true;
-          pageSuccess = true;
-          break;
-        }
-
-        pageSuccess = true;
-        break;
-      } catch (e) {
-        lastError = e instanceof Error ? e : new Error(String(e));
-
-        let httpError: HttpRequestError;
-
-        if (e instanceof DOMException && e.name === "AbortError") {
-          httpError = new HttpRequestError("timeout", lastError.message, null, true);
-        } else if (e instanceof HttpRequestError) {
-          httpError = e;
-        } else {
-          httpError = new HttpRequestError("network", lastError.message, null, true);
-        }
-
-        if (!httpError.retryable || attempt >= this.maxAttempts - 1) {
-          throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
-        }
-
-        await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const url = new URL(baseUrl);
+      if (this.options.apiKey) {
+        url.searchParams.set("api-key", this.options.apiKey);
       }
+      url.searchParams.set("limit", String(LIMIT_PARAM));
+      if (beforeSignature !== undefined) {
+        url.searchParams.set("before", beforeSignature);
+      }
+
+      let lastError: Error | null = null;
+      let pageTransactions: HeliusRawTransaction[] | null = null;
+
+      for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
+        try {
+          const response = await this.options.http.getJson<unknown>(url.toString(), {
+            headers,
+            timeoutMs: this.timeoutMs,
+            maxAttempts: 1
+          });
+          pageTransactions = parseHeliusTransactionPage(response);
+          break;
+        } catch (e) {
+          lastError = e instanceof Error ? e : new Error(String(e));
+
+          let httpError: HttpRequestError;
+
+          if (e instanceof DOMException && e.name === "AbortError") {
+            httpError = new HttpRequestError("timeout", lastError.message, null, true);
+          } else if (e instanceof HttpRequestError) {
+            httpError = e;
+          } else {
+            httpError = new HttpRequestError("network", lastError.message, null, true);
+          }
+
+          if (!httpError.retryable || attempt >= this.maxAttempts - 1) {
+            throw mapToOnChainFlowSourceError(httpError, this.options.apiKey);
+          }
+
+          await this.retryControl.sleep(computeBackoffMs(attempt, this.retryControl));
+        }
+      }
+
+      if (pageTransactions === null) {
+        throw mapToOnChainFlowSourceError(
+          new HttpRequestError(
+            "network",
+            lastError ? lastError.message : "Unknown error",
+            null,
+            true
+          ),
+          this.options.apiKey
+        );
+      }
+
+      // `before` is exclusive, but dedupe defensively so a provider repeat
+      // cannot duplicate an observation or spin the cursor in place.
+      let lastSignature: string | undefined;
+      for (const tx of pageTransactions) {
+        if (typeof tx.signature === "string" && tx.signature.length > 0) {
+          lastSignature = tx.signature;
+          if (seenSignatures.has(tx.signature)) continue;
+          seenSignatures.add(tx.signature);
+        }
+        allTransactions.push(tx);
+      }
+
+      // A short page means the address history is exhausted.
+      if (pageTransactions.length < LIMIT_PARAM) {
+        coveredLookback = true;
+        break;
+      }
+
+      const oldestTimestampMs = getOldestTransactionTimestampMs(pageTransactions);
+      if (oldestTimestampMs !== undefined && oldestTimestampMs <= request.fromUnixMs) {
+        coveredLookback = true;
+        break;
+      }
+
+      if (lastSignature === undefined) {
+        // No usable cursor to advance with; stop rather than refetch page 1.
+        break;
+      }
+      beforeSignature = lastSignature;
     }
 
-    if (saturatedPage) {
-      throw mapToOnChainFlowSourceError(
-        new HttpRequestError("http_status", "Page does not cover requested lookback", 429, false),
-        this.options.apiKey
-      );
-    }
-
-    if (!pageSuccess) {
-      throw mapToOnChainFlowSourceError(
-        new HttpRequestError(
-          "network",
-          lastError ? lastError.message : "Unknown error",
-          null,
-          true
-        ),
-        this.options.apiKey
-      );
-    }
-
-    const completeness: "full" | "partial" = "full";
+    // Reaching the page cap means the window is only partly observed. Report it
+    // rather than presenting a truncated view as a complete one.
+    const completeness: "full" | "partial" = coveredLookback ? "full" : "partial";
     const allEvents = mapTransactionsToWhaleEvents(
       allTransactions,
       walletAddress,
@@ -185,6 +199,10 @@ export class HttpHeliusFlowSource implements OnChainFlowSourcePort {
       events: Object.freeze(allEvents)
     });
   }
+}
+
+function addressTypeOf(request: OnChainFlowSourceRequest): "wallet" | "contract" {
+  return request.addressType ?? "wallet";
 }
 
 function redactApiKey(diagnostic: string, apiKey?: string): string {
@@ -341,7 +359,7 @@ function mapTransactionsToWhaleEvents(
         amountUsdc,
         direction,
         venue: "solana",
-        addressContext: { addressType: "wallet", address: walletAddress },
+        addressContext: { addressType: addressTypeOf(request), address: walletAddress },
         sourceReferences: [`https://solscan.io/tx/${tx.signature}`],
         sourceQuality: {
           provider: "helius-api",

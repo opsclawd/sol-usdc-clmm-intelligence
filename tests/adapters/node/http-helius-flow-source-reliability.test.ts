@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { HttpClient } from "../../../src/ports/http.js";
 import { HttpRequestError } from "../../../src/ports/http.js";
 import { HttpHeliusFlowSource } from "../../../src/adapters/node/http-helius-flow-source.js";
-import type { OnChainFlowSourceError } from "../../../src/ports/on-chain-flow-source.js";
+import type {
+  OnChainFlowSourceError,
+  OnChainFlowSourceEvent,
+  HeliusWhaleTransferEvent
+} from "../../../src/ports/on-chain-flow-source.js";
 import { FakeRetry } from "../../fakes/fake-retry.js";
 
 const WATCHED_WALLET = "Wallet123";
@@ -29,17 +33,33 @@ function createTx(sig: string, timestampSeconds: number) {
   };
 }
 
-describe("HttpHeliusFlowSource reliability", () => {
-  it("rejects a saturated page that does not cover the requested lookback", async () => {
-    const fromUnixSeconds = Math.floor(FROM_UNIX_MS / 1000);
-    // 100 items, all timestamps strictly newer than fromUnixSeconds
-    const saturatedPage = Array.from({ length: 100 }, (_, i) =>
-      createTx(`sig-sat-${i}`, fromUnixSeconds + 100 - i)
-    );
-    // oldest timestamp is (fromUnixSeconds + 1), which is > fromUnixSeconds
+function heliusEvents(result: {
+  events: readonly OnChainFlowSourceEvent[];
+}): HeliusWhaleTransferEvent[] {
+  return result.events.filter(
+    (e): e is HeliusWhaleTransferEvent => e.eventKind === "whale_transfer"
+  );
+}
 
+describe("HttpHeliusFlowSource reliability", () => {
+  it("pages back with a before cursor until the lookback is covered", async () => {
+    const fromUnixSeconds = Math.floor(FROM_UNIX_MS / 1000);
+    // Two saturated pages: the first stops short of the window, the second
+    // reaches past it. A busy pool produces far more than one page per window,
+    // so a single fetch cannot cover the lookback.
+    const pageOne = Array.from({ length: 100 }, (_, i) =>
+      createTx(`sig-p1-${i}`, fromUnixSeconds + 200 - i)
+    );
+    const pageTwo = Array.from({ length: 100 }, (_, i) =>
+      createTx(`sig-p2-${i}`, fromUnixSeconds + 99 - i)
+    );
+
+    const urls: string[] = [];
     const mockHttp: HttpClient = {
-      getJson: vi.fn().mockResolvedValue(saturatedPage),
+      getJson: vi.fn().mockImplementation(async (url: string) => {
+        urls.push(url);
+        return urls.length === 1 ? pageOne : pageTwo;
+      }),
       postJsonRaw: vi.fn().mockRejectedValue(new Error("Not implemented"))
     } as unknown as HttpClient;
 
@@ -49,22 +69,87 @@ describe("HttpHeliusFlowSource reliability", () => {
       apiKey: SECRET_API_KEY
     });
 
-    try {
-      await source.collect({
-        pair: "SOL/USDC",
-        walletAddress: WATCHED_WALLET,
-        fromUnixMs: FROM_UNIX_MS,
-        toUnixMs: TO_UNIX_MS
-      });
-      expect.fail("Should have thrown unavailable error");
-    } catch (e) {
-      const error = e as OnChainFlowSourceError;
-      expect(error).toMatchObject({
-        kind: "unavailable",
-        diagnostic: expect.stringContaining("does not cover requested lookback")
-      });
-      expect(error.diagnostic).not.toContain(SECRET_API_KEY);
-    }
+    const result = await source.collect({
+      pair: "SOL/USDC",
+      walletAddress: WATCHED_WALLET,
+      fromUnixMs: FROM_UNIX_MS,
+      toUnixMs: TO_UNIX_MS
+    });
+
+    expect(urls).toHaveLength(2);
+    expect(urls[0]).not.toContain("before=");
+    // The cursor must be the oldest signature of the previous page, or paging
+    // would refetch the same page forever.
+    expect(urls[1]).toContain("before=sig-p1-99");
+    expect(result.events.length).toBeGreaterThan(0);
+    expect(heliusEvents(result).every((e) => e.sourceQuality.completeness === "full")).toBe(true);
+  });
+
+  it("reports partial completeness instead of throwing when the page cap is reached", async () => {
+    const fromUnixSeconds = Math.floor(FROM_UNIX_MS / 1000);
+    // Every page stays newer than the window start, so the cap is what stops it.
+    const mockHttp: HttpClient = {
+      getJson: vi.fn().mockImplementation(async () => {
+        const n = (mockHttp.getJson as unknown as { mock: { calls: unknown[] } }).mock.calls.length;
+        return Array.from({ length: 100 }, (_, i) =>
+          createTx(`sig-cap-${n}-${i}`, fromUnixSeconds + 100000 - n * 100 - i)
+        );
+      }),
+      postJsonRaw: vi.fn().mockRejectedValue(new Error("Not implemented"))
+    } as unknown as HttpClient;
+
+    const source = new HttpHeliusFlowSource({
+      http: mockHttp,
+      url: "https://api.helius.com",
+      apiKey: SECRET_API_KEY
+    });
+
+    const result = await source.collect({
+      pair: "SOL/USDC",
+      walletAddress: WATCHED_WALLET,
+      fromUnixMs: FROM_UNIX_MS,
+      toUnixMs: TO_UNIX_MS
+    });
+
+    // A truncated view must not be presented as a complete one, and it must not
+    // fail the collector the way the old saturated-page throw did.
+    expect(heliusEvents(result).every((e) => e.sourceQuality.completeness === "partial")).toBe(
+      true
+    );
+    expect((mockHttp.getJson as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(
+      25
+    );
+  });
+
+  it("labels events with the address type the caller declared", async () => {
+    const tx = createTx("sig-pool-1", Math.floor(FROM_UNIX_MS / 1000) + 10);
+    const mockHttp: HttpClient = {
+      getJson: vi.fn().mockResolvedValue([tx]),
+      postJsonRaw: vi.fn().mockRejectedValue(new Error("Not implemented"))
+    } as unknown as HttpClient;
+
+    const source = new HttpHeliusFlowSource({
+      http: mockHttp,
+      url: "https://api.helius.com",
+      apiKey: SECRET_API_KEY
+    });
+
+    const pool = await source.collect({
+      pair: "SOL/USDC",
+      walletAddress: WATCHED_WALLET,
+      addressType: "contract",
+      fromUnixMs: FROM_UNIX_MS,
+      toUnixMs: TO_UNIX_MS
+    });
+    expect(heliusEvents(pool)[0]?.addressContext.addressType).toBe("contract");
+
+    const wallet = await source.collect({
+      pair: "SOL/USDC",
+      walletAddress: WATCHED_WALLET,
+      fromUnixMs: FROM_UNIX_MS,
+      toUnixMs: TO_UNIX_MS
+    });
+    expect(heliusEvents(wallet)[0]?.addressContext.addressType).toBe("wallet");
   });
 
   it("accepts a saturated page after it reaches the requested lookback", async () => {

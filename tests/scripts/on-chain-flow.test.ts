@@ -260,7 +260,7 @@ describe("on-chain-flow collector script", () => {
   });
 
   describe("provider configuration and adapter construction", () => {
-    it("constructs the Helius address-history adapter and passes the watched wallet to the job", async () => {
+    it("constructs the Helius address-history adapter and passes the Orca pool address to the job", async () => {
       mockRunOnChainFlowJob.mockResolvedValue(COMPLETE_RESULT);
 
       await runOnChainFlowCollect();
@@ -275,7 +275,7 @@ describe("on-chain-flow collector script", () => {
       );
       expect(mockRunOnChainFlowJob).toHaveBeenCalledWith(
         expect.objectContaining({
-          walletAddress: "Wallet123",
+          walletAddress: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE",
           sources: [
             expect.objectContaining({ source: "helius-api" }),
             expect.objectContaining({ source: "birdeye-api" })
@@ -392,28 +392,24 @@ describe("on-chain-flow collector script", () => {
       expect(mockClose).not.toHaveBeenCalled();
     });
 
-    it("fails before persistence when WALLET_PUBLIC_KEY is missing", async () => {
-      mockCreateNodeRuntime.mockReturnValue({
-        ...createMockRuntime(),
-        env: {
-          ...createMockRuntime().env,
-          get: vi.fn((name: string) => {
-            if (name === "WALLET_PUBLIC_KEY")
-              throw new Error("Missing required environment variable: WALLET_PUBLIC_KEY");
-            return createMockRuntime().env.get(name);
-          }),
-          getOptional: vi.fn((name: string) => {
-            if (name === "WALLET_PUBLIC_KEY") return undefined;
-            return createMockRuntime().env.getOptional(name);
-          })
-        }
+    it("does not require WALLET_PUBLIC_KEY for pool flow collection", async () => {
+      const runtime = createMockRuntime();
+      runtime.env.getOptional.mockImplementation((name: string) => {
+        if (name === "WALLET_PUBLIC_KEY") return undefined;
+        return createMockRuntime().env.getOptional(name);
       });
+      mockCreateNodeRuntime.mockReturnValue(runtime);
+      mockRunOnChainFlowJob.mockResolvedValue(COMPLETE_RESULT);
 
       await runOnChainFlowCollect();
 
-      expect(process.exitCode).toBe(1);
-      expect(mockGetPersistence).not.toHaveBeenCalled();
-      expect(mockRunOnChainFlowJob).not.toHaveBeenCalled();
+      expect(mockGetPersistence).toHaveBeenCalledTimes(1);
+      expect(mockRunOnChainFlowJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          walletAddress: "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE"
+        })
+      );
+      expect(process.exitCode).toBe(0);
     });
 
     it("uses WHIRLPOOL_ADDRESS for the Birdeye pool", async () => {

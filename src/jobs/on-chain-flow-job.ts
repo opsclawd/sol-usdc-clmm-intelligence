@@ -30,6 +30,7 @@ export interface OnChainFlowJobDeps {
   readonly thresholds: OnChainFlowThresholds;
   readonly lookbackMs: number;
   readonly walletAddress?: string;
+  readonly addressType?: "wallet" | "contract";
 }
 
 export type OnChainFlowJobStatus = "COMPLETE" | "PARTIAL" | "UNAVAILABLE" | "FAILED";
@@ -72,6 +73,10 @@ function isUnavailableStatus(
   return status === "timeout" || status === "network" || status === "unavailable";
 }
 
+function isEmptyStatus(status: OnChainFlowCollectionResult["status"]): status is "empty" {
+  return status === "empty";
+}
+
 function mapCollectionResult(
   result: OnChainFlowCollectionResult,
   source: OnChainFlowSourceKey
@@ -101,33 +106,20 @@ function mapCollectionResult(
 function reduceOnChainFlowStatus(
   outcomes: readonly OnChainFlowSourceOutcome[]
 ): OnChainFlowJobStatus {
-  let usableCount = 0;
-  let nonUsableCount = 0;
+  let successfulCount = 0;
   let unavailableCount = 0;
 
   for (const outcome of outcomes) {
-    if (isUsableStatus(outcome.status)) {
-      usableCount++;
+    if (isUsableStatus(outcome.status) || isEmptyStatus(outcome.status)) {
+      successfulCount++;
     } else if (isUnavailableStatus(outcome.status)) {
       unavailableCount++;
-      nonUsableCount++;
-    } else {
-      nonUsableCount++;
     }
   }
 
-  if (usableCount === outcomes.length) {
-    return "COMPLETE";
-  }
-
-  if (usableCount > 0 && nonUsableCount > 0) {
-    return "PARTIAL";
-  }
-
-  if (unavailableCount === outcomes.length) {
-    return "UNAVAILABLE";
-  }
-
+  if (successfulCount === outcomes.length) return "COMPLETE";
+  if (successfulCount > 0) return "PARTIAL";
+  if (unavailableCount === outcomes.length) return "UNAVAILABLE";
   return "FAILED";
 }
 
@@ -175,7 +167,8 @@ export async function runOnChainFlowJob(deps: OnChainFlowJobDeps): Promise<OnCha
             source: configuredSource.source,
             thresholds: deps.thresholds,
             lookbackMs: deps.lookbackMs,
-            ...(deps.walletAddress !== undefined ? { walletAddress: deps.walletAddress } : {})
+            ...(deps.walletAddress !== undefined ? { walletAddress: deps.walletAddress } : {}),
+            ...(deps.addressType !== undefined ? { addressType: deps.addressType } : {})
           }
         );
       } catch (err: unknown) {
