@@ -525,4 +525,29 @@ describe("verifyIssue196Live", () => {
       })
     ).rejects.toThrow(/isolated-disposable/);
   });
+
+  it("aborts run when current time is within 5 seconds before cadence boundary", async () => {
+    const lookbackMs = DEFAULT_ON_CHAIN_FLOW_LOOKBACK_MS;
+    const boundaryTime = Math.ceil(1700000000000 / lookbackMs) * lookbackMs - 1;
+    vi.spyOn(Date, "now").mockReturnValue(boundaryTime);
+    const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const res = await runLiveVerificationCLI({
+        ISSUE_196_LIVE_DATABASE_ACK: "isolated-disposable",
+        DATABASE_URL: "postgres://fake",
+        HELIUS_FLOW_API_URL: "https://fake",
+        HELIUS_API_KEY: "fake",
+        BIRDEYE_FLOW_API_URL: "https://fake",
+        BIRDEYE_API_KEY: "fake",
+        WHIRLPOOL_ADDRESS: "fake"
+      });
+      expect(res).toBeUndefined();
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining("within 5 seconds of cadence boundary")
+      );
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
 });

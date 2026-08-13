@@ -14,7 +14,7 @@ import {
 } from "../src/domain/on-chain-flow/defaults.js";
 import { HttpHeliusFlowSource } from "../src/adapters/node/http-helius-flow-source.js";
 import { HttpBirdeyeFlowSource } from "../src/adapters/node/http-birdeye-flow-source.js";
-import { inArray } from "drizzle-orm";
+import { cleanupObservationRows } from "../src/adapters/node/dev-cleanup.js";
 
 export interface VerifyIssue196LiveDeps {
   heliusSource: OnChainFlowSourcePort;
@@ -326,7 +326,8 @@ export async function runLiveVerificationCLI(customEnv?: Record<string, string |
   }
 
   const now = Date.now();
-  if (now % lookbackMs < 5_000) {
+  const remainder = now % lookbackMs;
+  if (remainder < 5_000 || remainder > lookbackMs - 5_000) {
     console.warn("Aborting verification run: current time is within 5 seconds of cadence boundary");
     return;
   }
@@ -367,24 +368,7 @@ export async function runLiveVerificationCLI(customEnv?: Record<string, string |
     });
 
     const cleanupAcceptedRows = async (ids: readonly number[]): Promise<void> => {
-      const uniqueIds = Array.from(new Set(ids)).filter((id) => id > 0);
-      if (uniqueIds.length === 0) return;
-
-      const { normalizedObservations } =
-        await import("../src/db/schema/normalized-observations.js");
-      const { rawObservations } = await import("../src/db/schema/raw-observations.js");
-
-      const drizzleDb = (
-        connection as unknown as {
-          db: {
-            delete: (table: unknown) => { where: (condition: unknown) => Promise<unknown> };
-          };
-        }
-      ).db;
-      await drizzleDb
-        .delete(normalizedObservations)
-        .where(inArray(normalizedObservations.rawObservationId, uniqueIds));
-      await drizzleDb.delete(rawObservations).where(inArray(rawObservations.id, uniqueIds));
+      await cleanupObservationRows(connection, ids);
     };
 
     const report = await verifyIssue196Live({
