@@ -253,7 +253,7 @@ Helius API / Birdeye API provider
   raw_observations
          |
          v (normalized, validated, bounded)
-  normalized_observations (whale_transfer | whale_swap | dex_net_flow)
+  normalized_observations (whale_swap | dex_net_flow)
 ```
 
 **Key invariants**:

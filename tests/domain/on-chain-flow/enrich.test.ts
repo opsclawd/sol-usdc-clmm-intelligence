@@ -535,12 +535,12 @@ describe("enrichOnChainFlow", () => {
     });
 
     it("enriches multiple candidates correctly", async () => {
-      const whaleTransfer = makeWhaleSwapCandidate({ id: 1 });
+      const whaleSwap = makeWhaleSwapCandidate({ id: 1 });
       const dexNetFlow = makeDexNetFlowCandidate({ id: 2 });
       const cexFlowProxy = makeCexFlowProxyCandidate({ id: 3 });
 
       const result = await enrichOnChainFlow({
-        candidates: [whaleTransfer, dexNetFlow, cexFlowProxy],
+        candidates: [whaleSwap, dexNetFlow, cexFlowProxy],
         nowMs: 1700000005000,
         codeVersion: "test-v1",
         runId: null

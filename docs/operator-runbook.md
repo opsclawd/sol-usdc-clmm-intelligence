@@ -1090,7 +1090,6 @@ WALLET_PUBLIC_KEY=<position-wallet-address>
 - **Implemented Live Thresholds**:
 
   ```bash
-  ON_CHAIN_WHALE_TRANSFER_MIN_USDC=100000
   ON_CHAIN_WHALE_SWAP_MIN_USDC=100000
   ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000
   ```
@@ -1101,8 +1100,8 @@ WALLET_PUBLIC_KEY=<position-wallet-address>
   $72,954,595 / 96 fifteen-minute windows = approximately $759,944 gross volume per window.
   $100,000 / $759,944 = approximately 13.2% of a typical window.
   ```
-- **Deferred VPS Variables**: Observed VPS names `ON_CHAIN_STABLECOIN_FLOW_MIN_USDC` and `ON_CHAIN_CEX_PROXY_MIN_USDC` are parsed for deferred signal kinds and do not replace the live whale-transfer/whale-swap variables.
-- **Operator Callout**: The deployment VPS must set the two live whale values (`ON_CHAIN_WHALE_TRANSFER_MIN_USDC` and `ON_CHAIN_WHALE_SWAP_MIN_USDC`) to `100000`; repository documentation cannot mutate host-local environment state.
+- **Deferred VPS Variables**: Observed VPS names `ON_CHAIN_STABLECOIN_FLOW_MIN_USDC` and `ON_CHAIN_CEX_PROXY_MIN_USDC` are parsed for deferred signal kinds and do not replace the live whale-swap variable.
+- **Operator Callout**: The deployment VPS must set the live whale value (`ON_CHAIN_WHALE_SWAP_MIN_USDC`) to `100000`; repository documentation cannot mutate host-local environment state.
 - **Provider Costs & Rate Limits**: The 15-minute cadence makes four times as many Helius/Birdeye collection attempts as the old hourly cadence; monitor provider rate limits (429s) and costs after rollout.
 
 ### Command and Statuses
@@ -1140,7 +1139,6 @@ A saturated Helius page (100 transactions returned, incomplete window) maps to `
 
 Thresholds are exact decimal strings parsed with arbitrary-precision arithmetic. All thresholds are denominated in USDC:
 
-- `whaleTransferMinUsdc`: Whale transfer transactions (Helius, Whirlpool target)
 - `whaleSwapMinUsdc`: Whale swap transactions (Birdeye)
 - `dexNetFlowMinUsdc`: DEX net flow magnitude (Birdeye)
 
@@ -1155,9 +1153,8 @@ Thresholds are exact decimal strings parsed with arbitrary-precision arithmetic.
 
 Editing `.env.example` does not rewrite deployed environment overrides on active systems. To roll out the calibrated thresholds and 15-minute schedule:
 
-1. Update deployed environment variables for all three live thresholds:
+1. Update deployed environment variables for the live thresholds:
    ```bash
-   ON_CHAIN_WHALE_TRANSFER_MIN_USDC=100000
    ON_CHAIN_WHALE_SWAP_MIN_USDC=100000
    ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000
    ```

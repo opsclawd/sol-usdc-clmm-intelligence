@@ -229,7 +229,7 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
     });
 
     it("same transaction signature but different source produces different identity", async () => {
-      const whaleTransferHelius: WhaleSwapPayloadV1 = {
+      const whaleSwapHelius: WhaleSwapPayloadV1 = {
         schemaVersion: 1,
         eventFamily: "on_chain_flow",
         eventType: "whale_swap",
@@ -248,19 +248,19 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
         stablecoinOperation: "transfer"
       };
 
-      const whaleTransferBirdeye: WhaleSwapPayloadV1 = {
-        ...whaleTransferHelius,
+      const whaleSwapBirdeye: WhaleSwapPayloadV1 = {
+        ...whaleSwapHelius,
         sourceReferences: ["https://birdeye.xyz/txn/txn_abc123"],
         sourceQuality: { provider: "birdeye-api", freshness: "windowed", completeness: "full" }
       };
 
       const keyHelius = await deriveOnChainFlowSourceObservationKey(
-        whaleTransferHelius,
+        whaleSwapHelius,
         "helius-api",
         null
       );
       const keyBirdeye = await deriveOnChainFlowSourceObservationKey(
-        whaleTransferBirdeye,
+        whaleSwapBirdeye,
         "birdeye-api",
         null
       );
@@ -441,7 +441,7 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
     });
 
     it("differs from a non-CEX event with the same sourceEventId", async () => {
-      const whaleTransfer: WhaleSwapPayloadV1 = {
+      const whaleSwap: WhaleSwapPayloadV1 = {
         schemaVersion: 1,
         eventFamily: "on_chain_flow",
         eventType: "whale_swap",
@@ -461,13 +461,9 @@ describe("deriveOnChainFlowSourceObservationKey", () => {
       };
 
       const keyCex = await deriveOnChainFlowSourceObservationKey(baseCexEvent, "helius-api", null);
-      const keyTransfer = await deriveOnChainFlowSourceObservationKey(
-        whaleTransfer,
-        "helius-api",
-        null
-      );
+      const keySwap = await deriveOnChainFlowSourceObservationKey(whaleSwap, "helius-api", null);
 
-      expect(keyCex).not.toBe(keyTransfer);
+      expect(keyCex).not.toBe(keySwap);
     });
   });
 
