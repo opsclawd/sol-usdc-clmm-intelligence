@@ -20,7 +20,6 @@ const LOOKBACK_MS = 3_600_000;
 const VALID_THRESHOLDS: OnChainFlowThresholds = Object.freeze({
   whaleSwapMinUsdc: "100000",
   stablecoinFlowMinUsdc: "1000",
-  dexNetFlowMinUsdc: "50000",
   cexFlowProxyMinUsdc: "50000",
   cexMinAttributionConfidence: 0.5
 });
@@ -232,7 +231,7 @@ describe("collectOnChainFlow", () => {
       expect(insertManySpy).not.toHaveBeenCalled();
     });
 
-    it("accepts Helius net flow at the existing DEX threshold and filters a balanced window", async () => {
+    it("accepts Helius net flow, including a perfectly balanced window", async () => {
       const { source, rawObservationRepo, normalizedObservationRepo } = makeDeps();
 
       const qualifyingHeliusFlow = {
@@ -264,8 +263,13 @@ describe("collectOnChainFlow", () => {
       expect(acceptedResult.status).toBe("accepted");
       expect(acceptedResult.accepted).toBe(1);
 
+      // A balanced window is an observation ("no directional pressure"), not
+      // an absence of one, so it must be collected rather than filtered.
       const balancedHeliusFlow = {
         ...qualifyingHeliusFlow,
+        sourceEventId: "helius-address-history:Pool123:1700000000000:1700001000000",
+        windowStartUnixMs: 1700000000000,
+        windowEndUnixMs: 1700001000000,
         buyVolumeUsdc: "500000",
         sellVolumeUsdc: "500000",
         netFlowUsdc: "0",
@@ -274,14 +278,15 @@ describe("collectOnChainFlow", () => {
 
       source.setResponse(makeValidSnapshot([balancedHeliusFlow]));
 
-      const filteredResult = await collectOnChainFlow(
+      const balancedResult = await collectOnChainFlow(
         { source, rawObservationRepo, normalizedObservationRepo },
         VALID_CONTEXT,
         { source: "helius-api", thresholds: VALID_THRESHOLDS, lookbackMs: LOOKBACK_MS }
       );
 
-      expect(filteredResult.status).toBe("empty");
-      expect(filteredResult.filtered).toBe(1);
+      expect(balancedResult.status).toBe("accepted");
+      expect(balancedResult.accepted).toBe(1);
+      expect(balancedResult.filtered).toBe(0);
     });
   });
 

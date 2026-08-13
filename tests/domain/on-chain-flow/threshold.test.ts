@@ -11,7 +11,6 @@ describe("parseOnChainFlowThresholds", () => {
     const input = {
       whaleSwapMinUsdc: "500000",
       stablecoinFlowMinUsdc: "100000",
-      dexNetFlowMinUsdc: "200000",
       cexFlowProxyMinUsdc: "500000",
       cexMinAttributionConfidence: 0.8
     };
@@ -25,7 +24,6 @@ describe("parseOnChainFlowThresholds", () => {
     const input = {
       whaleSwapMinUsdc: "1e6",
       stablecoinFlowMinUsdc: "100000",
-      dexNetFlowMinUsdc: "200000",
       cexFlowProxyMinUsdc: "500000",
       cexMinAttributionConfidence: 0.8
     };
@@ -36,7 +34,6 @@ describe("parseOnChainFlowThresholds", () => {
     const input = {
       whaleSwapMinUsdc: "Infinity",
       stablecoinFlowMinUsdc: "100000",
-      dexNetFlowMinUsdc: "200000",
       cexFlowProxyMinUsdc: "500000",
       cexMinAttributionConfidence: 0.8
     };
@@ -47,7 +44,6 @@ describe("parseOnChainFlowThresholds", () => {
     const input = {
       whaleSwapMinUsdc: "+1000000",
       stablecoinFlowMinUsdc: "100000",
-      dexNetFlowMinUsdc: "200000",
       cexFlowProxyMinUsdc: "500000",
       cexMinAttributionConfidence: 0.8
     };
@@ -58,7 +54,6 @@ describe("parseOnChainFlowThresholds", () => {
     const input = {
       whaleSwapMinUsdc: "500000",
       stablecoinFlowMinUsdc: "100000",
-      dexNetFlowMinUsdc: "200000",
       cexFlowProxyMinUsdc: "500000",
       cexMinAttributionConfidence: 1.5
     };
@@ -72,7 +67,6 @@ describe("qualifiesOnChainFlow", () => {
       const thresholds = parseOnChainFlowThresholds({
         whaleSwapMinUsdc: "500000",
         stablecoinFlowMinUsdc: "100000",
-        dexNetFlowMinUsdc: "200000",
         cexFlowProxyMinUsdc: "500000",
         cexMinAttributionConfidence: 0.8
       });
@@ -101,7 +95,6 @@ describe("qualifiesOnChainFlow", () => {
       const thresholds = parseOnChainFlowThresholds({
         whaleSwapMinUsdc: "500000",
         stablecoinFlowMinUsdc: "100000",
-        dexNetFlowMinUsdc: "200000",
         cexFlowProxyMinUsdc: "500000",
         cexMinAttributionConfidence: 0.8
       });
@@ -130,7 +123,6 @@ describe("qualifiesOnChainFlow", () => {
       const thresholds = parseOnChainFlowThresholds({
         whaleSwapMinUsdc: "500000",
         stablecoinFlowMinUsdc: "100000",
-        dexNetFlowMinUsdc: "200000",
         cexFlowProxyMinUsdc: "500000",
         cexMinAttributionConfidence: 0.8
       });
@@ -159,7 +151,6 @@ describe("qualifiesOnChainFlow", () => {
       const thresholds = parseOnChainFlowThresholds({
         whaleSwapMinUsdc: "0.3",
         stablecoinFlowMinUsdc: "100000",
-        dexNetFlowMinUsdc: "200000",
         cexFlowProxyMinUsdc: "500000",
         cexMinAttributionConfidence: 0.8
       });
@@ -190,7 +181,6 @@ describe("qualifiesOnChainFlow", () => {
       const thresholds = parseOnChainFlowThresholds({
         whaleSwapMinUsdc: "500000",
         stablecoinFlowMinUsdc: "100000",
-        dexNetFlowMinUsdc: "200000",
         cexFlowProxyMinUsdc: "500000",
         cexMinAttributionConfidence: 0.8
       });
@@ -215,23 +205,20 @@ describe("qualifiesOnChainFlow", () => {
       expect(qualifiesOnChainFlow(event, thresholds)).toBe(false);
     });
 
-    it("DEX net flow below its threshold is filtered", () => {
-      const thresholds = parseOnChainFlowThresholds({
-        whaleSwapMinUsdc: "500000",
-        stablecoinFlowMinUsdc: "100000",
-        dexNetFlowMinUsdc: "200000",
-        cexFlowProxyMinUsdc: "500000",
-        cexMinAttributionConfidence: 0.8
-      });
-
-      const event: AcceptedOnChainFlowSourceEvent = {
+    // A windowed aggregate is never filtered on magnitude. Measured live, a
+    // fixed USDC floor tracks the pool's activity level rather than directional
+    // conviction: gross volume swung >3x across 88 minutes, so a 250,000 floor
+    // discarded a 62.8%-directional window while admitting a 29.3% one. See
+    // qualifiesOnChainFlow for the full reasoning.
+    function netFlowEvent(overrides: Record<string, unknown> = {}): AcceptedOnChainFlowSourceEvent {
+      return {
         eventKind: "dex_net_flow",
         sourceEventId: "dn_001",
         observedAtUnixMs: 1700000000000,
         amountUsdc: "100000",
         direction: "inbound",
         venue: "solana",
-        addressContext: { addressType: "wallet", address: "abc123" },
+        addressContext: { addressType: "contract", address: "abc123" },
         sourceReferences: ["https://birdeye.xyz/token/SOL"],
         sourceQuality: { provider: "birdeye-api", freshness: "windowed", completeness: "full" },
         freshnessContext: { slot: 123, blockTimestampUnixMs: 1700000000000 },
@@ -239,10 +226,54 @@ describe("qualifiesOnChainFlow", () => {
         windowEndUnixMs: 1700000000000,
         buyVolumeUsdc: "100000",
         sellVolumeUsdc: "0",
-        netFlowUsdc: "100000"
-      };
+        netFlowUsdc: "100000",
+        ...overrides
+      } as AcceptedOnChainFlowSourceEvent;
+    }
 
-      expect(qualifiesOnChainFlow(event, thresholds)).toBe(false);
+    const anyThresholds = parseOnChainFlowThresholds({
+      whaleSwapMinUsdc: "500000",
+      stablecoinFlowMinUsdc: "100000",
+      cexFlowProxyMinUsdc: "500000",
+      cexMinAttributionConfidence: 0.8
+    });
+
+    it("emits a small net flow that any magnitude floor would have discarded", () => {
+      const event = netFlowEvent({
+        amountUsdc: "1",
+        buyVolumeUsdc: "500000",
+        sellVolumeUsdc: "499999",
+        netFlowUsdc: "1"
+      });
+
+      expect(qualifiesOnChainFlow(event, anyThresholds)).toBe(true);
+    });
+
+    it("emits a perfectly balanced window rather than treating it as absent", () => {
+      const event = netFlowEvent({
+        amountUsdc: "0",
+        buyVolumeUsdc: "400000",
+        sellVolumeUsdc: "400000",
+        netFlowUsdc: "0"
+      });
+
+      // A balanced window says "no directional pressure", which is an
+      // observation. Dropping it makes a quiet market look like a dead
+      // collector.
+      expect(qualifiesOnChainFlow(event, anyThresholds)).toBe(true);
+    });
+
+    it("emits a strongly directional window on low gross volume", () => {
+      // The real window a 250,000 floor wrongly discarded: 62.8% directional.
+      const event = netFlowEvent({
+        amountUsdc: "188739",
+        direction: "inbound",
+        buyVolumeUsdc: "244587",
+        sellVolumeUsdc: "55848",
+        netFlowUsdc: "188739"
+      });
+
+      expect(qualifiesOnChainFlow(event, anyThresholds)).toBe(true);
     });
   });
 
@@ -251,7 +282,6 @@ describe("qualifiesOnChainFlow", () => {
       const thresholds = parseOnChainFlowThresholds({
         whaleSwapMinUsdc: "500000",
         stablecoinFlowMinUsdc: "100000",
-        dexNetFlowMinUsdc: "200000",
         cexFlowProxyMinUsdc: "500000",
         cexMinAttributionConfidence: 0.8
       });
@@ -280,7 +310,6 @@ describe("qualifiesOnChainFlow", () => {
       const thresholds = parseOnChainFlowThresholds({
         whaleSwapMinUsdc: "500000",
         stablecoinFlowMinUsdc: "100000",
-        dexNetFlowMinUsdc: "200000",
         cexFlowProxyMinUsdc: "500000",
         cexMinAttributionConfidence: 0.8
       });
@@ -309,7 +338,6 @@ describe("qualifiesOnChainFlow", () => {
       const thresholds = parseOnChainFlowThresholds({
         whaleSwapMinUsdc: "500000",
         stablecoinFlowMinUsdc: "100000",
-        dexNetFlowMinUsdc: "200000",
         cexFlowProxyMinUsdc: "500000",
         cexMinAttributionConfidence: 0.8
       });
@@ -338,7 +366,6 @@ describe("qualifiesOnChainFlow", () => {
       const thresholds = parseOnChainFlowThresholds({
         whaleSwapMinUsdc: "500000",
         stablecoinFlowMinUsdc: "100000",
-        dexNetFlowMinUsdc: "200000",
         cexFlowProxyMinUsdc: "500000",
         cexMinAttributionConfidence: 0.8
       });

@@ -19,7 +19,6 @@ This routine collects on-chain flow events from two providers: Helius (windowed 
 - `HELIUS_FLOW_API_URL`: Base URL (`https://api.helius.xyz`)
 - `HELIUS_API_KEY`: Helius API key
 - `WHIRLPOOL_ADDRESS`: Authoritative Orca SOL/USDC Whirlpool address (`Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE`). Helius queries this address; `addressContext.addressType` is `contract`.
-- `ON_CHAIN_DEX_NET_FLOW_MIN_USDC`: Minimum DEX net flow amount in USDC (default: 250,000)
 - `ON_CHAIN_FLOW_LOOKBACK_MS`: Lookback window in milliseconds (default: 900000 = 15 minutes)
 
 **Birdeye (whale_swap, dex_net_flow):**
@@ -28,7 +27,6 @@ This routine collects on-chain flow events from two providers: Helius (windowed 
 - `BIRDEYE_API_KEY`: Birdeye API key
 - `WHIRLPOOL_ADDRESS`: Authoritative Orca SOL/USDC Whirlpool address (`Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE`)
 - `ON_CHAIN_WHALE_SWAP_MIN_USDC`: Minimum swap amount (default: 100,000 USDC)
-- `ON_CHAIN_DEX_NET_FLOW_MIN_USDC`: Minimum DEX net flow amount (default: 250,000 USDC)
 
 ## Event Coverage Matrix
 
@@ -52,7 +50,6 @@ Implemented live thresholds by exact repository names and values:
 
 ```bash
 ON_CHAIN_WHALE_SWAP_MIN_USDC=100000
-ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000
 ```
 
 Calibration arithmetic snapshot:

@@ -147,7 +147,6 @@ describe("OnChainFlowThresholds", () => {
     const thresholds: OnChainFlowThresholds = {
       whaleSwapMinUsdc: "100000",
       stablecoinFlowMinUsdc: "1000",
-      dexNetFlowMinUsdc: "50000",
       cexFlowProxyMinUsdc: "50000",
       cexMinAttributionConfidence: 0.5
     };

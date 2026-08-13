@@ -80,7 +80,6 @@ function decimalGreaterThanOrEqual(a: ParsedDecimal, b: ParsedDecimal): boolean 
 export interface ParsedOnChainFlowThresholds {
   whaleSwapMinUsdc: ParsedDecimal;
   stablecoinFlowMinUsdc: ParsedDecimal;
-  dexNetFlowMinUsdc: ParsedDecimal;
   cexFlowProxyMinUsdc: ParsedDecimal;
   cexMinAttributionConfidence: number;
 }
@@ -96,11 +95,6 @@ export function parseOnChainFlowThresholds(
   if (!isValidThresholdDecimalString(input.stablecoinFlowMinUsdc)) {
     throw new OnChainFlowThresholdError(
       "stablecoinFlowMinUsdc must be a valid decimal string without scientific notation"
-    );
-  }
-  if (!isValidThresholdDecimalString(input.dexNetFlowMinUsdc)) {
-    throw new OnChainFlowThresholdError(
-      "dexNetFlowMinUsdc must be a valid decimal string without scientific notation"
     );
   }
   if (!isValidThresholdDecimalString(input.cexFlowProxyMinUsdc)) {
@@ -121,7 +115,6 @@ export function parseOnChainFlowThresholds(
   return {
     whaleSwapMinUsdc: parseDecimalString(input.whaleSwapMinUsdc),
     stablecoinFlowMinUsdc: parseDecimalString(input.stablecoinFlowMinUsdc),
-    dexNetFlowMinUsdc: parseDecimalString(input.dexNetFlowMinUsdc),
     cexFlowProxyMinUsdc: parseDecimalString(input.cexFlowProxyMinUsdc),
     cexMinAttributionConfidence: input.cexMinAttributionConfidence
   };
@@ -153,8 +146,6 @@ function getThresholdForEventKind(
       return thresholds.whaleSwapMinUsdc;
     case "stablecoin_flow":
       return thresholds.stablecoinFlowMinUsdc;
-    case "dex_net_flow":
-      return thresholds.dexNetFlowMinUsdc;
     case "cex_flow_proxy":
       return thresholds.cexFlowProxyMinUsdc;
     default:
@@ -166,12 +157,23 @@ export function qualifiesOnChainFlow(
   event: AcceptedOnChainFlowSourceEvent,
   thresholds: ParsedOnChainFlowThresholds
 ): boolean {
-  let amountDecimal = getAmountDecimal(event);
-  const threshold = getThresholdForEventKind(event, thresholds);
-
+  // A windowed aggregate is emitted unconditionally: exactly one per window, so
+  // there is no volume to suppress, and a balanced window is a real observation
+  // about the market rather than an absence of data.
+  //
+  // An absolute USDC floor also selects the wrong windows. Measured over 88
+  // minutes of live pool activity, gross volume swung more than 3x, so a fixed
+  // floor tracks activity level rather than directional conviction: a 250,000
+  // floor discarded a window that was 62.8% directional (net 188,739 on gross
+  // 300,434) while admitting one that was only 29.3% (net 278,048 on gross
+  // 949,237). Conviction belongs in the payload — buyVolumeUsdc and
+  // sellVolumeUsdc are carried so consumers can weight on net/gross.
   if (event.eventKind === "dex_net_flow") {
-    amountDecimal = { ...amountDecimal, sign: 1 };
+    return true;
   }
+
+  const amountDecimal = getAmountDecimal(event);
+  const threshold = getThresholdForEventKind(event, thresholds);
 
   const amountPasses = decimalGreaterThanOrEqual(amountDecimal, threshold);
   if (!amountPasses) return false;

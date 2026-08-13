@@ -35,7 +35,6 @@ Specifically, for `on-chain-flow` (15-minute cadence):
 
 ```bash
 ON_CHAIN_WHALE_SWAP_MIN_USDC=100000
-ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000
 ```
 
 - Calibration arithmetic:

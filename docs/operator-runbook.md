@@ -1073,7 +1073,6 @@ BIRDEYE_API_KEY=<your-birdeye-api-key>
 
 # Threshold overrides
 ON_CHAIN_WHALE_SWAP_MIN_USDC=100000            # Default: 100,000 USDC
-ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000          # Default: 250,000 USDC
 ON_CHAIN_FLOW_LOOKBACK_MS=900000               # Default: 900,000 ms (15 minutes)
 
 # Whirlpool address and position wallet
@@ -1091,7 +1090,6 @@ WALLET_PUBLIC_KEY=<position-wallet-address>
 
   ```bash
   ON_CHAIN_WHALE_SWAP_MIN_USDC=100000
-  ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000
   ```
 
 - **Threshold Calibration Arithmetic**:
@@ -1140,7 +1138,6 @@ A saturated Helius page (100 transactions returned, incomplete window) maps to `
 Thresholds are exact decimal strings parsed with arbitrary-precision arithmetic. All thresholds are denominated in USDC:
 
 - `whaleSwapMinUsdc`: Whale swap transactions (Birdeye)
-- `dexNetFlowMinUsdc`: DEX net flow magnitude (Birdeye)
 
 `stablecoinFlowMinUsdc` and `cexFlowProxyMinUsdc` are not implemented in this phase.
 
@@ -1156,7 +1153,6 @@ Editing `.env.example` does not rewrite deployed environment overrides on active
 1. Update deployed environment variables for the live thresholds:
    ```bash
    ON_CHAIN_WHALE_SWAP_MIN_USDC=100000
-   ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000
    ```
 2. Deploy the updated code.
 3. Reconcile desired state with Hermes cron registration:

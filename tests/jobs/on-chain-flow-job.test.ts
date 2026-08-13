@@ -38,7 +38,6 @@ const VALID_CONTEXT: CollectionRunContext = Object.freeze({
 const VALID_THRESHOLDS: OnChainFlowThresholds = Object.freeze({
   whaleSwapMinUsdc: "10000",
   stablecoinFlowMinUsdc: "100000",
-  dexNetFlowMinUsdc: "100000",
   cexFlowProxyMinUsdc: "100000",
   cexMinAttributionConfidence: 0.8
 });

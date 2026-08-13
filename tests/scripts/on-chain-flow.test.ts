@@ -71,8 +71,6 @@ function createMockRuntime() {
             return "120000";
           case "ON_CHAIN_STABLECOIN_FLOW_MIN_USDC":
             return "1000000";
-          case "ON_CHAIN_DEX_NET_FLOW_MIN_USDC":
-            return "260000";
           case "ON_CHAIN_CEX_PROXY_MIN_USDC":
             return "1000000";
           case "ON_CHAIN_CEX_MIN_ATTRIBUTION_CONFIDENCE":
@@ -607,7 +605,6 @@ describe("on-chain-flow collector script", () => {
       expect(callArgs).toHaveProperty("thresholds");
       expect(callArgs.thresholds.whaleSwapMinUsdc).toBe("120000");
       expect(callArgs.thresholds.stablecoinFlowMinUsdc).toBe("1000000");
-      expect(callArgs.thresholds.dexNetFlowMinUsdc).toBe("260000");
       expect(callArgs.thresholds.cexFlowProxyMinUsdc).toBe("1000000");
       expect(callArgs.thresholds.cexMinAttributionConfidence).toBe(0.8);
       expect(callArgs).toHaveProperty("lookbackMs");
@@ -617,7 +614,7 @@ describe("on-chain-flow collector script", () => {
     it("uses calibrated on-chain-flow defaults when threshold overrides are absent", async () => {
       const runtime = createMockRuntime();
       runtime.env.getOptional.mockImplementation((name: string) => {
-        if (name === "ON_CHAIN_WHALE_SWAP_MIN_USDC" || name === "ON_CHAIN_DEX_NET_FLOW_MIN_USDC") {
+        if (name === "ON_CHAIN_WHALE_SWAP_MIN_USDC") {
           return undefined;
         }
         return createMockRuntime().env.getOptional(name);
@@ -630,8 +627,7 @@ describe("on-chain-flow collector script", () => {
       expect(mockRunOnChainFlowJob).toHaveBeenCalledWith(
         expect.objectContaining({
           thresholds: expect.objectContaining({
-            whaleSwapMinUsdc: "100000",
-            dexNetFlowMinUsdc: "250000"
+            whaleSwapMinUsdc: "100000"
           }),
           lookbackMs: 900000
         })

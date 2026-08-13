@@ -134,10 +134,6 @@ export async function runOnChainFlowCollect(): Promise<void> {
       runtime.env.getOptional("ON_CHAIN_STABLECOIN_FLOW_MIN_USDC"),
       "stablecoinFlowMinUsdc"
     );
-    const dexNetFlowMinUsdc = parseThreshold(
-      runtime.env.getOptional("ON_CHAIN_DEX_NET_FLOW_MIN_USDC"),
-      "dexNetFlowMinUsdc"
-    );
     const cexFlowProxyMinUsdc = parseThreshold(
       runtime.env.getOptional("ON_CHAIN_CEX_PROXY_MIN_USDC"),
       "cexFlowProxyMinUsdc"
@@ -150,7 +146,6 @@ export async function runOnChainFlowCollect(): Promise<void> {
     thresholds = {
       whaleSwapMinUsdc,
       stablecoinFlowMinUsdc,
-      dexNetFlowMinUsdc,
       cexFlowProxyMinUsdc,
       cexMinAttributionConfidence
     };

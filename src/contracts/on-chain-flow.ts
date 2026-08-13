@@ -115,7 +115,6 @@ export type OnChainFlowPayloadV1 =
 export interface OnChainFlowThresholds {
   readonly whaleSwapMinUsdc: string;
   readonly stablecoinFlowMinUsdc: string;
-  readonly dexNetFlowMinUsdc: string;
   readonly cexFlowProxyMinUsdc: string;
   readonly cexMinAttributionConfidence: number;
 }
