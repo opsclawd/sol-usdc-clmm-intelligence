@@ -111,10 +111,11 @@ export async function collectOnChainFlow(
     thresholds: OnChainFlowThresholds;
     lookbackMs: number;
     walletAddress?: string;
+    addressType?: "wallet" | "contract";
   }
 ): Promise<OnChainFlowCollectionResult> {
   const { source, rawObservationRepo, normalizedObservationRepo } = deps;
-  const { lookbackMs, walletAddress } = input;
+  const { lookbackMs, walletAddress, addressType } = input;
 
   const toUnixMs = context.startedAtUnixMs;
   const fromUnixMs = toUnixMs - lookbackMs;
@@ -125,7 +126,8 @@ export async function collectOnChainFlow(
       pair: "SOL/USDC",
       fromUnixMs,
       toUnixMs,
-      ...(walletAddress !== undefined ? { walletAddress } : {})
+      ...(walletAddress !== undefined ? { walletAddress } : {}),
+      ...(addressType !== undefined ? { addressType } : {})
     };
     snapshot = await source.collect(request);
   } catch (err) {

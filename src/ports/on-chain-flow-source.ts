@@ -1,6 +1,10 @@
 export interface OnChainFlowSourceRequest {
   readonly pair: "SOL/USDC";
   readonly walletAddress?: string;
+  // What `walletAddress` actually is. The deployed collector observes the
+  // whirlpool, so events must not be labelled as wallet activity. Defaults to
+  // "wallet" for callers that predate pool routing.
+  readonly addressType?: "wallet" | "contract";
   readonly fromUnixMs: number;
   readonly toUnixMs: number;
 }
@@ -64,7 +68,12 @@ export interface HeliusWhaleTransferEvent {
   readonly amountUsdc: string;
   readonly direction: "inbound" | "outbound";
   readonly venue: "solana";
-  readonly addressContext: { readonly addressType: "wallet"; readonly address: string };
+  // "contract" when the observed address is the whirlpool (market flow, the
+  // deployed configuration); "wallet" when it is an ordinary account.
+  readonly addressContext: {
+    readonly addressType: "wallet" | "contract";
+    readonly address: string;
+  };
   readonly sourceReferences: readonly string[];
   readonly sourceQuality: {
     readonly provider: "helius-api";

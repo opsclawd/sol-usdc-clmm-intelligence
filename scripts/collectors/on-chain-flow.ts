@@ -209,7 +209,8 @@ export async function runOnChainFlowCollect(): Promise<void> {
       runIdFactory: runtime.runIdFactory,
       thresholds,
       lookbackMs,
-      walletAddress: orcaPoolAddress
+      walletAddress: orcaPoolAddress,
+      addressType: "contract" as const
     });
 
     console.log(JSON.stringify(result, secretRedactingReplacer, 2));
