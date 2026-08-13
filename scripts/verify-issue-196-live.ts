@@ -327,7 +327,7 @@ export async function runLiveVerificationCLI(customEnv?: Record<string, string |
 
   const now = Date.now();
   const remainder = now % lookbackMs;
-  if (remainder < 5_000 || remainder > lookbackMs - 5_000) {
+  if (remainder < 5_000) {
     console.warn("Aborting verification run: current time is within 5 seconds of cadence boundary");
     return;
   }
