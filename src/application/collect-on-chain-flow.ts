@@ -117,7 +117,7 @@ export async function collectOnChainFlow(
   const { source, rawObservationRepo, normalizedObservationRepo } = deps;
   const { lookbackMs, walletAddress, addressType } = input;
 
-  const toUnixMs = context.startedAtUnixMs;
+  const toUnixMs = Math.floor(context.startedAtUnixMs / lookbackMs) * lookbackMs;
   const fromUnixMs = toUnixMs - lookbackMs;
 
   let snapshot: OnChainFlowSourceSnapshot;

@@ -359,8 +359,8 @@ describe("collectOnChainFlow", () => {
     });
   });
 
-  describe("forwards the configured wallet and inclusive lookback window to the source", () => {
-    it("includes walletAddress and correct time range in source request", async () => {
+  describe("cadence-aligned closed window", () => {
+    it("cadence-aligned closed window", async () => {
       const { source, rawObservationRepo, normalizedObservationRepo } = makeDeps();
       source.setResponse(makeValidSnapshot([]));
 
@@ -375,11 +375,14 @@ describe("collectOnChainFlow", () => {
         }
       );
 
+      const expectedToUnixMs =
+        Math.floor(VALID_CONTEXT.startedAtUnixMs / LOOKBACK_MS) * LOOKBACK_MS;
+
       expect(source.calls[0]?.request).toEqual({
         pair: "SOL/USDC",
         walletAddress: "Wallet123",
-        fromUnixMs: VALID_CONTEXT.startedAtUnixMs - LOOKBACK_MS,
-        toUnixMs: VALID_CONTEXT.startedAtUnixMs
+        fromUnixMs: expectedToUnixMs - LOOKBACK_MS,
+        toUnixMs: expectedToUnixMs
       });
     });
   });
