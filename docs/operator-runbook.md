@@ -1085,7 +1085,19 @@ WALLET_PUBLIC_KEY=<position-wallet-address>
 ### Cadence and Calibration Rationale
 
 - **Schedule & Cadence**: `on-chain-flow` runs every 15 minutes (`*/15 * * * *`).
-- **Lookback Window**: `ON_CHAIN_FLOW_LOOKBACK_MS` defaults to 900,000 ms (15 minutes), ensuring adjacent runs have no structural gap.
+- **Lookback Window & Window Alignment Contract**: `ON_CHAIN_FLOW_LOOKBACK_MS` defaults to 900,000 ms (15 minutes). Rather than relying on lookback duration alone, collection windows are deterministically floored to an epoch/UTC grid:
+  ```text
+  windowEndUnixMs = floor(runStartedAtUnixMs / ON_CHAIN_FLOW_LOOKBACK_MS)
+                       * ON_CHAIN_FLOW_LOOKBACK_MS
+  windowStartUnixMs = windowEndUnixMs - ON_CHAIN_FLOW_LOOKBACK_MS
+  ```
+  This ensures:
+  - The grid is epoch/UTC aligned (boundaries at `:00`, `:15`, `:30`, `:45`).
+  - Retries inside one cadence bucket evaluate the exact same closed window, producing identical observation hashes that cleanly trigger `identical_replay`.
+  - Adjacent scheduled buckets tile exactly with `windowStartUnixMs` matching the previous `windowEndUnixMs`.
+  - Both Helius and Birdeye adapters receive the identical application-layer request bounds within a single collection run.
+- **Delayed-Run Semantics**: The collector is stateless. A run delayed beyond a full cadence (>15 minutes) selects only the latest closed bucket based on `runStartedAtUnixMs` and does not backfill earlier missed buckets. Missing data remains missing/degraded under the repository's default posture rather than being disguised by a shifted overlapping window.
+- **Historical Observations**: The 29 historical Birdeye `dex_net_flow` rows remain unchanged. No database migration or retrospective deletion is justified for low-confidence historical observations that will age out under existing retention.
 - **Implemented Live Thresholds**:
 
   ```bash
@@ -1160,24 +1172,6 @@ Editing `.env.example` does not rewrite deployed environment overrides on active
    pnpm cron:render
    pnpm cron:sync -- --apply
    ```
-
-### Live Acceptance Evidence
-
-> **Warning**: The collector persists immutable raw and normalized rows directly to the database. Use the intended deployment database intentionally.
-
-To produce bounded live acceptance proof without contacting Birdeye while its quota is exhausted:
-
-1. Confirm the deployed live thresholds are `100000`; do not use threshold-lowering.
-2. Run the collector with `BIRDEYE_FLOW_API_URL=http://127.0.0.1:1` as a process-local override, leaving the Helius URL/key and database configuration intact:
-
-   ```bash
-   BIRDEYE_FLOW_API_URL=http://127.0.0.1:1 pnpm collect:on-chain-flow
-   ```
-
-3. Require a Helius outcome with `accepted > 0` or `replayed > 0` over a representative recent window. `empty` is correctly reported but does not satisfy the live-evidence acceptance criterion.
-4. Query `intelligence.raw_observations` for a `helius-api` row received at or after the recorded run start. Do not delete immutable observations afterward.
-
-> **Note**: Zero accepted transfers (`empty`) is correctly reported but is **inconclusive** for live acceptance evidence. A saturated Helius page, provider failure, or absent genuine transfer is not permission to insert synthetic data or claim success. If no genuine transfer occurs, record the run as inconclusive and re-test when live activity occurs.
 
 ### Live Smoke Command
 
