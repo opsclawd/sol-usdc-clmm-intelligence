@@ -599,7 +599,7 @@ describe("assembleEvidenceBundle with contextual events", () => {
 
       expect(normalizedRepo.lastListCandidatesQuery).not.toBeNull();
       const query = normalizedRepo.lastListCandidatesQuery!;
-      expect(query.sourceKinds).toHaveLength(10);
+      expect(query.sourceKinds).toHaveLength(11);
       expect(query.sourceKinds).toContainEqual({
         source: "macro-calendar-api",
         observationKind: "scheduled_event"
@@ -626,6 +626,10 @@ describe("assembleEvidenceBundle with contextual events", () => {
       });
       expect(query.sourceKinds).toContainEqual({
         source: "birdeye-api",
+        observationKind: "dex_net_flow"
+      });
+      expect(query.sourceKinds).toContainEqual({
+        source: "helius-api",
         observationKind: "dex_net_flow"
       });
       expect(query.sourceKinds).toContainEqual({
