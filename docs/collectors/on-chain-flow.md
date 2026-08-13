@@ -109,20 +109,6 @@ all non-empty failures -> FAILED / exit 1
 | UNAVAILABLE | 1         | All sources unavailable (HTTP 429, 404, 5xx, timeouts)                      |
 | FAILED      | 1         | Validation conflict, malformed payload, or non-empty source failure         |
 
-## Live Verification & Acceptance
-
-Live verification of window alignment and replay semantics for both live flow providers (Helius and Birdeye) is performed using the guarded live verifier:
-
-```bash
-ISSUE_196_LIVE_DATABASE_ACK=isolated-disposable tsx scripts/verify-issue-196-live.ts
-```
-
-Verification requirements and safety controls:
-
-- **Isolated Disposable Database Requirement**: The verifier requires explicit opt-in via `ISSUE_196_LIVE_DATABASE_ACK=isolated-disposable` and must target an isolated disposable test database (`DATABASE_URL`). Running against production or shared databases is a strict stop condition due to destructive cleanup operations. Ordinary scheduled collector rows remain immutable.
-- **Accepted-Then-Replayed Verification**: The script executes two sequential collection contexts across both Helius and Birdeye providers for the same closed window grid bucket. Verification succeeds only when both providers yield an initial `accepted` outcome followed by a subsequent `replayed` outcome (`accepted-then-replayed`).
-- **Exact-ID Cleanup**: Following verification, the script cleans up the created test rows in `normalized_observations` and `raw_observations` strictly by exact tracked ID.
-
 ## Scope Limitation
 
 This routine ends at persisted normalized observations in `normalized_observations`. Evidence bundle assembly (INT-PUBLISH #13) is a separate concern.

@@ -1173,27 +1173,6 @@ Editing `.env.example` does not rewrite deployed environment overrides on active
    pnpm cron:sync -- --apply
    ```
 
-### Live Acceptance Evidence & Guarded Verifier
-
-> [!STOP]
-> **Production / Shared Database Safety Stop**: Never run the live verifier against production or shared databases. The verifier performs destructive deletes during cleanup. Ordinary scheduled collector rows in production remain immutable.
-
-To verify window alignment and replay semantics against live providers (Helius and Birdeye):
-
-1. Confirm `DATABASE_URL` targets an isolated disposable database.
-2. Provide required credentials: `HELIUS_FLOW_API_URL`, `HELIUS_API_KEY`, `BIRDEYE_FLOW_API_URL`, `BIRDEYE_API_KEY`, `WHIRLPOOL_ADDRESS`.
-3. Set the explicit opt-in acknowledgement variable: `ISSUE_196_LIVE_DATABASE_ACK=isolated-disposable`.
-4. Run the guarded live verifier command:
-
-   ```bash
-   ISSUE_196_LIVE_DATABASE_ACK=isolated-disposable tsx scripts/verify-issue-196-live.ts
-   ```
-
-5. Verify the report outputs an accepted-then-replayed result for both live providers:
-   - Initial read yields `accepted` (or `empty` if no transactions occurred).
-   - Second read within the same cadence bucket yields `replayed`.
-6. Confirm exact-ID cleanup succeeds: the script deletes only the exact normalized and raw observation IDs it created, leaving the database clean.
-
 ### Live Smoke Command
 
 To verify the collector against the deployment target without committing data:
