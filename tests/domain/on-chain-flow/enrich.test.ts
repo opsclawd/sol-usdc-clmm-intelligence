@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type {
-  WhaleTransferPayloadV1,
+  WhaleSwapPayloadV1,
   DexNetFlowPayloadV1,
   CexFlowProxyPayloadV1
 } from "../../../src/contracts/on-chain-flow.js";
@@ -17,20 +17,20 @@ function getAt<T>(arr: readonly T[], index: number): T {
   return arr[index] as T;
 }
 
-function makeWhaleTransferCandidate(
+function makeWhaleSwapCandidate(
   overrides?: Partial<{
     id: number;
     source: Source;
     observedAtUnixMs: number;
     receivedAtUnixMs: number;
     fetchedAtUnixMs: number;
-    payload: WhaleTransferPayloadV1;
+    payload: WhaleSwapPayloadV1;
   }>
 ) {
-  const payload: WhaleTransferPayloadV1 = {
+  const payload: WhaleSwapPayloadV1 = {
     schemaVersion: 1,
     eventFamily: "on_chain_flow",
-    eventType: "whale_transfer",
+    eventType: "whale_swap",
     sourceEventId: "txn_abc123",
     observedAtUnixMs: 1700000000000,
     amountUsdc: "1000000000",
@@ -38,7 +38,7 @@ function makeWhaleTransferCandidate(
     venue: "solana",
     addressContext: { addressType: "wallet", address: "wallet_pubkey_1" },
     sourceReferences: ["https://helius.xyz/txn/txn_abc123"],
-    sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "full" },
+    sourceQuality: { provider: "birdeye-api", freshness: "windowed", completeness: "full" },
     freshnessContext: { slot: 123456789, blockTimestampUnixMs: 1700000000000 },
     transactionSignature: "txn_abc123",
     eventIndex: 0,
@@ -48,7 +48,7 @@ function makeWhaleTransferCandidate(
 
   return {
     id: overrides?.id ?? 1,
-    source: overrides?.source ?? ("helius-api" as Source),
+    source: overrides?.source ?? ("birdeye-api" as Source),
     observedAtUnixMs: overrides?.observedAtUnixMs ?? 1700000000000,
     receivedAtUnixMs: overrides?.receivedAtUnixMs ?? 1700000001000,
     fetchedAtUnixMs: overrides?.fetchedAtUnixMs ?? 1700000000500,
@@ -138,7 +138,7 @@ function makeCexFlowProxyCandidate(
 describe("enrichOnChainFlow", () => {
   describe("enrichment computes freshness from source time and retrieval time", () => {
     it("fresh data is marked as not stale", async () => {
-      const candidate = makeWhaleTransferCandidate({
+      const candidate = makeWhaleSwapCandidate({
         observedAtUnixMs: 1700000000000,
         fetchedAtUnixMs: 1700000000500,
         receivedAtUnixMs: 1700000001000
@@ -156,7 +156,7 @@ describe("enrichOnChainFlow", () => {
     });
 
     it("expired data is marked stale under the taxonomy policy", async () => {
-      const candidate = makeWhaleTransferCandidate({
+      const candidate = makeWhaleSwapCandidate({
         observedAtUnixMs: 1700000000000,
         fetchedAtUnixMs: 1700000000500,
         receivedAtUnixMs: 1700000001000
@@ -175,7 +175,7 @@ describe("enrichOnChainFlow", () => {
     });
 
     it("freshness derives validUntil from maxObservedAgeMs policy", async () => {
-      const candidate = makeWhaleTransferCandidate({
+      const candidate = makeWhaleSwapCandidate({
         observedAtUnixMs: 1700000000000,
         fetchedAtUnixMs: 1700000000500,
         receivedAtUnixMs: 1700000001000
@@ -194,7 +194,7 @@ describe("enrichOnChainFlow", () => {
     });
 
     it("freshness reason includes expired_past_max_observed_age when stale", async () => {
-      const candidate = makeWhaleTransferCandidate({
+      const candidate = makeWhaleSwapCandidate({
         observedAtUnixMs: 1700000000000,
         fetchedAtUnixMs: 1700000000500,
         receivedAtUnixMs: 1700000001000
@@ -215,7 +215,7 @@ describe("enrichOnChainFlow", () => {
 
   describe("enrichment validates raw-first provenance", () => {
     it("provenance sourceRefs point to the actual raw row", async () => {
-      const candidate = makeWhaleTransferCandidate({ id: 42 });
+      const candidate = makeWhaleSwapCandidate({ id: 42 });
 
       const result = await enrichOnChainFlow({
         candidates: [candidate],
@@ -226,11 +226,11 @@ describe("enrichOnChainFlow", () => {
 
       expect(getFirst(result).provenance.rawObservationRefs).toHaveLength(1);
       expect(getAt(getFirst(result).provenance.rawObservationRefs, 0).id).toBe(42);
-      expect(getAt(getFirst(result).provenance.rawObservationRefs, 0).source).toBe("helius-api");
+      expect(getAt(getFirst(result).provenance.rawObservationRefs, 0).source).toBe("birdeye-api");
     });
 
     it("provenance sourceRefs point to allowed provider helius-api", async () => {
-      const candidate = makeWhaleTransferCandidate({ source: "helius-api" });
+      const candidate = makeWhaleSwapCandidate({ source: "helius-api" });
 
       const result = await enrichOnChainFlow({
         candidates: [candidate],
@@ -258,7 +258,7 @@ describe("enrichOnChainFlow", () => {
     });
 
     it("provenance processRef includes collector and jobName", async () => {
-      const candidate = makeWhaleTransferCandidate();
+      const candidate = makeWhaleSwapCandidate();
 
       const result = await enrichOnChainFlow({
         candidates: [candidate],
@@ -273,8 +273,8 @@ describe("enrichOnChainFlow", () => {
       expect(getFirst(result).provenance.codeVersion).toBe("test-v1");
     });
 
-    it("provenance validates successfully for helius-api whale_transfer", async () => {
-      const candidate = makeWhaleTransferCandidate();
+    it("provenance validates successfully for birdeye-api whale_swap", async () => {
+      const candidate = makeWhaleSwapCandidate();
 
       const result = await enrichOnChainFlow({
         candidates: [candidate],
@@ -394,8 +394,8 @@ describe("enrichOnChainFlow", () => {
   });
 
   describe("non-CEX confidence does not receive the CEX cap", () => {
-    it("whale_transfer confidence is not capped at 0.69", async () => {
-      const candidate = makeWhaleTransferCandidate();
+    it("whale_swap confidence is not capped at 0.69", async () => {
+      const candidate = makeWhaleSwapCandidate();
 
       const result = await enrichOnChainFlow({
         candidates: [candidate],
@@ -407,8 +407,8 @@ describe("enrichOnChainFlow", () => {
       expect(getFirst(result).confidence.compositeScore).toBeGreaterThan(0.69);
     });
 
-    it("whale_transfer confidence does not include cex_proxy_quality_cap_applied", async () => {
-      const candidate = makeWhaleTransferCandidate();
+    it("whale_swap confidence does not include cex_proxy_quality_cap_applied", async () => {
+      const candidate = makeWhaleSwapCandidate();
 
       const result = await enrichOnChainFlow({
         candidates: [candidate],
@@ -447,7 +447,7 @@ describe("enrichOnChainFlow", () => {
     });
 
     it("deterministic facts retain ordinary component weighting", async () => {
-      const candidate = makeWhaleTransferCandidate();
+      const candidate = makeWhaleSwapCandidate();
 
       const result = await enrichOnChainFlow({
         candidates: [candidate],
@@ -463,7 +463,7 @@ describe("enrichOnChainFlow", () => {
 
   describe("enrichment returns correct output structure", () => {
     it("returns all required fields for NormalizedObservationInsert", async () => {
-      const candidate = makeWhaleTransferCandidate();
+      const candidate = makeWhaleSwapCandidate();
 
       const result = await enrichOnChainFlow({
         candidates: [candidate],
@@ -488,9 +488,9 @@ describe("enrichOnChainFlow", () => {
     });
 
     it("computes completeness from required context availability", async () => {
-      const candidate = makeWhaleTransferCandidate({
+      const candidate = makeWhaleSwapCandidate({
         payload: {
-          ...makeWhaleTransferCandidate().payload,
+          ...makeWhaleSwapCandidate().payload,
           sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "full" }
         }
       });
@@ -506,9 +506,9 @@ describe("enrichOnChainFlow", () => {
     });
 
     it("handles partial completeness correctly", async () => {
-      const candidate = makeWhaleTransferCandidate({
+      const candidate = makeWhaleSwapCandidate({
         payload: {
-          ...makeWhaleTransferCandidate().payload,
+          ...makeWhaleSwapCandidate().payload,
           sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "partial" }
         }
       });
@@ -535,7 +535,7 @@ describe("enrichOnChainFlow", () => {
     });
 
     it("enriches multiple candidates correctly", async () => {
-      const whaleTransfer = makeWhaleTransferCandidate({ id: 1 });
+      const whaleTransfer = makeWhaleSwapCandidate({ id: 1 });
       const dexNetFlow = makeDexNetFlowCandidate({ id: 2 });
       const cexFlowProxy = makeCexFlowProxyCandidate({ id: 3 });
 
@@ -547,7 +547,7 @@ describe("enrichOnChainFlow", () => {
       });
 
       expect(result).toHaveLength(3);
-      expect(getFirst(result).kind).toBe("whale_transfer");
+      expect(getFirst(result).kind).toBe("whale_swap");
       expect(getAt(result, 1).kind).toBe("dex_net_flow");
       expect(getAt(result, 2).kind).toBe("cex_flow_proxy");
     });

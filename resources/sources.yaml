@@ -131,16 +131,13 @@ sources:
     env: HELIUS_FLOW_API_URL
     apiKeyEnv: HELIUS_API_KEY
     purpose:
-      - whale_transfer
+      - dex_net_flow
     policy:
       timeoutMs: 10000
       maxAttempts: 2
     limitations:
-      - Uses a legacy address-history endpoint confirmed working on current free-tier key.
-      - Endpoint is single-page with limit=100; highly active wallets may exceed this and return incomplete windows.
-      - No comprehensive realtime flow subscription; endpoint is polled and returns transaction history.
-      - Does NOT supply whale_swap, stablecoin_flow, or CEX proxy attribution on free tier.
-      - whale_transfer is scoped to WALLET_PUBLIC_KEY only; comprehensive whale surveillance is out of scope.
+      - Sourced from Helius transaction history for WHIRLPOOL_ADDRESS.
+      - Produces windowed dex_net_flow for the Whirlpool contract.
       - Bounded retention: license must declare "bounded" retention mode.
 
   - name: birdeye-flow

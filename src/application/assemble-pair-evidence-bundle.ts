@@ -403,7 +403,6 @@ export async function preparePairEvidenceBundle(
     sourceKinds: [
       { source: "macro-calendar-api", observationKind: "scheduled_event" },
       { source: "solana-status-api", observationKind: "protocol_incident" },
-      { source: "helius-api", observationKind: "whale_transfer" },
       { source: "helius-api", observationKind: "whale_swap" },
       { source: "birdeye-api", observationKind: "whale_swap" },
       { source: "helius-api", observationKind: "stablecoin_flow" },
@@ -516,7 +515,6 @@ export async function preparePairEvidenceBundle(
       case "scheduled_event":
       case "protocol_incident":
         return "events";
-      case "whale_transfer":
       case "whale_swap":
       case "stablecoin_flow":
       case "cex_flow_proxy":

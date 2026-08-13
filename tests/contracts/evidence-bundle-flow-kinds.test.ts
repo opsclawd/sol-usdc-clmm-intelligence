@@ -5,12 +5,7 @@ import type { FlowClaim } from "../../src/contracts/generated/evidence-bundle-v1
 import type { EvidenceBundleContractError } from "../../src/contracts/evidence-bundle.js";
 
 const canonicalKinds = ["spot_flow", "stablecoin_flow", "exchange_flow"] as const;
-const collectorOnlyKinds = [
-  "dex_net_flow",
-  "whale_swap",
-  "whale_transfer",
-  "cex_flow_proxy"
-] as const;
+const collectorOnlyKinds = ["dex_net_flow", "whale_swap", "cex_flow_proxy"] as const;
 
 describe("EvidenceBundleV1 flow claim kinds contract", () => {
   let contract: ReturnType<typeof createEvidenceBundleContract>;
@@ -71,10 +66,6 @@ describe("EvidenceBundleV1 flow claim kinds contract", () => {
       // @ts-expect-error collector-only kinds must not be publishable contract values
       const rejectedWhaleSwap: FlowClaim["kind"] = "whale_swap";
       void rejectedWhaleSwap;
-
-      // @ts-expect-error collector-only kinds must not be publishable contract values
-      const rejectedWhaleTransfer: FlowClaim["kind"] = "whale_transfer";
-      void rejectedWhaleTransfer;
 
       // @ts-expect-error collector-only kinds must not be publishable contract values
       const rejectedCexFlowProxy: FlowClaim["kind"] = "cex_flow_proxy";

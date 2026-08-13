@@ -354,7 +354,7 @@ describe("verifyContextualEvidenceLineage", () => {
       id: 10,
       rawObservationId: 1,
       source: "helius-api",
-      observationKind: "whale_transfer",
+      observationKind: "dex_net_flow",
       provenance: {
         ...DEFAULT_PROVENANCE,
         rawObservationRefs: [

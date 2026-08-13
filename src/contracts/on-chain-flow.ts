@@ -29,25 +29,6 @@ export type OnChainFlowSourceQuality =
 
 export type StablecoinOperation = "mint" | "burn" | "transfer";
 
-export type WhaleTransferPayloadV1 = {
-  readonly schemaVersion: 1;
-  readonly eventFamily: "on_chain_flow";
-  readonly eventType: "whale_transfer";
-  readonly sourceEventId: string;
-  readonly observedAtUnixMs: number;
-  readonly amountUsdc: string;
-  readonly direction: OnChainFlowDirection;
-  readonly venue: "solana";
-  readonly addressContext: OnChainAddressContext;
-  readonly sourceReferences: readonly string[];
-  readonly sourceQuality: OnChainFlowSourceQuality;
-  readonly freshnessContext: OnChainFlowFreshnessContext;
-  readonly transactionSignature: string;
-  readonly eventIndex: number;
-  readonly slot: number;
-  readonly stablecoinOperation: StablecoinOperation;
-};
-
 export type WhaleSwapPayloadV1 = {
   readonly schemaVersion: 1;
   readonly eventFamily: "on_chain_flow";
@@ -126,14 +107,12 @@ export type CexFlowProxyPayloadV1 = {
 };
 
 export type OnChainFlowPayloadV1 =
-  | WhaleTransferPayloadV1
   | WhaleSwapPayloadV1
   | StablecoinFlowPayloadV1
   | DexNetFlowPayloadV1
   | CexFlowProxyPayloadV1;
 
 export interface OnChainFlowThresholds {
-  readonly whaleTransferMinUsdc: string;
   readonly whaleSwapMinUsdc: string;
   readonly stablecoinFlowMinUsdc: string;
   readonly dexNetFlowMinUsdc: string;

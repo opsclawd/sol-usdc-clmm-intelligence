@@ -31,7 +31,6 @@ export type ObservationKind =
   | "protocol_incident"
   | "ecosystem_news"
   | "regulatory_risk"
-  | "whale_transfer"
   | "whale_swap"
   | "stablecoin_flow"
   | "dex_net_flow"

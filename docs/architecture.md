@@ -258,15 +258,15 @@ Helius API / Birdeye API provider
 
 **Key invariants**:
 
-1. **Factual-vs-motive authority boundary**: On-chain flow data describes what happened on-chain, not why. The collector captures transaction flows (`whale_transfer`, `whale_swap`) and DEX net flows (`dex_net_flow`) as factual evidence (`stablecoin_flow` and `cex_flow_proxy` are deferred). No output claims motive, intent, or policy. Final synthesis belongs to regime-engine.
+1. **Factual-vs-motive authority boundary**: On-chain flow data describes what happened on-chain, not why. The collector captures whale swaps (`whale_swap`) and DEX net flows (`dex_net_flow`) as factual evidence (`stablecoin_flow` and `cex_flow_proxy` are deferred). No output claims motive, intent, or policy. Final synthesis belongs to regime-engine.
 2. **Per-event raw-first flow**: Each qualifying event is persisted as a raw observation before normalization. Replays with identical payloads produce no new rows (identical_replay). Changed payloads under the same chain identity create conflicts.
-3. **Stable identities**: Each event carries a stable `sourceEventId` from the provider (transaction signature + event index for Helius; provider-assigned ID for Birdeye). Identity combines `${source}::${sourceEventId}` with `asOfUnixMs` and `payloadHash`.
-4. **Threshold defaults and exact decimal semantics**: All thresholds are decimal strings parsed with exact arithmetic (no JavaScript `number` conversion). Default thresholds: `1000000` for whale transfer/swap flows, `5000000` for DEX net flow, `900000` lookback ms (`stablecoin_flow` and `cex_flow_proxy` carry no threshold env vars because they are deferred and not implemented in this phase).
+3. **Stable identities**: Each event carries a stable `sourceEventId` from the provider (provider-assigned ID for Birdeye; window identity for Helius). Identity combines `${source}::${sourceEventId}` with `asOfUnixMs` and `payloadHash`.
+4. **Threshold defaults and exact decimal semantics**: All thresholds are decimal strings parsed with exact arithmetic (no JavaScript `number` conversion). Default thresholds: `100000` for whale swap flows, `250000` for DEX net flow, `900000` lookback ms.
 5. **Deferred stablecoin and CEX proxy flows**: `stablecoin_flow` is deferred pending Circle address verification. `cex_flow_proxy` is deferred indefinitely (paid identity API required; self-maintained address book rejected as ongoing burden). Neither flow kind is implemented in this phase.
-6. **DEX pressure sourced from Birdeye**: DEX buy/sell pressure and net flow (`dex_net_flow`) are denominated in USDC and reconciled exactly to the signed net value via Birdeye. Helius does not provide DEX net flow data.
-7. **Transaction flows sourced from Helius**: Whale transfers (`whale_transfer`) and whale swaps (`whale_swap`) are sourced from Helius. Birdeye does not provide transaction-level flow data.
+6. **DEX net flow sourced from Birdeye and Helius**: DEX buy/sell pressure and net flow (`dex_net_flow`) are denominated in USDC and reconciled to signed net values.
+7. **Whale swaps sourced from Birdeye**: Whale swaps (`whale_swap`) are sourced from Birdeye.
 8. **Bounded extract retention**: All events carry `retention: "bounded"` and a provider-supplied `license` string. Providers must supply stable `providerRunId` values and non-empty source references.
-9. **Three flow kinds captured**: The collector captures two transaction flow kinds from Helius (`whale_transfer`, `whale_swap`) and one DEX net flow kind from Birdeye (`dex_net_flow`), while `stablecoin_flow` and `cex_flow_proxy` remain deferred. Both Helius and Birdeye are required; missing or failing sources reduce status to PARTIAL or UNAVAILABLE.
+9. **Active flow kinds captured**: The collector captures `whale_swap` and `dex_net_flow`, while `whale_transfer` is retired and `stablecoin_flow` / `cex_flow_proxy` remain deferred. Both Helius and Birdeye are required; missing or failing sources reduce status to PARTIAL or UNAVAILABLE.
 10. **No pagination/backfill**: This plan covers one bounded time window per run. API pagination/backfill for extended historical collection is out of scope.
 
 ## Perp & Liquidation Collector (`binance-fapi`, `drift-api`)

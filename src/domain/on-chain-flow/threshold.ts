@@ -78,7 +78,6 @@ function decimalGreaterThanOrEqual(a: ParsedDecimal, b: ParsedDecimal): boolean 
 }
 
 export interface ParsedOnChainFlowThresholds {
-  whaleTransferMinUsdc: ParsedDecimal;
   whaleSwapMinUsdc: ParsedDecimal;
   stablecoinFlowMinUsdc: ParsedDecimal;
   dexNetFlowMinUsdc: ParsedDecimal;
@@ -89,11 +88,6 @@ export interface ParsedOnChainFlowThresholds {
 export function parseOnChainFlowThresholds(
   input: OnChainFlowThresholds
 ): ParsedOnChainFlowThresholds {
-  if (!isValidThresholdDecimalString(input.whaleTransferMinUsdc)) {
-    throw new OnChainFlowThresholdError(
-      "whaleTransferMinUsdc must be a valid decimal string without scientific notation"
-    );
-  }
   if (!isValidThresholdDecimalString(input.whaleSwapMinUsdc)) {
     throw new OnChainFlowThresholdError(
       "whaleSwapMinUsdc must be a valid decimal string without scientific notation"
@@ -125,7 +119,6 @@ export function parseOnChainFlowThresholds(
   }
 
   return {
-    whaleTransferMinUsdc: parseDecimalString(input.whaleTransferMinUsdc),
     whaleSwapMinUsdc: parseDecimalString(input.whaleSwapMinUsdc),
     stablecoinFlowMinUsdc: parseDecimalString(input.stablecoinFlowMinUsdc),
     dexNetFlowMinUsdc: parseDecimalString(input.dexNetFlowMinUsdc),
@@ -138,14 +131,6 @@ function getAmountDecimal(event: AcceptedOnChainFlowSourceEvent): ParsedDecimal 
   let amountStr: string;
 
   switch (event.eventKind) {
-    case "helius_transaction":
-      if (typeof event.nativeAmount === "string") {
-        amountStr = event.nativeAmount;
-      } else {
-        amountStr = String(event.nativeAmount);
-      }
-      break;
-    case "whale_transfer":
     case "whale_swap":
     case "stablecoin_flow":
     case "dex_net_flow":
@@ -164,9 +149,6 @@ function getThresholdForEventKind(
   thresholds: ParsedOnChainFlowThresholds
 ): ParsedDecimal {
   switch (event.eventKind) {
-    case "helius_transaction":
-    case "whale_transfer":
-      return thresholds.whaleTransferMinUsdc;
     case "whale_swap":
       return thresholds.whaleSwapMinUsdc;
     case "stablecoin_flow":

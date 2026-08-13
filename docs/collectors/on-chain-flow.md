@@ -1,6 +1,6 @@
 Collect SOL/USDC on-chain flow evidence by running `pnpm collect:on-chain-flow`.
 
-This routine collects on-chain flow events from two providers: Helius (whale_transfer querying the Whirlpool address) and Birdeye (whale_swap and dex_net_flow). It reports source outcomes (COMPLETE, PARTIAL, UNAVAILABLE, FAILED) and persists normalized observations to the database.
+This routine collects on-chain flow events from two providers: Helius (windowed `dex_net_flow` querying the Whirlpool contract address) and Birdeye (`whale_swap` and `dex_net_flow`). It reports source outcomes (COMPLETE, PARTIAL, UNAVAILABLE, FAILED) and persists normalized observations to the database.
 
 ## Authority Boundaries
 
@@ -10,17 +10,16 @@ This routine collects on-chain flow events from two providers: Helius (whale_tra
 - Generate LLM research briefs (schema-constrained briefs are INT-BRIEFS #12)
 - Synthesize policy (regime-engine owns final PolicyInsight)
 - Execute transactions or manage positions
-- Provide comprehensive whale surveillance (Helius whale_transfer queries WHIRLPOOL_ADDRESS, not WALLET_PUBLIC_KEY, though addressContext.addressType remains 'wallet' for compatibility)
 - Provide stablecoin_flow (deferred pending Circle address verification) or cex_flow_proxy (deferred indefinitely)
 
 ## Provider Configuration
 
-**Helius (whale_transfer, Whirlpool target):**
+**Helius (dex_net_flow, Whirlpool contract target):**
 
 - `HELIUS_FLOW_API_URL`: Base URL (`https://api.helius.xyz`)
 - `HELIUS_API_KEY`: Helius API key
-- `WHIRLPOOL_ADDRESS`: Authoritative Orca SOL/USDC Whirlpool address (`Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE`). Helius queries this address; `addressContext.addressType` remains `wallet` for compatibility even though `addressContext.address` is the Whirlpool address. `WALLET_PUBLIC_KEY` is retained for its actual position-scoped uses elsewhere.
-- `ON_CHAIN_WHALE_TRANSFER_MIN_USDC`: Minimum transfer amount in USDC (default: 100,000)
+- `WHIRLPOOL_ADDRESS`: Authoritative Orca SOL/USDC Whirlpool address (`Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE`). Helius queries this address; `addressContext.addressType` is `contract`.
+- `ON_CHAIN_DEX_NET_FLOW_MIN_USDC`: Minimum DEX net flow amount in USDC (default: 250,000)
 - `ON_CHAIN_FLOW_LOOKBACK_MS`: Lookback window in milliseconds (default: 900000 = 15 minutes)
 
 **Birdeye (whale_swap, dex_net_flow):**
@@ -33,26 +32,25 @@ This routine collects on-chain flow events from two providers: Helius (whale_tra
 
 ## Event Coverage Matrix
 
-| Event kind        | Status                               | Source                                              |
-| ----------------- | ------------------------------------ | --------------------------------------------------- |
-| `whale_transfer`  | Live, Whirlpool target               | Helius address history                              |
-| `whale_swap`      | Live                                 | Birdeye pair trades                                 |
-| `dex_net_flow`    | Live                                 | Birdeye pair trades                                 |
-| `stablecoin_flow` | Deferred pending source verification | No clean free-tier source confirmed                 |
-| `cex_flow_proxy`  | Deferred                             | Paid identity/self-maintained address book rejected |
+| Event kind        | Status                               | Source                                                |
+| ----------------- | ------------------------------------ | ----------------------------------------------------- |
+| `whale_swap`      | Live                                 | Birdeye pair trades                                   |
+| `dex_net_flow`    | Live                                 | Birdeye pair trades, Helius address history aggregate |
+| `whale_transfer`  | Retired                              | Retired (replaced by Helius windowed net flow)        |
+| `stablecoin_flow` | Deferred pending source verification | No clean free-tier source confirmed                   |
+| `cex_flow_proxy`  | Deferred                             | Paid identity/self-maintained address book rejected   |
 
 ## Pool Target Boundary
 
-Helius `whale_transfer` queries `WHIRLPOOL_ADDRESS`. Note that `addressContext.addressType` remains `wallet` for compatibility even though `addressContext.address` is the Whirlpool address. `WALLET_PUBLIC_KEY` is retained for position-scoped uses elsewhere. The collector polls the Helius legacy address-history endpoint for the Whirlpool address. A saturated page (100 transactions returned, window not fully covered) produces `unavailable` — not a clean no-event (`empty`) result. See docs/operator-runbook.md for the completeness guard details.
+Helius `dex_net_flow` queries `WHIRLPOOL_ADDRESS` (`addressContext.addressType: "contract"`). The collector walks the Helius transaction history endpoint for the Whirlpool address across the lookback window, aggregating USDC transfers into pool (buy volume) and out of pool (sell volume). Reaching the 25-page cap marks the aggregate as `partial` completeness without losing the calculated volume.
 
 ## Threshold Gating & Calibration Rationale
 
-`on-chain-flow` runs every 15 minutes (`*/15 * * * *`). The default lookback remains 900,000 ms (15 minutes), so adjacent runs have no structural gap.
+`on-chain-flow` runs every 15 minutes (`*/15 * * * *`). The default lookback is 900,000 ms (15 minutes), so adjacent runs have no structural gap.
 
 Implemented live thresholds by exact repository names and values:
 
 ```bash
-ON_CHAIN_WHALE_TRANSFER_MIN_USDC=100000
 ON_CHAIN_WHALE_SWAP_MIN_USDC=100000
 ON_CHAIN_DEX_NET_FLOW_MIN_USDC=250000
 ```
@@ -62,23 +60,18 @@ Calibration arithmetic snapshot:
 ```text
 Current snapshot: $72,954,595 24h volume and $26,150,296 TVL.
 $72,954,595 / 96 fifteen-minute windows = approximately $759,944 gross volume per window.
-$100,000 / $759,944 = approximately 13.2% of a typical window.
+$250,000 net flow represents ~32.9% net imbalance of a typical window volume.
+$100,000 swap / $759,944 = approximately 13.2% of a typical window.
 ```
-
-Observed VPS names `ON_CHAIN_STABLECOIN_FLOW_MIN_USDC` and `ON_CHAIN_CEX_PROXY_MIN_USDC` are parsed for deferred signal kinds and do not replace the live whale-transfer/whale-swap variables.
-
-> **Operator Callout**: The deployment VPS must set the two live whale values (`ON_CHAIN_WHALE_TRANSFER_MIN_USDC` and `ON_CHAIN_WHALE_SWAP_MIN_USDC`) to `100000`; repository documentation cannot mutate host-local environment state.
-
-Note: The 15-minute cadence makes four times as many Helius/Birdeye collection attempts as the old hourly cadence; provider rate limits and cost must be watched after rollout.
 
 ## Source Health Semantics
 
-`empty`: the provider request completed, but no event became accepted or replayed; this is healthy source execution, not usable evidence.
+`empty`: the provider request completed, but no event met the qualification threshold; this is healthy source execution, not usable evidence.
 
 Operators should distinguish between:
 
-- **Clean empty (`empty`)**: Provider request completed with zero qualifying events; healthy source execution, not usable evidence.
-- **Saturated page (`unavailable`)**: Helius returns 100 transactions without covering the window — explicitly `unavailable`, window not confirmed clean. Keep saturated Helius pages `unavailable`, not `empty`.
+- **Clean empty (`empty`)**: Provider request completed with net flow or swap size below threshold; healthy source execution.
+- **Provider failure (`unavailable`)**: HTTP timeout, 429, or 5xx error from Helius or Birdeye.
 
 ## Command Exit Statuses and Truth Table Reducer Rules
 
@@ -96,12 +89,8 @@ all non-empty failures -> FAILED / exit 1
 | ----------- | --------- | --------------------------------------------------------------------------- |
 | COMPLETE    | 0         | All configured sources succeeded, replayed identically, or reported `empty` |
 | PARTIAL     | 0         | At least one source succeeded/empty while others failed or were unavailable |
-| UNAVAILABLE | 1         | All sources unavailable (HTTP 429, 404, 5xx, timeouts, saturated page)      |
+| UNAVAILABLE | 1         | All sources unavailable (HTTP 429, 404, 5xx, timeouts)                      |
 | FAILED      | 1         | Validation conflict, malformed payload, or non-empty source failure         |
-
-## Missing Coverage Not Meaning No Risk
-
-A source returning empty results or an unavailable source is a diagnostic outcome, not a "no flow" determination. Operators should investigate source outages rather than assume clean conditions. A saturated Helius page is explicitly `unavailable`, not `empty`.
 
 ## Scope Limitation
 

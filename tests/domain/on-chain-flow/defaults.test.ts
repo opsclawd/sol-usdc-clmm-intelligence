@@ -6,7 +6,6 @@ import {
 
 describe("on-chain-flow defaults", () => {
   it("uses thresholds attainable for the fifteen-minute SOL/USDC window", () => {
-    expect(DEFAULT_ON_CHAIN_FLOW_THRESHOLDS.whaleTransferMinUsdc).toBe("100000");
     expect(DEFAULT_ON_CHAIN_FLOW_THRESHOLDS.whaleSwapMinUsdc).toBe("100000");
     expect(DEFAULT_ON_CHAIN_FLOW_THRESHOLDS.dexNetFlowMinUsdc).toBe("250000");
   });

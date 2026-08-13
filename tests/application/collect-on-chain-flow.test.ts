@@ -18,7 +18,6 @@ const VALID_CONTEXT: CollectionRunContext = Object.freeze({
 const LOOKBACK_MS = 3_600_000;
 
 const VALID_THRESHOLDS: OnChainFlowThresholds = Object.freeze({
-  whaleTransferMinUsdc: "100000",
   whaleSwapMinUsdc: "100000",
   stablecoinFlowMinUsdc: "1000",
   dexNetFlowMinUsdc: "50000",
@@ -26,7 +25,7 @@ const VALID_THRESHOLDS: OnChainFlowThresholds = Object.freeze({
   cexMinAttributionConfidence: 0.5
 });
 
-function makeWhaleTransferEvent(
+function makeWhaleSwapEvent(
   overrides?: Partial<{
     sourceEventId: string;
     observedAtUnixMs: number;
@@ -37,7 +36,7 @@ function makeWhaleTransferEvent(
   }>
 ): Record<string, unknown> {
   return {
-    eventKind: "whale_transfer",
+    eventKind: "whale_swap",
     sourceEventId: overrides?.sourceEventId ?? "tx_abc123_sig_0",
     observedAtUnixMs: overrides?.observedAtUnixMs ?? 1699999990000,
     amountUsdc: overrides?.amountUsdc ?? "500000",
@@ -45,7 +44,7 @@ function makeWhaleTransferEvent(
     venue: "solana",
     addressContext: { addressType: "wallet", address: "Wallet123" },
     sourceReferences: ["https://helius.xyz/txn/tx_abc123"],
-    sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "full" },
+    sourceQuality: { provider: "birdeye-api", freshness: "windowed", completeness: "full" },
     freshnessContext: {
       slot: overrides?.slot ?? 123456789,
       blockTimestampUnixMs: overrides?.observedAtUnixMs ?? 1699999990000
@@ -94,7 +93,7 @@ function makeValidSnapshot(events?: readonly unknown[]): OnChainFlowSourceSnapsh
     asOfUnixMs: 1700000000000,
     license: "CC0-1.0",
     retention: "bounded",
-    events: (events ?? [makeWhaleTransferEvent()]) as unknown as readonly OnChainFlowSourceEvent[]
+    events: (events ?? [makeWhaleSwapEvent()]) as unknown as readonly OnChainFlowSourceEvent[]
   };
 }
 
@@ -177,7 +176,7 @@ describe("collectOnChainFlow", () => {
   describe("same identity with changed payload transitions to conflict and failed", () => {
     it("the existing immutable row is preserved and new attempt fails", async () => {
       const { source, rawObservationRepo, normalizedObservationRepo } = makeDeps();
-      const snapshot1 = makeValidSnapshot([makeWhaleTransferEvent()]);
+      const snapshot1 = makeValidSnapshot([makeWhaleSwapEvent()]);
       source.setResponse(snapshot1);
 
       const result1 = await collectOnChainFlow(
@@ -193,7 +192,7 @@ describe("collectOnChainFlow", () => {
       expect(originalRow).toBeDefined();
       const originalHash = originalRow!.payloadHash;
 
-      const snapshot2 = makeValidSnapshot([makeWhaleTransferEvent({ amountUsdc: "999999999" })]);
+      const snapshot2 = makeValidSnapshot([makeWhaleSwapEvent({ amountUsdc: "999999999" })]);
       source.setResponse(snapshot2);
 
       const result2 = await collectOnChainFlow(
@@ -215,7 +214,7 @@ describe("collectOnChainFlow", () => {
   describe("below-threshold event remains absent", () => {
     it("returns empty when every valid event is filtered below threshold", async () => {
       const { source, rawObservationRepo, normalizedObservationRepo } = makeDeps();
-      source.setResponse(makeValidSnapshot([makeWhaleTransferEvent({ amountUsdc: "100" })]));
+      source.setResponse(makeValidSnapshot([makeWhaleSwapEvent({ amountUsdc: "100" })]));
 
       const insertOrClassifySpy = vi.spyOn(rawObservationRepo, "insertOrClassify");
       const insertManySpy = vi.spyOn(normalizedObservationRepo, "insertMany");
@@ -307,7 +306,7 @@ describe("collectOnChainFlow", () => {
       const { source, rawObservationRepo, normalizedObservationRepo } = makeDeps();
       source.setResponse(
         makeValidSnapshot([
-          makeWhaleTransferEvent({ sourceEventId: "valid_tx" }),
+          makeWhaleSwapEvent({ sourceEventId: "valid_tx" }),
           { eventKind: "malformed_event" }
         ])
       );
@@ -385,7 +384,7 @@ describe("collectOnChainFlow", () => {
       const { source, rawObservationRepo, normalizedObservationRepo } = makeDeps();
       const staleTimestamp = VALID_CONTEXT.startedAtUnixMs - 10_000_000;
       source.setResponse(
-        makeValidSnapshot([makeWhaleTransferEvent({ observedAtUnixMs: staleTimestamp })])
+        makeValidSnapshot([makeWhaleSwapEvent({ observedAtUnixMs: staleTimestamp })])
       );
 
       const result = await collectOnChainFlow(
@@ -459,9 +458,9 @@ describe("collectOnChainFlow", () => {
       const { source, rawObservationRepo, normalizedObservationRepo } = makeDeps();
       source.setResponse(
         makeValidSnapshot([
-          makeWhaleTransferEvent({ sourceEventId: "tx_ccc", transactionSignature: "sig_ccc" }),
-          makeWhaleTransferEvent({ sourceEventId: "tx_aaa", transactionSignature: "sig_aaa" }),
-          makeWhaleTransferEvent({ sourceEventId: "tx_bbb", transactionSignature: "sig_bbb" })
+          makeWhaleSwapEvent({ sourceEventId: "tx_ccc", transactionSignature: "sig_ccc" }),
+          makeWhaleSwapEvent({ sourceEventId: "tx_aaa", transactionSignature: "sig_aaa" }),
+          makeWhaleSwapEvent({ sourceEventId: "tx_bbb", transactionSignature: "sig_bbb" })
         ])
       );
 

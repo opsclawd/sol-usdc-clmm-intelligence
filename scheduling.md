@@ -19,7 +19,7 @@ Hermes has no per-job model/thinking/agent override and no per-job timezone (it 
 | Job                         | Cadence          | Responsibility                                                                                                |
 | --------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------- |
 | `price-observations` (#104) | Every 5 minutes  | Build historical price density for `realized_volatility_1h`.                                                  |
-| `on-chain-flow`             | Every 15 minutes | Collect SOL/USDC on-chain flow observations (Helius whale_transfer, Birdeye whale_swap and dex_net_flow).     |
+| `on-chain-flow`             | Every 15 minutes | Collect SOL/USDC on-chain flow observations (Helius dex_net_flow, Birdeye whale_swap and dex_net_flow).       |
 | `perp-liquidation`          | Every 5 minutes  | Collect perp/liquidation stress evidence (funding, OI, basis, liquidation clusters).                          |
 | `news-evidence`             | Every 2 hours    | Collect ecosystem and regulatory news evidence.                                                               |
 | `context-events`            | Every 4 hours    | Collect contextual events (scheduled macro events, protocol incidents).                                       |

@@ -365,7 +365,6 @@ export interface VerifyContextualEvidenceLineageResult {
 const ALLOWED_CONTEXTUAL_KINDS: ReadonlySet<string> = new Set([
   "scheduled_event",
   "protocol_incident",
-  "whale_transfer",
   "whale_swap",
   "stablecoin_flow",
   "cex_flow_proxy",

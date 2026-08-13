@@ -333,7 +333,7 @@ function buildNewsRegulatoryClaims(
 
 function mapOnChainFlowKindToPublishedKind(
   kind: OnChainFlowPayloadV1["eventType"]
-): FlowClaim["kind"] | null {
+): FlowClaim["kind"] {
   switch (kind) {
     case "dex_net_flow":
     case "whale_swap":
@@ -342,8 +342,6 @@ function mapOnChainFlowKindToPublishedKind(
       return "exchange_flow";
     case "stablecoin_flow":
       return "stablecoin_flow";
-    case "whale_transfer":
-      return null;
   }
 }
 

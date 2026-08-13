@@ -67,8 +67,6 @@ function createMockRuntime() {
             return "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
           case "WALLET_PUBLIC_KEY":
             return "Wallet123";
-          case "ON_CHAIN_WHALE_TRANSFER_MIN_USDC":
-            return "110000";
           case "ON_CHAIN_WHALE_SWAP_MIN_USDC":
             return "120000";
           case "ON_CHAIN_STABLECOIN_FLOW_MIN_USDC":
@@ -528,7 +526,7 @@ describe("on-chain-flow collector script", () => {
         env: {
           ...createMockRuntime().env,
           getOptional: vi.fn((name: string) => {
-            if (name === "ON_CHAIN_WHALE_TRANSFER_MIN_USDC") return "-1000000";
+            if (name === "ON_CHAIN_WHALE_SWAP_MIN_USDC") return "-1000000";
             return undefined;
           })
         }
@@ -546,7 +544,7 @@ describe("on-chain-flow collector script", () => {
         env: {
           ...createMockRuntime().env,
           getOptional: vi.fn((name: string) => {
-            if (name === "ON_CHAIN_WHALE_TRANSFER_MIN_USDC") return "not-a-number";
+            if (name === "ON_CHAIN_WHALE_SWAP_MIN_USDC") return "not-a-number";
             return undefined;
           })
         }
@@ -607,7 +605,6 @@ describe("on-chain-flow collector script", () => {
       expect(callArgs).toHaveProperty("sources");
       expect(callArgs.sources).toHaveLength(2);
       expect(callArgs).toHaveProperty("thresholds");
-      expect(callArgs.thresholds.whaleTransferMinUsdc).toBe("110000");
       expect(callArgs.thresholds.whaleSwapMinUsdc).toBe("120000");
       expect(callArgs.thresholds.stablecoinFlowMinUsdc).toBe("1000000");
       expect(callArgs.thresholds.dexNetFlowMinUsdc).toBe("260000");
@@ -620,11 +617,7 @@ describe("on-chain-flow collector script", () => {
     it("uses calibrated on-chain-flow defaults when threshold overrides are absent", async () => {
       const runtime = createMockRuntime();
       runtime.env.getOptional.mockImplementation((name: string) => {
-        if (
-          name === "ON_CHAIN_WHALE_TRANSFER_MIN_USDC" ||
-          name === "ON_CHAIN_WHALE_SWAP_MIN_USDC" ||
-          name === "ON_CHAIN_DEX_NET_FLOW_MIN_USDC"
-        ) {
+        if (name === "ON_CHAIN_WHALE_SWAP_MIN_USDC" || name === "ON_CHAIN_DEX_NET_FLOW_MIN_USDC") {
           return undefined;
         }
         return createMockRuntime().env.getOptional(name);
@@ -637,7 +630,6 @@ describe("on-chain-flow collector script", () => {
       expect(mockRunOnChainFlowJob).toHaveBeenCalledWith(
         expect.objectContaining({
           thresholds: expect.objectContaining({
-            whaleTransferMinUsdc: "100000",
             whaleSwapMinUsdc: "100000",
             dexNetFlowMinUsdc: "250000"
           }),

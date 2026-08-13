@@ -1,6 +1,5 @@
 import type {
   OnChainFlowPayloadV1,
-  WhaleTransferPayloadV1,
   WhaleSwapPayloadV1,
   StablecoinFlowPayloadV1,
   DexNetFlowPayloadV1,
@@ -74,62 +73,6 @@ export function normalizeOnChainFlow(
   const sourceReferences = sortAndDeduplicateStrings(event.sourceReferences);
 
   switch (event.eventKind) {
-    case "helius_transaction": {
-      const heliusEvent = event as AcceptedOnChainFlowSourceEvent & {
-        eventKind: "helius_transaction";
-      };
-      const result: WhaleTransferPayloadV1 = {
-        schemaVersion: 1,
-        eventFamily: "on_chain_flow",
-        eventType: "whale_transfer",
-        sourceEventId: heliusEvent.transactionHash,
-        observedAtUnixMs: heliusEvent.timestampUnixMs,
-        amountUsdc: String(heliusEvent.nativeAmount),
-        direction: heliusEvent.flowSide === "buy" ? "inbound" : "outbound",
-        venue: "solana",
-        addressContext: { addressType: "wallet", address: heliusEvent.transactionHash },
-        sourceReferences,
-        sourceQuality: { provider: "helius-api", freshness: "realtime", completeness: "full" },
-        freshnessContext: {
-          blockTimestampUnixMs: heliusEvent.timestampUnixMs,
-          slot: heliusEvent.slot
-        },
-        transactionSignature: heliusEvent.transactionHash,
-        eventIndex: 0,
-        slot: heliusEvent.slot,
-        stablecoinOperation: "transfer"
-      };
-      return result;
-    }
-
-    case "whale_transfer": {
-      const wtEvent = event as AcceptedOnChainFlowSourceEvent & { eventKind: "whale_transfer" };
-      const result: WhaleTransferPayloadV1 = {
-        schemaVersion: 1,
-        eventFamily: "on_chain_flow",
-        eventType: "whale_transfer",
-        sourceEventId: wtEvent.sourceEventId,
-        observedAtUnixMs: wtEvent.observedAtUnixMs,
-        amountUsdc: wtEvent.amountUsdc,
-        direction: wtEvent.direction,
-        venue: wtEvent.venue,
-        addressContext: wtEvent.addressContext,
-        sourceReferences,
-        sourceQuality: wtEvent.sourceQuality,
-        freshnessContext: {
-          blockTimestampUnixMs: wtEvent.freshnessContext.blockTimestampUnixMs,
-          ...(wtEvent.freshnessContext.slot !== undefined && {
-            slot: wtEvent.freshnessContext.slot
-          })
-        },
-        transactionSignature: wtEvent.transactionSignature,
-        eventIndex: wtEvent.eventIndex,
-        slot: wtEvent.slot,
-        stablecoinOperation: wtEvent.stablecoinOperation
-      };
-      return result;
-    }
-
     case "whale_swap": {
       const wsEvent = event as AcceptedOnChainFlowSourceEvent & { eventKind: "whale_swap" };
       const result: WhaleSwapPayloadV1 = {

@@ -78,11 +78,9 @@ export type {
   OnChainFlowSourceSnapshot,
   OnChainFlowSourceError,
   OnChainFlowSourceEvent,
-  HeliusTransactionFlowEvent,
   BirdeyeWhaleSwapEvent,
   BirdeyeDexNetFlowEvent,
-  HeliusDexNetFlowEvent,
-  HeliusWhaleTransferEvent
+  HeliusDexNetFlowEvent
 } from "./on-chain-flow-source.js";
 export type {
   LlmProvider,
